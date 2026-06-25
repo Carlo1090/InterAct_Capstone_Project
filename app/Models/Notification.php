@@ -6,13 +6,17 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['user_id', 'student_id_number', 'middle_name', 'date_of_birth', 'sex', 'contact_number', 'home_address', 'year_level'])]
-class StudentProfile extends Model
+#[Fillable(['user_id', 'title', 'message', 'type', 'is_read'])]
+class Notification extends Model
 {
+    public $timestamps = false;
+    const CREATED_AT = 'sent_at';
+    const UPDATED_AT = null;
+
     protected function casts(): array
     {
         return [
-            'date_of_birth' => 'date',
+            'is_read' => 'boolean',
         ];
     }
 
