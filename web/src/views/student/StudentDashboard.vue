@@ -2,13 +2,13 @@
 import DashboardShell from '../../components/layout/DashboardShell.vue'
 
 const navItems = [
-  'Dashboard',
-  'Write Daily Journal',
-  'My Journals',
-  'My Journal Calendar',
-  'Weekly Journals',
-  'Student Info Sheet',
-  'Generate Report',
+  { label: 'Dashboard', to: '/student' },
+  { label: 'Write Daily Journal', to: '/student' },
+  { label: 'My Journals', to: '/student' },
+  { label: 'My Journal Calendar', to: '/student' },
+  { label: 'Weekly Journals', to: '/student' },
+  { label: 'Student Info Sheet', to: '/student' },
+  { label: 'Generate Report', to: '/student' },
 ]
 </script>
 

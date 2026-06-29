@@ -2,11 +2,11 @@
 import DashboardShell from '../../components/layout/DashboardShell.vue'
 
 const navItems = [
-  'Dashboard',
-  'Daily Journal Activities',
-  'Student Info Sheets',
-  'Annual SIPP Report',
-  'Partner Companies',
+  { label: 'Dashboard', to: '/coordinator' },
+  { label: 'Daily Journal Activities', to: '/coordinator' },
+  { label: 'Student Info Sheets', to: '/coordinator' },
+  { label: 'Annual SIPP Report', to: '/coordinator' },
+  { label: 'Partner Companies', to: '/coordinator' },
 ]
 </script>
 

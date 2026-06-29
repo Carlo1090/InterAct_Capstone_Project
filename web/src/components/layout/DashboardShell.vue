@@ -1,7 +1,9 @@
 <script setup>
+import { RouterLink } from 'vue-router'
+
 defineProps({
   roleLabel: { type: String, required: true },
-  navItems: { type: Array, required: true },
+  navItems: { type: Array, required: true }, // [{ label: 'User Management', to: '/admin/users' }, ...]
 })
 </script>
 
@@ -13,17 +15,18 @@ defineProps({
         InternTrack
       </div>
       <nav class="flex-1 px-3 py-4 space-y-1">
-        <a
+        <RouterLink
           v-for="item in navItems"
-          :key="item"
-          href="#"
+          :key="item.label"
+          :to="item.to"
           class="block rounded-md px-3 py-2 text-sm hover:bg-slate-700 transition-colors"
+          active-class="bg-slate-700 text-white"
         >
-          {{ item }}
-        </a>
+          {{ item.label }}
+        </RouterLink>
       </nav>
       <div class="px-4 py-4 border-t border-slate-700 text-xs text-slate-400">
-        Phase 1 static shell — no live data yet
+        Phase 2 — admin pages now call the live API
       </div>
     </aside>
 

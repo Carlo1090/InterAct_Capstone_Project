@@ -11,23 +11,43 @@ class ProgramSeeder extends Seeder
     /**
      * Run the database seeds.
      *
-     * Seeds the degree programs under each department. CAST -> BSIT is the
-     * one we know is correct for this project's actual use case; the rest
-     * are placeholders and should be reviewed before final demo/defense.
+     * Seeds all 7 confirmed degree programs across the 3 departments:
+     *
+     * CAST    -> BSIT
+     * CABM-B  -> BSBA-FM, BSBA-MM, BSBA-OM, BSA
+     * CABM-H  -> BSTM, BSHRM
      */
     public function run(): void
     {
-        $cast = Department::where('code', 'CAST')->first();
+        $programsByDepartment = [
+            'CAST' => [
+                ['code' => 'BSIT', 'name' => 'Bachelor of Science in Information Technology'],
+            ],
+            'CABM-B' => [
+                ['code' => 'BSBA-FM', 'name' => 'Bachelor of Science in Business Administration in Financial Management'],
+                ['code' => 'BSBA-MM', 'name' => 'Bachelor of Science in Business Administration in Marketing Management'],
+                ['code' => 'BSBA-OM', 'name' => 'Bachelor of Science in Business Administration in Operational Management'],
+                ['code' => 'BSA', 'name' => 'Bachelor of Science in Accountancy'],
+            ],
+            'CABM-H' => [
+                ['code' => 'BSTM', 'name' => 'Bachelor of Science in Tourism Management'],
+                ['code' => 'BSHRM', 'name' => 'Bachelor of Science in Hotel and Restaurant Management'],
+            ],
+        ];
 
-        if ($cast) {
-            Program::firstOrCreate(
-                ['code' => 'BSIT'],
-                ['department_id' => $cast->id, 'name' => 'Bachelor of Science in Information Technology']
-            );
-            Program::firstOrCreate(
-                ['code' => 'BSCS'],
-                ['department_id' => $cast->id, 'name' => 'Bachelor of Science in Computer Science']
-            );
+        foreach ($programsByDepartment as $departmentCode => $programs) {
+            $department = Department::where('code', $departmentCode)->first();
+
+            if (! $department) {
+                continue;
+            }
+
+            foreach ($programs as $program) {
+                Program::firstOrCreate(
+                    ['department_id' => $department->id, 'code' => $program['code']],
+                    ['name' => $program['name']]
+                );
+            }
         }
     }
 }

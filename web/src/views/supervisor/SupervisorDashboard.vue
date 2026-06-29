@@ -2,9 +2,9 @@
 import DashboardShell from '../../components/layout/DashboardShell.vue'
 
 const navItems = [
-  'Dashboard',
-  'My Assigned Students',
-  'Review Weekly Journals',
+  { label: 'Dashboard', to: '/supervisor' },
+  { label: 'My Assigned Students', to: '/supervisor' },
+  { label: 'Review Weekly Journals', to: '/supervisor' },
 ]
 </script>
 
