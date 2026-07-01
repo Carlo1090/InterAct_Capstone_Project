@@ -65,13 +65,13 @@ onMounted(loadDepartments)
 
     <p v-if="error" class="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ error }}</p>
 
-    <form v-if="showForm" class="mb-6 grid grid-cols-2 gap-3 rounded-md border border-slate-200 bg-white p-4" @submit.prevent="createDepartment">
+    <div v-if="showForm" class="mb-6 grid grid-cols-2 gap-3 rounded-md border border-slate-200 bg-white p-4">
       <input v-model="form.name" placeholder="Department name" required class="rounded border border-slate-300 px-3 py-2 text-sm" />
       <input v-model="form.code" placeholder="Code (e.g. CAST)" required class="rounded border border-slate-300 px-3 py-2 text-sm" />
-      <button :disabled="saving" type="submit" class="col-span-2 rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50">
+      <button :disabled="saving" type="button" class="col-span-2 rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50" @click="createDepartment">
         {{ saving ? 'Creating…' : 'Create Department' }}
       </button>
-    </form>
+    </div>
 
     <p v-if="loading" class="text-sm text-slate-500">Loading departments…</p>
 

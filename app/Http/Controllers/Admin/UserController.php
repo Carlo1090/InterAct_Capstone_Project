@@ -3,92 +3,73 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Admin\StoreUserRequest;
-use App\Http\Requests\Admin\UpdateUserRequest;
+use App\Models\StudentProfile;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
-    /**
-     * List users, optionally filtered by role and/or program.
-     * GET /api/admin/users?role=student&program_id=1
-     */
     public function index(Request $request): JsonResponse
     {
         $users = User::query()
-            ->when($request->filled('role'), fn ($q) => $q->where('role', $request->string('role')))
-            ->when($request->filled('program_id'), fn ($q) => $q->where('program_id', $request->integer('program_id')))
-            ->with('program')
+            ->with('program.department')
+            ->when($request->filled('role'), fn ($query) => $query->where('role', $request->string('role')))
+            ->when($request->filled('program_id'), fn ($query) => $query->where('program_id', $request->integer('program_id')))
             ->orderBy('name')
             ->paginate(20);
 
         return response()->json($users);
     }
 
-    /**
-     * Create a new user account. Admins create every account in
-     * InternTrack — there is no public self-registration flow for
-     * students/supervisors/coordinators.
-     * POST /api/admin/users
-     */
-    public function store(StoreUserRequest $request): JsonResponse
+    public function store(Request $request): JsonResponse
     {
-        $user = User::create([
-            ...$request->safe()->except('password'),
-            'password' => Hash::make($request->validated('password')),
-            'is_active' => $request->boolean('is_active', true),
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:150'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'password' => ['required', 'string', 'min:8'],
+            'role' => ['required', Rule::in(['student', 'supervisor', 'coordinator', 'admin'])],
+            'program_id' => ['nullable', 'exists:programs,id'],
+            'student_id_number' => ['nullable', 'string', 'max:30', 'unique:users,student_id_number'],
         ]);
 
-        // student_profiles auto-creation for role=student happens via
-        // UserObserver::created(), not here — see app/Observers/UserObserver.php
+        $user = User::create([
+            ...$validated,
+            'password' => Hash::make($validated['password']),
+            'is_active' => true,
+        ]);
 
-        return response()->json($user->load('program'), 201);
+        if ($user->isStudent()) {
+            StudentProfile::firstOrCreate(
+                ['user_id' => $user->id],
+                ['student_id_number' => $user->student_id_number],
+            );
+        }
+
+        return response()->json($user->load('program.department'), 201);
     }
 
-    /**
-     * View a single user.
-     * GET /api/admin/users/{user}
-     */
-    public function show(User $user): JsonResponse
+    public function update(Request $request, User $user): JsonResponse
     {
-        return response()->json($user->load(['program', 'studentProfile']));
+        $validated = $request->validate([
+            'name' => ['sometimes', 'string', 'max:150'],
+            'email' => ['sometimes', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
+            'role' => ['sometimes', Rule::in(['student', 'supervisor', 'coordinator', 'admin'])],
+            'program_id' => ['sometimes', 'nullable', 'exists:programs,id'],
+            'student_id_number' => ['sometimes', 'nullable', 'string', 'max:30', Rule::unique('users', 'student_id_number')->ignore($user->id)],
+        ]);
+
+        $user->update($validated);
+
+        return response()->json($user->load('program.department'));
     }
 
-    /**
-     * Update a user's details, role, program, or active status.
-     * PATCH /api/admin/users/{user}
-     */
-    public function update(UpdateUserRequest $request, User $user): JsonResponse
-    {
-        $user->update($request->validated());
-
-        return response()->json($user->load('program'));
-    }
-
-    /**
-     * Deactivate a user account. Soft, reversible action (is_active = false)
-     * rather than deleting the row, since the user's history (journal
-     * entries, weekly logs, etc.) must be preserved.
-     * POST /api/admin/users/{user}/deactivate
-     */
     public function deactivate(User $user): JsonResponse
     {
         $user->update(['is_active' => false]);
 
-        return response()->json($user->load('program'));
-    }
-
-    /**
-     * Reactivate a previously deactivated account.
-     * POST /api/admin/users/{user}/reactivate
-     */
-    public function reactivate(User $user): JsonResponse
-    {
-        $user->update(['is_active' => true]);
-
-        return response()->json($user->load('program'));
+        return response()->json(['message' => 'User deactivated.']);
     }
 }

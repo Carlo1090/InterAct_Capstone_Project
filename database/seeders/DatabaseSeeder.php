@@ -16,8 +16,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
-            DepartmentSeeder::class,
-            ProgramSeeder::class,
+            DepartmentProgramSeeder::class,
         ]);
 
         // Dedicated system/admin user (id=1) for auto-triggered actions like

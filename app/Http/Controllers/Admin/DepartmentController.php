@@ -3,40 +3,40 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Admin\StoreDepartmentRequest;
 use App\Models\Department;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class DepartmentController extends Controller
 {
-    /**
-     * GET /api/admin/departments
-     */
     public function index(): JsonResponse
     {
-        return response()->json(
-            Department::withCount('programs')->orderBy('name')->get()
-        );
+        return response()->json(Department::withCount('programs')->get());
     }
 
-    /**
-     * POST /api/admin/departments
-     */
-    public function store(StoreDepartmentRequest $request): JsonResponse
+    public function store(Request $request): JsonResponse
     {
+        $validated = $request->validate([
+            'code' => ['required', 'string', 'max:20', 'unique:departments,code'],
+            'name' => ['required', 'string', 'max:150'],
+        ]);
+
         $department = Department::create([
-            ...$request->validated(),
-            'is_active' => $request->boolean('is_active', true),
+            ...$validated,
+            'is_active' => true,
         ]);
 
         return response()->json($department, 201);
     }
 
-    /**
-     * GET /api/admin/departments/{department}
-     */
-    public function show(Department $department): JsonResponse
+    public function update(Request $request, Department $department): JsonResponse
     {
-        return response()->json($department->load('programs'));
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:150'],
+        ]);
+
+        $department->update($validated);
+
+        return response()->json($department);
     }
 }

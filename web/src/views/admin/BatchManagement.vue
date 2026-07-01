@@ -99,7 +99,7 @@ onMounted(() => {
 
     <p v-if="error" class="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ error }}</p>
 
-    <form v-if="showForm" class="mb-6 grid grid-cols-2 gap-3 rounded-md border border-slate-200 bg-white p-4" @submit.prevent="createBatch">
+    <div v-if="showForm" class="mb-6 grid grid-cols-2 gap-3 rounded-md border border-slate-200 bg-white p-4">
       <input v-model="form.name" placeholder="Batch name (e.g. BSIT Batch 2025-A)" required class="col-span-2 rounded border border-slate-300 px-3 py-2 text-sm" />
 
       <select v-model="form.program_id" required class="rounded border border-slate-300 px-3 py-2 text-sm">
@@ -131,10 +131,10 @@ onMounted(() => {
         <input v-model.number="form.working_days_per_week" type="number" min="1" max="7" required class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" />
       </label>
 
-      <button :disabled="saving" type="submit" class="col-span-2 rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50">
+      <button :disabled="saving" type="button" class="col-span-2 rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50" @click="createBatch">
         {{ saving ? 'Creating…' : 'Create Batch' }}
       </button>
-    </form>
+    </div>
 
     <p v-if="loading" class="text-sm text-slate-500">Loading batches…</p>
 

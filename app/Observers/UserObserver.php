@@ -22,7 +22,7 @@ class UserObserver
         if ($user->role === 'student' && ! $user->studentProfile) {
             StudentProfile::create([
                 'user_id' => $user->id,
-                'student_id_number' => 'PENDING-'.Str::upper(Str::random(8)),
+                'student_id_number' => $user->student_id_number ?? 'PENDING-'.Str::upper(Str::random(8)),
             ]);
         }
     }

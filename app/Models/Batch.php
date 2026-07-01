@@ -2,19 +2,31 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable([
-    'program_id', 'coordinator_id', 'journal_template_id', 'name', 'academic_year',
-    'semester', 'start_date', 'end_date', 'required_hours', 'working_days_per_week',
-    'daily_reminder_time', 'is_active',
-])]
 class Batch extends Model
 {
     public $timestamps = false;
+
+    /**
+     * @var list<string>
+     */
+    protected $fillable = [
+        'program_id',
+        'coordinator_id',
+        'name',
+        'start_date',
+        'end_date',
+        'required_hours',
+        'working_days_per_week',
+        'daily_reminder_time',
+        'journal_template_id',
+        'academic_year',
+        'semester',
+        'is_active',
+    ];
 
     protected function casts(): array
     {

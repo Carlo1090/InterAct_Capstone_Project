@@ -7,18 +7,26 @@ use App\Http\Controllers\Admin\UserController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
-    return $request->user();
+Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
+    return response()->json($request->user()->load('program.department'));
 });
 
 Route::middleware(['auth:sanctum', 'role:admin'])
     ->prefix('admin')
     ->group(function () {
-        Route::apiResource('users', UserController::class)->except(['destroy']);
-        Route::post('users/{user}/deactivate', [UserController::class, 'deactivate']);
-        Route::post('users/{user}/reactivate', [UserController::class, 'reactivate']);
+        Route::get('users', [UserController::class, 'index']);
+        Route::post('users', [UserController::class, 'store']);
+        Route::put('users/{user}', [UserController::class, 'update']);
+        Route::patch('users/{user}/deactivate', [UserController::class, 'deactivate']);
 
-        Route::apiResource('departments', DepartmentController::class)->only(['index', 'store', 'show']);
-        Route::apiResource('programs', ProgramController::class)->only(['index', 'store', 'show']);
-        Route::apiResource('batches', BatchController::class)->only(['index', 'store', 'show', 'update']);
+        Route::get('departments', [DepartmentController::class, 'index']);
+        Route::post('departments', [DepartmentController::class, 'store']);
+        Route::put('departments/{department}', [DepartmentController::class, 'update']);
+
+        Route::get('programs', [ProgramController::class, 'index']);
+        Route::post('programs', [ProgramController::class, 'store']);
+
+        Route::get('batches', [BatchController::class, 'index']);
+        Route::post('batches', [BatchController::class, 'store']);
+        Route::put('batches/{batch}', [BatchController::class, 'update']);
     });
