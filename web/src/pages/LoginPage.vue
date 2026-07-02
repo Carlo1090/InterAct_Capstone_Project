@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { roleRedirect } from '@/router'
+import { roleRedirect } from '@/router/index.ts'
 
 const auth = useAuthStore()
 const router = useRouter()
