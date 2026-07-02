@@ -24,9 +24,12 @@ reachable at `/student`, `/supervisor`, `/coordinator`, and `/admin` —
 currently static shells with placeholder nav, no live API data yet.
 
 Make sure the backend (`../` at the repo root) is running at
-`http://127.0.0.1:8000` and that its `.env` has
-`SANCTUM_STATEFUL_DOMAINS=localhost:5173` and `FRONTEND_URL=http://localhost:5173`
-so CORS and Sanctum's cookie auth work correctly together.
+`http://localhost:8000`. During development, Vite proxies `/api`,
+`/sanctum`, and auth routes to the backend so the browser can use same-origin
+requests from `http://localhost:5173`.
+
+If your backend runs somewhere else, add `VITE_BACKEND_URL=http://localhost:8001`
+to `web/.env.local` before starting Vite.
 
 ## Build
 

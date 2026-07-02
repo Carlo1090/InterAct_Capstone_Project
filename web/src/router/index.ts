@@ -91,6 +91,31 @@ const router = createRouter({
           component: () => import('@/pages/student/StudentDashboardPage.vue'),
           meta: { title: 'Student Dashboard' },
         },
+        {
+          path: 'calendar',
+          component: () => import('@/pages/student/StudentCalendarPage.vue'),
+          meta: { title: 'My Journal Calendar' },
+        },
+        {
+          path: 'journals',
+          component: () => import('@/pages/student/StudentJournalsPage.vue'),
+          meta: { title: 'My Journals' },
+        },
+        {
+          path: 'write-journal',
+          component: () => import('@/pages/student/StudentWriteJournalPage.vue'),
+          meta: { title: 'Write Daily Journal' },
+        },
+        {
+          path: 'weekly-journals',
+          component: () => import('@/pages/student/StudentWeeklyJournalsPage.vue'),
+          meta: { title: 'Weekly Journals' },
+        },
+        {
+          path: 'info-sheet',
+          component: () => import('@/pages/student/StudentInfoSheetPage.vue'),
+          meta: { title: 'Student Info Sheet' },
+        },
       ],
     },
   ],

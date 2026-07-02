@@ -71,6 +71,10 @@ const login = async () => {
         >
           {{ isLoading ? 'Logging in...' : 'Login' }}
         </button>
+
+        <div class="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-800">
+          Student demo: <strong>student@interntrack.local</strong> / <strong>password</strong>
+        </div>
       </div>
     </section>
   </main>
