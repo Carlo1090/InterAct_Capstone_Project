@@ -65,6 +65,36 @@ const router = createRouter({
           component: () => import('@/pages/coordinator/CoordinatorDashboardPage.vue'),
           meta: { title: 'Coordinator Dashboard' },
         },
+        {
+          path: 'interns',
+          component: () => import('@/pages/coordinator/CoordinatorInternsPage.vue'),
+          meta: { title: 'Interns' },
+        },
+        {
+          path: 'journal-activities',
+          component: () => import('@/pages/coordinator/CoordinatorJournalActivitiesPage.vue'),
+          meta: { title: 'Daily Journal Activities' },
+        },
+        {
+          path: 'programs',
+          component: () => import('@/pages/coordinator/CoordinatorProgramManagementPage.vue'),
+          meta: { title: 'Program Management' },
+        },
+        {
+          path: 'companies',
+          component: () => import('@/pages/coordinator/CoordinatorCompaniesPage.vue'),
+          meta: { title: 'Partner Companies' },
+        },
+        {
+          path: 'info-sheets',
+          component: () => import('@/pages/coordinator/CoordinatorInfoSheetsPage.vue'),
+          meta: { title: 'Student Info Sheets' },
+        },
+        {
+          path: 'annual-sipp',
+          component: () => import('@/pages/coordinator/CoordinatorAnnualSippPage.vue'),
+          meta: { title: 'Annual SIPP Report' },
+        },
       ],
     },
     {
