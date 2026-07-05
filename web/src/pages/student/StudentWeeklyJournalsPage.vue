@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// SCAFFOLD ONLY - static mock data, no backend wired up yet (see Phase 3 roadmap)
 const weeks = [
   { number: 8, range: 'May 19-25, 2025', status: 'pending', entries: 5, compiled: 'May 25, 9:00 PM' },
   { number: 7, range: 'May 12-18, 2025', status: 'approved', entries: 5, compiled: 'May 18, 9:00 PM' },

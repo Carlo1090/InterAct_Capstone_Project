@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// SCAFFOLD ONLY - static mock data, no backend wired up yet (see Phase 3 roadmap)
 const stats = [
   { label: 'Total Entries', value: '38', sub: 'This program', tone: 'blue' },
   { label: 'Approved', value: '32', sub: 'By supervisor', tone: 'green' },

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// SCAFFOLD ONLY - static mock data, no backend wired up yet (see Phase 3 roadmap)
 const deploymentSummary = [
   { company: 'BDO Unibank', students: 4, focus: 'Branch operations and customer service' },
   { company: 'Prince Retail Group', students: 3, focus: 'Merchandising and store administration' },

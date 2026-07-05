@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// SCAFFOLD ONLY - static mock data, no backend wired up yet (see Phase 3 roadmap)
 import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 

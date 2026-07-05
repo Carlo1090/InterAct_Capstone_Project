@@ -1,3 +1,7 @@
+<script setup lang="ts">
+// SCAFFOLD ONLY - static mock data, no backend wired up yet (see Phase 3 roadmap)
+</script>
+
 <template>
   <section class="space-y-5">
     <div class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// SCAFFOLD ONLY - static mock data, no backend wired up yet (see Phase 3 roadmap)
 type SippStatus = 'submitted' | 'draft' | 'not-started'
 
 const students = [

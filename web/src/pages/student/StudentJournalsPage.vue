@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// SCAFFOLD ONLY - static mock data, no backend wired up yet (see Phase 3 roadmap)
 const journals = [
   { date: 'May 26, 2025', day: 'Monday', title: 'UI Component Design & Testing', words: 312 },
   { date: 'May 23, 2025', day: 'Friday', title: 'Backend API Integration', words: 285 },

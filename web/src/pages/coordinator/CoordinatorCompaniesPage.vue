@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// SCAFFOLD ONLY - static mock data, no backend wired up yet (see Phase 3 roadmap)
 const companies = [
   { name: 'BDO Unibank', location: 'Mandaue City, Cebu', supervisor: 'Ms. Grace Fontanilla', students: 4, focus: 'Branch operations and customer service' },
   { name: 'Prince Retail Group', location: 'Tagbilaran City, Bohol', supervisor: 'Ms. Hazel Empleo', students: 3, focus: 'Merchandising and store administration' },

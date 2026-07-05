@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// SCAFFOLD ONLY - static mock data, no backend wired up yet (see Phase 3 roadmap)
 const activePrograms = [
   { name: 'Program 2025-A', term: 'AY 2024-2025 - 2nd Sem', students: 42, start: 'Apr 7, 2025', end: 'Jun 27, 2025', status: 'Active', reminder: '9:00 PM' },
   { name: 'Program 2025-B', term: 'AY 2024-2025 - Summer', students: 18, start: 'Jun 2, 2025', end: 'Aug 22, 2025', status: 'Upcoming', reminder: '9:00 PM' },
