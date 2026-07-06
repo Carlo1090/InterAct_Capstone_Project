@@ -52,6 +52,31 @@ const router = createRouter({
           component: () => import('@/pages/admin/AdminBatchesPage.vue'),
           meta: { title: 'Batches' },
         },
+        {
+          path: 'companies',
+          component: () => import('@/pages/admin/AdminCompaniesPage.vue'),
+          meta: { title: 'Companies' },
+        },
+        {
+          path: 'info-sheets',
+          component: () => import('@/pages/admin/AdminInfoSheetsPage.vue'),
+          meta: { title: 'Student Info Sheet' },
+        },
+        {
+          path: 'annual-sipp',
+          component: () => import('@/pages/admin/AdminAnnualSippPage.vue'),
+          meta: { title: 'Annual SIPP Report' },
+        },
+        {
+          path: 'audit-logs',
+          component: () => import('@/pages/admin/AdminAuditLogsPage.vue'),
+          meta: { title: 'Audit Logs' },
+        },
+        {
+          path: 'settings',
+          component: () => import('@/pages/admin/AdminSystemSettingsPage.vue'),
+          meta: { title: 'System Settings' },
+        },
       ],
     },
     {
@@ -107,6 +132,16 @@ const router = createRouter({
           path: 'dashboard',
           component: () => import('@/pages/supervisor/SupervisorDashboardPage.vue'),
           meta: { title: 'Supervisor Dashboard' },
+        },
+        {
+          path: 'journals',
+          component: () => import('@/pages/supervisor/SupervisorJournalsPage.vue'),
+          meta: { title: 'Journals' },
+        },
+        {
+          path: 'interns',
+          component: () => import('@/pages/supervisor/SupervisorInternsPage.vue'),
+          meta: { title: 'Interns' },
         },
       ],
     },
