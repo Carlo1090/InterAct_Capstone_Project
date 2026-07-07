@@ -8,7 +8,6 @@ const stats = [
 ]
 
 const progress = [
-  { label: 'Daily Journal Completion', value: 76, barClass: 'bg-blue-600', textClass: 'text-blue-700' },
   { label: 'Weekly Reports Approved', value: 86, barClass: 'bg-green-600', textClass: 'text-green-700' },
   { label: 'OJT Duration Progress', value: 58, barClass: 'bg-amber-600', textClass: 'text-amber-700' },
 ]
@@ -27,7 +26,6 @@ const details = [
   ['Coordinator', 'Ma. Teresa Reyes'],
   ['Department', 'Information Technology'],
   ['Start Date', 'April 7, 2025'],
-  ['End Date', 'June 27, 2025'],
 ]
 
 const statToneClass = (tone: string): string => {
