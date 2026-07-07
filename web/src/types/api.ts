@@ -37,3 +37,48 @@ export type PaginatedResponse<T> = {
   data: T[]
   total?: number
 }
+
+export type InfoSheetPersonalInfo = {
+  last_name: string
+  first_name: string
+  middle_name?: string | null
+  parent_guardian_name?: string | null
+  date_of_birth?: string | null
+  sex?: string | null
+  home_address?: string | null
+  contact_number?: string | null
+  email?: string | null
+  student_id_number?: string | null
+}
+
+export type InfoSheetAcademicInfo = {
+  program_course?: string | null
+  year_level?: string | null
+  department?: string | null
+  internship_coordinator?: string | null
+  coordinator_contact_no?: string | null
+}
+
+export type InfoSheetOjtInfo = {
+  host_company?: string | null
+  company_address?: string | null
+  company_signatory_moa?: string | null
+  office_designation?: string | null
+  supervisor_name?: string | null
+  supervisor_contact?: string | null
+  area_assigned?: string | null
+  division_assigned?: string | null
+  intern_duty_schedule?: string | null
+  ojt_start_date?: string | null
+  ojt_end_date?: string | null
+}
+
+export type InfoSheet = {
+  id: number | null
+  submission_status: 'draft' | 'submitted' | 'approved' | null
+  submitted_at: string | null
+  personal_info: InfoSheetPersonalInfo | null
+  academic_info: InfoSheetAcademicInfo | null
+  ojt_info: InfoSheetOjtInfo | null
+  emergency_contact: Record<string, unknown> | null
+}

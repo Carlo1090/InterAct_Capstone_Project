@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\BatchController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\ProgramController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Student\StudentInfoSheetController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -29,4 +30,11 @@ Route::middleware(['auth:sanctum', 'role:admin'])
         Route::get('batches', [BatchController::class, 'index']);
         Route::post('batches', [BatchController::class, 'store']);
         Route::put('batches/{batch}', [BatchController::class, 'update']);
+    });
+
+Route::middleware(['auth:sanctum', 'role:student'])
+    ->prefix('student')
+    ->group(function () {
+        Route::get('info-sheet', [StudentInfoSheetController::class, 'show']);
+        Route::post('info-sheet', [StudentInfoSheetController::class, 'store']);
     });
