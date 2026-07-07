@@ -20,9 +20,6 @@ return new class extends Migration
             $table->timestamp('submitted_at')->nullable();
             $table->timestamp('reviewed_at')->nullable();
             $table->longText('narrative')->nullable();
-            $table->text('issues_concerns')->nullable();
-            $table->text('solutions')->nullable();
-            $table->text('recommendations')->nullable();
         });
     }
 

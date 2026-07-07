@@ -135,7 +135,6 @@ class WeeklyLogController extends Controller
         $end = $start->copy()->addDays(6);
 
         // TODO: supervisor review (approve/return) is out of scope for this task.
-        // issues_concerns/solutions/recommendations columns are no longer written here — SIPP now lives on the daily journal.
         $log = WeeklyLog::updateOrCreate(
             ['student_id' => $user->id, 'batch_id' => $enrollment->batch_id, 'week_start' => $start->toDateString()],
             [
