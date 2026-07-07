@@ -73,6 +73,31 @@ export type InfoSheetOjtInfo = {
   ojt_end_date?: string | null
 }
 
+export type JournalTemplateSection = {
+  label: string
+  prompt: string
+}
+
+export type JournalEntryStatus = 'draft' | 'submitted' | 'overdue' | 'missing'
+
+export type JournalEntryDetail = {
+  entry_date: string
+  sections: JournalTemplateSection[]
+  status: JournalEntryStatus
+  content: Record<string, string>
+  submitted_at: string | null
+  editable: boolean
+}
+
+export type JournalEntrySummary = {
+  id: number
+  entry_date: string
+  status: JournalEntryStatus
+  content: Record<string, string>
+  submitted_at: string | null
+  word_count: number
+}
+
 export type InfoSheet = {
   id: number | null
   submission_status: 'draft' | 'submitted' | 'approved' | null

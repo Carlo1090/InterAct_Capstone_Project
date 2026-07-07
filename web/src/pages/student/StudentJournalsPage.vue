@@ -1,15 +1,40 @@
 <script setup lang="ts">
-// SCAFFOLD ONLY - static mock data, no backend wired up yet (see Phase 3 roadmap)
-const journals = [
-  { date: 'May 26, 2025', day: 'Monday', title: 'UI Component Design & Testing', words: 312 },
-  { date: 'May 23, 2025', day: 'Friday', title: 'Backend API Integration', words: 285 },
-  { date: 'May 22, 2025', day: 'Thursday', title: 'Database Schema Optimization', words: 267 },
-  { date: 'May 21, 2025', day: 'Wednesday', title: 'Team Stand-up & Sprint Planning', words: 310 },
-  { date: 'May 20, 2025', day: 'Tuesday', title: 'Bug Fixing & Code Review', words: 245 },
-  { date: 'May 19, 2025', day: 'Monday', title: 'Feature Development - Login Module', words: 298 },
-  { date: 'May 16, 2025', day: 'Friday', title: 'Documentation Update', words: 220 },
-  { date: 'May 15, 2025', day: 'Thursday', title: 'Client Demo Preparation', words: 334 },
-]
+import { onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import api from '@/lib/axios'
+import type { JournalEntrySummary, PaginatedResponse } from '@/types/api'
+
+const router = useRouter()
+
+const journals = ref<JournalEntrySummary[]>([])
+const isLoading = ref(true)
+const errorMessage = ref('')
+const statusFilter = ref('')
+
+const load = async () => {
+  isLoading.value = true
+  errorMessage.value = ''
+
+  try {
+    const response = await api.get<PaginatedResponse<JournalEntrySummary>>('/api/student/journal-entries', {
+      params: statusFilter.value ? { status: statusFilter.value } : {},
+    })
+    journals.value = response.data.data
+  } catch {
+    errorMessage.value = 'Unable to load your journals.'
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const viewEntry = (date: string) => {
+  router.push({ path: '/student/write-journal', query: { date } })
+}
+
+const dayName = (date: string) => new Date(date).toLocaleDateString(undefined, { weekday: 'long' })
+
+watch(statusFilter, load)
+onMounted(load)
 </script>
 
 <template>
@@ -19,43 +44,51 @@ const journals = [
     </div>
 
     <div class="flex flex-wrap gap-3">
-      <input class="min-w-72 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Search journals..." />
-      <select class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
-        <option>All Status</option>
-        <option>Submitted</option>
-        <option>Missing</option>
+      <select v-model="statusFilter" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
+        <option value="">All Status</option>
+        <option value="submitted">Submitted</option>
+        <option value="draft">Draft</option>
       </select>
-      <select class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
-        <option>This Month</option>
-        <option>Last Month</option>
-        <option>All Time</option>
-      </select>
-      <button type="button" class="ml-auto rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700">Export PDF</button>
     </div>
 
-    <div class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+    <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
+    <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
+
+    <div v-else class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
       <table class="min-w-full divide-y divide-slate-200">
         <thead class="bg-slate-50">
           <tr>
             <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Date</th>
             <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Day</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Title</th>
             <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Word Count</th>
             <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
             <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Actions</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
-          <tr v-for="journal in journals" :key="journal.date">
-            <td class="px-4 py-3 text-sm font-mono text-slate-700">{{ journal.date }}</td>
-            <td class="px-4 py-3 text-sm text-slate-500">{{ journal.day }}</td>
-            <td class="px-4 py-3 text-sm font-semibold text-slate-900">{{ journal.title }}</td>
-            <td class="px-4 py-3 text-sm font-mono text-slate-700">{{ journal.words }}</td>
+          <tr v-if="journals.length === 0">
+            <td colspan="5" class="px-4 py-6 text-center text-sm text-slate-500">No journal entries found.</td>
+          </tr>
+          <tr v-for="journal in journals" :key="journal.id">
+            <td class="px-4 py-3 text-sm font-mono text-slate-700">{{ journal.entry_date }}</td>
+            <td class="px-4 py-3 text-sm text-slate-500">{{ dayName(journal.entry_date) }}</td>
+            <td class="px-4 py-3 text-sm font-mono text-slate-700">{{ journal.word_count }}</td>
             <td class="px-4 py-3 text-sm">
-              <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">Submitted</span>
+              <span
+                class="rounded-full px-3 py-1 text-xs font-bold capitalize"
+                :class="journal.status === 'submitted' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'"
+              >
+                {{ journal.status }}
+              </span>
             </td>
             <td class="px-4 py-3 text-sm">
-              <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700">View</button>
+              <button
+                type="button"
+                class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700"
+                @click="viewEntry(journal.entry_date)"
+              >
+                View
+              </button>
             </td>
           </tr>
         </tbody>

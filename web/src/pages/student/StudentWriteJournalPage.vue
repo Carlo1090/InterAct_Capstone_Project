@@ -1,68 +1,151 @@
 <script setup lang="ts">
-// SCAFFOLD ONLY - static mock data, no backend wired up yet (see Phase 3 roadmap)
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import axios from 'axios'
+import api from '@/lib/axios'
+import type { JournalEntryDetail, JournalTemplateSection } from '@/types/api'
+
+const route = useRoute()
+const router = useRouter()
+
+const entryDate = computed(() => (typeof route.query.date === 'string' ? route.query.date : new Date().toISOString().slice(0, 10)))
+
+const isLoading = ref(true)
+const isSaving = ref(false)
+const errorMessage = ref('')
+const statusMessage = ref('')
+const status = ref<JournalEntryDetail['status']>('draft')
+const editable = ref(true)
+const sections = ref<JournalTemplateSection[]>([])
+const content = reactive<Record<string, string>>({})
+
+const wordCount = computed(() =>
+  Object.values(content).reduce((total, value) => total + (value.trim() ? value.trim().split(/\s+/).length : 0), 0),
+)
+
+const load = async () => {
+  isLoading.value = true
+  errorMessage.value = ''
+  statusMessage.value = ''
+
+  try {
+    const { data } = await api.get<JournalEntryDetail>(`/api/student/journal-entries/${entryDate.value}`)
+    sections.value = data.sections
+    status.value = data.status
+    editable.value = data.editable
+
+    Object.keys(content).forEach((key) => delete content[key])
+    data.sections.forEach((section) => {
+      content[section.label] = data.content[section.label] ?? ''
+    })
+  } catch {
+    errorMessage.value = 'Unable to load this journal entry.'
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const save = async (nextStatus: 'draft' | 'submitted') => {
+  isSaving.value = true
+  errorMessage.value = ''
+  statusMessage.value = ''
+
+  try {
+    const { data } = await api.post<JournalEntryDetail>('/api/student/journal-entries', {
+      entry_date: entryDate.value,
+      status: nextStatus,
+      content,
+    })
+    status.value = data.status
+    statusMessage.value = nextStatus === 'submitted' ? 'Entry submitted.' : 'Draft saved.'
+  } catch (error) {
+    const data = axios.isAxiosError(error) ? error.response?.data : null
+    errorMessage.value = data?.message ?? 'Unable to save this entry.'
+  } finally {
+    isSaving.value = false
+  }
+}
+
+const goToDate = (date: string) => {
+  router.push({ path: '/student/write-journal', query: { date } })
+}
+
+const onDateChange = (event: Event) => {
+  goToDate((event.target as HTMLInputElement).value)
+}
+
+watch(entryDate, load)
+onMounted(load)
 </script>
 
 <template>
   <section class="space-y-5">
     <div class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-      Today is <strong>Monday, May 26, 2025</strong>. Deadline for submission is <strong>11:59 PM tonight</strong>. Missed entries are excluded from the Sunday compilation.
+      Writing journal for <strong>{{ entryDate }}</strong>.
+      <span v-if="!editable && !isLoading"> This date can no longer be edited (future date or outside your OJT range).</span>
     </div>
 
-    <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+    <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
+
+    <div v-else class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div class="space-y-5">
         <section class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
           <h2 class="text-sm font-bold text-slate-900">Entry Details</h2>
-          <div class="mt-4 grid gap-4 md:grid-cols-2">
-            <label class="block text-sm font-medium text-slate-700">
-              Date
-              <input value="May 26, 2025" readonly class="mt-2 w-full rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-sm" />
-            </label>
-            <label class="block text-sm font-medium text-slate-700">
-              Title / Summary
-              <input value="UI Component Design & Testing" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-            </label>
-          </div>
+          <label class="mt-4 block text-sm font-medium text-slate-700">
+            Date
+            <input
+              type="date"
+              :value="entryDate"
+              class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              @change="onDateChange"
+            />
+          </label>
         </section>
 
-        <section class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <h2 class="text-sm font-bold text-slate-900">Journal Entry</h2>
-          <div class="mt-4 flex gap-1 rounded-t-md border border-slate-300 border-b-transparent bg-slate-50 p-2">
-            <button type="button" class="rounded px-2 py-1 text-sm font-bold text-slate-600 hover:bg-slate-200">B</button>
-            <button type="button" class="rounded px-2 py-1 text-sm italic text-slate-600 hover:bg-slate-200">I</button>
-            <button type="button" class="rounded px-2 py-1 text-sm underline text-slate-600 hover:bg-slate-200">U</button>
-            <button type="button" class="rounded px-2 py-1 text-sm font-semibold text-slate-600 hover:bg-slate-200">H1</button>
-            <button type="button" class="rounded px-2 py-1 text-sm font-semibold text-slate-600 hover:bg-slate-200">List</button>
-          </div>
+        <section v-for="section in sections" :key="section.label" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <h2 class="text-sm font-bold text-slate-900">{{ section.label }}</h2>
+          <p class="mt-1 text-xs text-slate-400">{{ section.prompt }}</p>
           <textarea
-            class="min-h-80 w-full rounded-b-md border border-slate-300 px-4 py-3 text-sm leading-6 text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            value="Today, I was assigned to work on the UI component library for the InternTrack project. My tasks included designing and testing reusable components such as data tables, modal dialogs, badge indicators, and form elements following the established design system specifications.&#10;&#10;I collaborated with senior developer Engr. Beltran to review the component naming conventions and ensure consistency across all pages. We identified three accessibility issues in the form elements and filed them as tasks for tomorrow's sprint.&#10;&#10;In the afternoon, I worked on validating the responsive behavior of the sidebar layout across different screen sizes."
+            v-model="content[section.label]"
+            :disabled="!editable"
+            class="mt-3 min-h-40 w-full rounded-md border border-slate-300 px-4 py-3 text-sm leading-6 text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
           />
         </section>
+
+        <p v-if="sections.length === 0" class="text-sm text-slate-500">
+          No journal template sections are configured for your batch yet.
+        </p>
       </div>
 
       <aside class="space-y-5">
         <section class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <h2 class="text-sm font-bold text-slate-900">Submission Checklist</h2>
-          <div class="mt-4 space-y-3 text-sm text-slate-700">
-            <label class="flex items-center gap-2"><input type="checkbox" checked /> Entry title provided</label>
-            <label class="flex items-center gap-2"><input type="checkbox" checked /> Journal content written</label>
-            <label class="flex items-center gap-2"><input type="checkbox" /> Reviewed for grammar</label>
-            <label class="flex items-center gap-2"><input type="checkbox" /> At least 150 words</label>
-          </div>
-        </section>
-
-        <section class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
           <h2 class="text-sm font-bold text-slate-900">Entry Summary</h2>
           <div class="mt-4 divide-y divide-slate-100 text-sm">
-            <div class="flex justify-between py-2"><span class="text-slate-500">Word Count</span><span class="font-mono font-semibold">223</span></div>
-            <div class="flex justify-between py-2"><span class="text-slate-500">Status</span><span class="font-semibold text-amber-700">Draft</span></div>
-            <div class="flex justify-between py-2"><span class="text-slate-500">Deadline</span><span class="font-semibold">11:59 PM</span></div>
+            <div class="flex justify-between py-2"><span class="text-slate-500">Word Count</span><span class="font-mono font-semibold">{{ wordCount }}</span></div>
+            <div class="flex justify-between py-2"><span class="text-slate-500">Status</span><span class="font-semibold capitalize">{{ status }}</span></div>
           </div>
         </section>
 
+        <p v-if="errorMessage" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ errorMessage }}</p>
+        <p v-if="statusMessage" class="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{{ statusMessage }}</p>
+
         <div class="flex justify-end gap-3">
-          <button type="button" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700">Save Draft</button>
-          <button type="button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Submit Entry</button>
+          <button
+            type="button"
+            class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+            :disabled="isSaving || !editable"
+            @click="save('draft')"
+          >
+            Save Draft
+          </button>
+          <button
+            type="button"
+            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            :disabled="isSaving || !editable"
+            @click="save('submitted')"
+          >
+            Submit Entry
+          </button>
         </div>
       </aside>
     </div>

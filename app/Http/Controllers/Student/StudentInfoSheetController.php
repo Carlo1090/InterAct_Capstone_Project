@@ -3,14 +3,16 @@
 namespace App\Http\Controllers\Student;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Student\Concerns\ResolvesStudentEnrollment;
 use App\Http\Requests\Student\StoreInfoSheetRequest;
-use App\Models\BatchStudent;
 use App\Models\StudentInformationSheet;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class StudentInfoSheetController extends Controller
 {
+    use ResolvesStudentEnrollment;
+
     public function show(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -87,14 +89,5 @@ class StudentInfoSheetController extends Controller
         );
 
         return response()->json($sheet);
-    }
-
-    private function activeEnrollment(int $studentId): ?BatchStudent
-    {
-        return BatchStudent::with(['batch.coordinator', 'company', 'supervisor'])
-            ->where('student_id', $studentId)
-            ->where('status', 'active')
-            ->latest('enrolled_at')
-            ->first();
     }
 }
