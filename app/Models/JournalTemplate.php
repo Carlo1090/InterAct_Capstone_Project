@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['program_id', 'name', 'sections', 'is_active'])]
+#[Fillable(['program_id', 'name', 'sections', 'word_limit', 'is_active'])]
 class JournalTemplate extends Model
 {
     public $timestamps = false;
@@ -16,6 +16,7 @@ class JournalTemplate extends Model
     {
         return [
             'sections' => 'array',
+            'word_limit' => 'integer',
             'is_active' => 'boolean',
         ];
     }

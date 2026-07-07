@@ -32,10 +32,14 @@ class StudentDemoEnrollmentSeeder extends Seeder
             ['program_id' => $program->id, 'name' => 'BSIT Daily Journal Template'],
             [
                 'sections' => [
-                    ['label' => 'Tasks Performed', 'prompt' => 'Describe the specific tasks you completed today.'],
-                    ['label' => 'Skills Applied', 'prompt' => 'What skills or tools did you use or learn?'],
-                    ['label' => 'Challenges Encountered', 'prompt' => 'Note any challenges and how you addressed them.'],
+                    ['key' => 'task_performed', 'label' => 'Task Performed', 'prompt' => 'Describe the specific tasks you completed today.', 'required' => true, 'sipp' => false],
+                    ['key' => 'skills_applied', 'label' => 'Skills Applied', 'prompt' => 'What skills or tools did you use or learn?', 'required' => false, 'sipp' => false],
+                    ['key' => 'challenges_encountered', 'label' => 'Challenges Encountered', 'prompt' => 'Note any challenges and how you addressed them.', 'required' => false, 'sipp' => false],
+                    ['key' => 'issues_concerns', 'label' => 'Issues and Concerns Encountered', 'prompt' => 'Describe any issues or concerns encountered today.', 'required' => false, 'sipp' => true],
+                    ['key' => 'solutions', 'label' => 'Solutions', 'prompt' => 'What solutions were applied or proposed?', 'required' => false, 'sipp' => true],
+                    ['key' => 'recommendations', 'label' => 'Recommendations', 'prompt' => 'Any recommendations going forward?', 'required' => false, 'sipp' => true],
                 ],
+                'word_limit' => 500,
                 'is_active' => true,
             ]
         );
