@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\BatchController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\ProgramController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Student\JournalCalendarController;
 use App\Http\Controllers\Student\JournalEntryController;
 use App\Http\Controllers\Student\StudentInfoSheetController;
 use Illuminate\Http\Request;
@@ -42,4 +43,6 @@ Route::middleware(['auth:sanctum', 'role:student'])
         Route::get('journal-entries', [JournalEntryController::class, 'index']);
         Route::get('journal-entries/{date}', [JournalEntryController::class, 'show']);
         Route::post('journal-entries', [JournalEntryController::class, 'store']);
+
+        Route::get('journal-calendar', [JournalCalendarController::class, 'index']);
     });

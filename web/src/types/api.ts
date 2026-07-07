@@ -98,6 +98,18 @@ export type JournalEntrySummary = {
   word_count: number
 }
 
+export type CalendarDayStatus = 'submitted' | 'draft' | 'missing' | 'no_entry' | 'future'
+
+export type CalendarDay = {
+  date: string
+  status: CalendarDayStatus
+}
+
+export type JournalCalendar = {
+  month: string
+  days: CalendarDay[]
+}
+
 export type InfoSheet = {
   id: number | null
   submission_status: 'draft' | 'submitted' | 'approved' | null
