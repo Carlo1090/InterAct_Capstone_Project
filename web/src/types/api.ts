@@ -74,8 +74,11 @@ export type InfoSheetOjtInfo = {
 }
 
 export type JournalTemplateSection = {
+  key: string
   label: string
   prompt: string
+  required: boolean
+  sipp: boolean
 }
 
 export type JournalEntryStatus = 'draft' | 'submitted' | 'overdue' | 'missing'
@@ -83,6 +86,7 @@ export type JournalEntryStatus = 'draft' | 'submitted' | 'overdue' | 'missing'
 export type JournalEntryDetail = {
   entry_date: string
   sections: JournalTemplateSection[]
+  word_limit: number
   status: JournalEntryStatus
   content: Record<string, string>
   submitted_at: string | null

@@ -53,6 +53,7 @@ class JournalEntryController extends Controller
         return response()->json([
             'entry_date' => $entryDate->toDateString(),
             'sections' => $enrollment->batch->journalTemplate?->sections ?? [],
+            'word_limit' => $enrollment->batch->journalTemplate?->word_limit ?? 500,
             'status' => $entry->status ?? 'draft',
             'content' => $entry->content ?? [],
             'submitted_at' => $entry?->submitted_at,
