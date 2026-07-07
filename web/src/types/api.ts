@@ -110,6 +110,34 @@ export type JournalCalendar = {
   days: CalendarDay[]
 }
 
+export type WeeklyLogStatus = 'pending' | 'approved' | 'returned' | null
+
+export type WeeklyLogSummary = {
+  week_start: string
+  week_end: string
+  status: WeeklyLogStatus
+  supervisor_comment: string | null
+  entries_count: number
+}
+
+export type WeeklyLogDailyEntry = {
+  entry_date: string
+  status: JournalEntryStatus
+  content: Record<string, string>
+}
+
+export type WeeklyLogDetail = {
+  week_start: string
+  week_end: string
+  status: WeeklyLogStatus
+  supervisor_comment: string | null
+  narrative: string
+  issues_concerns: string
+  solutions: string
+  recommendations: string
+  daily_entries: WeeklyLogDailyEntry[]
+}
+
 export type InfoSheet = {
   id: number | null
   submission_status: 'draft' | 'submitted' | 'approved' | null

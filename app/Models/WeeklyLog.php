@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['batch_id', 'student_id', 'supervisor_id', 'week_start', 'week_end', 'status', 'supervisor_comment', 'submitted_at', 'reviewed_at'])]
+#[Fillable(['batch_id', 'student_id', 'supervisor_id', 'week_start', 'week_end', 'status', 'supervisor_comment', 'submitted_at', 'reviewed_at', 'narrative', 'issues_concerns', 'solutions', 'recommendations'])]
 class WeeklyLog extends Model
 {
     public $timestamps = false;

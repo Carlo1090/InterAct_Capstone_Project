@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Student\JournalCalendarController;
 use App\Http\Controllers\Student\JournalEntryController;
 use App\Http\Controllers\Student\StudentInfoSheetController;
+use App\Http\Controllers\Student\WeeklyLogController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -45,4 +46,8 @@ Route::middleware(['auth:sanctum', 'role:student'])
         Route::post('journal-entries', [JournalEntryController::class, 'store']);
 
         Route::get('journal-calendar', [JournalCalendarController::class, 'index']);
+
+        Route::get('weekly-logs', [WeeklyLogController::class, 'index']);
+        Route::get('weekly-logs/{weekStart}', [WeeklyLogController::class, 'show']);
+        Route::post('weekly-logs', [WeeklyLogController::class, 'store']);
     });
