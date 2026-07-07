@@ -28,7 +28,7 @@ const load = async () => {
 }
 
 const viewEntry = (date: string) => {
-  router.push({ path: '/student/write-journal', query: { date } })
+  router.push({ path: '/student/write-journal', query: { date, view: '1' } })
 }
 
 const dayName = (date: string) => new Date(date).toLocaleDateString(undefined, { weekday: 'long' })

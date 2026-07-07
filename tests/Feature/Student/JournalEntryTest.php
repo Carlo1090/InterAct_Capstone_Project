@@ -21,7 +21,7 @@ class JournalEntryTest extends TestCase
         $response = $this->postJson('/api/student/journal-entries', [
             'entry_date' => now()->toDateString(),
             'status' => 'submitted',
-            'content' => ['Tasks Performed' => 'Worked on the UI component library.'],
+            'content' => ['task_performed' => 'Worked on the UI component library.'],
         ]);
 
         $response->assertOk()->assertJsonPath('status', 'submitted');
@@ -41,7 +41,7 @@ class JournalEntryTest extends TestCase
         $response = $this->postJson('/api/student/journal-entries', [
             'entry_date' => $pastDate,
             'status' => 'draft',
-            'content' => ['Tasks Performed' => 'Backfilled entry.'],
+            'content' => ['task_performed' => 'Backfilled entry.'],
         ]);
 
         $response->assertOk();
@@ -58,7 +58,7 @@ class JournalEntryTest extends TestCase
         $response = $this->postJson('/api/student/journal-entries', [
             'entry_date' => now()->addDays(2)->toDateString(),
             'status' => 'draft',
-            'content' => ['Tasks Performed' => 'Should not be allowed.'],
+            'content' => ['task_performed' => 'Should not be allowed.'],
         ]);
 
         $response->assertStatus(422);
@@ -73,7 +73,7 @@ class JournalEntryTest extends TestCase
         $this->postJson('/api/student/journal-entries', [
             'entry_date' => now()->toDateString(),
             'status' => 'submitted',
-            'content' => ['Tasks Performed' => "Student B's private entry."],
+            'content' => ['task_performed' => "Student B's private entry."],
         ])->assertOk();
 
         Sanctum::actingAs($studentA, ['*']);
@@ -82,5 +82,73 @@ class JournalEntryTest extends TestCase
         $response->assertOk();
         $this->assertSame('draft', $response->json('status'));
         $this->assertSame([], $response->json('content'));
+    }
+
+    public function test_submit_with_only_task_performed_succeeds(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $response = $this->postJson('/api/student/journal-entries', [
+            'entry_date' => now()->toDateString(),
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'Only the required field filled in.'],
+        ]);
+
+        $response->assertOk()->assertJsonPath('status', 'submitted');
+    }
+
+    public function test_submit_missing_task_performed_fails(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $response = $this->postJson('/api/student/journal-entries', [
+            'entry_date' => now()->toDateString(),
+            'status' => 'submitted',
+            'content' => ['skills_applied' => 'Used Laravel and Vue.'],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['content.task_performed']);
+    }
+
+    public function test_submit_over_word_limit_is_rejected(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $overLimitText = implode(' ', array_fill(0, 501, 'word'));
+
+        $response = $this->postJson('/api/student/journal-entries', [
+            'entry_date' => now()->toDateString(),
+            'status' => 'submitted',
+            'content' => ['task_performed' => $overLimitText],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['content']);
+    }
+
+    public function test_optional_sipp_field_saves_and_is_retrievable(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $entryDate = now()->toDateString();
+
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'submitted',
+            'content' => [
+                'task_performed' => 'Fixed a production bug.',
+                'issues_concerns' => 'Deployment pipeline was flaky.',
+            ],
+        ])->assertOk();
+
+        $response = $this->getJson("/api/student/journal-entries/{$entryDate}");
+
+        $response->assertOk();
+        $this->assertSame('Deployment pipeline was flaky.', $response->json('content.issues_concerns'));
     }
 }

@@ -16,9 +16,6 @@ class StoreWeeklyLogRequest extends FormRequest
         return [
             'week_start' => ['required', 'date'],
             'narrative' => ['nullable', 'string'],
-            'issues_concerns' => ['nullable', 'string'],
-            'solutions' => ['nullable', 'string'],
-            'recommendations' => ['nullable', 'string'],
         ];
     }
 }

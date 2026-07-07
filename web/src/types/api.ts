@@ -74,8 +74,11 @@ export type InfoSheetOjtInfo = {
 }
 
 export type JournalTemplateSection = {
+  key: string
   label: string
   prompt: string
+  required: boolean
+  sipp: boolean
 }
 
 export type JournalEntryStatus = 'draft' | 'submitted' | 'overdue' | 'missing'
@@ -83,6 +86,7 @@ export type JournalEntryStatus = 'draft' | 'submitted' | 'overdue' | 'missing'
 export type JournalEntryDetail = {
   entry_date: string
   sections: JournalTemplateSection[]
+  word_limit: number
   status: JournalEntryStatus
   content: Record<string, string>
   submitted_at: string | null
@@ -126,15 +130,24 @@ export type WeeklyLogDailyEntry = {
   content: Record<string, string>
 }
 
+export type WeeklySippField = {
+  key: string
+  label: string
+  text: string
+}
+
+export type WeeklySippDay = {
+  entry_date: string
+  fields: WeeklySippField[]
+}
+
 export type WeeklyLogDetail = {
   week_start: string
   week_end: string
   status: WeeklyLogStatus
   supervisor_comment: string | null
   narrative: string
-  issues_concerns: string
-  solutions: string
-  recommendations: string
+  sipp_notes: WeeklySippDay[]
   daily_entries: WeeklyLogDailyEntry[]
 }
 

@@ -57,9 +57,6 @@ const saveNarrative = async (weekStart: string) => {
     await api.post('/api/student/weekly-logs', {
       week_start: weekStart,
       narrative: detail.narrative,
-      issues_concerns: detail.issues_concerns,
-      solutions: detail.solutions,
-      recommendations: detail.recommendations,
     })
     saveMessage[weekStart] = 'Saved.'
     await loadWeeks()
@@ -250,23 +247,28 @@ onMounted(() => {
             </label>
           </div>
 
-          <details class="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3">
-            <summary class="cursor-pointer text-xs font-bold uppercase tracking-wide text-slate-500">Optional SIPP Notes</summary>
-            <div class="mt-3 space-y-3">
-              <label class="block text-sm font-medium text-slate-700">
-                Issues / Concerns
-                <textarea v-model="details[week.week_start].issues_concerns" class="mt-2 min-h-20 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-              </label>
-              <label class="block text-sm font-medium text-slate-700">
-                Solutions
-                <textarea v-model="details[week.week_start].solutions" class="mt-2 min-h-20 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-              </label>
-              <label class="block text-sm font-medium text-slate-700">
-                Recommendations
-                <textarea v-model="details[week.week_start].recommendations" class="mt-2 min-h-20 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-              </label>
+          <div class="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4">
+            <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500">SIPP Notes (Read-Only)</h3>
+            <p class="mt-1 text-xs text-slate-400">
+              Compiled from this week's daily journal entries. Captured in the daily journal, not the weekly narrative.
+            </p>
+
+            <p v-if="details[week.week_start].sipp_notes.length === 0" class="mt-3 text-sm text-slate-400">
+              No SIPP notes recorded this week.
+            </p>
+
+            <div v-else class="mt-3 space-y-3">
+              <div v-for="day in details[week.week_start].sipp_notes" :key="day.entry_date" class="rounded-md border border-slate-200 bg-white p-3">
+                <p class="text-xs font-mono font-semibold text-slate-500">{{ day.entry_date }}</p>
+                <div class="mt-2 space-y-2">
+                  <div v-for="field in day.fields" :key="field.key">
+                    <p class="text-xs font-bold uppercase tracking-wide text-slate-400">{{ field.label }}</p>
+                    <p class="mt-1 text-sm text-slate-700">{{ field.text }}</p>
+                  </div>
+                </div>
+              </div>
             </div>
-          </details>
+          </div>
 
           <div v-if="week.status === 'returned' && week.supervisor_comment" class="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             Supervisor's note: {{ week.supervisor_comment }}
