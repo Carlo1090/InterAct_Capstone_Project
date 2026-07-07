@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Student;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Student\Concerns\ResolvesStudentEnrollment;
-use App\Models\BatchStudent;
 use App\Models\JournalEntry;
+use App\Support\BatchWorkingDays;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Http\JsonResponse;
@@ -69,7 +69,7 @@ class JournalCalendarController extends Controller
             return 'future';
         }
 
-        if (! $this->isWorkingDay($date, $workingDaysPerWeek)) {
+        if (! BatchWorkingDays::isWorkingDay($date, $workingDaysPerWeek)) {
             return 'no_entry';
         }
 
@@ -82,20 +82,5 @@ class JournalCalendarController extends Controller
         }
 
         return $date->lt($today) ? 'missing' : 'draft';
-    }
-
-    private function isWorkingDay(CarbonImmutable $date, int $workingDaysPerWeek): bool
-    {
-        $dayOfWeek = $date->dayOfWeekIso; // 1 (Mon) ... 7 (Sun)
-
-        if ($workingDaysPerWeek >= 7) {
-            return true;
-        }
-
-        if ($workingDaysPerWeek === 6) {
-            return $dayOfWeek !== 7;
-        }
-
-        return $dayOfWeek < 6;
     }
 }
