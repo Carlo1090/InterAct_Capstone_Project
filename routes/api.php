@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\BatchController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\ProgramController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Coordinator\JournalTemplateController;
 use App\Http\Controllers\Student\JournalCalendarController;
 use App\Http\Controllers\Student\JournalEntryController;
 use App\Http\Controllers\Student\StudentInfoSheetController;
@@ -34,6 +35,15 @@ Route::middleware(['auth:sanctum', 'role:admin'])
         Route::get('batches', [BatchController::class, 'index']);
         Route::post('batches', [BatchController::class, 'store']);
         Route::put('batches/{batch}', [BatchController::class, 'update']);
+    });
+
+Route::middleware(['auth:sanctum', 'role:coordinator'])
+    ->prefix('coordinator')
+    ->group(function () {
+        Route::get('journal-templates', [JournalTemplateController::class, 'index']);
+        Route::post('journal-templates', [JournalTemplateController::class, 'store']);
+        Route::put('journal-templates/{journalTemplate}', [JournalTemplateController::class, 'update']);
+        Route::patch('journal-templates/{journalTemplate}/toggle-active', [JournalTemplateController::class, 'toggleActive']);
     });
 
 Route::middleware(['auth:sanctum', 'role:student'])
