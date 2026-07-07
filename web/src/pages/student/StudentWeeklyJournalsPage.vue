@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
-import type { WeeklyLogDetail, WeeklyLogSummary } from '@/types/api'
+import type { WeeklyActivityEntryRecord, WeeklyActivityLogRecord, WeeklyLogDetail, WeeklyLogSummary } from '@/types/api'
 
 const weeks = ref<WeeklyLogSummary[]>([])
 const isLoading = ref(true)
@@ -71,6 +71,103 @@ const saveNarrative = async (weekStart: string) => {
   }
 }
 
+const activityLogs = ref<WeeklyActivityLogRecord[]>([])
+const activityLogLoading = reactive<Record<string, boolean>>({})
+const entrySaving = reactive<Record<number, boolean>>({})
+const newEntryForms = reactive<Record<number, {
+  inclusive_date_start: string
+  inclusive_date_end: string
+  activities: string
+  documents_records: string
+  objectives: string
+  supervisor_name: string
+  supervisor_position: string
+}>>({})
+
+const loadActivityLogs = async () => {
+  try {
+    const { data } = await api.get<WeeklyActivityLogRecord[]>('/api/student/weekly-activity-logs')
+    activityLogs.value = data
+  } catch {
+    // Section falls back to "create" state if this fails; not critical to page load.
+  }
+}
+
+const weeksWithActivityLog = computed(() =>
+  weeks.value.map((week) => ({
+    ...week,
+    activityLog: activityLogs.value.find((log) => log.week_start === week.week_start) ?? null,
+  })),
+)
+
+const createActivityLog = async (week: WeeklyLogSummary) => {
+  activityLogLoading[week.week_start] = true
+
+  try {
+    const { data } = await api.post<WeeklyActivityLogRecord>('/api/student/weekly-activity-logs', {
+      week_start: week.week_start,
+      week_end: week.week_end,
+    })
+    activityLogs.value.push({ ...data, entries: [] })
+  } catch {
+    saveMessage[week.week_start] = 'Unable to create weekly activity log.'
+  } finally {
+    activityLogLoading[week.week_start] = false
+  }
+}
+
+const ensureEntryForm = (logId: number) => {
+  if (!newEntryForms[logId]) {
+    newEntryForms[logId] = {
+      inclusive_date_start: '',
+      inclusive_date_end: '',
+      activities: '',
+      documents_records: '',
+      objectives: '',
+      supervisor_name: '',
+      supervisor_position: '',
+    }
+  }
+
+  return newEntryForms[logId]
+}
+
+const addEntry = async (log: WeeklyActivityLogRecord) => {
+  const form = ensureEntryForm(log.id)
+  entrySaving[log.id] = true
+
+  try {
+    const { data } = await api.post<WeeklyActivityEntryRecord>(`/api/student/weekly-activity-logs/${log.id}/entries`, form)
+    log.entries = [...(log.entries ?? []), data]
+    newEntryForms[log.id] = {
+      inclusive_date_start: '',
+      inclusive_date_end: '',
+      activities: '',
+      documents_records: '',
+      objectives: '',
+      supervisor_name: '',
+      supervisor_position: '',
+    }
+  } catch {
+    // Keep the form values in place so the student can fix and retry.
+  } finally {
+    entrySaving[log.id] = false
+  }
+}
+
+const removeEntry = async (log: WeeklyActivityLogRecord, entryId: number) => {
+  try {
+    await api.delete(`/api/student/weekly-activity-logs/${log.id}/entries/${entryId}`)
+    log.entries = (log.entries ?? []).filter((entry) => entry.id !== entryId)
+  } catch {
+    // No-op; row stays visible so the student can retry.
+  }
+}
+
+const downloadPdf = (logId: number) => {
+  window.open(`/api/student/weekly-activity-logs/${logId}/pdf`, '_blank')
+}
+
 const statusLabel = (status: WeeklyLogSummary['status']): string => {
   if (status === 'approved') return 'Approved by Supervisor'
   if (status === 'returned') return 'Returned for Revision'
@@ -83,7 +180,10 @@ const statusClass = (status: WeeklyLogSummary['status']): string => {
   return 'bg-blue-50 text-blue-700'
 }
 
-onMounted(loadWeeks)
+onMounted(() => {
+  loadWeeks()
+  loadActivityLogs()
+})
 </script>
 
 <template>
@@ -97,7 +197,7 @@ onMounted(loadWeeks)
     <p v-else-if="weeks.length === 0" class="text-sm text-slate-500">No weeks found in your OJT range yet.</p>
 
     <details
-      v-for="week in weeks"
+      v-for="week in weeksWithActivityLog"
       :key="week.week_start"
       class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200"
       @toggle="loadDetail(week.week_start)"
@@ -170,6 +270,97 @@ onMounted(loadWeeks)
 
           <div v-if="week.status === 'returned' && week.supervisor_comment" class="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             Supervisor's note: {{ week.supervisor_comment }}
+          </div>
+
+          <div class="mt-5 rounded-md border border-slate-200 p-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500">Weekly Activity Log (SIPP)</h3>
+              <button
+                v-if="week.activityLog"
+                type="button"
+                class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700"
+                @click="downloadPdf(week.activityLog.id)"
+              >
+                Download PDF
+              </button>
+            </div>
+
+            <div v-if="!week.activityLog" class="mt-3">
+              <button
+                type="button"
+                class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                :disabled="activityLogLoading[week.week_start]"
+                @click="createActivityLog(week)"
+              >
+                {{ activityLogLoading[week.week_start] ? 'Creating...' : 'Create Weekly Activity Log' }}
+              </button>
+            </div>
+
+            <template v-else>
+              <table class="mt-3 min-w-full divide-y divide-slate-200">
+                <thead>
+                  <tr>
+                    <th class="py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Dates</th>
+                    <th class="py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Activities</th>
+                    <th class="py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Documents</th>
+                    <th class="py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Objectives</th>
+                    <th class="py-2"></th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr v-if="!week.activityLog.entries?.length">
+                    <td colspan="5" class="py-3 text-sm text-slate-400">No rows yet.</td>
+                  </tr>
+                  <tr v-for="entry in week.activityLog.entries" :key="entry.id">
+                    <td class="py-2 font-mono text-xs text-slate-600">{{ entry.inclusive_date_start }} to {{ entry.inclusive_date_end }}</td>
+                    <td class="py-2 text-sm text-slate-700">{{ entry.activities }}</td>
+                    <td class="py-2 text-sm text-slate-500">{{ entry.documents_records }}</td>
+                    <td class="py-2 text-sm text-slate-500">{{ entry.objectives }}</td>
+                    <td class="py-2 text-right">
+                      <button type="button" class="text-xs font-semibold text-red-600" @click="removeEntry(week.activityLog, entry.id)">
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div class="mt-3 grid gap-2 md:grid-cols-2">
+                <input
+                  v-model="ensureEntryForm(week.activityLog.id).inclusive_date_start"
+                  type="date"
+                  class="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                />
+                <input
+                  v-model="ensureEntryForm(week.activityLog.id).inclusive_date_end"
+                  type="date"
+                  class="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                />
+                <textarea
+                  v-model="ensureEntryForm(week.activityLog.id).activities"
+                  placeholder="Activities"
+                  class="rounded-md border border-slate-300 px-3 py-2 text-sm md:col-span-2"
+                />
+                <input
+                  v-model="ensureEntryForm(week.activityLog.id).supervisor_name"
+                  placeholder="Supervisor name"
+                  class="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                />
+                <input
+                  v-model="ensureEntryForm(week.activityLog.id).supervisor_position"
+                  placeholder="Supervisor position"
+                  class="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <button
+                type="button"
+                class="mt-2 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 disabled:opacity-50"
+                :disabled="entrySaving[week.activityLog.id]"
+                @click="addEntry(week.activityLog)"
+              >
+                + Add Row
+              </button>
+            </template>
           </div>
 
           <div class="mt-4 flex items-center justify-end gap-3">

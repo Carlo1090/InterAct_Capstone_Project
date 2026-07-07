@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Student\JournalCalendarController;
 use App\Http\Controllers\Student\JournalEntryController;
 use App\Http\Controllers\Student\StudentInfoSheetController;
+use App\Http\Controllers\Student\WeeklyActivityLogController;
 use App\Http\Controllers\Student\WeeklyLogController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -50,4 +51,14 @@ Route::middleware(['auth:sanctum', 'role:student'])
         Route::get('weekly-logs', [WeeklyLogController::class, 'index']);
         Route::get('weekly-logs/{weekStart}', [WeeklyLogController::class, 'show']);
         Route::post('weekly-logs', [WeeklyLogController::class, 'store']);
+
+        Route::get('weekly-activity-logs', [WeeklyActivityLogController::class, 'index']);
+        Route::post('weekly-activity-logs', [WeeklyActivityLogController::class, 'store']);
+        Route::get('weekly-activity-logs/{weeklyActivityLog}', [WeeklyActivityLogController::class, 'show']);
+        Route::put('weekly-activity-logs/{weeklyActivityLog}', [WeeklyActivityLogController::class, 'update']);
+        Route::get('weekly-activity-logs/{weeklyActivityLog}/pdf', [WeeklyActivityLogController::class, 'pdf']);
+        Route::post('weekly-activity-logs/{weeklyActivityLog}/entries', [WeeklyActivityLogController::class, 'storeEntry']);
+        Route::put('weekly-activity-logs/{weeklyActivityLog}/entries/{entry}', [WeeklyActivityLogController::class, 'updateEntry']);
+        Route::delete('weekly-activity-logs/{weeklyActivityLog}/entries/{entry}', [WeeklyActivityLogController::class, 'destroyEntry']);
+        Route::patch('weekly-activity-logs/{weeklyActivityLog}/entries-reorder', [WeeklyActivityLogController::class, 'reorderEntries']);
     });

@@ -138,6 +138,33 @@ export type WeeklyLogDetail = {
   daily_entries: WeeklyLogDailyEntry[]
 }
 
+export type WeeklyActivityEntryRecord = {
+  id: number
+  weekly_activity_log_id: number
+  inclusive_date_start: string
+  inclusive_date_end: string
+  activities: string
+  documents_records: string | null
+  objectives: string | null
+  supervisor_name: string | null
+  supervisor_position: string | null
+  sort_order: number
+}
+
+export type WeeklyActivityLogRecord = {
+  id: number
+  student_id: number
+  batch_id: number
+  weekly_log_id: number | null
+  week_start: string
+  week_end: string
+  area_assigned: string | null
+  no_of_hours: string | number | null
+  status: 'draft' | 'submitted' | 'approved'
+  submitted_at: string | null
+  entries?: WeeklyActivityEntryRecord[]
+}
+
 export type InfoSheet = {
   id: number | null
   submission_status: 'draft' | 'submitted' | 'approved' | null
