@@ -86,9 +86,13 @@ class JournalTemplateTest extends TestCase
         $response = $this->getJson('/api/coordinator/journal-templates');
 
         $response->assertOk();
-        $names = collect($response->json())->pluck('name');
+        $names = collect($response->json('templates'))->pluck('name');
         $this->assertTrue($names->contains('Own Template'));
         $this->assertFalse($names->contains('Other Template'));
+
+        $programIds = collect($response->json('programs'))->pluck('id');
+        $this->assertTrue($programIds->contains($programA->id));
+        $this->assertFalse($programIds->contains($programB->id));
     }
 
     public function test_store_rejects_zero_required_sections(): void

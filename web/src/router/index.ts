@@ -101,6 +101,11 @@ const router = createRouter({
           meta: { title: 'Daily Journal Activities' },
         },
         {
+          path: 'journal-templates',
+          component: () => import('@/pages/coordinator/CoordinatorJournalTemplatesPage.vue'),
+          meta: { title: 'Journal Templates' },
+        },
+        {
           path: 'programs',
           component: () => import('@/pages/coordinator/CoordinatorProgramManagementPage.vue'),
           meta: { title: 'Program Management' },

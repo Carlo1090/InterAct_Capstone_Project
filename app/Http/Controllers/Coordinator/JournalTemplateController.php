@@ -8,6 +8,7 @@ use App\Http\Requests\Coordinator\UpdateJournalTemplateRequest;
 use App\Models\Batch;
 use App\Models\JournalEntry;
 use App\Models\JournalTemplate;
+use App\Models\Program;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -22,7 +23,12 @@ class JournalTemplateController extends Controller
             ->orderBy('name')
             ->get();
 
-        return response()->json($templates);
+        $programs = Program::whereIn('id', $programIds)->orderBy('name')->get();
+
+        return response()->json([
+            'templates' => $templates,
+            'programs' => $programs,
+        ]);
     }
 
     public function store(StoreJournalTemplateRequest $request): JsonResponse

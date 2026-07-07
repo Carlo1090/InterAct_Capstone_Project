@@ -7,6 +7,7 @@ const navItems = [
   { label: 'Department Dashboard', to: '/coordinator/dashboard', badge: '' },
   { label: 'Interns', to: '/coordinator/interns', badge: '' },
   { label: 'Daily Journal Activities', to: '/coordinator/journal-activities', badge: '4' },
+  { label: 'Journal Templates', to: '/coordinator/journal-templates', badge: '' },
   { label: 'Program Management', to: '/coordinator/programs', badge: '' },
   { label: 'Partner Companies', to: '/coordinator/companies', badge: '' },
   { label: 'Student Info Sheets', to: '/coordinator/info-sheets', badge: '' },

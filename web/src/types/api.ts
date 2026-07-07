@@ -81,6 +81,16 @@ export type JournalTemplateSection = {
   sipp: boolean
 }
 
+export type JournalTemplateRecord = {
+  id: number
+  program_id: number
+  name: string
+  sections: JournalTemplateSection[]
+  word_limit: number
+  is_active: boolean
+  program?: Program
+}
+
 export type JournalEntryStatus = 'draft' | 'submitted' | 'overdue' | 'missing'
 
 export type JournalEntryDetail = {
