@@ -14,7 +14,7 @@ class WeeklyLogTest extends TestCase
     use RefreshDatabase;
     use EnrollsStudentInBatch;
 
-    public function test_student_can_save_a_weekly_narrative_with_sipp_fields(): void
+    public function test_student_can_save_a_weekly_narrative(): void
     {
         $student = $this->enrolledStudent();
         Sanctum::actingAs($student, ['*']);
@@ -25,7 +25,7 @@ class WeeklyLogTest extends TestCase
             'student_id' => $student->id,
             'batch_id' => $student->batchEnrollment->batch_id,
             'entry_date' => $weekStart->toDateString(),
-            'content' => ['Tasks Performed' => 'Kickoff meeting and environment setup.'],
+            'content' => ['task_performed' => 'Kickoff meeting and environment setup.'],
             'status' => 'submitted',
             'submitted_at' => now(),
         ]);
@@ -33,16 +33,12 @@ class WeeklyLogTest extends TestCase
         $response = $this->postJson('/api/student/weekly-logs', [
             'week_start' => $weekStart->toDateString(),
             'narrative' => 'This week I focused on onboarding and initial setup.',
-            'issues_concerns' => 'Some VPN access delays.',
-            'solutions' => 'Coordinated with IT support to resolve access.',
-            'recommendations' => 'Provide VPN access before day one next batch.',
         ]);
 
         $response->assertOk();
         $this->assertDatabaseHas('weekly_logs', [
             'student_id' => $student->id,
             'narrative' => 'This week I focused on onboarding and initial setup.',
-            'issues_concerns' => 'Some VPN access delays.',
         ]);
 
         $reference = $this->getJson('/api/student/weekly-logs/'.$weekStart->toDateString());
@@ -51,5 +47,56 @@ class WeeklyLogTest extends TestCase
         $this->assertSame('This week I focused on onboarding and initial setup.', $reference->json('narrative'));
         $this->assertCount(1, $reference->json('daily_entries'));
         $this->assertSame($weekStart->toDateString(), Carbon::parse($reference->json('daily_entries.0.entry_date'))->toDateString());
+    }
+
+    public function test_weekly_sipp_notes_are_aggregated_from_daily_entries_and_kept_separate_from_narrative(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $weekStart = Carbon::now()->startOfWeek(Carbon::MONDAY);
+
+        JournalEntry::create([
+            'student_id' => $student->id,
+            'batch_id' => $student->batchEnrollment->batch_id,
+            'entry_date' => $weekStart->toDateString(),
+            'content' => [
+                'task_performed' => 'Kickoff meeting and environment setup.',
+                'issues_concerns' => 'VPN access was delayed.',
+            ],
+            'status' => 'submitted',
+            'submitted_at' => now(),
+        ]);
+
+        JournalEntry::create([
+            'student_id' => $student->id,
+            'batch_id' => $student->batchEnrollment->batch_id,
+            'entry_date' => $weekStart->copy()->addDay()->toDateString(),
+            'content' => [
+                'task_performed' => 'Paired on the onboarding checklist.',
+                'solutions' => 'Coordinated with IT to restore VPN access.',
+            ],
+            'status' => 'submitted',
+            'submitted_at' => now(),
+        ]);
+
+        $this->postJson('/api/student/weekly-logs', [
+            'week_start' => $weekStart->toDateString(),
+            'narrative' => 'Narrative only, no SIPP text here.',
+        ])->assertOk();
+
+        $response = $this->getJson('/api/student/weekly-logs/'.$weekStart->toDateString());
+
+        $response->assertOk();
+        $this->assertSame('Narrative only, no SIPP text here.', $response->json('narrative'));
+
+        $sippNotes = $response->json('sipp_notes');
+        $this->assertCount(2, $sippNotes);
+
+        $firstDay = collect($sippNotes)->firstWhere('entry_date', $weekStart->toDateString());
+        $this->assertSame('VPN access was delayed.', collect($firstDay['fields'])->firstWhere('key', 'issues_concerns')['text']);
+
+        $secondDay = collect($sippNotes)->firstWhere('entry_date', $weekStart->copy()->addDay()->toDateString());
+        $this->assertSame('Coordinated with IT to restore VPN access.', collect($secondDay['fields'])->firstWhere('key', 'solutions')['text']);
     }
 }

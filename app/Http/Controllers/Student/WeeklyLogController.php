@@ -86,11 +86,39 @@ class WeeklyLogController extends Controller
             'status' => $log->status ?? null,
             'supervisor_comment' => $log->supervisor_comment ?? null,
             'narrative' => $log->narrative ?? '',
-            'issues_concerns' => $log->issues_concerns ?? '',
-            'solutions' => $log->solutions ?? '',
-            'recommendations' => $log->recommendations ?? '',
+            'sipp_notes' => $this->sippNotesByDay($dailyEntries, $enrollment->batch->journalTemplate?->sections ?? []),
             'daily_entries' => $dailyEntries,
         ]);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, JournalEntry>  $dailyEntries
+     * @param  array<int, array<string, mixed>>  $sections
+     * @return array<int, array{entry_date: string, fields: array<int, array{key: string, label: string, text: string}>}>
+     */
+    private function sippNotesByDay($dailyEntries, array $sections): array
+    {
+        $sippSections = collect($sections)->filter(fn ($section) => ! empty($section['sipp']))->values();
+
+        return $dailyEntries
+            ->map(function (JournalEntry $entry) use ($sippSections) {
+                $fields = $sippSections
+                    ->filter(fn ($section) => trim((string) ($entry->content[$section['key']] ?? '')) !== '')
+                    ->map(fn ($section) => [
+                        'key' => $section['key'],
+                        'label' => $section['label'],
+                        'text' => $entry->content[$section['key']],
+                    ])
+                    ->values();
+
+                return $fields->isEmpty() ? null : [
+                    'entry_date' => $entry->entry_date->toDateString(),
+                    'fields' => $fields,
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
     }
 
     public function store(StoreWeeklyLogRequest $request): JsonResponse
@@ -107,14 +135,12 @@ class WeeklyLogController extends Controller
         $end = $start->copy()->addDays(6);
 
         // TODO: supervisor review (approve/return) is out of scope for this task.
+        // issues_concerns/solutions/recommendations columns are no longer written here — SIPP now lives on the daily journal.
         $log = WeeklyLog::updateOrCreate(
             ['student_id' => $user->id, 'batch_id' => $enrollment->batch_id, 'week_start' => $start->toDateString()],
             [
                 'week_end' => $end->toDateString(),
                 'narrative' => $validated['narrative'] ?? null,
-                'issues_concerns' => $validated['issues_concerns'] ?? null,
-                'solutions' => $validated['solutions'] ?? null,
-                'recommendations' => $validated['recommendations'] ?? null,
             ]
         );
 
