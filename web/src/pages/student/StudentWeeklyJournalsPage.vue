@@ -2,11 +2,14 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
+import NotEnrolledNotice from '@/components/student/NotEnrolledNotice.vue'
+import { isNotEnrolledError } from '@/lib/enrollment'
 import type { WeeklyActivityEntryRecord, WeeklyActivityLogRecord, WeeklyLogDetail, WeeklyLogSummary } from '@/types/api'
 
 const weeks = ref<WeeklyLogSummary[]>([])
 const isLoading = ref(true)
 const errorMessage = ref('')
+const notEnrolled = ref(false)
 
 const details = reactive<Record<string, WeeklyLogDetail>>({})
 const loadingDetail = reactive<Record<string, boolean>>({})
@@ -16,12 +19,17 @@ const saveMessage = reactive<Record<string, string>>({})
 const loadWeeks = async () => {
   isLoading.value = true
   errorMessage.value = ''
+  notEnrolled.value = false
 
   try {
     const { data } = await api.get<{ weeks: WeeklyLogSummary[] }>('/api/student/weekly-logs')
     weeks.value = data.weeks
-  } catch {
-    errorMessage.value = 'Unable to load your weekly journals.'
+  } catch (error) {
+    if (isNotEnrolledError(error)) {
+      notEnrolled.value = true
+    } else {
+      errorMessage.value = 'Unable to load your weekly journals.'
+    }
   } finally {
     isLoading.value = false
   }
@@ -190,6 +198,7 @@ onMounted(() => {
     </div>
 
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
+    <NotEnrolledNotice v-else-if="notEnrolled" />
     <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
     <p v-else-if="weeks.length === 0" class="text-sm text-slate-500">No weeks found in your OJT range yet.</p>
 

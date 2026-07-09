@@ -2,12 +2,15 @@
 import { onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
+import NotEnrolledNotice from '@/components/student/NotEnrolledNotice.vue'
+import { isNotEnrolledError } from '@/lib/enrollment'
 import type { InfoSheet } from '@/types/api'
 
 const isLoading = ref(true)
 const isSaving = ref(false)
 const errorMessage = ref('')
 const statusMessage = ref('')
+const notEnrolled = ref(false)
 const submissionStatus = ref<InfoSheet['submission_status']>(null)
 
 const personalInfo = reactive({
@@ -61,6 +64,7 @@ const save = async (status: 'draft' | 'submitted') => {
   isSaving.value = true
   errorMessage.value = ''
   statusMessage.value = ''
+  notEnrolled.value = false
 
   try {
     const { data } = await api.post<InfoSheet>('/api/student/info-sheet', {
@@ -72,8 +76,12 @@ const save = async (status: 'draft' | 'submitted') => {
     submissionStatus.value = data.submission_status
     statusMessage.value = status === 'submitted' ? 'Info sheet submitted.' : 'Draft saved.'
   } catch (error) {
-    const data = axios.isAxiosError(error) ? error.response?.data : null
-    errorMessage.value = data?.message ?? 'Unable to save. Please check the fields and try again.'
+    if (isNotEnrolledError(error)) {
+      notEnrolled.value = true
+    } else {
+      const data = axios.isAxiosError(error) ? error.response?.data : null
+      errorMessage.value = data?.message ?? 'Unable to save. Please check the fields and try again.'
+    }
   } finally {
     isSaving.value = false
   }
@@ -180,7 +188,8 @@ onMounted(loadInfoSheet)
         </div>
       </div>
 
-      <p v-if="errorMessage" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ errorMessage }}</p>
+      <NotEnrolledNotice v-if="notEnrolled" class="mt-4" />
+      <p v-else-if="errorMessage" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ errorMessage }}</p>
       <p v-if="statusMessage" class="mt-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{{ statusMessage }}</p>
       <p v-if="submissionStatus" class="mt-2 text-xs uppercase tracking-wide text-slate-400">Status: {{ submissionStatus }}</p>
 

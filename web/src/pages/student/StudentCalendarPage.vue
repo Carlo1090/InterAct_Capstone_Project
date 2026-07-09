@@ -2,6 +2,8 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/lib/axios'
+import NotEnrolledNotice from '@/components/student/NotEnrolledNotice.vue'
+import { isNotEnrolledError } from '@/lib/enrollment'
 import type { CalendarDay, CalendarDayStatus, JournalCalendar } from '@/types/api'
 
 const router = useRouter()
@@ -12,6 +14,7 @@ const currentMonth = ref(new Date().toISOString().slice(0, 7))
 const days = ref<CalendarDay[]>([])
 const isLoading = ref(true)
 const errorMessage = ref('')
+const notEnrolled = ref(false)
 
 const monthLabel = computed(() => {
   const [year, month] = currentMonth.value.split('-').map(Number)
@@ -46,14 +49,19 @@ const isClickable = (status: CalendarDayStatus) => status === 'submitted' || sta
 const load = async () => {
   isLoading.value = true
   errorMessage.value = ''
+  notEnrolled.value = false
 
   try {
     const { data } = await api.get<JournalCalendar>('/api/student/journal-calendar', {
       params: { month: currentMonth.value },
     })
     days.value = data.days
-  } catch {
-    errorMessage.value = 'Unable to load your journal calendar.'
+  } catch (error) {
+    if (isNotEnrolledError(error)) {
+      notEnrolled.value = true
+    } else {
+      errorMessage.value = 'Unable to load your journal calendar.'
+    }
   } finally {
     isLoading.value = false
   }
@@ -94,6 +102,7 @@ onMounted(load)
     </div>
 
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
+    <NotEnrolledNotice v-else-if="notEnrolled" />
     <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
 
     <div v-else class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">

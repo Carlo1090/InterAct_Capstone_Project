@@ -2,6 +2,8 @@
 import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/lib/axios'
+import NotEnrolledNotice from '@/components/student/NotEnrolledNotice.vue'
+import { isNotEnrolledError } from '@/lib/enrollment'
 import type { JournalEntrySummary, PaginatedResponse } from '@/types/api'
 
 const router = useRouter()
@@ -9,19 +11,25 @@ const router = useRouter()
 const journals = ref<JournalEntrySummary[]>([])
 const isLoading = ref(true)
 const errorMessage = ref('')
+const notEnrolled = ref(false)
 const statusFilter = ref('')
 
 const load = async () => {
   isLoading.value = true
   errorMessage.value = ''
+  notEnrolled.value = false
 
   try {
     const response = await api.get<PaginatedResponse<JournalEntrySummary>>('/api/student/journal-entries', {
       params: statusFilter.value ? { status: statusFilter.value } : {},
     })
     journals.value = response.data.data
-  } catch {
-    errorMessage.value = 'Unable to load your journals.'
+  } catch (error) {
+    if (isNotEnrolledError(error)) {
+      notEnrolled.value = true
+    } else {
+      errorMessage.value = 'Unable to load your journals.'
+    }
   } finally {
     isLoading.value = false
   }
@@ -52,6 +60,7 @@ onMounted(load)
     </div>
 
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
+    <NotEnrolledNotice v-else-if="notEnrolled" />
     <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
 
     <div v-else class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">

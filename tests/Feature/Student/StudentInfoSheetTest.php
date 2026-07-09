@@ -44,6 +44,20 @@ class StudentInfoSheetTest extends TestCase
         ]);
     }
 
+    public function test_enrolled_student_can_fetch_scaffolded_info_sheet(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $response = $this->getJson('/api/student/info-sheet');
+
+        $response->assertOk();
+        $this->assertNull($response->json('id'));
+        $this->assertNull($response->json('submission_status'));
+        $this->assertStringStartsWith('TechPH Inc.', $response->json('ojt_info.host_company'));
+        $this->assertSame('BS Information Technology', $response->json('academic_info.program_course'));
+    }
+
     public function test_unenrolled_student_cannot_store_an_info_sheet(): void
     {
         $student = User::factory()->create(['role' => 'student']);

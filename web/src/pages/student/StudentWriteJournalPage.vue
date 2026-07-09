@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import api from '@/lib/axios'
 import JournalPaperView from '@/components/journal/JournalPaperView.vue'
+import NotEnrolledNotice from '@/components/student/NotEnrolledNotice.vue'
+import { isNotEnrolledError } from '@/lib/enrollment'
 import type { JournalEntryDetail, JournalTemplateSection } from '@/types/api'
 
 const route = useRoute()
@@ -15,6 +17,7 @@ const isLoading = ref(true)
 const isSaving = ref(false)
 const errorMessage = ref('')
 const statusMessage = ref('')
+const notEnrolled = ref(false)
 const status = ref<JournalEntryDetail['status']>('draft')
 const editable = ref(true)
 const sections = ref<JournalTemplateSection[]>([])
@@ -45,6 +48,7 @@ const load = async () => {
   isLoading.value = true
   errorMessage.value = ''
   statusMessage.value = ''
+  notEnrolled.value = false
   isViewMode.value = route.query.view === '1'
 
   try {
@@ -69,8 +73,12 @@ const load = async () => {
         }
       }
     })
-  } catch {
-    errorMessage.value = 'Unable to load this journal entry.'
+  } catch (error) {
+    if (isNotEnrolledError(error)) {
+      notEnrolled.value = true
+    } else {
+      errorMessage.value = 'Unable to load this journal entry.'
+    }
   } finally {
     isLoading.value = false
   }
@@ -80,6 +88,7 @@ const save = async (nextStatus: 'draft' | 'submitted') => {
   isSaving.value = true
   errorMessage.value = ''
   statusMessage.value = ''
+  notEnrolled.value = false
 
   try {
     const { data } = await api.post<JournalEntryDetail>('/api/student/journal-entries', {
@@ -94,8 +103,12 @@ const save = async (nextStatus: 'draft' | 'submitted') => {
       isViewMode.value = true
     }
   } catch (error) {
-    const data = axios.isAxiosError(error) ? error.response?.data : null
-    errorMessage.value = data?.message ?? 'Unable to save this entry.'
+    if (isNotEnrolledError(error)) {
+      notEnrolled.value = true
+    } else {
+      const data = axios.isAxiosError(error) ? error.response?.data : null
+      errorMessage.value = data?.message ?? 'Unable to save this entry.'
+    }
   } finally {
     isSaving.value = false
   }
@@ -120,6 +133,7 @@ onMounted(load)
 <template>
   <section class="space-y-5">
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
+    <NotEnrolledNotice v-else-if="notEnrolled" />
 
     <template v-else-if="isViewMode">
       <div class="flex justify-end">
