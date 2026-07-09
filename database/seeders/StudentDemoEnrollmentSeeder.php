@@ -35,7 +35,7 @@ class StudentDemoEnrollmentSeeder extends Seeder
                     ['key' => 'task_performed', 'label' => 'Task Performed', 'prompt' => 'Describe the specific tasks you completed today.', 'required' => true, 'sipp' => false],
                     ['key' => 'skills_applied', 'label' => 'Skills Applied', 'prompt' => 'What skills or tools did you use or learn?', 'required' => false, 'sipp' => false],
                     ['key' => 'challenges_encountered', 'label' => 'Challenges Encountered', 'prompt' => 'Note any challenges and how you addressed them.', 'required' => false, 'sipp' => false],
-                    ['key' => 'issues_concerns', 'label' => 'Issues and Concerns Encountered', 'prompt' => 'Describe any issues or concerns encountered today.', 'required' => false, 'sipp' => true],
+                    ['key' => 'issues_concerns', 'label' => 'Problem / Concern', 'prompt' => 'Describe any problem or concern encountered today.', 'required' => false, 'sipp' => true],
                     ['key' => 'solutions', 'label' => 'Solutions', 'prompt' => 'What solutions were applied or proposed?', 'required' => false, 'sipp' => true],
                     ['key' => 'recommendations', 'label' => 'Recommendations', 'prompt' => 'Any recommendations going forward?', 'required' => false, 'sipp' => true],
                 ],

@@ -33,7 +33,7 @@ trait EnrollsStudentInBatch
             'sections' => [
                 ['key' => 'task_performed', 'label' => 'Task Performed', 'prompt' => 'Describe the tasks.', 'required' => true, 'sipp' => false],
                 ['key' => 'skills_applied', 'label' => 'Skills Applied', 'prompt' => 'What skills were applied?', 'required' => false, 'sipp' => false],
-                ['key' => 'issues_concerns', 'label' => 'Issues and Concerns Encountered', 'prompt' => 'Any issues?', 'required' => false, 'sipp' => true],
+                ['key' => 'issues_concerns', 'label' => 'Problem / Concern', 'prompt' => 'Any problem or concern?', 'required' => false, 'sipp' => true],
                 ['key' => 'solutions', 'label' => 'Solutions', 'prompt' => 'Any solutions?', 'required' => false, 'sipp' => true],
                 ['key' => 'recommendations', 'label' => 'Recommendations', 'prompt' => 'Any recommendations?', 'required' => false, 'sipp' => true],
             ],

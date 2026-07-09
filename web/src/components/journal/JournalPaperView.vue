@@ -12,7 +12,7 @@ const formattedDate = computed(() => {
   const date = new Date(`${props.entryDate}T00:00:00`)
   const datePart = date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
   const weekday = date.toLocaleDateString(undefined, { weekday: 'long' })
-  return `${datePart} – ${weekday}`
+  return `${datePart} - ${weekday}`
 })
 
 const mainSection = computed(() => props.sections.find((section) => section.required))
@@ -23,7 +23,7 @@ const filledSubSections = computed(() =>
 </script>
 
 <template>
-  <article class="mx-auto max-w-[720px] rounded-sm bg-white p-10 font-serif leading-[1.6] text-slate-900 shadow-md">
+  <article class="mx-auto box-border w-[8.5in] max-w-full rounded-sm bg-white px-[1in] py-10 font-serif leading-[1.6] text-slate-900 shadow-md">
     <header class="mb-8 border-b border-slate-200 pb-4 text-center">
       <h1 class="text-xl font-bold tracking-wide">Daily Journal Entry</h1>
       <p class="mt-1 text-sm text-slate-500">{{ formattedDate }}</p>
@@ -31,12 +31,12 @@ const filledSubSections = computed(() =>
 
     <section v-if="mainSection" class="mb-8">
       <h2 class="mb-2 text-sm font-bold uppercase tracking-wide text-slate-500">{{ mainSection.label }}</h2>
-      <p class="whitespace-pre-line text-justify text-base">{{ content[mainSection.key] || '—' }}</p>
+      <p class="whitespace-pre-wrap break-words text-justify text-base [overflow-wrap:anywhere]">{{ content[mainSection.key] || '-' }}</p>
     </section>
 
     <section v-for="section in filledSubSections" :key="section.key" class="mb-6">
       <h2 class="mb-2 text-sm font-bold uppercase tracking-wide text-slate-500">{{ section.label }}</h2>
-      <p class="whitespace-pre-line text-justify text-base">{{ content[section.key] }}</p>
+      <p class="whitespace-pre-wrap break-words text-justify text-base [overflow-wrap:anywhere]">{{ content[section.key] }}</p>
     </section>
 
     <p v-if="!mainSection && filledSubSections.length === 0" class="text-center text-sm text-slate-400">

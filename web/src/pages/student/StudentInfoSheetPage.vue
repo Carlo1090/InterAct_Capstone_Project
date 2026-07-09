@@ -9,6 +9,11 @@ const isSaving = ref(false)
 const errorMessage = ref('')
 const statusMessage = ref('')
 const submissionStatus = ref<InfoSheet['submission_status']>(null)
+const departmentOptions = [
+  'College of Arts, Sciences, and Technology',
+  'College of Accountancy, Business and Management - Business',
+  'College of Accountancy, Business and Management - Hospitality and Tourism',
+]
 
 const personalInfo = reactive({
   last_name: '',
@@ -84,115 +89,72 @@ onMounted(loadInfoSheet)
 
 <template>
   <section class="space-y-5">
-    <div class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-      Please complete all required fields. This form is part of your SIPP compliance documentation.
-    </div>
-
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
 
-    <form v-else class="rounded-lg bg-white p-6 shadow-sm ring-1 ring-slate-200" @submit.prevent>
-      <div class="rounded-lg bg-slate-50 p-5">
-        <h2 class="text-xs font-bold uppercase tracking-wide text-blue-700">I. Personal Information</h2>
-        <div class="mt-4 grid gap-4 md:grid-cols-2">
+    <label v-if="!isLoading" class="mx-auto block max-w-[1040px] rounded-lg bg-white p-5 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-slate-200">
+      Departments
+      <select v-model="academicInfo.department" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+        <option value="">Select department</option>
+        <option v-for="department in departmentOptions" :key="department" :value="department">
+          {{ department }}
+        </option>
+      </select>
+    </label>
+
+    <form v-if="!isLoading" class="mx-auto max-w-[1040px] rounded-lg bg-white p-8 shadow-sm ring-1 ring-slate-200" @submit.prevent>
+      <header class="mb-5 text-center">
+        <h1 class="text-2xl font-bold uppercase tracking-wide text-slate-950">Student Internship Program</h1>
+        <p class="mt-1 text-lg text-slate-700">Student Information Sheet</p>
+      </header>
+
+      <div class="mb-4 bg-blue-900 py-2 text-center text-sm font-bold uppercase tracking-wide text-white">
+        Student Trainee Information
+      </div>
+
+      <div class="rounded-lg bg-slate-50 p-6">
+        <div class="grid gap-5 md:grid-cols-2">
           <label class="block text-sm font-medium text-slate-700">
-            Last Name
+            Family Name
             <input v-model="personalInfo.last_name" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          </label>
+          <label class="block text-sm font-medium text-slate-700">
+            Program &amp; Year
+            <input v-model="academicInfo.year_level" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </label>
           <label class="block text-sm font-medium text-slate-700">
             First Name
             <input v-model="personalInfo.first_name" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </label>
           <label class="block text-sm font-medium text-slate-700">
-            Middle Name
-            <input v-model="personalInfo.middle_name" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </label>
-          <label class="block text-sm font-medium text-slate-700">
-            Student ID Number
-            <input v-model="personalInfo.student_id_number" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </label>
-          <label class="block text-sm font-medium text-slate-700">
-            Date of Birth
-            <input v-model="personalInfo.date_of_birth" type="date" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </label>
-          <label class="block text-sm font-medium text-slate-700">
-            Sex
-            <select v-model="personalInfo.sex" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-            </select>
-          </label>
-          <label class="block text-sm font-medium text-slate-700 md:col-span-2">
-            Home Address
-            <input v-model="personalInfo.home_address" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </label>
-          <label class="block text-sm font-medium text-slate-700">
-            Contact Number
+            Contact No.
             <input v-model="personalInfo.contact_number" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </label>
           <label class="block text-sm font-medium text-slate-700">
-            Email Address
-            <input v-model="personalInfo.email" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            Middle Name
+            <input v-model="personalInfo.middle_name" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </label>
-        </div>
-      </div>
-
-      <div class="mt-5 rounded-lg bg-slate-50 p-5">
-        <h2 class="text-xs font-bold uppercase tracking-wide text-blue-700">II. Academic Information</h2>
-        <div class="mt-4 grid gap-4 md:grid-cols-2">
+          <div class="hidden md:block"></div>
           <label class="block text-sm font-medium text-slate-700">
-            Program / Course
-            <input v-model="academicInfo.program_course" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            Parent's/Guardian's Name
+            <input v-model="personalInfo.parent_guardian_name" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </label>
           <label class="block text-sm font-medium text-slate-700">
-            Year Level
-            <input v-model="academicInfo.year_level" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            Contact No.
+            <input v-model="academicInfo.coordinator_contact_no" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </label>
           <label class="block text-sm font-medium text-slate-700">
-            Department
-            <input :value="academicInfo.department" readonly class="mt-2 w-full rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-sm" />
-          </label>
-          <label class="block text-sm font-medium text-slate-700">
-            OJT Coordinator
+            Internship Coordinator
             <input :value="academicInfo.internship_coordinator" readonly class="mt-2 w-full rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-sm" />
-          </label>
-        </div>
-      </div>
-
-      <div class="mt-5 rounded-lg bg-slate-50 p-5">
-        <h2 class="text-xs font-bold uppercase tracking-wide text-blue-700">III. Internship Assignment</h2>
-        <div class="mt-4 grid gap-4 md:grid-cols-2">
-          <label class="block text-sm font-medium text-slate-700">
-            Host Company
-            <input v-model="ojtInfo.host_company" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </label>
-          <label class="block text-sm font-medium text-slate-700">
-            Company Supervisor
-            <input v-model="ojtInfo.supervisor_name" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </label>
-          <label class="block text-sm font-medium text-slate-700">
-            Start Date
-            <input v-model="ojtInfo.ojt_start_date" type="date" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </label>
-          <label class="block text-sm font-medium text-slate-700">
-            End Date
-            <input v-model="ojtInfo.ojt_end_date" type="date" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </label>
         </div>
       </div>
 
       <p v-if="errorMessage" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ errorMessage }}</p>
       <p v-if="statusMessage" class="mt-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{{ statusMessage }}</p>
-      <p v-if="submissionStatus" class="mt-2 text-xs uppercase tracking-wide text-slate-400">Status: {{ submissionStatus }}</p>
 
-      <div class="mt-6 flex justify-end gap-3">
-        <button
-          type="button"
-          class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
-          :disabled="isSaving"
-          @click="save('draft')"
-        >
-          {{ isSaving ? 'Saving...' : 'Save Draft' }}
-        </button>
+    </form>
+
+    <div v-if="!isLoading" class="mx-auto flex max-w-[1040px] justify-end gap-3">
         <button
           type="button"
           class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
@@ -202,6 +164,5 @@ onMounted(loadInfoSheet)
           {{ isSaving ? 'Saving...' : 'Submit' }}
         </button>
       </div>
-    </form>
   </section>
 </template>
