@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class Program extends Model
 {
@@ -45,5 +46,10 @@ class Program extends Model
     public function journalTemplates(): HasMany
     {
         return $this->hasMany(JournalTemplate::class);
+    }
+
+    public function batchStudents(): HasManyThrough
+    {
+        return $this->hasManyThrough(BatchStudent::class, Batch::class);
     }
 }

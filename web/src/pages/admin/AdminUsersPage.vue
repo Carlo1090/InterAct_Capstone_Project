@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import api from '@/lib/axios'
-import type { PaginatedResponse, Program, User } from '@/types/api'
+import type { Department, PaginatedResponse, Program, User } from '@/types/api'
 
 type UserPayload = {
   name: string
@@ -13,11 +13,18 @@ type UserPayload = {
 
 const users = ref<User[]>([])
 const programs = ref<Program[]>([])
+const departments = ref<Department[]>([])
 const isLoading = ref(true)
 const isSaving = ref(false)
 const isModalOpen = ref(false)
 const errorMessage = ref('')
 const modalError = ref('')
+
+const search = ref('')
+const roleFilter = ref('')
+const departmentFilter = ref('')
+
+let searchDebounce: ReturnType<typeof setTimeout> | undefined
 
 const userForm = ref<UserPayload>({
   name: '',
@@ -52,7 +59,13 @@ const loadUsers = async () => {
   errorMessage.value = ''
 
   try {
-    const response = await api.get<PaginatedResponse<User>>('/api/admin/users')
+    const response = await api.get<PaginatedResponse<User>>('/api/admin/users', {
+      params: {
+        search: search.value || undefined,
+        role: roleFilter.value || undefined,
+        department_id: departmentFilter.value || undefined,
+      },
+    })
     users.value = response.data.data
   } catch {
     errorMessage.value = 'Unable to load users.'
@@ -69,6 +82,21 @@ const loadPrograms = async () => {
     modalError.value = 'Unable to load programs.'
   }
 }
+
+const loadDepartments = async () => {
+  try {
+    const response = await api.get<Department[]>('/api/admin/departments')
+    departments.value = response.data
+  } catch {
+    // Filter dropdown just stays empty; not critical to the page loading.
+  }
+}
+
+watch(search, () => {
+  clearTimeout(searchDebounce)
+  searchDebounce = setTimeout(loadUsers, 300)
+})
+watch([roleFilter, departmentFilter], loadUsers)
 
 const openModal = async () => {
   resetForm()
@@ -105,7 +133,10 @@ const deactivateUser = async (user: User) => {
   }
 }
 
-onMounted(loadUsers)
+onMounted(() => {
+  loadUsers()
+  loadDepartments()
+})
 </script>
 
 <template>
@@ -119,6 +150,21 @@ onMounted(loadUsers)
       >
         Create User
       </button>
+    </div>
+
+    <div class="mt-6 flex flex-wrap gap-3">
+      <input v-model="search" class="min-w-72 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Search by name..." />
+      <select v-model="roleFilter" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
+        <option value="">All Roles</option>
+        <option value="student">Student</option>
+        <option value="coordinator">Coordinator</option>
+      </select>
+      <select v-model="departmentFilter" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
+        <option value="">All Departments</option>
+        <option v-for="department in departments" :key="department.id" :value="department.id">
+          {{ department.name }}
+        </option>
+      </select>
     </div>
 
     <p v-if="isLoading" class="mt-6 text-sm text-slate-500">Loading...</p>

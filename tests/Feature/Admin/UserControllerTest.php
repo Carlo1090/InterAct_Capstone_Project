@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Models\Department;
+use App\Models\Program;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -30,6 +32,44 @@ class UserControllerTest extends TestCase
         $names = collect($response->json('data'))->pluck('name');
         $this->assertTrue($names->contains('Juan Dela Cruz'));
         $this->assertFalse($names->contains('Maria Santos'));
+    }
+
+    public function test_role_filter_only_returns_matching_role(): void
+    {
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        User::factory()->create(['role' => 'student', 'name' => 'Student One']);
+        User::factory()->create(['role' => 'coordinator', 'name' => 'Coordinator One']);
+
+        $response = $this->getJson('/api/admin/users?role=coordinator');
+
+        $response->assertOk();
+        $names = collect($response->json('data'))->pluck('name');
+        $this->assertTrue($names->contains('Coordinator One'));
+        $this->assertFalse($names->contains('Student One'));
+    }
+
+    public function test_department_filter_only_returns_users_in_that_department(): void
+    {
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        $castDepartment = Department::create(['code' => 'CAST', 'name' => 'College of Arts, Sciences and Technology', 'is_active' => true]);
+        $cabmDepartment = Department::create(['code' => 'CABM-B', 'name' => 'College of Business Management', 'is_active' => true]);
+
+        $castProgram = Program::create(['department_id' => $castDepartment->id, 'code' => 'BSIT', 'name' => 'BS Information Technology', 'is_active' => true]);
+        $cabmProgram = Program::create(['department_id' => $cabmDepartment->id, 'code' => 'BSA', 'name' => 'BS Accountancy', 'is_active' => true]);
+
+        User::factory()->create(['role' => 'student', 'name' => 'CAST Student', 'program_id' => $castProgram->id]);
+        User::factory()->create(['role' => 'student', 'name' => 'CABM Student', 'program_id' => $cabmProgram->id]);
+        User::factory()->create(['role' => 'admin', 'name' => 'No Program Admin', 'program_id' => null]);
+
+        $response = $this->getJson("/api/admin/users?department_id={$castDepartment->id}");
+
+        $response->assertOk();
+        $names = collect($response->json('data'))->pluck('name');
+        $this->assertTrue($names->contains('CAST Student'));
+        $this->assertFalse($names->contains('CABM Student'));
+        $this->assertFalse($names->contains('No Program Admin'));
     }
 
     public function test_admin_can_issue_a_temporary_password_for_a_student(): void

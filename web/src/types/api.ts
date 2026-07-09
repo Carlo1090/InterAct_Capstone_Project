@@ -12,6 +12,20 @@ export type Program = {
   department: Department
 }
 
+export type DepartmentProgramSummary = {
+  id: number
+  code?: string
+  name: string
+  is_active: boolean
+  active_interns_count: number
+  total_interns_count: number
+}
+
+export type DepartmentDetail = Department & {
+  active_interns_count: number
+  programs: DepartmentProgramSummary[]
+}
+
 export type User = {
   id: number
   name: string
@@ -74,6 +88,10 @@ export type BatchStudentRecord = {
   batch: { id: number; name: string; program_id: number }
   company: EnrollmentOptionCompany
   supervisor: EnrollmentOptionSupervisor
+}
+
+export type BatchDetail = Batch & {
+  batch_students: BatchStudentRecord[]
 }
 
 export type RosterFilters = {

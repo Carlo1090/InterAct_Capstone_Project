@@ -18,6 +18,22 @@ class BatchController extends Controller
         );
     }
 
+    public function show(Batch $batch): JsonResponse
+    {
+        $batch->load(['program.department', 'coordinator', 'journalTemplate']);
+        $batch->load(['batchStudents' => fn ($query) => $query
+            ->with([
+                'student:id,name,email,student_id_number',
+                'batch:id,name,program_id',
+                'company:id,name',
+                'supervisor:id,name,email',
+            ])
+            ->orderByDesc('enrolled_at')
+        ]);
+
+        return response()->json($batch);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([

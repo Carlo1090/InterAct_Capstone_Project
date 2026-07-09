@@ -20,6 +20,12 @@ class UserController extends Controller
             ->when($request->filled('role'), fn ($query) => $query->where('role', $request->string('role')))
             ->when($request->filled('program_id'), fn ($query) => $query->where('program_id', $request->integer('program_id')))
             ->when(
+                $request->filled('department_id'),
+                fn ($query) => $query->whereHas(
+                    'program', fn ($q) => $q->where('department_id', $request->integer('department_id'))
+                )
+            )
+            ->when(
                 $request->filled('search'),
                 fn ($query) => $query->where('name', 'like', '%'.$request->string('search').'%')
             )

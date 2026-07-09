@@ -14,6 +14,22 @@ class DepartmentController extends Controller
         return response()->json(Department::withCount('programs')->get());
     }
 
+    public function show(Department $department): JsonResponse
+    {
+        $department->loadCount('programs');
+        $department->load(['programs' => fn ($query) => $query
+            ->withCount([
+                'batchStudents as active_interns_count' => fn ($q) => $q->where('status', 'active'),
+                'batchStudents as total_interns_count',
+            ])
+            ->orderBy('name')
+        ]);
+
+        $department->setAttribute('active_interns_count', $department->programs->sum('active_interns_count'));
+
+        return response()->json($department);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([

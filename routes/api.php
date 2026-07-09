@@ -33,6 +33,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])
         Route::patch('users/{user}/temporary-password', [UserController::class, 'issueTemporaryPassword']);
 
         Route::get('departments', [DepartmentController::class, 'index']);
+        Route::get('departments/{department}', [DepartmentController::class, 'show']);
         Route::post('departments', [DepartmentController::class, 'store']);
         Route::put('departments/{department}', [DepartmentController::class, 'update']);
 
@@ -40,6 +41,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])
         Route::post('programs', [ProgramController::class, 'store']);
 
         Route::get('batches', [BatchController::class, 'index']);
+        Route::get('batches/{batch}', [BatchController::class, 'show']);
         Route::post('batches', [BatchController::class, 'store']);
         Route::put('batches/{batch}', [BatchController::class, 'update']);
 
