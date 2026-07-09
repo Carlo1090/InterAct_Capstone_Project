@@ -176,6 +176,7 @@ class AnnualSippReportController extends Controller
             ->where('program_id', $program->id)
             ->where('academic_year', $academicYear)
         )
+            ->where('status', 'submitted')
             ->with('student:id,name')
             ->orderBy('entry_date')
             ->orderBy('id')

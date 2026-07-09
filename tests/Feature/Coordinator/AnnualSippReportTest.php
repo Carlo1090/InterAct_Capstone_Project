@@ -127,6 +127,39 @@ class AnnualSippReportTest extends TestCase
         $this->assertSame('Ana Cruz', $rows->first()['student_name']);
     }
 
+    public function test_show_excludes_non_submitted_entries(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator, '2026');
+        $student = User::factory()->create(['role' => 'student', 'name' => 'Ana Cruz', 'program_id' => $bsit->id]);
+
+        // A DRAFT entry with SIPP content must NOT leak into the official report.
+        JournalEntry::create([
+            'student_id' => $student->id,
+            'batch_id' => $batch->id,
+            'entry_date' => now()->subDays(4)->toDateString(),
+            'content' => ['task_performed' => 'Did work.', 'issues_concerns' => 'Draft leak.'],
+            'status' => 'draft',
+        ]);
+
+        // A SUBMITTED entry with SIPP content must appear.
+        $this->sippEntry($student, $batch, now()->subDays(3)->toDateString(), ['issues_concerns' => 'Real submitted issue.']);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->getJson("/api/coordinator/annual-sipp/{$bsit->id}?academic_year=2026");
+
+        $response->assertOk();
+        $rows = collect($response->json('rows'));
+        $this->assertCount(1, $rows);
+        $this->assertSame('Real submitted issue.', $rows->first()['issues_concerns']);
+        $this->assertFalse(
+            $rows->contains(fn ($row) => $row['issues_concerns'] === 'Draft leak.'),
+            'Draft entry should not appear in the Annual SIPP Report rows.'
+        );
+    }
+
     public function test_show_requires_academic_year(): void
     {
         $bsit = $this->programFor('BSIT', 'CAST');
