@@ -125,6 +125,11 @@ const router = createRouter({
           component: () => import('@/pages/coordinator/CoordinatorAnnualSippPage.vue'),
           meta: { title: 'Annual SIPP Report' },
         },
+        {
+          path: 'hte',
+          component: () => import('@/pages/coordinator/CoordinatorHtePage.vue'),
+          meta: { title: 'HTE & Student Interns List' },
+        },
       ],
     },
     {

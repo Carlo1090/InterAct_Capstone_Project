@@ -12,6 +12,7 @@ const navItems = [
   { label: 'Partner Companies', to: '/coordinator/companies', badge: '' },
   { label: 'Student Info Sheets', to: '/coordinator/info-sheets', badge: '' },
   { label: 'Annual SIPP Report', to: '/coordinator/annual-sipp', badge: '' },
+  { label: 'HTE & Student Interns List', to: '/coordinator/hte', badge: '' },
 ]
 
 const auth = useAuthStore()

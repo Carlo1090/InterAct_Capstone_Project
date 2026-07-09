@@ -357,3 +357,40 @@ export type AnnualSippReport = {
   rows: AnnualSippRow[]
   meta: AnnualSippMeta
 }
+
+export type HteProgram = {
+  id: number
+  name: string
+  code?: string
+}
+
+export type HteRow = {
+  id: number | string
+  host_establishment: string
+  student_name: string
+  program: string
+  gender: string
+  duration: string
+  included: boolean
+  is_manual: boolean
+}
+
+export type HteMeta = {
+  signatory_prepared_name: string
+  signatory_prepared_title: string
+  signatory_certified_name: string
+  signatory_certified_title: string
+}
+
+export type HteIndex = {
+  programs: HteProgram[]
+  academic_years: string[]
+}
+
+export type HteReport = {
+  academic_year: string
+  program_id: number | null
+  status: 'draft' | 'finalized'
+  rows: HteRow[]
+  meta: HteMeta
+}
