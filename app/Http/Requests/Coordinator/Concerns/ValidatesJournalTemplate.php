@@ -51,6 +51,6 @@ trait ValidatesJournalTemplate
      */
     protected function coordinatorProgramIds(): array
     {
-        return $this->user()->batchesCoordinated()->distinct()->pluck('program_id')->all();
+        return $this->user()->coordinatorProgramIds()->all();
     }
 }

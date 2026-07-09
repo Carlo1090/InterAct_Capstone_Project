@@ -16,7 +16,7 @@ class JournalTemplateController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $programIds = $request->user()->batchesCoordinated()->distinct()->pluck('program_id');
+        $programIds = $request->user()->coordinatorProgramIds();
 
         $templates = JournalTemplate::with('program')
             ->whereIn('program_id', $programIds)
@@ -63,7 +63,7 @@ class JournalTemplateController extends Controller
 
     public function toggleActive(Request $request, JournalTemplate $journalTemplate): JsonResponse
     {
-        $programIds = $request->user()->batchesCoordinated()->distinct()->pluck('program_id');
+        $programIds = $request->user()->coordinatorProgramIds();
 
         if (! $programIds->contains($journalTemplate->program_id)) {
             return response()->json(['message' => 'Forbidden.'], 403);

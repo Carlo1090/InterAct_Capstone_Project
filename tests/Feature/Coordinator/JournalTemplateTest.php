@@ -58,6 +58,47 @@ class JournalTemplateTest extends TestCase
         ];
     }
 
+    public function test_coordinator_with_assigned_program_but_no_batches_can_list_templates(): void
+    {
+        $program = $this->programFor('BSIT');
+        $coordinator = User::factory()->create(['role' => 'coordinator', 'program_id' => $program->id]);
+
+        JournalTemplate::create([
+            'program_id' => $program->id,
+            'name' => 'Bootstrap Template',
+            'sections' => $this->validSections(),
+            'word_limit' => 500,
+            'is_active' => true,
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->getJson('/api/coordinator/journal-templates');
+
+        $response->assertOk();
+        $programIds = collect($response->json('programs'))->pluck('id');
+        $this->assertTrue($programIds->contains($program->id));
+        $names = collect($response->json('templates'))->pluck('name');
+        $this->assertTrue($names->contains('Bootstrap Template'));
+    }
+
+    public function test_coordinator_with_assigned_program_but_no_batches_can_create_template(): void
+    {
+        $program = $this->programFor('BSIT');
+        $coordinator = User::factory()->create(['role' => 'coordinator', 'program_id' => $program->id]);
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->postJson('/api/coordinator/journal-templates', [
+            'program_id' => $program->id,
+            'name' => 'Bootstrap Template',
+            'word_limit' => 500,
+            'sections' => $this->validSections(),
+        ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('journal_templates', ['name' => 'Bootstrap Template', 'program_id' => $program->id]);
+    }
+
     public function test_coordinator_lists_only_own_program_templates(): void
     {
         $programA = $this->programFor('BSIT');
