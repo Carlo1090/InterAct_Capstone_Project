@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\ProgramController;
 use App\Http\Controllers\Admin\StudentInfoSheetController as AdminStudentInfoSheetController;
 use App\Http\Controllers\Admin\SystemSettingController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Coordinator\AnnualSippReportController;
 use App\Http\Controllers\Coordinator\BatchController as CoordinatorBatchController;
 use App\Http\Controllers\Coordinator\EnrollmentController;
 use App\Http\Controllers\Coordinator\JournalTemplateController;
@@ -76,6 +77,11 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::get('roster', [EnrollmentController::class, 'roster']);
         Route::post('enrollments', [EnrollmentController::class, 'store']);
         Route::put('enrollments/{batchStudent}', [EnrollmentController::class, 'update']);
+
+        Route::get('annual-sipp', [AnnualSippReportController::class, 'index']);
+        Route::get('annual-sipp/{program}', [AnnualSippReportController::class, 'show']);
+        Route::post('annual-sipp/{program}', [AnnualSippReportController::class, 'save']);
+        Route::get('annual-sipp/{program}/pdf', [AnnualSippReportController::class, 'pdf']);
     });
 
 Route::middleware(['auth:sanctum', 'role:student'])
