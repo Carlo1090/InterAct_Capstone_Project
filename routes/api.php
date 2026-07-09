@@ -7,6 +7,8 @@ use App\Http\Controllers\Admin\ProgramController;
 use App\Http\Controllers\Admin\StudentInfoSheetController as AdminStudentInfoSheetController;
 use App\Http\Controllers\Admin\SystemSettingController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Coordinator\BatchController as CoordinatorBatchController;
+use App\Http\Controllers\Coordinator\EnrollmentController;
 use App\Http\Controllers\Coordinator\JournalTemplateController;
 use App\Http\Controllers\Student\JournalCalendarController;
 use App\Http\Controllers\Student\JournalEntryController;
@@ -60,6 +62,16 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::post('journal-templates', [JournalTemplateController::class, 'store']);
         Route::put('journal-templates/{journalTemplate}', [JournalTemplateController::class, 'update']);
         Route::patch('journal-templates/{journalTemplate}/toggle-active', [JournalTemplateController::class, 'toggleActive']);
+
+        Route::get('batches', [CoordinatorBatchController::class, 'index']);
+        Route::post('batches', [CoordinatorBatchController::class, 'store']);
+        Route::put('batches/{batch}', [CoordinatorBatchController::class, 'update']);
+
+        Route::get('students/enrollable', [EnrollmentController::class, 'enrollableStudents']);
+        Route::get('enrollment-options', [EnrollmentController::class, 'options']);
+        Route::get('roster', [EnrollmentController::class, 'roster']);
+        Route::post('enrollments', [EnrollmentController::class, 'store']);
+        Route::put('enrollments/{batchStudent}', [EnrollmentController::class, 'update']);
     });
 
 Route::middleware(['auth:sanctum', 'role:student'])
