@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Coordinator\AnnualSippReportController;
 use App\Http\Controllers\Coordinator\BatchController as CoordinatorBatchController;
 use App\Http\Controllers\Coordinator\EnrollmentController;
+use App\Http\Controllers\Coordinator\HteReportController;
 use App\Http\Controllers\Coordinator\JournalTemplateController;
 use App\Http\Controllers\Student\JournalCalendarController;
 use App\Http\Controllers\Student\JournalEntryController;
@@ -82,6 +83,11 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::get('annual-sipp/{program}', [AnnualSippReportController::class, 'show']);
         Route::post('annual-sipp/{program}', [AnnualSippReportController::class, 'save']);
         Route::get('annual-sipp/{program}/pdf', [AnnualSippReportController::class, 'pdf']);
+
+        Route::get('hte', [HteReportController::class, 'index']);
+        Route::get('hte/{academicYear}/pdf', [HteReportController::class, 'pdf']);
+        Route::get('hte/{academicYear}', [HteReportController::class, 'show']);
+        Route::post('hte/{academicYear}', [HteReportController::class, 'save']);
     });
 
 Route::middleware(['auth:sanctum', 'role:student'])
