@@ -23,7 +23,7 @@ class SupervisorDemoUserSeeder extends Seeder
         );
 
         $supervisor = User::updateOrCreate(
-            ['email' => 'supervisor@interntrack.local'],
+            ['email' => 'mdcsupervisor@gmail.com'],
             [
                 'name' => 'Engr. Ramon Villanueva',
                 'password' => Hash::make('password'),

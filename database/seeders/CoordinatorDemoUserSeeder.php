@@ -14,7 +14,7 @@ class CoordinatorDemoUserSeeder extends Seeder
         $coordinatorProgram = Program::where('code', 'BSBA-FM')->first();
 
         User::updateOrCreate(
-            ['email' => 'coordinator@interntrack.local'],
+            ['email' => 'mdccore@gmail.com'],
             [
                 'name' => 'Prof. Alicia Montoya',
                 'password' => Hash::make('password'),

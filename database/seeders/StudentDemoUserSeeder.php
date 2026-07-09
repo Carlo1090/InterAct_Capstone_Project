@@ -15,7 +15,7 @@ class StudentDemoUserSeeder extends Seeder
         $studentProgram = Program::where('code', 'BSIT')->first();
 
         $student = User::updateOrCreate(
-            ['email' => 'student@interntrack.local'],
+            ['email' => 'mdcstudent@gmail.com'],
             [
                 'name' => 'Juan Dela Cruz',
                 'password' => Hash::make('password'),

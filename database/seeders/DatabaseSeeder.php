@@ -35,7 +35,7 @@ class DatabaseSeeder extends Seeder
 
         // Test admin account for local development login.
         User::firstOrCreate(
-            ['email' => 'admin@interntrack.local'],
+            ['email' => 'mdcadmin@gmail.com'],
             [
                 'name' => 'Test Admin',
                 'password' => Hash::make('password'),
