@@ -10,6 +10,13 @@ class StoreJournalEntryRequest extends FormRequest
 {
     use ResolvesStudentEnrollment;
 
+    /**
+     * Max characters allowed in a SIPP-flagged section (issues_concerns,
+     * solutions, recommendations), so over-long text never reaches the
+     * coordinator's report.
+     */
+    public const SIPP_CHAR_LIMIT = 300;
+
     public function authorize(): bool
     {
         return $this->user()?->role === 'student';
@@ -54,6 +61,17 @@ class StoreJournalEntryRequest extends FormRequest
             foreach ($sections as $section) {
                 if (! empty($section['required']) && trim((string) ($content[$section['key']] ?? '')) === '') {
                     $validator->errors()->add("content.{$section['key']}", "The {$section['label']} field is required.");
+                }
+
+                if (! empty($section['sipp'])) {
+                    $length = mb_strlen((string) ($content[$section['key']] ?? ''));
+
+                    if ($length > self::SIPP_CHAR_LIMIT) {
+                        $validator->errors()->add(
+                            "content.{$section['key']}",
+                            "The {$section['label']} field must not exceed ".self::SIPP_CHAR_LIMIT.' characters.'
+                        );
+                    }
                 }
             }
 

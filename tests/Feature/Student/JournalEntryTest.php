@@ -151,4 +151,65 @@ class JournalEntryTest extends TestCase
         $response->assertOk();
         $this->assertSame('Deployment pipeline was flaky.', $response->json('content.issues_concerns'));
     }
+
+    public function test_sipp_field_over_300_characters_is_rejected(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $response = $this->postJson('/api/student/journal-entries', [
+            'entry_date' => now()->toDateString(),
+            'status' => 'submitted',
+            'content' => [
+                'task_performed' => 'Fixed a production bug.',
+                'issues_concerns' => str_repeat('a', 301),
+            ],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['content.issues_concerns']);
+    }
+
+    public function test_sipp_field_at_300_characters_is_accepted(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $response = $this->postJson('/api/student/journal-entries', [
+            'entry_date' => now()->toDateString(),
+            'status' => 'submitted',
+            'content' => [
+                'task_performed' => 'Fixed a production bug.',
+                'issues_concerns' => str_repeat('a', 300),
+            ],
+        ]);
+
+        $response->assertOk();
+    }
+
+    public function test_all_three_sipp_fields_save_together(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $entryDate = now()->toDateString();
+
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'submitted',
+            'content' => [
+                'task_performed' => 'Fixed a production bug.',
+                'issues_concerns' => 'Deployment pipeline was flaky.',
+                'solutions' => 'Rolled back and patched the config.',
+                'recommendations' => 'Add a staging smoke test.',
+            ],
+        ])->assertOk();
+
+        $response = $this->getJson("/api/student/journal-entries/{$entryDate}");
+
+        $response->assertOk();
+        $this->assertSame('Deployment pipeline was flaky.', $response->json('content.issues_concerns'));
+        $this->assertSame('Rolled back and patched the config.', $response->json('content.solutions'));
+        $this->assertSame('Add a staging smoke test.', $response->json('content.recommendations'));
+    }
 }

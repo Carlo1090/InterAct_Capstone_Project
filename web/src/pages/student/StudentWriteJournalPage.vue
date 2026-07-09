@@ -26,11 +26,23 @@ const content = reactive<Record<string, string>>({})
 const enabledSections = reactive<Record<string, boolean>>({})
 const isViewMode = ref(false)
 
+const sippCharLimit = 300
+const sippEnabled = ref(false)
+
+const nonSippSections = computed(() => sections.value.filter((section) => !section.sipp))
+const sippSections = computed(() => sections.value.filter((section) => section.sipp))
+
 const wordCount = computed(() =>
   Object.values(content).reduce((total, value) => total + (value.trim() ? value.trim().split(/\s+/).length : 0), 0),
 )
 
 const isOverLimit = computed(() => wordCount.value > wordLimit.value)
+
+const sippLength = (key: string) => (content[key] ?? '').length
+
+const isSippOverLimit = computed(() =>
+  sippSections.value.some((section) => sippLength(section.key) > sippCharLimit),
+)
 
 const toggleSection = (section: JournalTemplateSection, checked: boolean) => {
   enabledSections[section.key] = checked
@@ -42,6 +54,20 @@ const toggleSection = (section: JournalTemplateSection, checked: boolean) => {
   } else {
     delete content[section.key]
   }
+}
+
+const toggleSipp = (checked: boolean) => {
+  sippEnabled.value = checked
+
+  sippSections.value.forEach((section) => {
+    if (checked) {
+      if (!(section.key in content)) {
+        content[section.key] = ''
+      }
+    } else {
+      delete content[section.key]
+    }
+  })
 }
 
 const load = async () => {
@@ -66,11 +92,19 @@ const load = async () => {
 
       if (section.required) {
         content[section.key] = existingValue
-      } else {
+      } else if (!section.sipp) {
         enabledSections[section.key] = existingValue.trim() !== ''
         if (enabledSections[section.key]) {
           content[section.key] = existingValue
         }
+      }
+    })
+
+    const sippFields = data.sections.filter((section) => section.sipp)
+    sippEnabled.value = sippFields.some((section) => (data.content[section.key] ?? '').trim() !== '')
+    sippFields.forEach((section) => {
+      if (sippEnabled.value) {
+        content[section.key] = data.content[section.key] ?? ''
       }
     })
   } catch (error) {
@@ -169,13 +203,12 @@ onMounted(load)
           </label>
         </section>
 
-        <section v-for="section in sections" :key="section.key" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
+        <section v-for="section in nonSippSections" :key="section.key" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
           <div class="flex items-center justify-between gap-3">
             <div>
               <h2 class="text-sm font-bold text-slate-900">
                 {{ section.label }}
                 <span v-if="section.required" class="text-red-500">*</span>
-                <span v-if="section.sipp" class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">SIPP</span>
               </h2>
               <p class="mt-1 text-xs text-slate-400">{{ section.prompt }}</p>
             </div>
@@ -196,6 +229,48 @@ onMounted(load)
             :disabled="!editable"
             class="mt-3 min-h-40 w-full rounded-md border border-slate-300 px-4 py-3 text-sm leading-6 text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
           />
+        </section>
+
+        <section v-if="sippSections.length > 0" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <h2 class="text-sm font-bold text-slate-900">
+                SIPP Notes
+                <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">SIPP</span>
+              </h2>
+              <p class="mt-1 text-xs text-slate-400">Issues, solutions, and recommendations for your SIPP compliance report.</p>
+            </div>
+            <label class="flex shrink-0 items-center gap-2 text-xs font-semibold text-slate-600">
+              <input
+                type="checkbox"
+                :checked="sippEnabled"
+                :disabled="!editable"
+                @change="toggleSipp(($event.target as HTMLInputElement).checked)"
+              />
+              Add SIPP Notes
+            </label>
+          </div>
+
+          <div v-if="sippEnabled" class="mt-4 space-y-4">
+            <div v-for="section in sippSections" :key="section.key">
+              <div class="flex items-center justify-between gap-3">
+                <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ section.label }}</h3>
+                <span
+                  class="font-mono text-xs"
+                  :class="sippLength(section.key) >= sippCharLimit ? 'font-semibold text-red-600' : 'text-slate-400'"
+                >
+                  {{ sippLength(section.key) }} / {{ sippCharLimit }}
+                </span>
+              </div>
+              <p class="mt-1 text-xs text-slate-400">{{ section.prompt }}</p>
+              <textarea
+                v-model="content[section.key]"
+                :disabled="!editable"
+                :maxlength="sippCharLimit"
+                class="mt-2 min-h-24 w-full rounded-md border border-slate-300 px-4 py-3 text-sm leading-6 text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+              />
+            </div>
+          </div>
         </section>
 
         <p v-if="sections.length === 0" class="text-sm text-slate-500">
@@ -225,7 +300,7 @@ onMounted(load)
           <button
             type="button"
             class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
-            :disabled="isSaving || !editable || isOverLimit"
+            :disabled="isSaving || !editable || isOverLimit || isSippOverLimit"
             @click="save('draft')"
           >
             Save Draft
@@ -233,7 +308,7 @@ onMounted(load)
           <button
             type="button"
             class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-            :disabled="isSaving || !editable || isOverLimit"
+            :disabled="isSaving || !editable || isOverLimit || isSippOverLimit"
             @click="save('submitted')"
           >
             Submit Entry
