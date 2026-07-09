@@ -10,6 +10,7 @@ const navItems = [
   { label: 'Write Daily Journal', to: '/student/write-journal', badge: '' },
   { label: 'Weekly Journals', to: '/student/weekly-journals', badge: '' },
   { label: 'Student Info Sheet', to: '/student/info-sheet', badge: '' },
+  { label: 'Change Password', to: '/student/change-password', badge: '' },
 ]
 
 const auth = useAuthStore()

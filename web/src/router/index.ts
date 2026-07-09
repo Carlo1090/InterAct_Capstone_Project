@@ -186,6 +186,11 @@ const router = createRouter({
           component: () => import('@/pages/student/StudentInfoSheetPage.vue'),
           meta: { title: 'Student Info Sheet' },
         },
+        {
+          path: 'change-password',
+          component: () => import('@/pages/student/StudentChangePasswordPage.vue'),
+          meta: { title: 'Change Password' },
+        },
       ],
     },
   ],
@@ -204,6 +209,10 @@ router.beforeEach(async (to) => {
 
   if (to.meta.role && auth.user?.role !== to.meta.role) {
     return '/login'
+  }
+
+  if (auth.user?.must_change_password && to.path !== '/student/change-password') {
+    return '/student/change-password'
   }
 
   document.title = `${pageTitle(to)} | InternTrack`

@@ -18,6 +18,7 @@ export type User = {
   email: string
   role: 'student' | 'supervisor' | 'coordinator' | 'admin'
   is_active: boolean
+  must_change_password: boolean
   program?: Program | null
 }
 
@@ -188,6 +189,31 @@ export type WeeklyActivityLogRecord = {
   entries?: WeeklyActivityEntryRecord[]
 }
 
+export type CompanySupervisorRecord = {
+  id: number
+  position: string
+  user: User
+}
+
+export type Company = {
+  id: number
+  name: string
+  address: string
+  location: string | null
+  industry: string | null
+  contact_number: string | null
+  head_name: string | null
+  department_head: string | null
+  is_active: boolean
+  active_interns_count: number
+  total_interns_count: number
+}
+
+export type CompanyDetail = Company & {
+  supervisors: CompanySupervisorRecord[]
+  departments: Department[]
+}
+
 export type InfoSheet = {
   id: number | null
   submission_status: 'draft' | 'submitted' | 'approved' | null
@@ -196,4 +222,24 @@ export type InfoSheet = {
   academic_info: InfoSheetAcademicInfo | null
   ojt_info: InfoSheetOjtInfo | null
   emergency_contact: Record<string, unknown> | null
+}
+
+export type StudentInfoSheetSummary = {
+  id: number
+  name: string
+  email: string
+  program: Program | null
+  batch_enrollment: { company: { name: string } | null } | null
+  submission_status: 'draft' | 'submitted' | 'approved' | null
+}
+
+export type InfoSheetDetail = InfoSheet & {
+  student: Pick<User, 'id' | 'name' | 'email'>
+}
+
+export type SystemSettingsMap = {
+  system_name: string | null
+  institution_name: string | null
+  institution_address: string | null
+  system_email: string | null
 }

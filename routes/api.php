@@ -1,12 +1,16 @@
 <?php
 
 use App\Http\Controllers\Admin\BatchController;
+use App\Http\Controllers\Admin\CompanyController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\ProgramController;
+use App\Http\Controllers\Admin\StudentInfoSheetController as AdminStudentInfoSheetController;
+use App\Http\Controllers\Admin\SystemSettingController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Coordinator\JournalTemplateController;
 use App\Http\Controllers\Student\JournalCalendarController;
 use App\Http\Controllers\Student\JournalEntryController;
+use App\Http\Controllers\Student\PasswordController;
 use App\Http\Controllers\Student\StudentInfoSheetController;
 use App\Http\Controllers\Student\WeeklyActivityLogController;
 use App\Http\Controllers\Student\WeeklyLogController;
@@ -24,6 +28,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])
         Route::post('users', [UserController::class, 'store']);
         Route::put('users/{user}', [UserController::class, 'update']);
         Route::patch('users/{user}/deactivate', [UserController::class, 'deactivate']);
+        Route::patch('users/{user}/temporary-password', [UserController::class, 'issueTemporaryPassword']);
 
         Route::get('departments', [DepartmentController::class, 'index']);
         Route::post('departments', [DepartmentController::class, 'store']);
@@ -35,6 +40,17 @@ Route::middleware(['auth:sanctum', 'role:admin'])
         Route::get('batches', [BatchController::class, 'index']);
         Route::post('batches', [BatchController::class, 'store']);
         Route::put('batches/{batch}', [BatchController::class, 'update']);
+
+        Route::get('companies', [CompanyController::class, 'index']);
+        Route::post('companies', [CompanyController::class, 'store']);
+        Route::get('companies/{company}', [CompanyController::class, 'show']);
+        Route::put('companies/{company}', [CompanyController::class, 'update']);
+
+        Route::get('info-sheets', [AdminStudentInfoSheetController::class, 'index']);
+        Route::get('info-sheets/{student}', [AdminStudentInfoSheetController::class, 'show']);
+
+        Route::get('system-settings', [SystemSettingController::class, 'index']);
+        Route::put('system-settings', [SystemSettingController::class, 'update']);
     });
 
 Route::middleware(['auth:sanctum', 'role:coordinator'])
@@ -51,6 +67,8 @@ Route::middleware(['auth:sanctum', 'role:student'])
     ->group(function () {
         Route::get('info-sheet', [StudentInfoSheetController::class, 'show']);
         Route::post('info-sheet', [StudentInfoSheetController::class, 'store']);
+
+        Route::put('password', [PasswordController::class, 'update']);
 
         Route::get('journal-entries', [JournalEntryController::class, 'index']);
         Route::get('journal-entries/{date}', [JournalEntryController::class, 'show']);

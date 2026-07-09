@@ -30,6 +30,7 @@ class User extends Authenticatable
         'student_id_number',
         'program_id',
         'is_active',
+        'must_change_password',
     ];
 
     /**
@@ -51,6 +52,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
+            'must_change_password' => 'boolean',
         ];
     }
 
@@ -87,6 +89,11 @@ class User extends Authenticatable
     public function journalEntries(): HasMany
     {
         return $this->hasMany(JournalEntry::class, 'student_id');
+    }
+
+    public function studentInformationSheets(): HasMany
+    {
+        return $this->hasMany(StudentInformationSheet::class, 'student_id');
     }
 
     public function weeklyLogsAsStudent(): HasMany

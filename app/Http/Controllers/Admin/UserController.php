@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
@@ -18,6 +19,10 @@ class UserController extends Controller
             ->with('program.department')
             ->when($request->filled('role'), fn ($query) => $query->where('role', $request->string('role')))
             ->when($request->filled('program_id'), fn ($query) => $query->where('program_id', $request->integer('program_id')))
+            ->when(
+                $request->filled('search'),
+                fn ($query) => $query->where('name', 'like', '%'.$request->string('search').'%')
+            )
             ->orderBy('name')
             ->paginate(20);
 
@@ -71,5 +76,20 @@ class UserController extends Controller
         $user->update(['is_active' => false]);
 
         return response()->json(['message' => 'User deactivated.']);
+    }
+
+    public function issueTemporaryPassword(User $user): JsonResponse
+    {
+        $temporaryPassword = Str::password(10);
+
+        $user->update([
+            'password' => $temporaryPassword,
+            'must_change_password' => true,
+        ]);
+
+        return response()->json([
+            'message' => 'Temporary password issued.',
+            'temporary_password' => $temporaryPassword,
+        ]);
     }
 }
