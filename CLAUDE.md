@@ -37,6 +37,12 @@ This is a **monorepo** with three parts:
 - Creating a `student`-role user auto-creates a matching `student_profiles` row via `UserObserver` (on the `User` model's `created` event), with a placeholder `student_id_number` (`PENDING-XXXXXXXX`) until the real registrar ID is filled in.
 - SIPP compliance documents referenced by the system: OJT Annual Report, Summary Report on Student Exit Interview (report itself out of scope), Student Information Sheet.
 
+## Roles & Configuration
+- Admin creates accounts (`Admin/UserController`) and global structure (departments, programs, companies). Creating a student user does **not** enroll them — see below.
+- Coordinators own `batches` for their program(s) (`Coordinator/BatchController`) and enroll students into a batch (`Coordinator/EnrollmentController`), which creates the `batch_students` row. `batch_students` is the **authoritative student↔company/supervisor linkage**; every student-facing endpoint (info sheet, journal entries, weekly logs, weekly activity logs) requires an active (`status='active'`) `batch_students` row via `ResolvesStudentEnrollment::activeEnrollment()`, and 422s with "You are not currently enrolled in an active OJT batch." until one exists.
+- A coordinator's programs are resolved via `User::coordinatorProgramIds()` — the union of their assigned `program_id` and the programs of batches they already coordinate — not `batchesCoordinated()` alone, so a coordinator with an assigned program but zero batches yet isn't locked out of creating their first one.
+- Students self-scaffold their Student Information Sheet after enrollment (`Student/StudentInfoSheetController::show` returns a pre-filled empty scaffold from their profile + enrollment; `store` upserts it, requires an active enrollment).
+
 ## Architecture Notes
 - **Routing**: `routes/api.php` defines `/api/user` (auth:sanctum) plus an `admin/*` group gated by `auth:sanctum` + `role:admin`. Role gating middleware is `App\Http\Middleware\EnsureRole`, aliased as `role` in `bootstrap/app.php`, used as `->middleware('role:admin')` or `role:admin,coordinator` for multi-role routes. It also blocks `is_active = false` accounts with a 403 before checking role.
 - **Controllers**: `app/Http/Controllers/Admin/*` for admin-only endpoints, `app/Http/Controllers/Auth/*` for Breeze/Sanctum auth flows. Follow the existing Form Request + Controller pattern (one Form Request per create/update action in `app/Http/Requests/{Admin,Auth}/`) before inventing new patterns.
