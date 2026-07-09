@@ -12,8 +12,9 @@ class CoordinatorDemoUserSeeder extends Seeder
     public function run(): void
     {
         $coordinatorProgram = Program::where('code', 'BSBA-FM')->first();
+        $bsitProgram = Program::where('code', 'BSIT')->first();
 
-        User::updateOrCreate(
+        $coordinator = User::updateOrCreate(
             ['email' => 'mdccore@gmail.com'],
             [
                 'name' => 'Prof. Alicia Montoya',
@@ -23,5 +24,9 @@ class CoordinatorDemoUserSeeder extends Seeder
                 'is_active' => true,
             ]
         );
+
+        if ($bsitProgram) {
+            $coordinator->departmentsCoordinated()->syncWithoutDetaching([$bsitProgram->department_id]);
+        }
     }
 }

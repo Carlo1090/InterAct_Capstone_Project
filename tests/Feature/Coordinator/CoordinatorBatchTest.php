@@ -48,6 +48,7 @@ class CoordinatorBatchTest extends TestCase
     {
         $program = $this->programFor('BSIT');
         $coordinator = User::factory()->create(['role' => 'coordinator', 'program_id' => $program->id]);
+        $coordinator->departmentsCoordinated()->attach($program->department_id);
         Sanctum::actingAs($coordinator, ['*']);
 
         $response = $this->postJson('/api/coordinator/batches', $this->validPayload($program));

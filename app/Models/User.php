@@ -7,6 +7,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -112,16 +113,23 @@ class User extends Authenticatable
         return $this->hasMany(Batch::class, 'coordinator_id');
     }
 
+    public function departmentsCoordinated(): BelongsToMany
+    {
+        return $this->belongsToMany(Department::class, 'coordinator_departments', 'coordinator_id', 'department_id');
+    }
+
     /**
-     * Distinct program IDs this coordinator has scope over: their assigned
-     * `program_id` merged with the programs of batches they already coordinate.
-     * Keeps a coordinator with an assigned program but zero batches yet from
-     * being locked out of program-scoped actions (e.g. creating their first batch).
+     * Distinct program IDs this coordinator has scope over: every program in
+     * their assigned department(s), merged with the programs of batches they
+     * already coordinate. The batch merge is backward safety only, so a
+     * coordinator's scope never shrinks below what's already in use.
      */
     public function coordinatorProgramIds(): Collection
     {
-        return $this->batchesCoordinated()->pluck('program_id')
-            ->when($this->program_id, fn (Collection $ids) => $ids->push($this->program_id))
+        $departmentIds = $this->departmentsCoordinated()->pluck('departments.id');
+
+        return Program::whereIn('department_id', $departmentIds)->pluck('id')
+            ->merge($this->batchesCoordinated()->pluck('program_id'))
             ->unique()
             ->values();
     }

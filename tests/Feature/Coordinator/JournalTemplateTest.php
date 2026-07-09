@@ -58,10 +58,11 @@ class JournalTemplateTest extends TestCase
         ];
     }
 
-    public function test_coordinator_with_assigned_program_but_no_batches_can_list_templates(): void
+    public function test_coordinator_with_assigned_department_but_no_batches_can_list_templates(): void
     {
         $program = $this->programFor('BSIT');
         $coordinator = User::factory()->create(['role' => 'coordinator', 'program_id' => $program->id]);
+        $coordinator->departmentsCoordinated()->attach($program->department_id);
 
         JournalTemplate::create([
             'program_id' => $program->id,
@@ -82,10 +83,11 @@ class JournalTemplateTest extends TestCase
         $this->assertTrue($names->contains('Bootstrap Template'));
     }
 
-    public function test_coordinator_with_assigned_program_but_no_batches_can_create_template(): void
+    public function test_coordinator_with_assigned_department_but_no_batches_can_create_template(): void
     {
         $program = $this->programFor('BSIT');
         $coordinator = User::factory()->create(['role' => 'coordinator', 'program_id' => $program->id]);
+        $coordinator->departmentsCoordinated()->attach($program->department_id);
         Sanctum::actingAs($coordinator, ['*']);
 
         $response = $this->postJson('/api/coordinator/journal-templates', [

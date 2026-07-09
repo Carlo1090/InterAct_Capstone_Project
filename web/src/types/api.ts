@@ -21,9 +21,16 @@ export type DepartmentProgramSummary = {
   total_interns_count: number
 }
 
+export type DepartmentCoordinator = {
+  id: number
+  name: string
+  email: string
+}
+
 export type DepartmentDetail = Department & {
   active_interns_count: number
   programs: DepartmentProgramSummary[]
+  coordinators: DepartmentCoordinator[]
 }
 
 export type User = {

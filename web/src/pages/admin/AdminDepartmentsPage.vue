@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import axios from 'axios'
 import api from '@/lib/axios'
-import type { Department, DepartmentDetail } from '@/types/api'
+import type { Department, DepartmentDetail, PaginatedResponse, User } from '@/types/api'
 
 const departments = ref<Department[]>([])
 const isLoading = ref(true)
@@ -11,6 +12,12 @@ const isViewOpen = ref(false)
 const isViewLoading = ref(false)
 const viewError = ref('')
 const viewedDepartment = ref<DepartmentDetail | null>(null)
+
+const coordinatorOptions = ref<User[]>([])
+const coordinatorToAssign = ref('')
+const isAssigningCoordinator = ref(false)
+const removingCoordinatorId = ref<number | null>(null)
+const coordinatorError = ref('')
 
 const loadDepartments = async () => {
   isLoading.value = true
@@ -26,10 +33,23 @@ const loadDepartments = async () => {
   }
 }
 
+const loadCoordinatorOptions = async () => {
+  try {
+    const response = await api.get<PaginatedResponse<User>>('/api/admin/users', {
+      params: { role: 'coordinator' },
+    })
+    coordinatorOptions.value = response.data.data
+  } catch {
+    // Assign picker just stays empty; not critical to the page loading.
+  }
+}
+
 const openViewModal = async (department: Department) => {
   isViewOpen.value = true
   isViewLoading.value = true
   viewError.value = ''
+  coordinatorError.value = ''
+  coordinatorToAssign.value = ''
   viewedDepartment.value = null
 
   try {
@@ -47,7 +67,50 @@ const closeViewModal = () => {
   viewedDepartment.value = null
 }
 
-onMounted(loadDepartments)
+const assignCoordinator = async () => {
+  if (!viewedDepartment.value || !coordinatorToAssign.value) return
+
+  isAssigningCoordinator.value = true
+  coordinatorError.value = ''
+
+  try {
+    const response = await api.post<DepartmentDetail['coordinators']>(
+      `/api/admin/departments/${viewedDepartment.value.id}/coordinators`,
+      { user_id: coordinatorToAssign.value },
+    )
+    viewedDepartment.value.coordinators = response.data
+    coordinatorToAssign.value = ''
+  } catch (error) {
+    const data = axios.isAxiosError(error) ? error.response?.data : null
+    coordinatorError.value = data?.message ?? 'Unable to assign coordinator.'
+  } finally {
+    isAssigningCoordinator.value = false
+  }
+}
+
+const removeCoordinator = async (coordinatorId: number) => {
+  if (!viewedDepartment.value) return
+
+  removingCoordinatorId.value = coordinatorId
+  coordinatorError.value = ''
+
+  try {
+    const response = await api.delete<DepartmentDetail['coordinators']>(
+      `/api/admin/departments/${viewedDepartment.value.id}/coordinators/${coordinatorId}`,
+    )
+    viewedDepartment.value.coordinators = response.data
+  } catch (error) {
+    const data = axios.isAxiosError(error) ? error.response?.data : null
+    coordinatorError.value = data?.message ?? 'Unable to remove coordinator.'
+  } finally {
+    removingCoordinatorId.value = null
+  }
+}
+
+onMounted(() => {
+  loadDepartments()
+  loadCoordinatorOptions()
+})
 </script>
 
 <template>
@@ -149,6 +212,55 @@ onMounted(loadDepartments)
               </table>
             </div>
             <p v-else class="mt-2 text-sm text-slate-400">No programs under this department yet.</p>
+          </div>
+
+          <div>
+            <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Assigned Coordinators</h5>
+
+            <div v-if="viewedDepartment.coordinators.length > 0" class="mt-2 space-y-2">
+              <div
+                v-for="coordinator in viewedDepartment.coordinators"
+                :key="coordinator.id"
+                class="flex items-center justify-between rounded-md px-3 py-2 ring-1 ring-slate-200"
+              >
+                <div>
+                  <p class="text-sm font-semibold text-slate-900">{{ coordinator.name }}</p>
+                  <p class="text-xs text-slate-500">{{ coordinator.email }}</p>
+                </div>
+                <button
+                  type="button"
+                  class="text-sm font-semibold text-red-600 disabled:text-slate-400"
+                  :disabled="removingCoordinatorId === coordinator.id"
+                  @click="removeCoordinator(coordinator.id)"
+                >
+                  {{ removingCoordinatorId === coordinator.id ? 'Removing...' : 'Remove' }}
+                </button>
+              </div>
+            </div>
+            <p v-else class="mt-2 text-sm text-slate-400">No coordinators assigned yet.</p>
+
+            <div class="mt-3 flex gap-2">
+              <select v-model="coordinatorToAssign" class="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                <option value="">Select a coordinator...</option>
+                <option
+                  v-for="coordinator in coordinatorOptions"
+                  :key="coordinator.id"
+                  :value="coordinator.id"
+                >
+                  {{ coordinator.name }} ({{ coordinator.email }})
+                </option>
+              </select>
+              <button
+                type="button"
+                class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-400"
+                :disabled="!coordinatorToAssign || isAssigningCoordinator"
+                @click="assignCoordinator"
+              >
+                {{ isAssigningCoordinator ? 'Assigning...' : 'Assign' }}
+              </button>
+            </div>
+
+            <p v-if="coordinatorError" class="mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ coordinatorError }}</p>
           </div>
         </div>
       </section>

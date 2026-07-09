@@ -36,6 +36,8 @@ Route::middleware(['auth:sanctum', 'role:admin'])
         Route::get('departments/{department}', [DepartmentController::class, 'show']);
         Route::post('departments', [DepartmentController::class, 'store']);
         Route::put('departments/{department}', [DepartmentController::class, 'update']);
+        Route::post('departments/{department}/coordinators', [DepartmentController::class, 'assignCoordinator']);
+        Route::delete('departments/{department}/coordinators/{coordinator}', [DepartmentController::class, 'removeCoordinator']);
 
         Route::get('programs', [ProgramController::class, 'index']);
         Route::post('programs', [ProgramController::class, 'store']);

@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\AssignCoordinatorRequest;
 use App\Models\Department;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -17,17 +19,33 @@ class DepartmentController extends Controller
     public function show(Department $department): JsonResponse
     {
         $department->loadCount('programs');
-        $department->load(['programs' => fn ($query) => $query
-            ->withCount([
-                'batchStudents as active_interns_count' => fn ($q) => $q->where('status', 'active'),
-                'batchStudents as total_interns_count',
-            ])
-            ->orderBy('name')
+        $department->load([
+            'programs' => fn ($query) => $query
+                ->withCount([
+                    'batchStudents as active_interns_count' => fn ($q) => $q->where('status', 'active'),
+                    'batchStudents as total_interns_count',
+                ])
+                ->orderBy('name'),
+            'coordinators' => fn ($query) => $query->orderBy('name'),
         ]);
 
         $department->setAttribute('active_interns_count', $department->programs->sum('active_interns_count'));
 
         return response()->json($department);
+    }
+
+    public function assignCoordinator(AssignCoordinatorRequest $request, Department $department): JsonResponse
+    {
+        $department->coordinators()->syncWithoutDetaching([$request->validated('user_id')]);
+
+        return response()->json($department->coordinators()->orderBy('name')->get(), 201);
+    }
+
+    public function removeCoordinator(Department $department, User $coordinator): JsonResponse
+    {
+        $department->coordinators()->detach($coordinator->id);
+
+        return response()->json($department->coordinators()->orderBy('name')->get());
     }
 
     public function store(Request $request): JsonResponse
