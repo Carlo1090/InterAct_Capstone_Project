@@ -106,9 +106,9 @@ const router = createRouter({
           meta: { title: 'Journal Templates' },
         },
         {
-          path: 'programs',
-          component: () => import('@/pages/coordinator/CoordinatorProgramManagementPage.vue'),
-          meta: { title: 'Program Management' },
+          path: 'batches',
+          component: () => import('@/pages/coordinator/CoordinatorBatchesPage.vue'),
+          meta: { title: 'Batches' },
         },
         {
           path: 'companies',

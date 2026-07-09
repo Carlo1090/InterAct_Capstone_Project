@@ -25,13 +25,65 @@ export type User = {
 export type Batch = {
   id: number
   name: string
+  academic_year?: string
+  semester?: string
   start_date: string
   end_date: string
   required_hours: number
   working_days_per_week: number
   daily_reminder_time: string
+  is_active?: boolean
+  journal_template_id?: number | null
   program: Program
-  coordinator: User
+  coordinator?: User
+  journal_template?: JournalTemplateRecord | null
+}
+
+export type EnrollableStudent = {
+  id: number
+  name: string
+  email: string
+  student_id_number: string | null
+  program_id: number | null
+}
+
+export type EnrollmentOptionCompany = {
+  id: number
+  name: string
+}
+
+export type EnrollmentOptionSupervisor = {
+  id: number
+  name: string
+  email: string
+}
+
+export type EnrollmentOptions = {
+  companies: EnrollmentOptionCompany[]
+  supervisors: EnrollmentOptionSupervisor[]
+}
+
+export type BatchStudentStatus = 'active' | 'completed' | 'dropped'
+
+export type BatchStudentRecord = {
+  id: number
+  status: BatchStudentStatus
+  assigned_division: string | null
+  enrolled_at: string
+  student: Pick<User, 'id' | 'name' | 'email'> & { student_id_number: string | null }
+  batch: { id: number; name: string; program_id: number }
+  company: EnrollmentOptionCompany
+  supervisor: EnrollmentOptionSupervisor
+}
+
+export type RosterFilters = {
+  batches: { id: number; name: string }[]
+  statuses: BatchStudentStatus[]
+}
+
+export type RosterResponse = {
+  students: BatchStudentRecord[]
+  filters: RosterFilters
 }
 
 export type PaginatedResponse<T> = {
