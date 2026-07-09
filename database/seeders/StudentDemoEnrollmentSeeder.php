@@ -15,9 +15,9 @@ class StudentDemoEnrollmentSeeder extends Seeder
 {
     public function run(): void
     {
-        $student = User::where('email', 'student@interntrack.local')->first();
-        $coordinator = User::where('email', 'coordinator@interntrack.local')->first();
-        $supervisor = User::where('email', 'supervisor@interntrack.local')->first();
+        $student = User::where('email', 'mdcstudent@gmail.com')->first();
+        $coordinator = User::where('email', 'mdccore@gmail.com')->first();
+        $supervisor = User::where('email', 'mdcsupervisor@gmail.com')->first();
         $company = Company::where('name', 'TechPH Inc.')->first();
         $program = Program::where('code', 'BSIT')->first();
 

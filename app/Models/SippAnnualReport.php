@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['coordinator_id', 'batch_id', 'academic_year', 'report_data', 'status'])]
+#[Fillable(['coordinator_id', 'program_id', 'batch_id', 'academic_year', 'report_data', 'status'])]
 class SippAnnualReport extends Model
 {
     public $timestamps = false;
@@ -23,6 +23,11 @@ class SippAnnualReport extends Model
     public function coordinator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'coordinator_id');
+    }
+
+    public function program(): BelongsTo
+    {
+        return $this->belongsTo(Program::class);
     }
 
     public function batch(): BelongsTo
