@@ -320,3 +320,40 @@ export type SystemSettingsMap = {
   institution_address: string | null
   system_email: string | null
 }
+
+export type AnnualSippProgram = {
+  id: number
+  name: string
+  code?: string
+}
+
+export type AnnualSippRow = {
+  id: number
+  student_name: string
+  entry_date: string
+  issues_concerns: string
+  solutions: string
+  recommendations: string
+  included: boolean
+}
+
+export type AnnualSippMeta = {
+  heading: string
+  signatory_prepared_name: string
+  signatory_prepared_title: string
+  signatory_certified_name: string
+  signatory_certified_title: string
+}
+
+export type AnnualSippIndex = {
+  programs: AnnualSippProgram[]
+  academic_years: string[]
+}
+
+export type AnnualSippReport = {
+  program: AnnualSippProgram
+  academic_year: string
+  status: 'draft' | 'finalized'
+  rows: AnnualSippRow[]
+  meta: AnnualSippMeta
+}
