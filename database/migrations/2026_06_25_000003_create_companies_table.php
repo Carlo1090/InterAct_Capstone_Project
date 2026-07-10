@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('contact_number', 30)->nullable();
             $table->string('head_name', 150)->nullable();
             $table->string('department_head', 150)->nullable();
+            $table->text('description')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamp('created_at')->useCurrent();
         });
