@@ -86,7 +86,7 @@ class CoordinatorBatchTest extends TestCase
             'sections' => [
                 ['key' => 'task_performed', 'label' => 'Task Performed', 'prompt' => '', 'required' => true, 'sipp' => false],
             ],
-            'word_limit' => 500,
+            'char_limit' => 1500,
             'is_active' => true,
         ]);
 

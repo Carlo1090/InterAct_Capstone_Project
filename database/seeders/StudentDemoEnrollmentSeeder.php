@@ -39,7 +39,7 @@ class StudentDemoEnrollmentSeeder extends Seeder
                     ['key' => 'solutions', 'label' => 'Solutions', 'prompt' => 'What solutions were applied or proposed?', 'required' => false, 'sipp' => true],
                     ['key' => 'recommendations', 'label' => 'Recommendations', 'prompt' => 'Any recommendations going forward?', 'required' => false, 'sipp' => true],
                 ],
-                'word_limit' => 500,
+                'char_limit' => 1500,
                 'is_active' => true,
             ]
         );
