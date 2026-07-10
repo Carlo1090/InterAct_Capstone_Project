@@ -171,7 +171,7 @@ export type JournalTemplateRecord = {
   program_id: number
   name: string
   sections: JournalTemplateSection[]
-  word_limit: number
+  char_limit: number
   is_active: boolean
   program?: Program
 }
@@ -181,7 +181,7 @@ export type JournalEntryStatus = 'draft' | 'submitted' | 'overdue' | 'missing'
 export type JournalEntryDetail = {
   entry_date: string
   sections: JournalTemplateSection[]
-  word_limit: number
+  char_limit: number
   status: JournalEntryStatus
   content: Record<string, string>
   submitted_at: string | null
