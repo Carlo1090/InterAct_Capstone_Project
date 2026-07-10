@@ -2,6 +2,8 @@
 import { onMounted, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
+import { showToast, confirmAction } from '@/lib/toast'
+import ToastHost from '@/components/ToastHost.vue'
 import type {
   AnnualSippIndex,
   AnnualSippMeta,
@@ -99,6 +101,7 @@ const onYearChange = async () => {
 }
 
 const deleteRow = (row: AnnualSippRow) => {
+  if (!confirmAction('Remove this row from the report? It will be excluded when you save.')) return
   rows.value = rows.value.filter((candidate) => candidate.id !== row.id)
   if (!deletedIds.value.includes(row.id)) {
     deletedIds.value.push(row.id)
@@ -131,7 +134,7 @@ const save = async (nextStatus: 'draft' | 'finalized') => {
       deleted_ids: deletedIds.value,
     })
     applyReport(data)
-    statusMessage.value = nextStatus === 'finalized' ? 'Report finalized.' : 'Draft saved.'
+    showToast(nextStatus === 'finalized' ? 'Report finalized.' : 'Draft saved.')
   } catch (error) {
     const responseData = axios.isAxiosError(error) ? error.response?.data : null
     errorMessage.value = responseData?.message ?? 'Unable to save the report.'
@@ -171,6 +174,7 @@ onMounted(loadIndex)
 
 <template>
   <section class="space-y-5">
+    <ToastHost />
     <div>
       <h2 class="text-2xl font-bold text-slate-950">Annual SIPP Report</h2>
       <p class="mt-1 text-sm text-slate-500">

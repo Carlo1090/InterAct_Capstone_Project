@@ -2,6 +2,8 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
+import { showToast, confirmAction } from '@/lib/toast'
+import ToastHost from '@/components/ToastHost.vue'
 import type { JournalTemplateRecord, JournalTemplateSection, Program } from '@/types/api'
 
 type TemplateForm = {
@@ -171,6 +173,7 @@ const performSave = async () => {
       lastSavedNotice.value = 'Template created.'
     }
 
+    showToast(editingTemplateId.value ? 'Template saved.' : 'Template created.')
     await load()
     closeModal()
   } catch (error) {
@@ -203,9 +206,13 @@ const cancelRemovalConfirm = () => {
 const toggleActive = async (template: JournalTemplateRecord) => {
   errorMessage.value = ''
 
+  // Deactivating is the crucial action — confirm first.
+  if (template.is_active && !confirmAction(`Deactivate the "${template.name}" template?`)) return
+
   try {
     await api.patch(`/api/coordinator/journal-templates/${template.id}/toggle-active`)
     await load()
+    showToast(template.is_active ? 'Template deactivated.' : 'Template activated.')
   } catch {
     errorMessage.value = 'Unable to update template status.'
   }
@@ -216,6 +223,7 @@ onMounted(load)
 
 <template>
   <section class="space-y-5">
+    <ToastHost />
     <div class="flex items-center justify-between gap-4">
       <div>
         <h2 class="text-2xl font-bold text-slate-950">Journal Templates</h2>

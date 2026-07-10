@@ -2,6 +2,8 @@
 import { onMounted, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
+import { showToast, confirmAction } from '@/lib/toast'
+import ToastHost from '@/components/ToastHost.vue'
 import type { HteIndex, HteMeta, HteReport, HteRow } from '@/types/api'
 
 const academicYears = ref<string[]>([])
@@ -88,6 +90,7 @@ const addManualRow = () => {
 }
 
 const deleteRow = (row: HteRow) => {
+  if (!confirmAction('Remove this row from the list? It will be excluded when you save.')) return
   if (!row.is_manual && typeof row.id === 'number' && !deletedIds.value.includes(row.id)) {
     deletedIds.value.push(row.id)
   }
@@ -126,7 +129,7 @@ const save = async (nextStatus: 'draft' | 'finalized') => {
       deleted_ids: deletedIds.value,
     })
     applyReport(data)
-    statusMessage.value = nextStatus === 'finalized' ? 'HTE list finalized.' : 'Draft saved.'
+    showToast(nextStatus === 'finalized' ? 'HTE list finalized.' : 'Draft saved.')
   } catch (error) {
     const responseData = axios.isAxiosError(error) ? error.response?.data : null
     errorMessage.value = responseData?.message ?? 'Unable to save the HTE list.'
@@ -165,6 +168,7 @@ onMounted(loadIndex)
 
 <template>
   <section class="space-y-5">
+    <ToastHost />
     <div>
       <h2 class="text-2xl font-bold text-slate-950">HTE &amp; Student Interns List</h2>
       <p class="mt-1 text-sm text-slate-500">

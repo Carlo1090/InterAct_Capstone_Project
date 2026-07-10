@@ -2,7 +2,17 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
+import { showToast } from '@/lib/toast'
+import ToastHost from '@/components/ToastHost.vue'
 import type { Batch, JournalTemplateRecord, Program } from '@/types/api'
+
+/** Format an ISO/Y-m-d date string to a human date, e.g. "May 9, 2026". */
+const formatDate = (value: string | null | undefined): string => {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+}
 
 type BatchForm = {
   program_id: number | null
@@ -87,8 +97,9 @@ const openEditModal = (batch: Batch) => {
   form.name = batch.name
   form.academic_year = batch.academic_year ?? String(new Date().getFullYear())
   form.semester = batch.semester ?? 'Internship'
-  form.start_date = batch.start_date
-  form.end_date = batch.end_date
+  // The API returns ISO datetimes; a <input type="date"> needs a bare Y-m-d.
+  form.start_date = batch.start_date?.slice(0, 10) ?? ''
+  form.end_date = batch.end_date?.slice(0, 10) ?? ''
   form.required_hours = batch.required_hours
   form.working_days_per_week = batch.working_days_per_week
   form.daily_reminder_time = batch.daily_reminder_time.slice(0, 5)
@@ -129,6 +140,7 @@ const save = async () => {
 
     await load()
     closeModal()
+    showToast(editingBatchId.value ? 'Batch updated.' : 'Batch created.')
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 422) {
       modalErrors.value = error.response.data.errors ?? {}
@@ -148,6 +160,7 @@ onMounted(load)
 
 <template>
   <section class="space-y-5">
+    <ToastHost />
     <div class="flex items-center justify-between gap-4">
       <div>
         <h2 class="text-2xl font-bold text-slate-950">Batches</h2>
@@ -190,8 +203,8 @@ onMounted(load)
             <td class="px-4 py-3 text-sm font-semibold text-slate-900">{{ batch.name }}</td>
             <td class="px-4 py-3 text-sm text-slate-700">{{ batch.program?.name ?? '—' }}</td>
             <td class="px-4 py-3 text-sm text-slate-500">{{ batch.academic_year }} · {{ batch.semester }}</td>
-            <td class="px-4 py-3 text-sm text-slate-500">{{ batch.start_date }}</td>
-            <td class="px-4 py-3 text-sm text-slate-500">{{ batch.end_date }}</td>
+            <td class="px-4 py-3 text-sm text-slate-500">{{ formatDate(batch.start_date) }}</td>
+            <td class="px-4 py-3 text-sm text-slate-500">{{ formatDate(batch.end_date) }}</td>
             <td class="px-4 py-3">
               <span
                 class="rounded-full px-3 py-1 text-xs font-bold"
