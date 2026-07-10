@@ -98,4 +98,25 @@ class UserControllerTest extends TestCase
 
         $this->patchJson("/api/admin/users/{$target->id}/temporary-password")->assertStatus(403);
     }
+
+    public function test_admin_can_reactivate_a_deactivated_user(): void
+    {
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        $target = User::factory()->create(['role' => 'student', 'is_active' => false]);
+
+        $response = $this->patchJson("/api/admin/users/{$target->id}/activate");
+
+        $response->assertOk();
+        $this->assertDatabaseHas('users', ['id' => $target->id, 'is_active' => true]);
+    }
+
+    public function test_non_admin_cannot_activate_a_user(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'student']), ['*']);
+
+        $target = User::factory()->create(['role' => 'student', 'is_active' => false]);
+
+        $this->patchJson("/api/admin/users/{$target->id}/activate")->assertStatus(403);
+    }
 }

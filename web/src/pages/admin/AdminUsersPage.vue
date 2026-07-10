@@ -133,6 +133,15 @@ const deactivateUser = async (user: User) => {
   }
 }
 
+const activateUser = async (user: User) => {
+  try {
+    await api.patch(`/api/admin/users/${user.id}/activate`)
+    await loadUsers()
+  } catch {
+    errorMessage.value = 'Unable to activate user.'
+  }
+}
+
 onMounted(() => {
   loadUsers()
   loadDepartments()
@@ -211,6 +220,14 @@ onMounted(() => {
                 @click="deactivateUser(user)"
               >
                 Deactivate
+              </button>
+              <button
+                v-else
+                type="button"
+                class="rounded-md border border-green-200 px-3 py-1.5 text-sm font-medium text-green-700 transition hover:bg-green-50"
+                @click="activateUser(user)"
+              >
+                Activate
               </button>
             </td>
           </tr>

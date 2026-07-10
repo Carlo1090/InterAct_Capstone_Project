@@ -19,6 +19,7 @@ type EditBatchPayload = {
   name: string
   end_date: string
   coordinator_id: number | null
+  is_active: boolean
 }
 
 const batches = ref<Batch[]>([])
@@ -46,7 +47,7 @@ const isEditModalOpen = ref(false)
 const editingBatchId = ref<number | null>(null)
 const isEditSaving = ref(false)
 const editModalError = ref('')
-const editForm = ref<EditBatchPayload>({ name: '', end_date: '', coordinator_id: null })
+const editForm = ref<EditBatchPayload>({ name: '', end_date: '', coordinator_id: null, is_active: true })
 
 const isViewOpen = ref(false)
 const isViewLoading = ref(false)
@@ -148,6 +149,7 @@ const openEditModal = async (batch: Batch) => {
     name: batch.name,
     end_date: batch.end_date,
     coordinator_id: batch.coordinator?.id ?? null,
+    is_active: batch.is_active ?? true,
   }
   editModalError.value = ''
   isEditModalOpen.value = true
@@ -230,12 +232,13 @@ onMounted(loadBatches)
             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Coordinator</th>
             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Start Date</th>
             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">End Date</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-200">
           <tr v-if="batches.length === 0">
-            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="7">No batches found.</td>
+            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="8">No batches found.</td>
           </tr>
           <tr v-for="batch in batches" :key="batch.id">
             <td class="px-4 py-3 text-sm font-medium text-slate-900">{{ batch.name }}</td>
@@ -244,6 +247,14 @@ onMounted(loadBatches)
             <td class="px-4 py-3 text-sm text-slate-700">{{ batch.coordinator?.name ?? 'No Coordinator' }}</td>
             <td class="px-4 py-3 text-sm text-slate-700">{{ batch.start_date }}</td>
             <td class="px-4 py-3 text-sm text-slate-700">{{ batch.end_date }}</td>
+            <td class="px-4 py-3">
+              <span
+                class="rounded-full px-3 py-1 text-xs font-bold"
+                :class="batch.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
+              >
+                {{ batch.is_active ? 'Active' : 'Inactive' }}
+              </span>
+            </td>
             <td class="px-4 py-3">
               <div class="flex gap-2">
                 <button
@@ -369,6 +380,12 @@ onMounted(loadBatches)
                 {{ coordinator.name }}
               </option>
             </select>
+          </div>
+          <div>
+            <label class="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <input v-model="editForm.is_active" type="checkbox" />
+              Active
+            </label>
           </div>
         </div>
 

@@ -7,6 +7,7 @@ const navItems = [
   { label: 'Dashboard', to: '/admin/dashboard', badge: '' },
   { label: 'Users', to: '/admin/users', badge: '' },
   { label: 'Departments', to: '/admin/departments', badge: '' },
+  { label: 'Programs', to: '/admin/programs', badge: '' },
   { label: 'Batches', to: '/admin/batches', badge: '' },
   { label: 'Companies', to: '/admin/companies', badge: '' },
   { label: 'Student Info Sheet', to: '/admin/info-sheets', badge: '' },

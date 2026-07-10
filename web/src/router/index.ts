@@ -48,6 +48,11 @@ const router = createRouter({
           meta: { title: 'Departments' },
         },
         {
+          path: 'programs',
+          component: () => import('@/pages/admin/AdminProgramsPage.vue'),
+          meta: { title: 'Programs' },
+        },
+        {
           path: 'batches',
           component: () => import('@/pages/admin/AdminBatchesPage.vue'),
           meta: { title: 'Batches' },

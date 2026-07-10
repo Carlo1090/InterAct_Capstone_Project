@@ -91,6 +91,15 @@ class UserController extends Controller
         return response()->json(['message' => 'User deactivated.']);
     }
 
+    public function activate(User $user): JsonResponse
+    {
+        $user->update(['is_active' => true]);
+
+        SystemLog::record('User Activated', "Activated account for {$user->name}");
+
+        return response()->json(['message' => 'User activated.']);
+    }
+
     public function issueTemporaryPassword(User $user): JsonResponse
     {
         $temporaryPassword = Str::password(10);

@@ -4,6 +4,12 @@ import axios from 'axios'
 import api from '@/lib/axios'
 import type { Department, DepartmentDetail, PaginatedResponse, User } from '@/types/api'
 
+type DepartmentForm = {
+  code: string
+  name: string
+  is_active: boolean
+}
+
 const departments = ref<Department[]>([])
 const isLoading = ref(true)
 const errorMessage = ref('')
@@ -18,6 +24,12 @@ const coordinatorToAssign = ref('')
 const isAssigningCoordinator = ref(false)
 const removingCoordinatorId = ref<number | null>(null)
 const coordinatorError = ref('')
+
+const isModalOpen = ref(false)
+const editingDepartmentId = ref<number | null>(null)
+const isSaving = ref(false)
+const modalError = ref('')
+const departmentForm = ref<DepartmentForm>({ code: '', name: '', is_active: true })
 
 const loadDepartments = async () => {
   isLoading.value = true
@@ -107,6 +119,59 @@ const removeCoordinator = async (coordinatorId: number) => {
   }
 }
 
+const resetForm = () => {
+  departmentForm.value = { code: '', name: '', is_active: true }
+  modalError.value = ''
+}
+
+const openCreateModal = () => {
+  editingDepartmentId.value = null
+  resetForm()
+  isModalOpen.value = true
+}
+
+const openEditModal = (department: Department) => {
+  editingDepartmentId.value = department.id
+  departmentForm.value = {
+    code: department.code,
+    name: department.name,
+    is_active: department.is_active,
+  }
+  modalError.value = ''
+  isModalOpen.value = true
+}
+
+const closeModal = () => {
+  isModalOpen.value = false
+  resetForm()
+}
+
+const saveDepartment = async () => {
+  isSaving.value = true
+  modalError.value = ''
+
+  try {
+    if (editingDepartmentId.value) {
+      await api.put(`/api/admin/departments/${editingDepartmentId.value}`, {
+        name: departmentForm.value.name,
+        is_active: departmentForm.value.is_active,
+      })
+    } else {
+      await api.post('/api/admin/departments', {
+        code: departmentForm.value.code,
+        name: departmentForm.value.name,
+      })
+    }
+    closeModal()
+    await loadDepartments()
+  } catch (error) {
+    const data = axios.isAxiosError(error) ? error.response?.data : null
+    modalError.value = data?.message ?? 'Unable to save department. Please check the fields and try again.'
+  } finally {
+    isSaving.value = false
+  }
+}
+
 onMounted(() => {
   loadDepartments()
   loadCoordinatorOptions()
@@ -115,7 +180,16 @@ onMounted(() => {
 
 <template>
   <section class="space-y-5">
-    <h2 class="text-2xl font-bold text-slate-950">Departments</h2>
+    <div class="flex items-center justify-between gap-4">
+      <h2 class="text-2xl font-bold text-slate-950">Departments</h2>
+      <button
+        type="button"
+        class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+        @click="openCreateModal"
+      >
+        + Add Department
+      </button>
+    </div>
 
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
     <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
@@ -131,23 +205,83 @@ onMounted(() => {
         class="flex flex-col justify-between rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200"
       >
         <div>
-          <span class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-700">
-            {{ department.code }}
-          </span>
+          <div class="flex items-center justify-between gap-2">
+            <span class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-700">
+              {{ department.code }}
+            </span>
+            <span
+              class="rounded-full px-2 py-0.5 text-xs font-bold"
+              :class="department.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
+            >
+              {{ department.is_active ? 'Active' : 'Inactive' }}
+            </span>
+          </div>
           <h3 class="mt-3 text-base font-bold text-slate-950">{{ department.name }}</h3>
           <p class="mt-2 text-sm text-slate-500">
             {{ department.programs_count ?? 0 }} program{{ (department.programs_count ?? 0) === 1 ? '' : 's' }}
           </p>
         </div>
 
-        <button
-          type="button"
-          class="mt-4 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700"
-          @click="openViewModal(department)"
-        >
-          View
-        </button>
+        <div class="mt-4 flex gap-2">
+          <button
+            type="button"
+            class="flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700"
+            @click="openViewModal(department)"
+          >
+            View
+          </button>
+          <button
+            type="button"
+            class="flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700"
+            @click="openEditModal(department)"
+          >
+            Edit
+          </button>
+        </div>
       </div>
+    </div>
+
+    <!-- Create / Edit modal -->
+    <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4">
+      <section class="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-semibold text-slate-950">{{ editingDepartmentId ? 'Edit Department' : 'Add Department' }}</h3>
+          <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeModal">Cancel</button>
+        </div>
+
+        <div class="mt-6 space-y-4">
+          <div v-if="!editingDepartmentId">
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="department-code">Code</label>
+            <input id="department-code" v-model="departmentForm.code" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2" />
+          </div>
+          <div>
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="department-name">Name</label>
+            <input id="department-name" v-model="departmentForm.name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2" />
+          </div>
+          <div v-if="editingDepartmentId">
+            <label class="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <input v-model="departmentForm.is_active" type="checkbox" />
+              Active
+            </label>
+          </div>
+        </div>
+
+        <p v-if="modalError" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ modalError }}</p>
+
+        <div class="mt-6 flex justify-end gap-3">
+          <button type="button" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" @click="closeModal">
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-400"
+            :disabled="isSaving"
+            @click="saveDepartment"
+          >
+            {{ isSaving ? 'Saving...' : 'Save' }}
+          </button>
+        </div>
+      </section>
     </div>
 
     <!-- View (read-only preview) modal -->

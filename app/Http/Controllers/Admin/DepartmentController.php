@@ -4,11 +4,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AssignCoordinatorRequest;
+use App\Http\Requests\Admin\StoreDepartmentRequest;
+use App\Http\Requests\Admin\UpdateDepartmentRequest;
 use App\Models\Department;
 use App\Models\SystemLog;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class DepartmentController extends Controller
 {
@@ -54,16 +55,11 @@ class DepartmentController extends Controller
         return response()->json($department->coordinators()->orderBy('name')->get());
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(StoreDepartmentRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'code' => ['required', 'string', 'max:20', 'unique:departments,code'],
-            'name' => ['required', 'string', 'max:150'],
-        ]);
-
         $department = Department::create([
-            ...$validated,
-            'is_active' => true,
+            ...$request->validated(),
+            'is_active' => $request->boolean('is_active', true),
         ]);
 
         SystemLog::record('Department Created', "Created department {$department->name} ({$department->code})");
@@ -71,13 +67,9 @@ class DepartmentController extends Controller
         return response()->json($department, 201);
     }
 
-    public function update(Request $request, Department $department): JsonResponse
+    public function update(UpdateDepartmentRequest $request, Department $department): JsonResponse
     {
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:150'],
-        ]);
-
-        $department->update($validated);
+        $department->update($request->validated());
 
         SystemLog::record('Department Updated', "Updated department {$department->name}");
 

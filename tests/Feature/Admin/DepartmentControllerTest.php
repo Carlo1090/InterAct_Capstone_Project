@@ -174,6 +174,49 @@ class DepartmentControllerTest extends TestCase
             ->count());
     }
 
+    public function test_store_creates_a_department_via_the_form_request(): void
+    {
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        $response = $this->postJson('/api/admin/departments', [
+            'code' => 'CABM-H',
+            'name' => 'College of Hospitality Management',
+        ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('departments', ['code' => 'CABM-H', 'is_active' => true]);
+    }
+
+    public function test_store_requires_a_unique_code(): void
+    {
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        Department::create(['code' => 'CAST', 'name' => 'College of Arts, Sciences and Technology', 'is_active' => true]);
+
+        $response = $this->postJson('/api/admin/departments', [
+            'code' => 'CAST',
+            'name' => 'Duplicate Department',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['code']);
+    }
+
+    public function test_update_can_toggle_is_active(): void
+    {
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        $department = Department::create(['code' => 'CAST', 'name' => 'College of Arts, Sciences and Technology', 'is_active' => true]);
+
+        $response = $this->putJson("/api/admin/departments/{$department->id}", [
+            'name' => 'College of Arts, Sciences and Technology',
+            'is_active' => false,
+        ]);
+
+        $response->assertOk();
+        $this->assertDatabaseHas('departments', ['id' => $department->id, 'is_active' => false]);
+    }
+
     public function test_admin_removes_an_assigned_coordinator(): void
     {
         Sanctum::actingAs($this->admin(), ['*']);

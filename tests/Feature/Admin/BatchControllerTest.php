@@ -103,6 +103,18 @@ class BatchControllerTest extends TestCase
         ]);
     }
 
+    public function test_update_can_toggle_is_active(): void
+    {
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        $batch = $this->makeBatch();
+
+        $response = $this->putJson("/api/admin/batches/{$batch->id}", ['is_active' => false]);
+
+        $response->assertOk();
+        $this->assertDatabaseHas('batches', ['id' => $batch->id, 'is_active' => false]);
+    }
+
     public function test_non_admin_cannot_access_batch_show_or_update(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => 'coordinator']), ['*']);

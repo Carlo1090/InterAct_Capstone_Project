@@ -37,6 +37,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])
         Route::post('users', [UserController::class, 'store']);
         Route::put('users/{user}', [UserController::class, 'update']);
         Route::patch('users/{user}/deactivate', [UserController::class, 'deactivate']);
+        Route::patch('users/{user}/activate', [UserController::class, 'activate']);
         Route::patch('users/{user}/temporary-password', [UserController::class, 'issueTemporaryPassword']);
 
         Route::get('departments', [DepartmentController::class, 'index']);
@@ -47,7 +48,9 @@ Route::middleware(['auth:sanctum', 'role:admin'])
         Route::delete('departments/{department}/coordinators/{coordinator}', [DepartmentController::class, 'removeCoordinator']);
 
         Route::get('programs', [ProgramController::class, 'index']);
+        Route::get('programs/{program}', [ProgramController::class, 'show']);
         Route::post('programs', [ProgramController::class, 'store']);
+        Route::put('programs/{program}', [ProgramController::class, 'update']);
 
         Route::get('batches', [BatchController::class, 'index']);
         Route::get('batches/{batch}', [BatchController::class, 'show']);

@@ -2,6 +2,7 @@ export type Department = {
   id: number
   code: string
   name: string
+  is_active: boolean
   programs_count?: number
 }
 
@@ -9,6 +10,7 @@ export type Program = {
   id: number
   code?: string
   name: string
+  is_active: boolean
   department: Department
 }
 

@@ -66,6 +66,7 @@ class BatchController extends Controller
             'name' => ['sometimes', 'string', 'max:150'],
             'end_date' => ['sometimes', 'date'],
             'coordinator_id' => ['sometimes', 'exists:users,id'],
+            'is_active' => ['sometimes', 'boolean'],
         ]);
 
         $batch->update($validated);
