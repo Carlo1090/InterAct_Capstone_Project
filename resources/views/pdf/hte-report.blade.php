@@ -25,7 +25,7 @@
             overflow-wrap: break-word;
             word-break: break-word;
         }
-        table.hte th { font-weight: bold; text-align: center; background: #f2f2f2; }
+        table.hte th { font-weight: bold; text-align: center; }
         .col-hte { width: 28%; }
         .col-name { width: 24%; }
         .col-program { width: 12%; text-align: center; }

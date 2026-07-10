@@ -26,7 +26,7 @@
             overflow-wrap: break-word;
             word-break: break-word;
         }
-        table.sipp th { font-weight: bold; text-align: center; background: #f2f2f2; }
+        table.sipp th { font-weight: bold; text-align: center; }
 
         table.footer { width: 100%; margin-top: 40px; }
         table.footer td { width: 50%; vertical-align: top; font-size: 12px; padding-right: 12px; }
