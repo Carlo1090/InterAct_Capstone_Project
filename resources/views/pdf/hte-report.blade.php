@@ -7,6 +7,7 @@
         @page { margin: 1.6cm 1.4cm; }
         body { font-family: "Times New Roman", Times, serif; font-size: 12px; color: #000; }
         .center { text-align: center; }
+        .annex { text-align: right; font-weight: bold; font-size: 12px; margin-bottom: 4px; }
         .header-lines p { margin: 0; line-height: 1.35; }
         .header-lines .title { font-weight: bold; text-transform: uppercase; }
         .header-lines .ay { margin-top: 6px; font-weight: bold; }
@@ -36,9 +37,11 @@
         table.footer td { width: 50%; vertical-align: top; font-size: 12px; padding-right: 12px; }
         .sig-label { padding-bottom: 42px; }
         .sig-name { font-weight: bold; text-transform: uppercase; }
+        .sig-caption { font-size: 10px; font-style: italic; }
     </style>
 </head>
 <body>
+    <div class="annex">Annex "D"</div>
     <div class="center header-lines">
         <p class="title">REPORT ON THE</p>
         <p class="title">LIST HOST TRAINING ESTABLISHMENTS (HTEs) AND STUDENT INTERNS PARTICIPATING IN THE</p>
@@ -90,11 +93,13 @@
         <tr>
             <td>
                 <span class="sig-name">{{ $meta['signatory_prepared_name'] }}</span><br>
-                {{ $meta['signatory_prepared_title'] }}
+                {{ $meta['signatory_prepared_title'] }}<br>
+                <span class="sig-caption">(Name and Signature)</span>
             </td>
             <td>
                 <span class="sig-name">{{ $meta['signatory_certified_name'] }}</span><br>
-                {{ $meta['signatory_certified_title'] }}
+                {{ $meta['signatory_certified_title'] }}<br>
+                <span class="sig-caption">(Name and Signature)</span>
             </td>
         </tr>
     </table>
