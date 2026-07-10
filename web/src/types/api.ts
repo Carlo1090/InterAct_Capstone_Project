@@ -415,3 +415,23 @@ export type CoordinatorDashboard = {
   students_behind: StudentBehind[]
   week: { start: string; end: string }
 }
+
+export type JournalActivityRow = {
+  student_id: number
+  student_name: string
+  company_id: number | null
+  company: string
+  program: string
+  submitted_count: number
+  missing_count: number
+  day_status: 'submitted' | 'missing' | null
+  submitted_at: string | null
+}
+
+export type JournalActivityResponse = {
+  from: string
+  to: string
+  is_single_day: boolean
+  companies: { id: number; name: string }[]
+  rows: JournalActivityRow[]
+}

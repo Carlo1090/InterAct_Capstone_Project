@@ -33,7 +33,10 @@ class CoordinatorDashboardController extends Controller
             ->count();
 
         // (b) Journals submitted vs missing this week (Mon–today), within scope.
-        $entriesThisWeek = fn () => JournalEntry::whereBetween('entry_date', [$weekStart, $today])
+        // whereDate keeps same-day matches correct across DB drivers (SQLite
+        // stores a time component on the date column, MySQL does not).
+        $entriesThisWeek = fn () => JournalEntry::whereDate('entry_date', '>=', $weekStart)
+            ->whereDate('entry_date', '<=', $today)
             ->whereHas('batch', fn ($query) => $query->whereIn('program_id', $programIds));
 
         $journalsSubmitted = $entriesThisWeek()->where('status', 'submitted')->count();
@@ -45,7 +48,8 @@ class CoordinatorDashboardController extends Controller
             ->count();
 
         // (d) Students behind = in-scope active interns with ≥1 missing entry this week.
-        $missingByStudent = JournalEntry::whereBetween('entry_date', [$weekStart, $today])
+        $missingByStudent = JournalEntry::whereDate('entry_date', '>=', $weekStart)
+            ->whereDate('entry_date', '<=', $today)
             ->whereIn('status', self::MISSING_STATUSES)
             ->whereHas('batch', fn ($query) => $query->whereIn('program_id', $programIds))
             ->select('student_id', DB::raw('count(*) as missing_count'))
