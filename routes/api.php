@@ -25,6 +25,7 @@ use App\Http\Controllers\Student\WeeklyActivityLogController;
 use App\Http\Controllers\Student\WeeklyLogController;
 use App\Http\Controllers\Supervisor\SupervisorDashboardController;
 use App\Http\Controllers\Supervisor\SupervisorInternController;
+use App\Http\Controllers\Supervisor\SupervisorJournalController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -153,4 +154,9 @@ Route::middleware(['auth:sanctum', 'role:supervisor'])
     ->group(function () {
         Route::get('dashboard', [SupervisorDashboardController::class, 'index']);
         Route::get('interns', [SupervisorInternController::class, 'index']);
+
+        Route::get('journals', [SupervisorJournalController::class, 'index']);
+        Route::get('journals/{weeklyLog}', [SupervisorJournalController::class, 'show']);
+        Route::post('journals/{weeklyLog}/approve', [SupervisorJournalController::class, 'approve']);
+        Route::post('journals/{weeklyLog}/return', [SupervisorJournalController::class, 'returnLog']);
     });
