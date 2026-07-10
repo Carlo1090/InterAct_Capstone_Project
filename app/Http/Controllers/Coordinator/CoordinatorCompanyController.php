@@ -1,0 +1,170 @@
+<?php
+
+namespace App\Http\Controllers\Coordinator;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Coordinator\AttachSupervisorRequest;
+use App\Http\Requests\Coordinator\CreateSupervisorRequest;
+use App\Http\Requests\Coordinator\StoreCompanyRequest;
+use App\Http\Requests\Coordinator\UpdateCompanyRequest;
+use App\Models\BatchStudent;
+use App\Models\Company;
+use App\Models\CompanySupervisor;
+use App\Models\User;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Collection;
+
+class CoordinatorCompanyController extends Controller
+{
+    /**
+     * Scoped list: companies used by the coordinator's department students,
+     * plus companies not yet linked to any enrollment (which includes any the
+     * coordinator just created). See scopedCompanyIds().
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $programIds = $user->coordinatorProgramIds();
+        $scopedIds = $this->scopedCompanyIds($user);
+
+        $companies = Company::whereIn('id', $scopedIds)
+            ->when(
+                $request->filled('search'),
+                fn ($query) => $query->where('name', 'like', '%'.$request->string('search').'%')
+            )
+            ->withCount([
+                'batchStudents as active_interns_count' => fn ($query) => $query
+                    ->where('status', 'active')
+                    ->whereHas('batch', fn ($q) => $q->whereIn('program_id', $programIds)),
+            ])
+            ->with('supervisors.user:id,name,email')
+            ->orderBy('name')
+            ->get();
+
+        return response()->json($companies);
+    }
+
+    public function show(Request $request, Company $company): JsonResponse
+    {
+        $this->authorizeCompany($request->user(), $company);
+
+        return response()->json($this->companyPayload($request->user(), $company));
+    }
+
+    public function store(StoreCompanyRequest $request): JsonResponse
+    {
+        $company = Company::create([
+            ...$request->validated(),
+            'is_active' => $request->boolean('is_active', true),
+        ]);
+
+        return response()->json($this->companyPayload($request->user(), $company), 201);
+    }
+
+    public function update(UpdateCompanyRequest $request, Company $company): JsonResponse
+    {
+        $this->authorizeCompany($request->user(), $company);
+
+        $company->update($request->validated());
+
+        return response()->json($this->companyPayload($request->user(), $company));
+    }
+
+    /**
+     * Attach an existing supervisor-role user to the company with a position.
+     */
+    public function attachSupervisor(AttachSupervisorRequest $request, Company $company): JsonResponse
+    {
+        $this->authorizeCompany($request->user(), $company);
+
+        CompanySupervisor::firstOrCreate(
+            ['company_id' => $company->id, 'user_id' => $request->integer('user_id')],
+            ['position' => $request->input('position')]
+        );
+
+        return response()->json($this->companyPayload($request->user(), $company));
+    }
+
+    /**
+     * Create a brand-new supervisor account (role forced to supervisor) and
+     * attach it to the company. Mirrors Admin\UserController::store.
+     */
+    public function createSupervisor(CreateSupervisorRequest $request, Company $company): JsonResponse
+    {
+        $this->authorizeCompany($request->user(), $company);
+
+        $supervisor = User::create([
+            'name' => $request->input('name'),
+            'email' => $request->input('email'),
+            'password' => Hash::make($request->input('password')),
+            'role' => 'supervisor',
+            'is_active' => true,
+        ]);
+
+        CompanySupervisor::create([
+            'company_id' => $company->id,
+            'user_id' => $supervisor->id,
+            'position' => $request->input('position'),
+        ]);
+
+        return response()->json($this->companyPayload($request->user(), $company), 201);
+    }
+
+    public function detachSupervisor(Request $request, Company $company, User $supervisor): JsonResponse
+    {
+        $this->authorizeCompany($request->user(), $company);
+
+        CompanySupervisor::where('company_id', $company->id)
+            ->where('user_id', $supervisor->id)
+            ->delete();
+
+        return response()->json($this->companyPayload($request->user(), $company));
+    }
+
+    /**
+     * Company IDs a coordinator may see/manage: those referenced by
+     * enrollments whose batch program is in their scope, unioned with
+     * companies not yet linked to any enrollment.
+     */
+    private function scopedCompanyIds(User $coordinator): Collection
+    {
+        $programIds = $coordinator->coordinatorProgramIds();
+
+        $usedIds = BatchStudent::whereHas('batch', fn ($query) => $query->whereIn('program_id', $programIds))
+            ->pluck('company_id')
+            ->filter()
+            ->unique();
+
+        $unlinkedIds = Company::whereDoesntHave('batchStudents')->pluck('id');
+
+        return $usedIds->merge($unlinkedIds)->unique()->values();
+    }
+
+    private function authorizeCompany(User $coordinator, Company $company): void
+    {
+        abort_unless(
+            $this->scopedCompanyIds($coordinator)->contains($company->id),
+            403,
+            'You do not have access to this company.'
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function companyPayload(User $coordinator, Company $company): array
+    {
+        $programIds = $coordinator->coordinatorProgramIds();
+
+        $company->loadCount([
+            'batchStudents as active_interns_count' => fn ($query) => $query
+                ->where('status', 'active')
+                ->whereHas('batch', fn ($q) => $q->whereIn('program_id', $programIds)),
+        ]);
+        $company->load('supervisors.user:id,name,email');
+
+        return $company->toArray();
+    }
+}

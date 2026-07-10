@@ -435,3 +435,25 @@ export type JournalActivityResponse = {
   companies: { id: number; name: string }[]
   rows: JournalActivityRow[]
 }
+
+export type CompanySupervisorRecord = {
+  id: number
+  user_id: number
+  position: string | null
+  user: { id: number; name: string; email: string } | null
+}
+
+export type CoordinatorCompany = {
+  id: number
+  name: string
+  address: string
+  location: string | null
+  industry: string | null
+  head_name: string | null
+  department_head: string | null
+  contact_number: string | null
+  description: string | null
+  is_active: boolean
+  active_interns_count?: number
+  supervisors?: CompanySupervisorRecord[]
+}

@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\SystemSettingController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Coordinator\AnnualSippReportController;
 use App\Http\Controllers\Coordinator\BatchController as CoordinatorBatchController;
+use App\Http\Controllers\Coordinator\CoordinatorCompanyController;
 use App\Http\Controllers\Coordinator\CoordinatorDashboardController;
 use App\Http\Controllers\Coordinator\CoordinatorJournalActivityController;
 use App\Http\Controllers\Coordinator\EnrollmentController;
@@ -68,6 +69,14 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
     ->group(function () {
         Route::get('dashboard', [CoordinatorDashboardController::class, 'index']);
         Route::get('journal-activities', [CoordinatorJournalActivityController::class, 'index']);
+
+        Route::get('companies', [CoordinatorCompanyController::class, 'index']);
+        Route::post('companies', [CoordinatorCompanyController::class, 'store']);
+        Route::get('companies/{company}', [CoordinatorCompanyController::class, 'show']);
+        Route::put('companies/{company}', [CoordinatorCompanyController::class, 'update']);
+        Route::post('companies/{company}/supervisors', [CoordinatorCompanyController::class, 'attachSupervisor']);
+        Route::post('companies/{company}/supervisors/new', [CoordinatorCompanyController::class, 'createSupervisor']);
+        Route::delete('companies/{company}/supervisors/{supervisor}', [CoordinatorCompanyController::class, 'detachSupervisor']);
 
         Route::get('journal-templates', [JournalTemplateController::class, 'index']);
         Route::post('journal-templates', [JournalTemplateController::class, 'store']);
