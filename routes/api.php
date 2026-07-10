@@ -93,6 +93,7 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
 
         Route::get('students/enrollable', [EnrollmentController::class, 'enrollableStudents']);
         Route::get('enrollment-options', [EnrollmentController::class, 'options']);
+        Route::post('accounts', [EnrollmentController::class, 'createAccount']);
         Route::get('roster', [EnrollmentController::class, 'roster']);
         Route::post('enrollments', [EnrollmentController::class, 'store']);
         Route::put('enrollments/{batchStudent}', [EnrollmentController::class, 'update']);

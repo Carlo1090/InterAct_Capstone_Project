@@ -34,6 +34,77 @@ const enrollForm = reactive({
   assigned_division: '',
 })
 
+// Account creation — SEPARATE from enrollment. Creating a student/supervisor
+// only makes their login; enrollment (above) still places them into a batch.
+const successMessage = ref('')
+
+const isAccountModalOpen = ref(false)
+const isCreatingAccount = ref(false)
+const accountErrors = ref<Record<string, string[]>>({})
+const accountMessage = ref('')
+
+const accountForm = reactive({
+  role: 'student' as 'student' | 'supervisor',
+  name: '',
+  email: '',
+  password: '',
+  program_id: null as number | null,
+  student_id_number: '',
+})
+
+const openAccountModal = async () => {
+  accountForm.role = 'student'
+  accountForm.name = ''
+  accountForm.email = ''
+  accountForm.password = ''
+  accountForm.program_id = null
+  accountForm.student_id_number = ''
+  accountErrors.value = {}
+  accountMessage.value = ''
+  isAccountModalOpen.value = true
+  await loadEnrollmentData()
+}
+
+const closeAccountModal = () => {
+  isAccountModalOpen.value = false
+}
+
+const submitAccount = async () => {
+  const label = accountForm.role === 'student' ? 'student' : 'supervisor'
+  if (!window.confirm(`Create a new ${label} account for ${accountForm.name || 'this person'}?`)) return
+
+  isCreatingAccount.value = true
+  accountErrors.value = {}
+  accountMessage.value = ''
+
+  try {
+    const payload: Record<string, unknown> = {
+      role: accountForm.role,
+      name: accountForm.name,
+      email: accountForm.email,
+      password: accountForm.password,
+    }
+    if (accountForm.role === 'student') {
+      payload.program_id = accountForm.program_id
+      if (accountForm.student_id_number) payload.student_id_number = accountForm.student_id_number
+    }
+
+    await api.post('/api/coordinator/accounts', payload)
+    successMessage.value = `${label.charAt(0).toUpperCase() + label.slice(1)} account created for ${accountForm.name}.`
+    closeAccountModal()
+    if (accountForm.role === 'student') await loadEnrollmentData()
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 422) {
+      accountErrors.value = error.response.data.errors ?? {}
+      accountMessage.value = error.response.data.message ?? 'Please fix the errors below.'
+    } else {
+      accountMessage.value = 'Unable to create the account.'
+    }
+  } finally {
+    isCreatingAccount.value = false
+  }
+}
+
 const loadRoster = async () => {
   isLoading.value = true
   errorMessage.value = ''
@@ -138,11 +209,17 @@ onMounted(loadRoster)
         <option value="">All Statuses</option>
         <option v-for="status in filters.statuses" :key="status" :value="status">{{ status }}</option>
       </select>
-      <button type="button" class="ml-auto rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700" @click="openEnrollModal">
-        + Enroll Student
-      </button>
+      <div class="ml-auto flex items-center gap-2">
+        <button type="button" class="rounded-md border border-blue-600 bg-white px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-50" @click="openAccountModal">
+          + Create Account
+        </button>
+        <button type="button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700" @click="openEnrollModal">
+          + Enroll Student
+        </button>
+      </div>
     </div>
 
+    <p v-if="successMessage" class="rounded-md bg-green-50 px-4 py-2 text-sm text-green-700">{{ successMessage }}</p>
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
     <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
 
@@ -253,6 +330,79 @@ onMounted(loadRoster)
             @click="submitEnrollment"
           >
             {{ isSaving ? 'Enrolling...' : 'Enroll' }}
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <!-- Create Account modal — separate from enrollment (login only) -->
+    <div v-if="isAccountModalOpen" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
+      <section class="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-lg font-semibold text-slate-950">Create Account</h3>
+            <p class="mt-0.5 text-xs text-slate-500">Creates a login only. Enroll the student separately to place them into a batch.</p>
+          </div>
+          <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeAccountModal">Cancel</button>
+        </div>
+
+        <div class="mt-5 space-y-4">
+          <div>
+            <span class="mb-2 block text-sm font-medium text-slate-700">Account Type</span>
+            <div class="flex gap-2">
+              <label class="flex flex-1 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm" :class="accountForm.role === 'student' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-300 text-slate-600'">
+                <input v-model="accountForm.role" type="radio" value="student" /> Student
+              </label>
+              <label class="flex flex-1 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm" :class="accountForm.role === 'supervisor' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-300 text-slate-600'">
+                <input v-model="accountForm.role" type="radio" value="supervisor" /> Supervisor
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-name">Full Name</label>
+            <input id="acct-name" v-model="accountForm.name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-email">Email</label>
+            <input id="acct-email" v-model="accountForm.email" type="email" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-password">Password (min 8)</label>
+            <input id="acct-password" v-model="accountForm.password" type="password" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+
+          <template v-if="accountForm.role === 'student'">
+            <div>
+              <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-program">Program</label>
+              <select id="acct-program" v-model.number="accountForm.program_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                <option :value="null">Select Program</option>
+                <option v-for="program in enrollmentOptions.programs ?? []" :key="program.id" :value="program.id">
+                  {{ program.code ?? program.name }}
+                </option>
+              </select>
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-sid">Student ID Number (optional)</label>
+              <input id="acct-sid" v-model="accountForm.student_id_number" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            </div>
+          </template>
+        </div>
+
+        <div v-if="Object.keys(accountErrors).length > 0" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+          <p v-for="(messages, field) in accountErrors" :key="field">{{ field }}: {{ messages.join(' ') }}</p>
+        </div>
+        <p v-if="accountMessage" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ accountMessage }}</p>
+
+        <div class="mt-6 flex justify-end gap-3">
+          <button type="button" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" @click="closeAccountModal">Cancel</button>
+          <button
+            type="button"
+            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-blue-300"
+            :disabled="isCreatingAccount"
+            @click="submitAccount"
+          >
+            {{ isCreatingAccount ? 'Creating...' : 'Create Account' }}
           </button>
         </div>
       </section>

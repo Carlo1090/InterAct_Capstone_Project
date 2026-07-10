@@ -79,9 +79,16 @@ export type EnrollmentOptionSupervisor = {
   email: string
 }
 
+export type EnrollmentOptionProgram = {
+  id: number
+  name: string
+  code?: string
+}
+
 export type EnrollmentOptions = {
   companies: EnrollmentOptionCompany[]
   supervisors: EnrollmentOptionSupervisor[]
+  programs?: EnrollmentOptionProgram[]
 }
 
 export type BatchStudentStatus = 'active' | 'completed' | 'dropped'
