@@ -50,5 +50,6 @@ class DatabaseSeeder extends Seeder
         $this->call(StudentDemoEnrollmentSeeder::class);
         $this->call(SippDemoEntriesSeeder::class);
         $this->call(CoordinatorPagesDemoSeeder::class);
+        $this->call(SupervisorReviewDemoSeeder::class);
     }
 }
