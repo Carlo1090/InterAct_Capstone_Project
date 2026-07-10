@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\SystemSettingController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Coordinator\AnnualSippReportController;
 use App\Http\Controllers\Coordinator\BatchController as CoordinatorBatchController;
+use App\Http\Controllers\Coordinator\CoordinatorDashboardController;
 use App\Http\Controllers\Coordinator\EnrollmentController;
 use App\Http\Controllers\Coordinator\HteReportController;
 use App\Http\Controllers\Coordinator\JournalTemplateController;
@@ -64,6 +65,8 @@ Route::middleware(['auth:sanctum', 'role:admin'])
 Route::middleware(['auth:sanctum', 'role:coordinator'])
     ->prefix('coordinator')
     ->group(function () {
+        Route::get('dashboard', [CoordinatorDashboardController::class, 'index']);
+
         Route::get('journal-templates', [JournalTemplateController::class, 'index']);
         Route::post('journal-templates', [JournalTemplateController::class, 'store']);
         Route::put('journal-templates/{journalTemplate}', [JournalTemplateController::class, 'update']);

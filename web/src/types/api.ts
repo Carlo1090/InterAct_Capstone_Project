@@ -394,3 +394,24 @@ export type HteReport = {
   rows: HteRow[]
   meta: HteMeta
 }
+
+export type CoordinatorDashboardStats = {
+  active_interns: number
+  journals_submitted_this_week: number
+  journals_missing_this_week: number
+  active_batches: number
+  students_behind: number
+}
+
+export type StudentBehind = {
+  student_id: number
+  name: string
+  company: string
+  missing_count: number
+}
+
+export type CoordinatorDashboard = {
+  stats: CoordinatorDashboardStats
+  students_behind: StudentBehind[]
+  week: { start: string; end: string }
+}
