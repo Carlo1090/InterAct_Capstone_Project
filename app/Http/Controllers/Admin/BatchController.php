@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
+use App\Models\SystemLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -54,6 +55,8 @@ class BatchController extends Controller
             'is_active' => true,
         ]);
 
+        SystemLog::record('Batch Created', "Created batch {$batch->name}");
+
         return response()->json($batch->load(['program.department', 'coordinator']), 201);
     }
 
@@ -66,6 +69,8 @@ class BatchController extends Controller
         ]);
 
         $batch->update($validated);
+
+        SystemLog::record('Batch Updated', "Updated batch {$batch->name}");
 
         return response()->json($batch->load(['program.department', 'coordinator']));
     }

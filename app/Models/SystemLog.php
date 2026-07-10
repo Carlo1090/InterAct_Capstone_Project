@@ -17,4 +17,14 @@ class SystemLog extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public static function record(string $action, ?string $description = null): self
+    {
+        return static::create([
+            'user_id' => request()->user()?->id,
+            'action' => $action,
+            'description' => $description,
+            'ip_address' => request()->ip(),
+        ]);
+    }
 }

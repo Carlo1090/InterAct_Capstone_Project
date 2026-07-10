@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\UpdateSystemSettingsRequest;
+use App\Models\SystemLog;
 use App\Models\SystemSetting;
 use Illuminate\Http\JsonResponse;
 
@@ -26,6 +27,8 @@ class SystemSettingController extends Controller
         foreach ($request->validated() as $key => $value) {
             SystemSetting::updateOrCreate(['key' => $key], ['value' => $value]);
         }
+
+        SystemLog::record('Settings Changed', 'Updated system settings');
 
         $settings = SystemSetting::whereIn('key', self::KEYS)->pluck('value', 'key');
 

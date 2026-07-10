@@ -7,6 +7,7 @@ use App\Http\Requests\Admin\StoreCompanyRequest;
 use App\Http\Requests\Admin\UpdateCompanyRequest;
 use App\Models\Company;
 use App\Models\Department;
+use App\Models\SystemLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -65,12 +66,16 @@ class CompanyController extends Controller
             'is_active' => $request->boolean('is_active', true),
         ]);
 
+        SystemLog::record('Company Created', "Added partner company {$company->name}");
+
         return response()->json($company, 201);
     }
 
     public function update(UpdateCompanyRequest $request, Company $company): JsonResponse
     {
         $company->update($request->validated());
+
+        SystemLog::record('Company Updated', "Updated company {$company->name}");
 
         return response()->json($company);
     }

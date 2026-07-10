@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\BatchController;
 use App\Http\Controllers\Admin\CompanyController;
 use App\Http\Controllers\Admin\DepartmentController;
@@ -59,6 +60,10 @@ Route::middleware(['auth:sanctum', 'role:admin'])
 
         Route::get('system-settings', [SystemSettingController::class, 'index']);
         Route::put('system-settings', [SystemSettingController::class, 'update']);
+
+        Route::get('audit-logs', [AuditLogController::class, 'index']);
+        Route::get('audit-logs/actions', [AuditLogController::class, 'actions']);
+        Route::get('audit-logs/export', [AuditLogController::class, 'export']);
     });
 
 Route::middleware(['auth:sanctum', 'role:coordinator'])

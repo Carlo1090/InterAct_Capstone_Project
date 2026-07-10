@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AssignCoordinatorRequest;
 use App\Models\Department;
+use App\Models\SystemLog;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -38,12 +39,17 @@ class DepartmentController extends Controller
     {
         $department->coordinators()->syncWithoutDetaching([$request->validated('user_id')]);
 
+        $coordinator = User::find($request->validated('user_id'));
+        SystemLog::record('Coordinator Assigned', "Assigned {$coordinator->name} to {$department->name}");
+
         return response()->json($department->coordinators()->orderBy('name')->get(), 201);
     }
 
     public function removeCoordinator(Department $department, User $coordinator): JsonResponse
     {
         $department->coordinators()->detach($coordinator->id);
+
+        SystemLog::record('Coordinator Removed', "Removed {$coordinator->name} from {$department->name}");
 
         return response()->json($department->coordinators()->orderBy('name')->get());
     }
@@ -60,6 +66,8 @@ class DepartmentController extends Controller
             'is_active' => true,
         ]);
 
+        SystemLog::record('Department Created', "Created department {$department->name} ({$department->code})");
+
         return response()->json($department, 201);
     }
 
@@ -70,6 +78,8 @@ class DepartmentController extends Controller
         ]);
 
         $department->update($validated);
+
+        SystemLog::record('Department Updated', "Updated department {$department->name}");
 
         return response()->json($department);
     }

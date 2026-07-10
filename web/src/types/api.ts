@@ -321,6 +321,15 @@ export type SystemSettingsMap = {
   system_email: string | null
 }
 
+export type SystemLogRecord = {
+  id: number
+  logged_at: string
+  action: string
+  description: string | null
+  ip_address: string | null
+  user: { id: number; name: string; role: User['role'] }
+}
+
 export type AnnualSippProgram = {
   id: number
   name: string

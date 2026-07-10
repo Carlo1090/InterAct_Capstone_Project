@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\StudentProfile;
+use App\Models\SystemLog;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -59,6 +60,8 @@ class UserController extends Controller
             );
         }
 
+        SystemLog::record('User Created', "Created {$user->role} account ({$user->name})");
+
         return response()->json($user->load('program.department'), 201);
     }
 
@@ -74,12 +77,16 @@ class UserController extends Controller
 
         $user->update($validated);
 
+        SystemLog::record('User Updated', "Updated account details for {$user->name}");
+
         return response()->json($user->load('program.department'));
     }
 
     public function deactivate(User $user): JsonResponse
     {
         $user->update(['is_active' => false]);
+
+        SystemLog::record('User Deactivated', "Deactivated account for {$user->name}");
 
         return response()->json(['message' => 'User deactivated.']);
     }
@@ -92,6 +99,8 @@ class UserController extends Controller
             'password' => $temporaryPassword,
             'must_change_password' => true,
         ]);
+
+        SystemLog::record('Temporary Password Issued', "Issued a temporary password for {$user->name}");
 
         return response()->json([
             'message' => 'Temporary password issued.',
