@@ -113,12 +113,13 @@ class JournalEntryTest extends TestCase
         $response->assertJsonValidationErrors(['content.task_performed']);
     }
 
-    public function test_submit_over_word_limit_is_rejected(): void
+    public function test_submit_over_char_limit_is_rejected(): void
     {
         $student = $this->enrolledStudent();
         Sanctum::actingAs($student, ['*']);
 
-        $overLimitText = implode(' ', array_fill(0, 501, 'word'));
+        // Default template char_limit is 1500; exceed it.
+        $overLimitText = str_repeat('a', 1501);
 
         $response = $this->postJson('/api/student/journal-entries', [
             'entry_date' => now()->toDateString(),
@@ -128,6 +129,23 @@ class JournalEntryTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['content']);
+    }
+
+    public function test_submit_at_char_limit_is_accepted(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        // Exactly at the 1500-character limit should be accepted.
+        $atLimitText = str_repeat('a', 1500);
+
+        $response = $this->postJson('/api/student/journal-entries', [
+            'entry_date' => now()->toDateString(),
+            'status' => 'submitted',
+            'content' => ['task_performed' => $atLimitText],
+        ]);
+
+        $response->assertOk();
     }
 
     public function test_optional_sipp_field_saves_and_is_retrievable(): void

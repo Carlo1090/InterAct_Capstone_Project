@@ -1,0 +1,187 @@
+<?php
+
+namespace Tests\Feature\Coordinator;
+
+use App\Models\Batch;
+use App\Models\BatchStudent;
+use App\Models\Company;
+use App\Models\CompanySupervisor;
+use App\Models\Department;
+use App\Models\Program;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
+use Tests\TestCase;
+
+class CoordinatorCompanyTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function programFor(string $code, string $deptCode = 'CAST'): Program
+    {
+        $department = Department::firstOrCreate(
+            ['code' => $deptCode],
+            ['name' => $deptCode.' Department', 'is_active' => true]
+        );
+
+        return Program::firstOrCreate(
+            ['department_id' => $department->id, 'code' => $code],
+            ['name' => $code.' Program', 'is_active' => true]
+        );
+    }
+
+    private function coordinatorFor(Program $program): User
+    {
+        $coordinator = User::factory()->create(['role' => 'coordinator']);
+        $coordinator->departmentsCoordinated()->attach($program->department_id);
+
+        return $coordinator;
+    }
+
+    private function batchFor(Program $program, User $coordinator): Batch
+    {
+        return Batch::create([
+            'program_id' => $program->id,
+            'coordinator_id' => $coordinator->id,
+            'name' => 'Batch '.uniqid(),
+            'start_date' => now()->subMonth(),
+            'end_date' => now()->addMonth(),
+            'required_hours' => 486,
+            'working_days_per_week' => 5,
+            'daily_reminder_time' => '21:00:00',
+            'academic_year' => '2026',
+            'semester' => 'Internship',
+            'is_active' => true,
+        ]);
+    }
+
+    /** A company linked to an enrollment in the given batch (so it is "used"). */
+    private function usedCompany(Batch $batch, string $name): Company
+    {
+        $company = Company::create(['name' => $name, 'address' => 'Addr', 'is_active' => true]);
+        $student = User::factory()->create(['role' => 'student']);
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+        BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'active',
+        ]);
+
+        return $company;
+    }
+
+    public function test_coordinator_creates_company_and_sees_it_in_scoped_list(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson('/api/coordinator/companies', [
+            'name' => 'New HTE Inc.',
+            'address' => '123 Street, Bohol',
+            'location' => 'Tagbilaran',
+            'industry' => 'Tech',
+            'contact_number' => null,
+            'description' => 'A freshly created partner.',
+        ])->assertCreated();
+
+        $names = collect($this->getJson('/api/coordinator/companies')->json())->pluck('name');
+        $this->assertTrue($names->contains('New HTE Inc.'));
+    }
+
+    public function test_scoped_list_includes_used_and_excludes_out_of_scope(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        $inScope = $this->usedCompany($batch, 'InScope Co');
+
+        // A company used only by another department's students.
+        $bsba = $this->programFor('BSBA-FM', 'CABM-B');
+        $otherCoord = $this->coordinatorFor($bsba);
+        $otherBatch = $this->batchFor($bsba, $otherCoord);
+        $outScope = $this->usedCompany($otherBatch, 'OutScope Co');
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $names = collect($this->getJson('/api/coordinator/companies')->json())->pluck('name');
+        $this->assertTrue($names->contains('InScope Co'));
+        $this->assertFalse($names->contains('OutScope Co'));
+
+        // Direct access to the out-of-scope company is forbidden.
+        $this->getJson("/api/coordinator/companies/{$outScope->id}")->assertStatus(403);
+        $this->putJson("/api/coordinator/companies/{$outScope->id}", ['name' => 'x'])->assertStatus(403);
+        $this->assertNotNull($inScope);
+    }
+
+    public function test_attach_existing_supervisor(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $company = Company::create(['name' => 'Fresh Co', 'address' => 'A', 'is_active' => true]);
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->postJson("/api/coordinator/companies/{$company->id}/supervisors", [
+            'user_id' => $supervisor->id,
+            'position' => 'Team Lead',
+        ]);
+
+        $response->assertOk();
+        $this->assertDatabaseHas('company_supervisors', [
+            'company_id' => $company->id,
+            'user_id' => $supervisor->id,
+            'position' => 'Team Lead',
+        ]);
+    }
+
+    public function test_create_and_attach_new_supervisor(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $company = Company::create(['name' => 'Fresh Co', 'address' => 'A', 'is_active' => true]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->postJson("/api/coordinator/companies/{$company->id}/supervisors/new", [
+            'name' => 'New Supervisor',
+            'email' => 'newsup@example.com',
+            'password' => 'password123',
+            'position' => 'Manager',
+        ]);
+
+        $response->assertCreated();
+
+        $supervisor = User::where('email', 'newsup@example.com')->first();
+        $this->assertNotNull($supervisor);
+        $this->assertSame('supervisor', $supervisor->role);
+        $this->assertTrue($supervisor->is_active);
+        $this->assertDatabaseHas('company_supervisors', [
+            'company_id' => $company->id,
+            'user_id' => $supervisor->id,
+            'position' => 'Manager',
+        ]);
+    }
+
+    public function test_detach_supervisor(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $company = Company::create(['name' => 'Fresh Co', 'address' => 'A', 'is_active' => true]);
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+        CompanySupervisor::create(['company_id' => $company->id, 'user_id' => $supervisor->id, 'position' => 'X']);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->deleteJson("/api/coordinator/companies/{$company->id}/supervisors/{$supervisor->id}")->assertOk();
+
+        $this->assertDatabaseMissing('company_supervisors', [
+            'company_id' => $company->id,
+            'user_id' => $supervisor->id,
+        ]);
+    }
+}

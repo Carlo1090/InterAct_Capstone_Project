@@ -13,7 +13,7 @@ return new class extends Migration
             $table->foreignId('program_id')->constrained('programs')->cascadeOnDelete();
             $table->string('name', 150);
             $table->json('sections'); // Ordered array of section objects: [{key, label, prompt, required, sipp}]
-            $table->unsignedSmallInteger('word_limit')->default(500);
+            $table->unsignedSmallInteger('char_limit')->default(1500);
             $table->boolean('is_active')->default(true);
             $table->timestamp('created_at')->useCurrent();
         });

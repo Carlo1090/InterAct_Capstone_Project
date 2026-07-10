@@ -12,7 +12,7 @@ trait ValidatesJournalTemplate
         return [
             'program_id' => ['required', 'integer', Rule::exists('programs', 'id'), Rule::in($this->coordinatorProgramIds())],
             'name' => ['required', 'string', 'max:150'],
-            'word_limit' => ['required', 'integer', 'between:50,2000'],
+            'char_limit' => ['required', 'integer', 'between:100,10000'],
             'is_active' => ['sometimes', 'boolean'],
             'sections' => ['required', 'array', 'min:1'],
             'sections.*.key' => ['required', 'string', 'max:100', 'regex:/^[a-z][a-z0-9_]*$/'],

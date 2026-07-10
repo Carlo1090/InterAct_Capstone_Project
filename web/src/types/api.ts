@@ -79,9 +79,16 @@ export type EnrollmentOptionSupervisor = {
   email: string
 }
 
+export type EnrollmentOptionProgram = {
+  id: number
+  name: string
+  code?: string
+}
+
 export type EnrollmentOptions = {
   companies: EnrollmentOptionCompany[]
   supervisors: EnrollmentOptionSupervisor[]
+  programs?: EnrollmentOptionProgram[]
 }
 
 export type BatchStudentStatus = 'active' | 'completed' | 'dropped'
@@ -164,7 +171,7 @@ export type JournalTemplateRecord = {
   program_id: number
   name: string
   sections: JournalTemplateSection[]
-  word_limit: number
+  char_limit: number
   is_active: boolean
   program?: Program
 }
@@ -174,7 +181,7 @@ export type JournalEntryStatus = 'draft' | 'submitted' | 'overdue' | 'missing'
 export type JournalEntryDetail = {
   entry_date: string
   sections: JournalTemplateSection[]
-  word_limit: number
+  char_limit: number
   status: JournalEntryStatus
   content: Record<string, string>
   submitted_at: string | null
@@ -402,4 +409,89 @@ export type HteReport = {
   status: 'draft' | 'finalized'
   rows: HteRow[]
   meta: HteMeta
+}
+
+export type CoordinatorDashboardStats = {
+  active_interns: number
+  journals_submitted_this_week: number
+  journals_missing_this_week: number
+  active_batches: number
+  students_behind: number
+}
+
+export type StudentBehind = {
+  student_id: number
+  name: string
+  company: string
+  missing_count: number
+}
+
+export type CoordinatorDashboard = {
+  stats: CoordinatorDashboardStats
+  students_behind: StudentBehind[]
+  week: { start: string; end: string }
+}
+
+export type JournalActivityRow = {
+  student_id: number
+  student_name: string
+  company_id: number | null
+  company: string
+  program: string
+  submitted_count: number
+  missing_count: number
+  day_status: 'submitted' | 'missing' | null
+  submitted_at: string | null
+}
+
+export type JournalActivityResponse = {
+  from: string
+  to: string
+  is_single_day: boolean
+  companies: { id: number; name: string }[]
+  rows: JournalActivityRow[]
+}
+
+export type CompanySupervisorRecord = {
+  id: number
+  user_id: number
+  position: string | null
+  user: { id: number; name: string; email: string } | null
+}
+
+export type CoordinatorCompany = {
+  id: number
+  name: string
+  address: string
+  location: string | null
+  industry: string | null
+  head_name: string | null
+  department_head: string | null
+  contact_number: string | null
+  description: string | null
+  is_active: boolean
+  active_interns_count?: number
+  supervisors?: CompanySupervisorRecord[]
+}
+
+export type CoordinatorInfoSheetRow = {
+  student_id: number
+  name: string
+  student_id_number: string | null
+  program: string
+  company: string
+  info_sheet_id: number | null
+  submission_status: string | null
+}
+
+export type CoordinatorInfoSheetDetail = {
+  student: { id: number; name: string; email: string }
+  sheet: {
+    id: number
+    submission_status: string | null
+    submitted_at: string | null
+    personal_info: Record<string, unknown> | null
+    academic_info: Record<string, unknown> | null
+    ojt_info: Record<string, unknown> | null
+  } | null
 }

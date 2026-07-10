@@ -10,6 +10,10 @@ use App\Http\Controllers\Admin\SystemSettingController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Coordinator\AnnualSippReportController;
 use App\Http\Controllers\Coordinator\BatchController as CoordinatorBatchController;
+use App\Http\Controllers\Coordinator\CoordinatorCompanyController;
+use App\Http\Controllers\Coordinator\CoordinatorDashboardController;
+use App\Http\Controllers\Coordinator\CoordinatorInfoSheetController;
+use App\Http\Controllers\Coordinator\CoordinatorJournalActivityController;
 use App\Http\Controllers\Coordinator\EnrollmentController;
 use App\Http\Controllers\Coordinator\HteReportController;
 use App\Http\Controllers\Coordinator\JournalTemplateController;
@@ -69,6 +73,20 @@ Route::middleware(['auth:sanctum', 'role:admin'])
 Route::middleware(['auth:sanctum', 'role:coordinator'])
     ->prefix('coordinator')
     ->group(function () {
+        Route::get('dashboard', [CoordinatorDashboardController::class, 'index']);
+        Route::get('journal-activities', [CoordinatorJournalActivityController::class, 'index']);
+
+        Route::get('companies', [CoordinatorCompanyController::class, 'index']);
+        Route::post('companies', [CoordinatorCompanyController::class, 'store']);
+        Route::get('companies/{company}', [CoordinatorCompanyController::class, 'show']);
+        Route::put('companies/{company}', [CoordinatorCompanyController::class, 'update']);
+        Route::post('companies/{company}/supervisors', [CoordinatorCompanyController::class, 'attachSupervisor']);
+        Route::post('companies/{company}/supervisors/new', [CoordinatorCompanyController::class, 'createSupervisor']);
+        Route::delete('companies/{company}/supervisors/{supervisor}', [CoordinatorCompanyController::class, 'detachSupervisor']);
+
+        Route::get('info-sheets', [CoordinatorInfoSheetController::class, 'index']);
+        Route::get('info-sheets/{student}', [CoordinatorInfoSheetController::class, 'show']);
+
         Route::get('journal-templates', [JournalTemplateController::class, 'index']);
         Route::post('journal-templates', [JournalTemplateController::class, 'store']);
         Route::put('journal-templates/{journalTemplate}', [JournalTemplateController::class, 'update']);
@@ -80,6 +98,7 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
 
         Route::get('students/enrollable', [EnrollmentController::class, 'enrollableStudents']);
         Route::get('enrollment-options', [EnrollmentController::class, 'options']);
+        Route::post('accounts', [EnrollmentController::class, 'createAccount']);
         Route::get('roster', [EnrollmentController::class, 'roster']);
         Route::post('enrollments', [EnrollmentController::class, 'store']);
         Route::put('enrollments/{batchStudent}', [EnrollmentController::class, 'update']);

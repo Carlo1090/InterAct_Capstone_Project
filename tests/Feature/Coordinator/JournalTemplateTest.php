@@ -68,7 +68,7 @@ class JournalTemplateTest extends TestCase
             'program_id' => $program->id,
             'name' => 'Bootstrap Template',
             'sections' => $this->validSections(),
-            'word_limit' => 500,
+            'char_limit' => 1500,
             'is_active' => true,
         ]);
 
@@ -93,7 +93,7 @@ class JournalTemplateTest extends TestCase
         $response = $this->postJson('/api/coordinator/journal-templates', [
             'program_id' => $program->id,
             'name' => 'Bootstrap Template',
-            'word_limit' => 500,
+            'char_limit' => 1500,
             'sections' => $this->validSections(),
         ]);
 
@@ -112,7 +112,7 @@ class JournalTemplateTest extends TestCase
             'program_id' => $programA->id,
             'name' => 'Own Template',
             'sections' => $this->validSections(),
-            'word_limit' => 500,
+            'char_limit' => 1500,
             'is_active' => true,
         ]);
 
@@ -120,7 +120,7 @@ class JournalTemplateTest extends TestCase
             'program_id' => $programB->id,
             'name' => 'Other Template',
             'sections' => $this->validSections(),
-            'word_limit' => 500,
+            'char_limit' => 1500,
             'is_active' => true,
         ]);
 
@@ -150,7 +150,7 @@ class JournalTemplateTest extends TestCase
         $response = $this->postJson('/api/coordinator/journal-templates', [
             'program_id' => $program->id,
             'name' => 'No Required Template',
-            'word_limit' => 500,
+            'char_limit' => 1500,
             'sections' => $sections,
         ]);
 
@@ -170,7 +170,7 @@ class JournalTemplateTest extends TestCase
         $response = $this->postJson('/api/coordinator/journal-templates', [
             'program_id' => $program->id,
             'name' => 'Duplicate Keys Template',
-            'word_limit' => 500,
+            'char_limit' => 1500,
             'sections' => $duplicateKeySections,
         ]);
 
@@ -183,7 +183,7 @@ class JournalTemplateTest extends TestCase
         $response2 = $this->postJson('/api/coordinator/journal-templates', [
             'program_id' => $program->id,
             'name' => 'Invalid Key Template',
-            'word_limit' => 500,
+            'char_limit' => 1500,
             'sections' => $invalidKeySections,
         ]);
 
@@ -203,7 +203,7 @@ class JournalTemplateTest extends TestCase
             'program_id' => $programA->id,
             'name' => 'Template A',
             'sections' => $this->validSections(),
-            'word_limit' => 500,
+            'char_limit' => 1500,
             'is_active' => true,
         ]);
 
@@ -212,7 +212,7 @@ class JournalTemplateTest extends TestCase
         $response = $this->putJson("/api/coordinator/journal-templates/{$template->id}", [
             'program_id' => $programA->id,
             'name' => 'Hacked Template',
-            'word_limit' => 500,
+            'char_limit' => 1500,
             'sections' => $this->validSections(),
         ]);
 
@@ -228,7 +228,7 @@ class JournalTemplateTest extends TestCase
             'program_id' => $program->id,
             'name' => 'Template With Data',
             'sections' => $this->validSections(),
-            'word_limit' => 500,
+            'char_limit' => 1500,
             'is_active' => true,
         ]);
 
@@ -265,7 +265,7 @@ class JournalTemplateTest extends TestCase
         $response = $this->putJson("/api/coordinator/journal-templates/{$template->id}", [
             'program_id' => $program->id,
             'name' => 'Template With Data',
-            'word_limit' => 500,
+            'char_limit' => 1500,
             'sections' => $newSections,
         ]);
 

@@ -37,7 +37,7 @@ trait EnrollsStudentInBatch
                 ['key' => 'solutions', 'label' => 'Solutions', 'prompt' => 'Any solutions?', 'required' => false, 'sipp' => true],
                 ['key' => 'recommendations', 'label' => 'Recommendations', 'prompt' => 'Any recommendations?', 'required' => false, 'sipp' => true],
             ],
-            'word_limit' => 500,
+            'char_limit' => 1500,
             'is_active' => true,
         ]);
 

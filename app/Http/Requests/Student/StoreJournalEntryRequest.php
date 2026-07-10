@@ -43,7 +43,7 @@ class StoreJournalEntryRequest extends FormRequest
 
             $template = $enrollment->batch->journalTemplate;
             $sections = $template?->sections ?? [];
-            $wordLimit = $template?->word_limit ?? 500;
+            $charLimit = $template?->char_limit ?? 1500;
             $content = $this->input('content', []);
 
             if (! is_array($content)) {
@@ -75,12 +75,12 @@ class StoreJournalEntryRequest extends FormRequest
                 }
             }
 
-            $wordCount = collect($content)->sum(
-                fn ($value) => is_string($value) && trim($value) !== '' ? str_word_count($value) : 0
+            $charCount = collect($content)->sum(
+                fn ($value) => is_string($value) ? mb_strlen($value) : 0
             );
 
-            if ($wordCount > $wordLimit) {
-                $validator->errors()->add('content', "This entry exceeds the {$wordLimit}-word limit ({$wordCount} words).");
+            if ($charCount > $charLimit) {
+                $validator->errors()->add('content', "This entry exceeds the {$charLimit}-character limit ({$charCount} characters).");
             }
         });
     }

@@ -2,6 +2,8 @@
 import { onMounted, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
+import { showToast, confirmAction } from '@/lib/toast'
+import ToastHost from '@/components/ToastHost.vue'
 import type { HteIndex, HteMeta, HteReport, HteRow } from '@/types/api'
 
 const academicYears = ref<string[]>([])
@@ -88,6 +90,7 @@ const addManualRow = () => {
 }
 
 const deleteRow = (row: HteRow) => {
+  if (!confirmAction('Remove this row from the list? It will be excluded when you save.')) return
   if (!row.is_manual && typeof row.id === 'number' && !deletedIds.value.includes(row.id)) {
     deletedIds.value.push(row.id)
   }
@@ -126,7 +129,7 @@ const save = async (nextStatus: 'draft' | 'finalized') => {
       deleted_ids: deletedIds.value,
     })
     applyReport(data)
-    statusMessage.value = nextStatus === 'finalized' ? 'HTE list finalized.' : 'Draft saved.'
+    showToast(nextStatus === 'finalized' ? 'HTE list finalized.' : 'Draft saved.')
   } catch (error) {
     const responseData = axios.isAxiosError(error) ? error.response?.data : null
     errorMessage.value = responseData?.message ?? 'Unable to save the HTE list.'
@@ -165,6 +168,7 @@ onMounted(loadIndex)
 
 <template>
   <section class="space-y-5">
+    <ToastHost />
     <div>
       <h2 class="text-2xl font-bold text-slate-950">HTE &amp; Student Interns List</h2>
       <p class="mt-1 text-sm text-slate-500">
@@ -177,12 +181,12 @@ onMounted(loadIndex)
 
     <template v-else>
       <!-- Controls -->
-      <div class="flex flex-wrap items-end justify-between gap-3">
+      <div class="flex flex-wrap items-end justify-between gap-4 rounded-lg bg-white p-4 shadow-sm ring-1 ring-slate-200">
         <label class="block">
-          <span class="text-xs font-bold text-slate-600">Academic Year</span>
+          <span class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Academic Year</span>
           <select
             v-model="academicYear"
-            class="mt-1 w-48 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
+            class="w-56 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
             :disabled="academicYears.length === 0"
             @change="onYearChange"
           >

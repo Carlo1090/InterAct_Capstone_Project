@@ -2,12 +2,14 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
+import { showToast, confirmAction } from '@/lib/toast'
+import ToastHost from '@/components/ToastHost.vue'
 import type { JournalTemplateRecord, JournalTemplateSection, Program } from '@/types/api'
 
 type TemplateForm = {
   program_id: number | null
   name: string
-  word_limit: number
+  char_limit: number
   is_active: boolean
   sections: JournalTemplateSection[]
 }
@@ -29,7 +31,7 @@ const lastSavedNotice = ref('')
 const form = reactive<TemplateForm>({
   program_id: null,
   name: '',
-  word_limit: 500,
+  char_limit: 1500,
   is_active: true,
   sections: [],
 })
@@ -64,7 +66,7 @@ const load = async () => {
 const resetForm = () => {
   form.program_id = programs.value[0]?.id ?? null
   form.name = ''
-  form.word_limit = 500
+  form.char_limit = 1500
   form.is_active = true
   form.sections = [{ key: 'task_performed', label: 'Task Performed', prompt: '', required: true, sipp: false }]
   autoKeyEnabled.splice(0, autoKeyEnabled.length, false)
@@ -84,7 +86,7 @@ const openEditModal = (template: JournalTemplateRecord) => {
   editingTemplateId.value = template.id
   form.program_id = template.program_id
   form.name = template.name
-  form.word_limit = template.word_limit
+  form.char_limit = template.char_limit
   form.is_active = template.is_active
   form.sections = template.sections.map((section) => ({ ...section }))
   autoKeyEnabled.splice(0, autoKeyEnabled.length, ...form.sections.map(() => false))
@@ -154,7 +156,7 @@ const performSave = async () => {
   const payload = {
     program_id: form.program_id,
     name: form.name,
-    word_limit: form.word_limit,
+    char_limit: form.char_limit,
     is_active: form.is_active,
     sections: form.sections,
   }
@@ -171,6 +173,7 @@ const performSave = async () => {
       lastSavedNotice.value = 'Template created.'
     }
 
+    showToast(editingTemplateId.value ? 'Template saved.' : 'Template created.')
     await load()
     closeModal()
   } catch (error) {
@@ -203,9 +206,13 @@ const cancelRemovalConfirm = () => {
 const toggleActive = async (template: JournalTemplateRecord) => {
   errorMessage.value = ''
 
+  // Deactivating is the crucial action — confirm first.
+  if (template.is_active && !confirmAction(`Deactivate the "${template.name}" template?`)) return
+
   try {
     await api.patch(`/api/coordinator/journal-templates/${template.id}/toggle-active`)
     await load()
+    showToast(template.is_active ? 'Template deactivated.' : 'Template activated.')
   } catch {
     errorMessage.value = 'Unable to update template status.'
   }
@@ -216,6 +223,7 @@ onMounted(load)
 
 <template>
   <section class="space-y-5">
+    <ToastHost />
     <div class="flex items-center justify-between gap-4">
       <div>
         <h2 class="text-2xl font-bold text-slate-950">Journal Templates</h2>
@@ -245,7 +253,7 @@ onMounted(load)
             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Name</th>
             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Program</th>
             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Sections</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Word Limit</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Character Limit</th>
             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
           </tr>
@@ -258,7 +266,7 @@ onMounted(load)
             <td class="px-4 py-3 text-sm font-medium text-slate-900">{{ template.name }}</td>
             <td class="px-4 py-3 text-sm text-slate-700">{{ template.program?.name ?? '—' }}</td>
             <td class="px-4 py-3 text-sm text-slate-700">{{ template.sections.length }}</td>
-            <td class="px-4 py-3 font-mono text-sm text-slate-700">{{ template.word_limit }}</td>
+            <td class="px-4 py-3 font-mono text-sm text-slate-700">{{ template.char_limit }}</td>
             <td class="px-4 py-3 text-sm">
               <span
                 class="rounded-full px-3 py-1 text-xs font-bold"
@@ -302,8 +310,8 @@ onMounted(load)
               </select>
             </div>
             <div>
-              <label class="mb-2 block text-sm font-medium text-slate-700" for="template-word-limit">Word Limit</label>
-              <input id="template-word-limit" v-model.number="form.word_limit" type="number" min="50" max="2000" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <label class="mb-2 block text-sm font-medium text-slate-700" for="template-char-limit">Character Limit</label>
+              <input id="template-char-limit" v-model.number="form.char_limit" type="number" min="100" max="10000" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             </div>
             <label class="mt-7 flex items-center gap-2 text-sm font-medium text-slate-700">
               <input v-model="form.is_active" type="checkbox" />
@@ -429,7 +437,7 @@ onMounted(load)
             </div>
           </div>
 
-          <p class="mt-4 text-xs font-semibold text-slate-500">Word limit: {{ form.word_limit }}</p>
+          <p class="mt-4 text-xs font-semibold text-slate-500">Character limit: {{ form.char_limit }}</p>
         </aside>
       </section>
     </div>

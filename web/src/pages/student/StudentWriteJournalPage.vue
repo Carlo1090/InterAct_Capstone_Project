@@ -21,7 +21,7 @@ const notEnrolled = ref(false)
 const status = ref<JournalEntryDetail['status']>('draft')
 const editable = ref(true)
 const sections = ref<JournalTemplateSection[]>([])
-const wordLimit = ref(500)
+const charLimit = ref(1500)
 const content = reactive<Record<string, string>>({})
 const enabledSections = reactive<Record<string, boolean>>({})
 const isViewMode = ref(false)
@@ -32,11 +32,11 @@ const sippEnabled = ref(false)
 const nonSippSections = computed(() => sections.value.filter((section) => !section.sipp))
 const sippSections = computed(() => sections.value.filter((section) => section.sipp))
 
-const wordCount = computed(() =>
-  Object.values(content).reduce((total, value) => total + (value.trim() ? value.trim().split(/\s+/).length : 0), 0),
+const charCount = computed(() =>
+  Object.values(content).reduce((total, value) => total + value.length, 0),
 )
 
-const isOverLimit = computed(() => wordCount.value > wordLimit.value)
+const isOverLimit = computed(() => charCount.value > charLimit.value)
 
 const sippLength = (key: string) => (content[key] ?? '').length
 
@@ -80,7 +80,7 @@ const load = async () => {
   try {
     const { data } = await api.get<JournalEntryDetail>(`/api/student/journal-entries/${entryDate.value}`)
     sections.value = data.sections
-    wordLimit.value = data.word_limit
+    charLimit.value = data.char_limit
     status.value = data.status
     editable.value = data.editable
 
@@ -283,13 +283,13 @@ onMounted(load)
           <h2 class="text-sm font-bold text-slate-900">Entry Summary</h2>
           <div class="mt-4 divide-y divide-slate-100 text-sm">
             <div class="flex justify-between py-2">
-              <span class="text-slate-500">Word Count</span>
-              <span class="font-mono font-semibold" :class="isOverLimit ? 'text-red-600' : ''">{{ wordCount }} / {{ wordLimit }}</span>
+              <span class="text-slate-500">Character Count</span>
+              <span class="font-mono font-semibold" :class="isOverLimit ? 'text-red-600' : ''">{{ charCount }} / {{ charLimit }}</span>
             </div>
             <div class="flex justify-between py-2"><span class="text-slate-500">Status</span><span class="font-semibold capitalize">{{ status }}</span></div>
           </div>
           <p v-if="isOverLimit" class="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
-            This entry exceeds the {{ wordLimit }}-word limit. Trim it down before saving.
+            This entry exceeds the {{ charLimit }}-character limit. Trim it down before saving.
           </p>
         </section>
 

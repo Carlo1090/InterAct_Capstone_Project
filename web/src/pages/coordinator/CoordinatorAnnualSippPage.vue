@@ -2,6 +2,8 @@
 import { onMounted, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
+import { showToast, confirmAction } from '@/lib/toast'
+import ToastHost from '@/components/ToastHost.vue'
 import type {
   AnnualSippIndex,
   AnnualSippMeta,
@@ -99,6 +101,7 @@ const onYearChange = async () => {
 }
 
 const deleteRow = (row: AnnualSippRow) => {
+  if (!confirmAction('Remove this row from the report? It will be excluded when you save.')) return
   rows.value = rows.value.filter((candidate) => candidate.id !== row.id)
   if (!deletedIds.value.includes(row.id)) {
     deletedIds.value.push(row.id)
@@ -131,7 +134,7 @@ const save = async (nextStatus: 'draft' | 'finalized') => {
       deleted_ids: deletedIds.value,
     })
     applyReport(data)
-    statusMessage.value = nextStatus === 'finalized' ? 'Report finalized.' : 'Draft saved.'
+    showToast(nextStatus === 'finalized' ? 'Report finalized.' : 'Draft saved.')
   } catch (error) {
     const responseData = axios.isAxiosError(error) ? error.response?.data : null
     errorMessage.value = responseData?.message ?? 'Unable to save the report.'
@@ -171,6 +174,7 @@ onMounted(loadIndex)
 
 <template>
   <section class="space-y-5">
+    <ToastHost />
     <div>
       <h2 class="text-2xl font-bold text-slate-950">Annual SIPP Report</h2>
       <p class="mt-1 text-sm text-slate-500">
@@ -204,12 +208,12 @@ onMounted(loadIndex)
       </nav>
 
       <!-- Controls -->
-      <div class="flex flex-wrap items-end justify-between gap-3">
+      <div class="flex flex-wrap items-end justify-between gap-4 rounded-lg bg-white p-4 shadow-sm ring-1 ring-slate-200">
         <label class="block">
-          <span class="text-xs font-bold text-slate-600">Academic Year</span>
+          <span class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Academic Year</span>
           <select
             v-model="academicYear"
-            class="mt-1 w-48 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
+            class="w-56 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
             :disabled="academicYears.length === 0"
             @change="onYearChange"
           >
