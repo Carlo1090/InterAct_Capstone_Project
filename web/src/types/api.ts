@@ -497,3 +497,63 @@ export type CoordinatorInfoSheetDetail = {
     ojt_info: Record<string, unknown> | null
   } | null
 }
+
+export type SupervisorInternRow = {
+  student_id: number
+  name: string
+  student_id_number: string | null
+  program: string
+  company: string
+  batch: string
+  status: BatchStudentStatus
+  pending_count: number
+  approved_count: number
+  returned_count: number
+}
+
+export type SupervisorReviewStatus = 'pending' | 'approved' | 'returned'
+
+export type SupervisorReviewedLog = {
+  id: number
+  student_name: string
+  week_start: string
+  week_end: string
+  status: SupervisorReviewStatus
+  reviewed_at: string | null
+}
+
+export type SupervisorDashboard = {
+  stats: {
+    my_interns: number
+    pending_reviews: number
+    approved_total: number
+    returned_total: number
+  }
+  recently_reviewed: SupervisorReviewedLog[]
+}
+
+export type SupervisorJournalRow = {
+  id: number
+  student_id: number
+  student_name: string
+  student_id_number: string | null
+  week_start: string
+  week_end: string
+  status: SupervisorReviewStatus
+  submitted_at: string | null
+  entries_count: number
+}
+
+export type SupervisorJournalDetail = {
+  id: number
+  student: { id: number; name: string; student_id_number: string | null }
+  week_start: string
+  week_end: string
+  status: SupervisorReviewStatus
+  supervisor_comment: string | null
+  narrative: string
+  submitted_at: string | null
+  reviewed_at: string | null
+  reviewable: boolean
+  daily_entries: { entry_date: string; status: JournalEntryStatus; content: Record<string, string> }[]
+}
