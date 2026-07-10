@@ -457,3 +457,25 @@ export type CoordinatorCompany = {
   active_interns_count?: number
   supervisors?: CompanySupervisorRecord[]
 }
+
+export type CoordinatorInfoSheetRow = {
+  student_id: number
+  name: string
+  student_id_number: string | null
+  program: string
+  company: string
+  info_sheet_id: number | null
+  submission_status: string | null
+}
+
+export type CoordinatorInfoSheetDetail = {
+  student: { id: number; name: string; email: string }
+  sheet: {
+    id: number
+    submission_status: string | null
+    submitted_at: string | null
+    personal_info: Record<string, unknown> | null
+    academic_info: Record<string, unknown> | null
+    ojt_info: Record<string, unknown> | null
+  } | null
+}

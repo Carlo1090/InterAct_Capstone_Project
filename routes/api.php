@@ -11,6 +11,7 @@ use App\Http\Controllers\Coordinator\AnnualSippReportController;
 use App\Http\Controllers\Coordinator\BatchController as CoordinatorBatchController;
 use App\Http\Controllers\Coordinator\CoordinatorCompanyController;
 use App\Http\Controllers\Coordinator\CoordinatorDashboardController;
+use App\Http\Controllers\Coordinator\CoordinatorInfoSheetController;
 use App\Http\Controllers\Coordinator\CoordinatorJournalActivityController;
 use App\Http\Controllers\Coordinator\EnrollmentController;
 use App\Http\Controllers\Coordinator\HteReportController;
@@ -77,6 +78,9 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::post('companies/{company}/supervisors', [CoordinatorCompanyController::class, 'attachSupervisor']);
         Route::post('companies/{company}/supervisors/new', [CoordinatorCompanyController::class, 'createSupervisor']);
         Route::delete('companies/{company}/supervisors/{supervisor}', [CoordinatorCompanyController::class, 'detachSupervisor']);
+
+        Route::get('info-sheets', [CoordinatorInfoSheetController::class, 'index']);
+        Route::get('info-sheets/{student}', [CoordinatorInfoSheetController::class, 'show']);
 
         Route::get('journal-templates', [JournalTemplateController::class, 'index']);
         Route::post('journal-templates', [JournalTemplateController::class, 'store']);
