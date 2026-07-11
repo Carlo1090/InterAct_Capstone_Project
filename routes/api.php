@@ -22,6 +22,9 @@ use App\Http\Controllers\Student\PasswordController;
 use App\Http\Controllers\Student\StudentInfoSheetController;
 use App\Http\Controllers\Student\WeeklyActivityLogController;
 use App\Http\Controllers\Student\WeeklyLogController;
+use App\Http\Controllers\Supervisor\SupervisorDashboardController;
+use App\Http\Controllers\Supervisor\SupervisorInternController;
+use App\Http\Controllers\Supervisor\SupervisorJournalController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -138,4 +141,16 @@ Route::middleware(['auth:sanctum', 'role:student'])
         Route::put('weekly-activity-logs/{weeklyActivityLog}/entries/{entry}', [WeeklyActivityLogController::class, 'updateEntry']);
         Route::delete('weekly-activity-logs/{weeklyActivityLog}/entries/{entry}', [WeeklyActivityLogController::class, 'destroyEntry']);
         Route::patch('weekly-activity-logs/{weeklyActivityLog}/entries-reorder', [WeeklyActivityLogController::class, 'reorderEntries']);
+    });
+
+Route::middleware(['auth:sanctum', 'role:supervisor'])
+    ->prefix('supervisor')
+    ->group(function () {
+        Route::get('dashboard', [SupervisorDashboardController::class, 'index']);
+        Route::get('interns', [SupervisorInternController::class, 'index']);
+
+        Route::get('journals', [SupervisorJournalController::class, 'index']);
+        Route::get('journals/{weeklyLog}', [SupervisorJournalController::class, 'show']);
+        Route::post('journals/{weeklyLog}/approve', [SupervisorJournalController::class, 'approve']);
+        Route::post('journals/{weeklyLog}/return', [SupervisorJournalController::class, 'returnLog']);
     });
