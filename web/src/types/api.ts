@@ -142,6 +142,21 @@ export type BatchDetail = Batch & {
   batch_students: BatchStudentRecord[]
 }
 
+export type BatchRosterRow = {
+  id: number
+  status: BatchStudentStatus
+  assigned_division: string | null
+  enrolled_at: string
+  student: { id: number; name: string; email: string; student_id_number: string | null }
+  company: { id: number; name: string } | null
+  supervisor: { id: number; name: string; email: string } | null
+}
+
+export type BatchRosterResponse = {
+  batch: { id: number; name: string; program_id: number }
+  students: BatchRosterRow[]
+}
+
 export type RosterFilters = {
   batches: { id: number; name: string }[]
   statuses: BatchStudentStatus[]

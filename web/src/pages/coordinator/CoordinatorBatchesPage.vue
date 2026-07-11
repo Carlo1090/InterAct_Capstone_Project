@@ -2,9 +2,17 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
-import { showToast } from '@/lib/toast'
+import { confirmAction, showToast } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
-import type { Batch, JournalTemplateRecord, Program } from '@/types/api'
+import type {
+  Batch,
+  BatchRosterResponse,
+  BatchRosterRow,
+  CoordinatorInternUser,
+  EnrollmentOptions,
+  JournalTemplateRecord,
+  Program,
+} from '@/types/api'
 
 /** Format an ISO/Y-m-d date string to a human date, e.g. "May 9, 2026". */
 const formatDate = (value: string | null | undefined): string => {
@@ -155,6 +163,154 @@ const save = async () => {
   }
 }
 
+// --- Roster management ------------------------------------------------------
+const isRosterOpen = ref(false)
+const rosterBatch = ref<Batch | null>(null)
+const rosterRows = ref<BatchRosterRow[]>([])
+const isRosterLoading = ref(false)
+const rosterMessage = ref('')
+
+const rosterCandidates = ref<CoordinatorInternUser[]>([])
+const rosterOptions = ref<EnrollmentOptions>({ companies: [], supervisors: [] })
+const isAddingIntern = ref(false)
+
+const addForm = reactive({
+  student_id: null as number | null,
+  company_id: null as number | null,
+  supervisor_id: null as number | null,
+  assigned_division: '',
+})
+
+const activeRoster = computed(() => rosterRows.value.filter((row) => row.status === 'active'))
+const droppedRoster = computed(() => rosterRows.value.filter((row) => row.status === 'dropped'))
+const activeStudentIds = computed(() => activeRoster.value.map((row) => row.student.id))
+
+// Students who may be added to THIS batch: same program, not already active here.
+// A student active in ANOTHER batch stays selectable (adding them = a MOVE).
+const addableStudents = computed(() => {
+  if (!rosterBatch.value) return []
+  return rosterCandidates.value.filter(
+    (student) =>
+      student.program?.id === rosterBatch.value?.program.id && !activeStudentIds.value.includes(student.id),
+  )
+})
+
+const loadRoster = async (batchId: number) => {
+  isRosterLoading.value = true
+  rosterMessage.value = ''
+  try {
+    const { data } = await api.get<BatchRosterResponse>(`/api/coordinator/batches/${batchId}/roster`)
+    rosterRows.value = data.students
+  } catch {
+    rosterMessage.value = 'Unable to load this batch\'s roster.'
+  } finally {
+    isRosterLoading.value = false
+  }
+}
+
+const openRoster = async (batch: Batch) => {
+  rosterBatch.value = batch
+  rosterRows.value = []
+  addForm.student_id = null
+  addForm.company_id = null
+  addForm.supervisor_id = null
+  addForm.assigned_division = ''
+  rosterMessage.value = ''
+  isRosterOpen.value = true
+
+  await loadRoster(batch.id)
+  try {
+    const [internsResponse, optionsResponse] = await Promise.all([
+      api.get<CoordinatorInternUser[]>('/api/coordinator/users/interns'),
+      api.get<EnrollmentOptions>('/api/coordinator/enrollment-options'),
+    ])
+    rosterCandidates.value = internsResponse.data
+    rosterOptions.value = optionsResponse.data
+  } catch {
+    rosterMessage.value = 'Unable to load the student picker.'
+  }
+}
+
+const closeRoster = () => {
+  isRosterOpen.value = false
+  rosterBatch.value = null
+}
+
+const addIntern = async () => {
+  if (!rosterBatch.value || !addForm.student_id) return
+
+  const candidate = rosterCandidates.value.find((student) => student.id === addForm.student_id)
+
+  // Enrolled elsewhere -> this is a MOVE. Confirm first (guards a wrong-batch pick).
+  if (candidate?.enrolled && candidate.enrollment && candidate.enrollment.batch.id !== rosterBatch.value.id) {
+    const confirmed = confirmAction(
+      `${candidate.name} is currently enrolled in "${candidate.enrollment.batch.name}". ` +
+        `Adding them to "${rosterBatch.value.name}" will MOVE them: their "${candidate.enrollment.batch.name}" ` +
+        `enrollment will be marked dropped and a new active one created here. ` +
+        `Make sure "${rosterBatch.value.name}" is the correct batch. Continue?`,
+    )
+    if (!confirmed) return
+  }
+
+  isAddingIntern.value = true
+  rosterMessage.value = ''
+  try {
+    const { data } = await api.post<{ moved: boolean }>(`/api/coordinator/batches/${rosterBatch.value.id}/roster`, {
+      student_id: addForm.student_id,
+      company_id: addForm.company_id,
+      supervisor_id: addForm.supervisor_id,
+      assigned_division: addForm.assigned_division || null,
+    })
+
+    addForm.student_id = null
+    addForm.company_id = null
+    addForm.supervisor_id = null
+    addForm.assigned_division = ''
+
+    await loadRoster(rosterBatch.value.id)
+    // Refresh candidates so enrolled-elsewhere state stays accurate.
+    rosterCandidates.value = (await api.get<CoordinatorInternUser[]>('/api/coordinator/users/interns')).data
+    showToast(data.moved ? 'Intern moved to this batch.' : 'Intern added to this batch.')
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 422) {
+      rosterMessage.value = error.response.data.message ?? 'Unable to add this student.'
+    } else if (axios.isAxiosError(error) && error.response?.status === 403) {
+      rosterMessage.value = 'That student or batch is outside your department scope.'
+    } else {
+      rosterMessage.value = 'Unable to add this student.'
+    }
+  } finally {
+    isAddingIntern.value = false
+  }
+}
+
+const removeIntern = async (row: BatchRosterRow) => {
+  if (!rosterBatch.value) return
+  if (!confirmAction(`Remove ${row.student.name} from "${rosterBatch.value.name}"? Their record will be marked dropped (history is kept).`)) return
+
+  try {
+    await api.patch(`/api/coordinator/batches/${rosterBatch.value.id}/roster/${row.id}/drop`)
+    await loadRoster(rosterBatch.value.id)
+    await load()
+    showToast('Intern removed (dropped).')
+  } catch {
+    rosterMessage.value = 'Unable to remove this intern.'
+  }
+}
+
+const deleteIntern = async (row: BatchRosterRow) => {
+  if (!rosterBatch.value) return
+  if (!confirmAction(`Permanently delete ${row.student.name}'s dropped record from this batch? This cannot be undone.`)) return
+
+  try {
+    await api.delete(`/api/coordinator/batches/${rosterBatch.value.id}/roster/${row.id}`)
+    await loadRoster(rosterBatch.value.id)
+    showToast('Record deleted.')
+  } catch {
+    rosterMessage.value = 'Unable to delete this record.'
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -214,9 +370,14 @@ onMounted(load)
               </span>
             </td>
             <td class="px-4 py-3">
-              <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="openEditModal(batch)">
-                Edit
-              </button>
+              <div class="flex gap-2">
+                <button type="button" class="rounded-md border border-blue-600 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-50" @click="openRoster(batch)">
+                  View Interns
+                </button>
+                <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="openEditModal(batch)">
+                  Edit
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -304,6 +465,131 @@ onMounted(load)
           >
             {{ isSaving ? 'Saving...' : 'Save' }}
           </button>
+        </div>
+      </section>
+    </div>
+
+    <!-- Roster management modal -->
+    <div v-if="isRosterOpen && rosterBatch" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
+      <section class="w-full max-w-3xl rounded-lg bg-white p-6 shadow-xl">
+        <div class="flex items-start justify-between">
+          <div>
+            <h3 class="text-lg font-semibold text-slate-950">Interns — {{ rosterBatch.name }}</h3>
+            <p class="mt-0.5 text-xs text-slate-500">{{ rosterBatch.program?.name }} · {{ activeRoster.length }} active</p>
+          </div>
+          <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeRoster">Close</button>
+        </div>
+
+        <p v-if="rosterMessage" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ rosterMessage }}</p>
+
+        <!-- Add intern -->
+        <div class="mt-5 rounded-md border border-slate-200 bg-slate-50 p-4">
+          <p class="mb-3 text-sm font-semibold text-slate-800">Add an intern</p>
+          <div class="grid gap-3 md:grid-cols-2">
+            <div>
+              <label class="mb-1 block text-xs font-medium text-slate-600" for="roster-student">Student (same program)</label>
+              <select id="roster-student" v-model.number="addForm.student_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                <option :value="null">Select Student</option>
+                <option v-for="student in addableStudents" :key="student.id" :value="student.id">
+                  {{ student.name }}<template v-if="student.enrolled && student.enrollment"> — currently in {{ student.enrollment.batch.name }}</template>
+                </option>
+              </select>
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-medium text-slate-600" for="roster-company">Company</label>
+              <select id="roster-company" v-model.number="addForm.company_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                <option :value="null">Select Company</option>
+                <option v-for="company in rosterOptions.companies" :key="company.id" :value="company.id">{{ company.name }}</option>
+              </select>
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-medium text-slate-600" for="roster-supervisor">Supervisor</label>
+              <select id="roster-supervisor" v-model.number="addForm.supervisor_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                <option :value="null">Select Supervisor</option>
+                <option v-for="supervisor in rosterOptions.supervisors" :key="supervisor.id" :value="supervisor.id">{{ supervisor.name }}</option>
+              </select>
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-medium text-slate-600" for="roster-division">Assigned Division (optional)</label>
+              <input id="roster-division" v-model="addForm.assigned_division" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            </div>
+          </div>
+          <div class="mt-3 flex justify-end">
+            <button
+              type="button"
+              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-blue-300"
+              :disabled="isAddingIntern || !addForm.student_id || !addForm.company_id || !addForm.supervisor_id"
+              @click="addIntern"
+            >
+              {{ isAddingIntern ? 'Adding...' : 'Add Intern' }}
+            </button>
+          </div>
+        </div>
+
+        <p v-if="isRosterLoading" class="mt-5 text-sm text-slate-500">Loading roster...</p>
+
+        <!-- Active interns -->
+        <div v-else class="mt-5 space-y-5">
+          <div>
+            <p class="mb-2 text-sm font-semibold text-slate-800">Active interns ({{ activeRoster.length }})</p>
+            <div class="overflow-hidden rounded-md ring-1 ring-slate-200">
+              <table class="min-w-full divide-y divide-slate-200 text-sm">
+                <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th class="px-3 py-2 text-left">Student</th>
+                    <th class="px-3 py-2 text-left">Company</th>
+                    <th class="px-3 py-2 text-left">Supervisor</th>
+                    <th class="px-3 py-2 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr v-if="activeRoster.length === 0">
+                    <td class="px-3 py-4 text-center text-slate-500" colspan="4">No active interns in this batch.</td>
+                  </tr>
+                  <tr v-for="row in activeRoster" :key="row.id">
+                    <td class="px-3 py-2">
+                      <p class="font-semibold text-slate-900">{{ row.student.name }}</p>
+                      <p class="font-mono text-xs text-slate-400">{{ row.student.student_id_number ?? '—' }}</p>
+                    </td>
+                    <td class="px-3 py-2 text-slate-600">{{ row.company?.name ?? '—' }}</td>
+                    <td class="px-3 py-2 text-slate-600">{{ row.supervisor?.name ?? '—' }}</td>
+                    <td class="px-3 py-2 text-right">
+                      <button type="button" class="rounded-md border border-amber-500 px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-50" @click="removeIntern(row)">
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Dropped interns (can be deleted) -->
+          <div v-if="droppedRoster.length">
+            <p class="mb-2 text-sm font-semibold text-slate-800">Dropped ({{ droppedRoster.length }})</p>
+            <div class="overflow-hidden rounded-md ring-1 ring-slate-200">
+              <table class="min-w-full divide-y divide-slate-200 text-sm">
+                <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th class="px-3 py-2 text-left">Student</th>
+                    <th class="px-3 py-2 text-left">Company</th>
+                    <th class="px-3 py-2 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr v-for="row in droppedRoster" :key="row.id">
+                    <td class="px-3 py-2 text-slate-600">{{ row.student.name }}</td>
+                    <td class="px-3 py-2 text-slate-500">{{ row.company?.name ?? '—' }}</td>
+                    <td class="px-3 py-2 text-right">
+                      <button type="button" class="rounded-md border border-red-500 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50" @click="deleteIntern(row)">
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </section>
     </div>
