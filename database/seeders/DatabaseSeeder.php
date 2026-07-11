@@ -51,5 +51,6 @@ class DatabaseSeeder extends Seeder
         $this->call(SippDemoEntriesSeeder::class);
         $this->call(CoordinatorPagesDemoSeeder::class);
         $this->call(SupervisorReviewDemoSeeder::class);
+        $this->call(CabmbUsersDemoSeeder::class);
     }
 }
