@@ -1,28 +1,35 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
+import { showToast } from '@/lib/toast'
+import ToastHost from '@/components/ToastHost.vue'
 import type {
-  BatchStudentRecord,
-  BatchStudentStatus,
+  CoordinatorInternUser,
+  CoordinatorSupervisorUser,
   EnrollableStudent,
   EnrollmentOptions,
-  RosterFilters,
 } from '@/types/api'
 
-const students = ref<BatchStudentRecord[]>([])
-const filters = ref<RosterFilters>({ batches: [], statuses: [] })
+type UsersTab = 'interns' | 'supervisors'
+
+const activeTab = ref<UsersTab>('interns')
+
+const interns = ref<CoordinatorInternUser[]>([])
+const supervisors = ref<CoordinatorSupervisorUser[]>([])
 const isLoading = ref(true)
 const errorMessage = ref('')
 
-const selectedBatchId = ref<number | null>(null)
-const selectedStatus = ref<BatchStudentStatus | ''>('')
+const enrolledCount = computed(() => interns.value.filter((student) => student.enrolled).length)
+const notEnrolledCount = computed(() => interns.value.length - enrolledCount.value)
 
+// --- Enroll (places a student into a batch) --------------------------------
 const isModalOpen = ref(false)
 const isSaving = ref(false)
 const modalErrors = ref<Record<string, string[]>>({})
 const modalMessage = ref('')
 
+const enrollBatches = ref<{ id: number; name: string }[]>([])
 const enrollableStudents = ref<EnrollableStudent[]>([])
 const enrollmentOptions = ref<EnrollmentOptions>({ companies: [], supervisors: [] })
 
@@ -34,10 +41,7 @@ const enrollForm = reactive({
   assigned_division: '',
 })
 
-// Account creation — SEPARATE from enrollment. Creating a student/supervisor
-// only makes their login; enrollment (above) still places them into a batch.
-const successMessage = ref('')
-
+// --- Create Account (login only — SEPARATE from enrollment) -----------------
 const isAccountModalOpen = ref(false)
 const isCreatingAccount = ref(false)
 const accountErrors = ref<Record<string, string[]>>({})
@@ -51,6 +55,81 @@ const accountForm = reactive({
   program_id: null as number | null,
   student_id_number: '',
 })
+
+const loadUsers = async () => {
+  isLoading.value = true
+  errorMessage.value = ''
+
+  try {
+    const [internsResponse, supervisorsResponse] = await Promise.all([
+      api.get<CoordinatorInternUser[]>('/api/coordinator/users/interns'),
+      api.get<CoordinatorSupervisorUser[]>('/api/coordinator/users/supervisors'),
+    ])
+    interns.value = internsResponse.data
+    supervisors.value = supervisorsResponse.data
+  } catch {
+    errorMessage.value = 'Unable to load users.'
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const loadEnrollmentData = async () => {
+  try {
+    const [enrollableResponse, optionsResponse, rosterResponse] = await Promise.all([
+      api.get<EnrollableStudent[]>('/api/coordinator/students/enrollable'),
+      api.get<EnrollmentOptions>('/api/coordinator/enrollment-options'),
+      // filters.batches = only batches this coordinator owns (valid to enrol into).
+      api.get<{ filters: { batches: { id: number; name: string }[] } }>('/api/coordinator/roster'),
+    ])
+    enrollableStudents.value = enrollableResponse.data
+    enrollmentOptions.value = optionsResponse.data
+    enrollBatches.value = rosterResponse.data.filters.batches
+  } catch {
+    modalMessage.value = 'Unable to load enrollable students, companies, or supervisors.'
+  }
+}
+
+const openEnrollModal = async () => {
+  enrollForm.batch_id = null
+  enrollForm.student_id = null
+  enrollForm.company_id = null
+  enrollForm.supervisor_id = null
+  enrollForm.assigned_division = ''
+  modalErrors.value = {}
+  modalMessage.value = ''
+  isModalOpen.value = true
+  await loadEnrollmentData()
+  enrollForm.batch_id = enrollBatches.value[0]?.id ?? null
+}
+
+const closeModal = () => {
+  isModalOpen.value = false
+}
+
+const submitEnrollment = async () => {
+  isSaving.value = true
+  modalErrors.value = {}
+  modalMessage.value = ''
+
+  try {
+    await api.post('/api/coordinator/enrollments', enrollForm)
+    await loadUsers()
+    closeModal()
+    showToast('Student enrolled.')
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 422) {
+      modalErrors.value = error.response.data.errors ?? {}
+      modalMessage.value = error.response.data.message ?? 'Please fix the errors below.'
+    } else if (axios.isAxiosError(error) && error.response?.status === 403) {
+      modalMessage.value = 'You are not allowed to enroll into this batch.'
+    } else {
+      modalMessage.value = 'Unable to enroll this student.'
+    }
+  } finally {
+    isSaving.value = false
+  }
+}
 
 const openAccountModal = async () => {
   accountForm.role = 'student'
@@ -70,9 +149,6 @@ const closeAccountModal = () => {
 }
 
 const submitAccount = async () => {
-  const label = accountForm.role === 'student' ? 'student' : 'supervisor'
-  if (!window.confirm(`Create a new ${label} account for ${accountForm.name || 'this person'}?`)) return
-
   isCreatingAccount.value = true
   accountErrors.value = {}
   accountMessage.value = ''
@@ -90,9 +166,10 @@ const submitAccount = async () => {
     }
 
     await api.post('/api/coordinator/accounts', payload)
-    successMessage.value = `${label.charAt(0).toUpperCase() + label.slice(1)} account created for ${accountForm.name}.`
+    const label = accountForm.role === 'student' ? 'Student' : 'Supervisor'
     closeAccountModal()
-    if (accountForm.role === 'student') await loadEnrollmentData()
+    await loadUsers()
+    showToast(`${label} account created for ${accountForm.name}.`)
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 422) {
       accountErrors.value = error.response.data.errors ?? {}
@@ -105,111 +182,19 @@ const submitAccount = async () => {
   }
 }
 
-const loadRoster = async () => {
-  isLoading.value = true
-  errorMessage.value = ''
-
-  try {
-    const params: Record<string, number | string> = {}
-    if (selectedBatchId.value) params.batch_id = selectedBatchId.value
-    if (selectedStatus.value) params.status = selectedStatus.value
-
-    const { data } = await api.get<{ students: BatchStudentRecord[]; filters: RosterFilters }>('/api/coordinator/roster', { params })
-    students.value = data.students
-    filters.value = data.filters
-  } catch {
-    errorMessage.value = 'Unable to load your roster.'
-  } finally {
-    isLoading.value = false
-  }
-}
-
-watch([selectedBatchId, selectedStatus], loadRoster)
-
-const loadEnrollmentData = async () => {
-  try {
-    const [enrollableResponse, optionsResponse] = await Promise.all([
-      api.get<EnrollableStudent[]>('/api/coordinator/students/enrollable'),
-      api.get<EnrollmentOptions>('/api/coordinator/enrollment-options'),
-    ])
-    enrollableStudents.value = enrollableResponse.data
-    enrollmentOptions.value = optionsResponse.data
-  } catch {
-    modalMessage.value = 'Unable to load enrollable students, companies, or supervisors.'
-  }
-}
-
-const openEnrollModal = async () => {
-  enrollForm.batch_id = filters.value.batches[0]?.id ?? null
-  enrollForm.student_id = null
-  enrollForm.company_id = null
-  enrollForm.supervisor_id = null
-  enrollForm.assigned_division = ''
-  modalErrors.value = {}
-  modalMessage.value = ''
-  isModalOpen.value = true
-  await loadEnrollmentData()
-}
-
-const closeModal = () => {
-  isModalOpen.value = false
-}
-
-const submitEnrollment = async () => {
-  isSaving.value = true
-  modalErrors.value = {}
-  modalMessage.value = ''
-
-  try {
-    await api.post('/api/coordinator/enrollments', enrollForm)
-    await loadRoster()
-    closeModal()
-  } catch (error) {
-    if (axios.isAxiosError(error) && error.response?.status === 422) {
-      modalErrors.value = error.response.data.errors ?? {}
-      modalMessage.value = error.response.data.message ?? 'Please fix the errors below.'
-    } else if (axios.isAxiosError(error) && error.response?.status === 403) {
-      modalMessage.value = 'You are not allowed to enroll into this batch.'
-    } else {
-      modalMessage.value = 'Unable to enroll this student.'
-    }
-  } finally {
-    isSaving.value = false
-  }
-}
-
-const updateStatus = async (record: BatchStudentRecord, status: BatchStudentStatus) => {
-  errorMessage.value = ''
-
-  try {
-    await api.put(`/api/coordinator/enrollments/${record.id}`, { status })
-    await loadRoster()
-  } catch {
-    errorMessage.value = 'Unable to update this student\'s status.'
-  }
-}
-
-const statusBadgeClass = (status: BatchStudentStatus): string => {
-  if (status === 'active') return 'bg-green-50 text-green-700'
-  if (status === 'completed') return 'bg-blue-50 text-blue-700'
-  return 'bg-slate-100 text-slate-500'
-}
-
-onMounted(loadRoster)
+onMounted(loadUsers)
 </script>
 
 <template>
   <section class="space-y-5">
-    <div class="flex flex-wrap items-center gap-3">
-      <select v-model="selectedBatchId" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
-        <option :value="null">All Batches</option>
-        <option v-for="batch in filters.batches" :key="batch.id" :value="batch.id">{{ batch.name }}</option>
-      </select>
-      <select v-model="selectedStatus" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
-        <option value="">All Statuses</option>
-        <option v-for="status in filters.statuses" :key="status" :value="status">{{ status }}</option>
-      </select>
-      <div class="ml-auto flex items-center gap-2">
+    <ToastHost />
+
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <h2 class="text-2xl font-bold text-slate-950">Users</h2>
+        <p class="mt-1 text-sm text-slate-500">Interns and supervisors across your department's programs.</p>
+      </div>
+      <div v-if="activeTab === 'interns'" class="flex items-center gap-2">
         <button type="button" class="rounded-md border border-blue-600 bg-white px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-50" @click="openAccountModal">
           + Create Account
         </button>
@@ -219,55 +204,123 @@ onMounted(loadRoster)
       </div>
     </div>
 
-    <p v-if="successMessage" class="rounded-md bg-green-50 px-4 py-2 text-sm text-green-700">{{ successMessage }}</p>
+    <!-- Secondary nav -->
+    <div class="flex gap-1 border-b border-slate-200">
+      <button
+        type="button"
+        class="-mb-px border-b-2 px-4 py-2 text-sm font-semibold transition"
+        :class="activeTab === 'interns' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-800'"
+        @click="activeTab = 'interns'"
+      >
+        Interns
+        <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{{ interns.length }}</span>
+      </button>
+      <button
+        type="button"
+        class="-mb-px border-b-2 px-4 py-2 text-sm font-semibold transition"
+        :class="activeTab === 'supervisors' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-800'"
+        @click="activeTab = 'supervisors'"
+      >
+        Supervisors
+        <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{{ supervisors.length }}</span>
+      </button>
+    </div>
+
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
     <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
 
-    <div v-else class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
-      <table class="min-w-full divide-y divide-slate-200">
-        <thead class="bg-slate-50">
-          <tr>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Student</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Batch</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Company</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Supervisor</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-100">
-          <tr v-if="students.length === 0">
-            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="6">No students match these filters.</td>
-          </tr>
-          <tr v-for="record in students" :key="record.id">
-            <td class="px-4 py-3">
-              <p class="text-sm font-semibold text-slate-900">{{ record.student.name }}</p>
-              <p class="font-mono text-xs text-slate-400">{{ record.student.student_id_number ?? '—' }}</p>
-            </td>
-            <td class="px-4 py-3 text-sm text-slate-500">{{ record.batch.name }}</td>
-            <td class="px-4 py-3 text-sm text-slate-700">{{ record.company.name }}</td>
-            <td class="px-4 py-3 text-sm text-slate-500">{{ record.supervisor.name }}</td>
-            <td class="px-4 py-3">
-              <span class="rounded-full px-3 py-1 text-xs font-bold capitalize" :class="statusBadgeClass(record.status)">
-                {{ record.status }}
-              </span>
-            </td>
-            <td class="px-4 py-3">
-              <select
-                class="rounded-md border border-slate-300 px-2 py-1.5 text-xs"
-                :value="record.status"
-                @change="updateStatus(record, ($event.target as HTMLSelectElement).value as BatchStudentStatus)"
-              >
-                <option value="active">Active</option>
-                <option value="completed">Completed</option>
-                <option value="dropped">Dropped</option>
-              </select>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <!-- Interns tab -->
+    <template v-else-if="activeTab === 'interns'">
+      <p class="text-xs text-slate-500">
+        <span class="font-semibold text-green-700">{{ enrolledCount }}</span> enrolled ·
+        <span class="font-semibold text-amber-700">{{ notEnrolledCount }}</span> not yet enrolled
+      </p>
+      <div class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+        <table class="min-w-full divide-y divide-slate-200">
+          <thead class="bg-slate-50">
+            <tr>
+              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Student</th>
+              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
+              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Enrollment</th>
+              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Batch</th>
+              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Company</th>
+              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Supervisor</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <tr v-if="interns.length === 0">
+              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="6">No students in your department's programs yet.</td>
+            </tr>
+            <tr v-for="student in interns" :key="student.id">
+              <td class="px-4 py-3">
+                <p class="text-sm font-semibold text-slate-900">{{ student.name }}</p>
+                <p class="font-mono text-xs text-slate-400">{{ student.student_id_number ?? '—' }}</p>
+              </td>
+              <td class="px-4 py-3 text-sm text-slate-700">{{ student.program?.code ?? student.program?.name ?? '—' }}</td>
+              <td class="px-4 py-3">
+                <span
+                  class="rounded-full px-3 py-1 text-xs font-bold"
+                  :class="student.enrolled ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'"
+                >
+                  {{ student.enrolled ? 'ENROLLED' : 'NOT ENROLLED' }}
+                </span>
+              </td>
+              <td class="px-4 py-3 text-sm text-slate-500">{{ student.enrollment?.batch?.name ?? '—' }}</td>
+              <td class="px-4 py-3 text-sm text-slate-500">{{ student.enrollment?.company?.name ?? '—' }}</td>
+              <td class="px-4 py-3 text-sm text-slate-500">{{ student.enrollment?.supervisor?.name ?? '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </template>
 
+    <!-- Supervisors tab -->
+    <template v-else>
+      <div class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+        <table class="min-w-full divide-y divide-slate-200">
+          <thead class="bg-slate-50">
+            <tr>
+              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Supervisor</th>
+              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Email</th>
+              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Companies</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <tr v-if="supervisors.length === 0">
+              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="4">No supervisors linked to your department's placements yet.</td>
+            </tr>
+            <tr v-for="supervisor in supervisors" :key="supervisor.id">
+              <td class="px-4 py-3 text-sm font-semibold text-slate-900">{{ supervisor.name }}</td>
+              <td class="px-4 py-3 text-sm text-slate-500">{{ supervisor.email }}</td>
+              <td class="px-4 py-3">
+                <span
+                  class="rounded-full px-3 py-1 text-xs font-bold"
+                  :class="supervisor.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
+                >
+                  {{ supervisor.is_active ? 'Active' : 'Inactive' }}
+                </span>
+              </td>
+              <td class="px-4 py-3">
+                <div v-if="supervisor.companies.length" class="flex flex-wrap gap-1.5">
+                  <span
+                    v-for="company in supervisor.companies"
+                    :key="company.id"
+                    class="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700"
+                    :title="company.position ?? ''"
+                  >
+                    {{ company.name }}<span v-if="company.position" class="text-slate-400"> · {{ company.position }}</span>
+                  </span>
+                </div>
+                <span v-else class="text-sm text-slate-400">—</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </template>
+
+    <!-- Enroll modal -->
     <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
       <section class="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
         <div class="flex items-center justify-between">
@@ -280,7 +333,7 @@ onMounted(loadRoster)
             <label class="mb-2 block text-sm font-medium text-slate-700" for="enroll-batch">Batch</label>
             <select id="enroll-batch" v-model.number="enrollForm.batch_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
               <option :value="null">Select Batch</option>
-              <option v-for="batch in filters.batches" :key="batch.id" :value="batch.id">{{ batch.name }}</option>
+              <option v-for="batch in enrollBatches" :key="batch.id" :value="batch.id">{{ batch.name }}</option>
             </select>
           </div>
           <div>
@@ -320,9 +373,7 @@ onMounted(loadRoster)
         <p v-if="modalMessage" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ modalMessage }}</p>
 
         <div class="mt-6 flex justify-end gap-3">
-          <button type="button" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" @click="closeModal">
-            Cancel
-          </button>
+          <button type="button" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" @click="closeModal">Cancel</button>
           <button
             type="button"
             class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-blue-300"
@@ -335,7 +386,7 @@ onMounted(loadRoster)
       </section>
     </div>
 
-    <!-- Create Account modal — separate from enrollment (login only) -->
+    <!-- Create Account modal — login only, separate from enrollment -->
     <div v-if="isAccountModalOpen" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
       <section class="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
         <div class="flex items-center justify-between">

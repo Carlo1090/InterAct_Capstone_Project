@@ -102,6 +102,29 @@ export type EnrollmentOptions = {
   programs?: EnrollmentOptionProgram[]
 }
 
+export type CoordinatorInternUser = {
+  id: number
+  name: string
+  email: string
+  student_id_number: string | null
+  program: { id: number; code?: string; name: string } | null
+  enrolled: boolean
+  enrollment: {
+    id: number
+    batch: { id: number; name: string; program_id: number }
+    company: { id: number; name: string } | null
+    supervisor: { id: number; name: string; email: string } | null
+  } | null
+}
+
+export type CoordinatorSupervisorUser = {
+  id: number
+  name: string
+  email: string
+  is_active: boolean
+  companies: { id: number; name: string; position: string | null }[]
+}
+
 export type BatchStudentStatus = 'active' | 'completed' | 'dropped'
 
 export type BatchStudentRecord = {

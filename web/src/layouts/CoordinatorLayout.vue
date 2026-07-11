@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 
 const navItems = [
   { label: 'Department Dashboard', to: '/coordinator/dashboard', badge: '' },
-  { label: 'Interns', to: '/coordinator/interns', badge: '' },
+  { label: 'Users', to: '/coordinator/users', badge: '' },
   { label: 'Daily Journal Activities', to: '/coordinator/journal-activities', badge: '4' },
   { label: 'Journal Templates', to: '/coordinator/journal-templates', badge: '' },
   { label: 'Batches', to: '/coordinator/batches', badge: '' },
@@ -89,10 +89,10 @@ const logout = async () => {
       <header class="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-8">
         <h1 class="text-lg font-bold text-slate-950">{{ pageTitle }}</h1>
         <RouterLink
-          to="/coordinator/interns"
+          to="/coordinator/users"
           class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
         >
-          View Interns
+          View Users
         </RouterLink>
       </header>
 

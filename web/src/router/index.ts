@@ -91,9 +91,14 @@ const router = createRouter({
           meta: { title: 'Coordinator Dashboard' },
         },
         {
-          path: 'interns',
+          path: 'users',
           component: () => import('@/pages/coordinator/CoordinatorInternsPage.vue'),
-          meta: { title: 'Interns' },
+          meta: { title: 'Users' },
+        },
+        // Backward-compatible redirect from the old "Interns" path.
+        {
+          path: 'interns',
+          redirect: '/coordinator/users',
         },
         {
           path: 'journal-activities',
