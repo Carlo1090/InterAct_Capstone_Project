@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Admin;
 
-use App\Models\Company;
+use App\Models\Department;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -45,15 +45,15 @@ class AuditLogControllerTest extends TestCase
         ]);
     }
 
-    public function test_updating_a_company_produces_a_log_entry(): void
+    public function test_updating_a_department_produces_a_log_entry(): void
     {
         Sanctum::actingAs($this->admin(), ['*']);
 
-        $company = Company::create(['name' => 'Old Name', 'address' => 'Old Address', 'is_active' => true]);
+        $department = Department::create(['code' => 'CAST', 'name' => 'Old Name', 'is_active' => true]);
 
-        $this->putJson("/api/admin/companies/{$company->id}", ['name' => 'New Name'])->assertOk();
+        $this->putJson("/api/admin/departments/{$department->id}", ['name' => 'New Name'])->assertOk();
 
-        $this->assertDatabaseHas('system_logs', ['action' => 'Company Updated']);
+        $this->assertDatabaseHas('system_logs', ['action' => 'Department Updated']);
     }
 
     public function test_student_password_change_produces_a_log_entry(): void
@@ -78,8 +78,8 @@ class AuditLogControllerTest extends TestCase
         $admin = $this->admin();
         Sanctum::actingAs($admin, ['*']);
 
-        $company = Company::create(['name' => 'Acme Corp', 'address' => '123 Main St', 'is_active' => true]);
-        $this->putJson("/api/admin/companies/{$company->id}", ['name' => 'Acme Corp Updated'])->assertOk();
+        $department = Department::create(['code' => 'CAST', 'name' => 'Acme Department', 'is_active' => true]);
+        $this->putJson("/api/admin/departments/{$department->id}", ['name' => 'Acme Department Updated'])->assertOk();
 
         $student = User::factory()->create(['role' => 'student', 'name' => 'Filter Student']);
         Sanctum::actingAs($student, ['*']);
@@ -91,16 +91,16 @@ class AuditLogControllerTest extends TestCase
 
         Sanctum::actingAs($admin, ['*']);
 
-        $byAction = $this->getJson('/api/admin/audit-logs?action=Company Updated');
+        $byAction = $this->getJson('/api/admin/audit-logs?action=Department Updated');
         $byAction->assertOk();
         $this->assertCount(1, $byAction->json('data'));
-        $this->assertSame('Company Updated', $byAction->json('data.0.action'));
+        $this->assertSame('Department Updated', $byAction->json('data.0.action'));
 
         $byRole = $this->getJson('/api/admin/audit-logs?role=student');
         $byRole->assertOk();
         $actions = collect($byRole->json('data'))->pluck('action');
         $this->assertTrue($actions->contains('Password Changed'));
-        $this->assertFalse($actions->contains('Company Updated'));
+        $this->assertFalse($actions->contains('Department Updated'));
 
         $bySearch = $this->getJson('/api/admin/audit-logs?search=Acme');
         $bySearch->assertOk();
@@ -116,27 +116,27 @@ class AuditLogControllerTest extends TestCase
     {
         Sanctum::actingAs($this->admin(), ['*']);
 
-        $this->postJson('/api/admin/companies', ['name' => 'Company One', 'address' => 'Address One'])->assertCreated();
-        $companyTwo = Company::create(['name' => 'Company Two', 'address' => 'Address Two', 'is_active' => true]);
-        $this->putJson("/api/admin/companies/{$companyTwo->id}", ['name' => 'Company Two Updated'])->assertOk();
+        $this->postJson('/api/admin/departments', ['code' => 'CAST', 'name' => 'Department One'])->assertCreated();
+        $departmentTwo = Department::create(['code' => 'CABM-B', 'name' => 'Department Two', 'is_active' => true]);
+        $this->putJson("/api/admin/departments/{$departmentTwo->id}", ['name' => 'Department Two Updated'])->assertOk();
 
         $response = $this->getJson('/api/admin/audit-logs/actions');
 
         $response->assertOk();
         $actions = $response->json();
         $this->assertSame(array_values($actions), array_unique($actions));
-        $this->assertContains('Company Created', $actions);
-        $this->assertContains('Company Updated', $actions);
+        $this->assertContains('Department Created', $actions);
+        $this->assertContains('Department Updated', $actions);
     }
 
     public function test_export_returns_csv_with_matching_rows(): void
     {
         Sanctum::actingAs($this->admin(), ['*']);
 
-        $company = Company::create(['name' => 'Exportable Co', 'address' => '456 Side St', 'is_active' => true]);
-        $this->putJson("/api/admin/companies/{$company->id}", ['name' => 'Exportable Co Updated'])->assertOk();
+        $department = Department::create(['code' => 'CAST', 'name' => 'Exportable Dept', 'is_active' => true]);
+        $this->putJson("/api/admin/departments/{$department->id}", ['name' => 'Exportable Dept Updated'])->assertOk();
 
-        $response = $this->get('/api/admin/audit-logs/export?action=Company Updated');
+        $response = $this->get('/api/admin/audit-logs/export?action=Department Updated');
 
         $response->assertOk();
         $response->assertHeader('content-type', 'text/csv; charset=UTF-8');
@@ -144,8 +144,8 @@ class AuditLogControllerTest extends TestCase
         $content = $response->streamedContent();
         $this->assertStringContainsString('Timestamp', $content);
         $this->assertStringContainsString('IP Address', $content);
-        $this->assertStringContainsString('Company Updated', $content);
-        $this->assertStringNotContainsString('Company Created', $content);
+        $this->assertStringContainsString('Department Updated', $content);
+        $this->assertStringNotContainsString('Department Created', $content);
     }
 
     public function test_non_admin_cannot_access_audit_log_routes(): void

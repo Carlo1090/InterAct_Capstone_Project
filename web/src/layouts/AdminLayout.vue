@@ -9,7 +9,6 @@ const navItems = [
   { label: 'Departments', to: '/admin/departments', badge: '' },
   { label: 'Programs', to: '/admin/programs', badge: '' },
   { label: 'Batches', to: '/admin/batches', badge: '' },
-  { label: 'Companies', to: '/admin/companies', badge: '' },
   { label: 'Student Info Sheet', to: '/admin/info-sheets', badge: '' },
   { label: 'Annual SIPP Report', to: '/admin/annual-sipp', badge: '' },
   { label: 'Audit Logs', to: '/admin/audit-logs', badge: '' },

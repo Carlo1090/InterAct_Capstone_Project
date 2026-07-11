@@ -119,4 +119,53 @@ class UserControllerTest extends TestCase
 
         $this->patchJson("/api/admin/users/{$target->id}/activate")->assertStatus(403);
     }
+
+    public function test_creating_a_coordinator_without_a_department_is_rejected(): void
+    {
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        $response = $this->postJson('/api/admin/users', [
+            'name' => 'New Coordinator',
+            'email' => 'new.coordinator@example.test',
+            'password' => 'a-strong-password',
+            'role' => 'coordinator',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['department_ids']);
+    }
+
+    public function test_creating_a_coordinator_with_departments_attaches_them(): void
+    {
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        $department = Department::create(['code' => 'CAST', 'name' => 'College of Arts, Sciences and Technology', 'is_active' => true]);
+
+        $response = $this->postJson('/api/admin/users', [
+            'name' => 'New Coordinator',
+            'email' => 'new.coordinator@example.test',
+            'password' => 'a-strong-password',
+            'role' => 'coordinator',
+            'department_ids' => [$department->id],
+        ]);
+
+        $response->assertCreated();
+        $coordinator = User::where('email', 'new.coordinator@example.test')->firstOrFail();
+        $this->assertTrue($coordinator->departmentsCoordinated()->where('departments.id', $department->id)->exists());
+    }
+
+    public function test_creating_a_second_admin_is_rejected(): void
+    {
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        $response = $this->postJson('/api/admin/users', [
+            'name' => 'Second Admin',
+            'email' => 'second.admin@example.test',
+            'password' => 'a-strong-password',
+            'role' => 'admin',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['role']);
+    }
 }

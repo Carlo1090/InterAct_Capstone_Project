@@ -2,7 +2,6 @@
 
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\BatchController;
-use App\Http\Controllers\Admin\CompanyController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\ProgramController;
 use App\Http\Controllers\Admin\StudentInfoSheetController as AdminStudentInfoSheetController;
@@ -56,11 +55,6 @@ Route::middleware(['auth:sanctum', 'role:admin'])
         Route::get('batches/{batch}', [BatchController::class, 'show']);
         Route::post('batches', [BatchController::class, 'store']);
         Route::put('batches/{batch}', [BatchController::class, 'update']);
-
-        Route::get('companies', [CompanyController::class, 'index']);
-        Route::post('companies', [CompanyController::class, 'store']);
-        Route::get('companies/{company}', [CompanyController::class, 'show']);
-        Route::put('companies/{company}', [CompanyController::class, 'update']);
 
         Route::get('info-sheets', [AdminStudentInfoSheetController::class, 'index']);
         Route::get('info-sheets/{student}', [AdminStudentInfoSheetController::class, 'show']);

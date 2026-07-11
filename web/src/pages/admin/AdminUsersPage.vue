@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import axios from 'axios'
 import api from '@/lib/axios'
 import type { Department, PaginatedResponse, Program, User } from '@/types/api'
 
@@ -9,6 +10,7 @@ type UserPayload = {
   password: string
   role: User['role']
   program_id: number | null
+  department_ids: number[]
 }
 
 const users = ref<User[]>([])
@@ -21,7 +23,7 @@ const errorMessage = ref('')
 const modalError = ref('')
 
 const search = ref('')
-const roleFilter = ref('')
+const roleFilter = ref('coordinator')
 const departmentFilter = ref('')
 
 let searchDebounce: ReturnType<typeof setTimeout> | undefined
@@ -32,6 +34,7 @@ const userForm = ref<UserPayload>({
   password: '',
   role: 'student',
   program_id: null,
+  department_ids: [],
 })
 
 const groupedPrograms = computed(() => {
@@ -50,6 +53,7 @@ const resetForm = () => {
     password: '',
     role: 'student',
     program_id: null,
+    department_ids: [],
   }
   modalError.value = ''
 }
@@ -110,6 +114,11 @@ const closeModal = () => {
 }
 
 const createUser = async () => {
+  if (userForm.value.role === 'coordinator' && userForm.value.department_ids.length === 0) {
+    modalError.value = 'Select at least one department for this coordinator.'
+    return
+  }
+
   isSaving.value = true
   modalError.value = ''
 
@@ -117,8 +126,9 @@ const createUser = async () => {
     await api.post('/api/admin/users', userForm.value)
     closeModal()
     await loadUsers()
-  } catch {
-    modalError.value = 'Unable to create user. Please check the fields and try again.'
+  } catch (error) {
+    const data = axios.isAxiosError(error) ? error.response?.data : null
+    modalError.value = data?.message ?? 'Unable to create user. Please check the fields and try again.'
   } finally {
     isSaving.value = false
   }
@@ -164,7 +174,6 @@ onMounted(() => {
     <div class="mt-6 flex flex-wrap gap-3">
       <input v-model="search" class="min-w-72 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Search by name..." />
       <select v-model="roleFilter" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
-        <option value="">All Roles</option>
         <option value="student">Student</option>
         <option value="coordinator">Coordinator</option>
       </select>
@@ -276,6 +285,16 @@ onMounted(() => {
                 </option>
               </optgroup>
             </select>
+          </div>
+          <div v-if="userForm.role === 'coordinator'" class="md:col-span-2">
+            <label class="mb-2 block text-sm font-medium text-slate-700">Departments</label>
+            <div class="grid gap-2 rounded-md border border-slate-300 p-3 sm:grid-cols-2">
+              <label v-for="department in departments" :key="department.id" class="flex items-center gap-2 text-sm text-slate-700">
+                <input v-model="userForm.department_ids" type="checkbox" :value="department.id" />
+                {{ department.name }}
+              </label>
+              <p v-if="departments.length === 0" class="text-sm text-slate-400">No departments available.</p>
+            </div>
           </div>
         </div>
 

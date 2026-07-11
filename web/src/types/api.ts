@@ -29,10 +29,19 @@ export type DepartmentCoordinator = {
   email: string
 }
 
+export type DepartmentStudentSummary = {
+  id: number
+  name: string
+  email: string
+  program: { id: number; name: string } | null
+}
+
 export type DepartmentDetail = Department & {
   active_interns_count: number
   programs: DepartmentProgramSummary[]
   coordinators: DepartmentCoordinator[]
+  students: DepartmentStudentSummary[]
+  companies: { id: number; name: string }[]
 }
 
 export type User = {

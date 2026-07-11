@@ -58,11 +58,6 @@ const router = createRouter({
           meta: { title: 'Batches' },
         },
         {
-          path: 'companies',
-          component: () => import('@/pages/admin/AdminCompaniesPage.vue'),
-          meta: { title: 'Companies' },
-        },
-        {
           path: 'info-sheets',
           component: () => import('@/pages/admin/AdminInfoSheetsPage.vue'),
           meta: { title: 'Student Info Sheet' },

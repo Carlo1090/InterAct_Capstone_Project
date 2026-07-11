@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\AssignCoordinatorRequest;
 use App\Http\Requests\Admin\StoreDepartmentRequest;
 use App\Http\Requests\Admin\UpdateDepartmentRequest;
+use App\Models\Company;
 use App\Models\Department;
 use App\Models\SystemLog;
 use App\Models\User;
@@ -32,6 +33,16 @@ class DepartmentController extends Controller
         ]);
 
         $department->setAttribute('active_interns_count', $department->programs->sum('active_interns_count'));
+
+        $department->setAttribute('students', User::where('role', 'student')
+            ->whereHas('program', fn ($q) => $q->where('department_id', $department->id))
+            ->with('program:id,name')
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'program_id']));
+
+        $department->setAttribute('companies', Company::whereHas(
+            'batchStudents.batch.program', fn ($q) => $q->where('department_id', $department->id)
+        )->distinct()->orderBy('name')->get(['id', 'name']));
 
         return response()->json($department);
     }

@@ -349,6 +349,43 @@ onMounted(() => {
           </div>
 
           <div>
+            <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Students</h5>
+            <div v-if="viewedDepartment.students.length > 0" class="mt-2 overflow-hidden rounded-lg ring-1 ring-slate-200">
+              <table class="min-w-full divide-y divide-slate-200">
+                <thead class="bg-slate-50">
+                  <tr>
+                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
+                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Email</th>
+                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr v-for="student in viewedDepartment.students" :key="student.id">
+                    <td class="px-3 py-2 text-sm font-medium text-slate-900">{{ student.name }}</td>
+                    <td class="px-3 py-2 text-sm text-slate-700">{{ student.email }}</td>
+                    <td class="px-3 py-2 text-sm text-slate-700">{{ student.program?.name ?? '—' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p v-else class="mt-2 text-sm text-slate-400">No students assigned yet.</p>
+          </div>
+
+          <div>
+            <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Partner Companies</h5>
+            <div v-if="viewedDepartment.companies.length > 0" class="mt-2 flex flex-wrap gap-2">
+              <span
+                v-for="company in viewedDepartment.companies"
+                :key="company.id"
+                class="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700"
+              >
+                {{ company.name }}
+              </span>
+            </div>
+            <p v-else class="mt-2 text-sm text-slate-400">No partner companies yet.</p>
+          </div>
+
+          <div>
             <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Assigned Coordinators</h5>
 
             <div v-if="viewedDepartment.coordinators.length > 0" class="mt-2 space-y-2">

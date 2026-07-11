@@ -90,6 +90,13 @@ class DepartmentControllerTest extends TestCase
         $this->assertSame(2, $programs['BSBA-FM']['total_interns_count']);
         $this->assertSame(1, $programs['BSA']['active_interns_count']);
         $this->assertSame(1, $programs['BSA']['total_interns_count']);
+
+        $this->assertCount(3, $response->json('students'));
+        $studentPrograms = collect($response->json('students'))->pluck('program.name');
+        $this->assertTrue($studentPrograms->contains('BSBA Financial Management'));
+        $this->assertTrue($studentPrograms->contains('BS Accountancy'));
+
+        $this->assertCount(3, $response->json('companies'));
     }
 
     public function test_show_handles_a_department_with_no_programs(): void
@@ -103,6 +110,8 @@ class DepartmentControllerTest extends TestCase
         $response->assertOk();
         $response->assertJsonCount(0, 'programs');
         $this->assertSame(0, $response->json('active_interns_count'));
+        $response->assertJsonCount(0, 'students');
+        $response->assertJsonCount(0, 'companies');
     }
 
     public function test_non_admin_cannot_access_department_show(): void

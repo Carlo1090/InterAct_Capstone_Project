@@ -42,13 +42,23 @@ class UserController extends Controller
             'name' => ['required', 'string', 'max:150'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8'],
-            'role' => ['required', Rule::in(['student', 'supervisor', 'coordinator', 'admin'])],
+            'role' => [
+                'required',
+                Rule::in(['student', 'supervisor', 'coordinator', 'admin']),
+                function ($attribute, $value, $fail) {
+                    if ($value === 'admin' && User::where('role', 'admin')->exists()) {
+                        $fail('An admin account already exists.');
+                    }
+                },
+            ],
             'program_id' => ['nullable', 'exists:programs,id'],
             'student_id_number' => ['nullable', 'string', 'max:30', 'unique:users,student_id_number'],
+            'department_ids' => ['required_if:role,coordinator', 'array', 'min:1'],
+            'department_ids.*' => ['exists:departments,id'],
         ]);
 
         $user = User::create([
-            ...$validated,
+            ...collect($validated)->except('department_ids')->all(),
             'password' => Hash::make($validated['password']),
             'is_active' => true,
         ]);
@@ -58,6 +68,10 @@ class UserController extends Controller
                 ['user_id' => $user->id],
                 ['student_id_number' => $user->student_id_number],
             );
+        }
+
+        if ($user->role === 'coordinator') {
+            $user->departmentsCoordinated()->attach($validated['department_ids']);
         }
 
         SystemLog::record('User Created', "Created {$user->role} account ({$user->name})");
