@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\SystemSettingController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Coordinator\AnnualSippReportController;
 use App\Http\Controllers\Coordinator\BatchController as CoordinatorBatchController;
+use App\Http\Controllers\Coordinator\BatchRosterController;
 use App\Http\Controllers\Coordinator\CoordinatorCompanyController;
 use App\Http\Controllers\Coordinator\CoordinatorDashboardController;
 use App\Http\Controllers\Coordinator\CoordinatorInfoSheetController;
@@ -95,6 +96,11 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::get('batches', [CoordinatorBatchController::class, 'index']);
         Route::post('batches', [CoordinatorBatchController::class, 'store']);
         Route::put('batches/{batch}', [CoordinatorBatchController::class, 'update']);
+
+        Route::get('batches/{batch}/roster', [BatchRosterController::class, 'interns']);
+        Route::post('batches/{batch}/roster', [BatchRosterController::class, 'add']);
+        Route::patch('batches/{batch}/roster/{batchStudent}/drop', [BatchRosterController::class, 'remove']);
+        Route::delete('batches/{batch}/roster/{batchStudent}', [BatchRosterController::class, 'destroy']);
 
         Route::get('users/interns', [EnrollmentController::class, 'interns']);
         Route::get('users/supervisors', [EnrollmentController::class, 'supervisors']);
