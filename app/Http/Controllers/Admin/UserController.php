@@ -17,14 +17,15 @@ class UserController extends Controller
     public function index(Request $request): JsonResponse
     {
         $users = User::query()
-            ->with('program.department')
+            ->with(['program.department', 'departmentsCoordinated'])
             ->when($request->filled('role'), fn ($query) => $query->where('role', $request->string('role')))
             ->when($request->filled('program_id'), fn ($query) => $query->where('program_id', $request->integer('program_id')))
             ->when(
                 $request->filled('department_id'),
-                fn ($query) => $query->whereHas(
-                    'program', fn ($q) => $q->where('department_id', $request->integer('department_id'))
-                )
+                fn ($query) => $query->where(function ($q) use ($request) {
+                    $q->whereHas('program', fn ($q2) => $q2->where('department_id', $request->integer('department_id')))
+                        ->orWhereHas('departmentsCoordinated', fn ($q2) => $q2->where('departments.id', $request->integer('department_id')));
+                })
             )
             ->when(
                 $request->filled('search'),

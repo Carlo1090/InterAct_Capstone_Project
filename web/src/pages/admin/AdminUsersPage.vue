@@ -182,7 +182,7 @@ onMounted(() => {
             <td class="px-4 py-3 text-sm text-slate-700">{{ user.email }}</td>
             <td class="px-4 py-3 text-sm capitalize text-slate-700">{{ user.role }}</td>
             <td class="px-4 py-3 text-sm text-slate-700">{{ user.program?.name ?? 'No Program' }}</td>
-            <td class="px-4 py-3 text-sm text-slate-700">{{ user.program?.department?.name ?? 'No Department' }}</td>
+            <td class="px-4 py-3 text-sm text-slate-700">{{ user.departments_coordinated?.[0]?.name ?? user.program?.department?.name ?? 'No Department' }}</td>
             <td class="px-4 py-3 text-sm">
               <span
                 class="rounded-full px-2 py-1 text-xs font-semibold"
