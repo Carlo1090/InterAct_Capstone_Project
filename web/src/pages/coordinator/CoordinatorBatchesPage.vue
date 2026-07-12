@@ -10,8 +10,8 @@ import type {
   BatchRosterRow,
   CoordinatorInternUser,
   EnrollmentOptions,
+  JournalTemplateProgramOption,
   JournalTemplateRecord,
-  Program,
 } from '@/types/api'
 
 /** Format an ISO/Y-m-d date string to a human date, e.g. "May 9, 2026". */
@@ -37,7 +37,7 @@ type BatchForm = {
 }
 
 const batches = ref<Batch[]>([])
-const programs = ref<Program[]>([])
+const programs = ref<JournalTemplateProgramOption[]>([])
 const templates = ref<JournalTemplateRecord[]>([])
 const isLoading = ref(true)
 const errorMessage = ref('')
@@ -64,22 +64,31 @@ const emptyForm = (): BatchForm => ({
 
 const form = reactive<BatchForm>(emptyForm())
 
+// Templates are many-programs-per-template now — filter on membership, not a
+// single program_id (which no longer exists on the template).
 const templatesForSelectedProgram = computed(() =>
-  templates.value.filter((template) => template.program_id === form.program_id),
+  templates.value.filter((template) => template.programs.some((program) => program.id === form.program_id)),
 )
+
+const loadTemplates = async () => {
+  try {
+    const { data } = await api.get<{ templates: JournalTemplateRecord[]; programs: JournalTemplateProgramOption[] }>(
+      '/api/coordinator/journal-templates',
+    )
+    templates.value = data.templates
+    programs.value = data.programs
+  } catch {
+    // Non-fatal here — the template dropdown just stays as last loaded.
+  }
+}
 
 const load = async () => {
   isLoading.value = true
   errorMessage.value = ''
 
   try {
-    const [batchesResponse, templatesResponse] = await Promise.all([
-      api.get<Batch[]>('/api/coordinator/batches'),
-      api.get<{ templates: JournalTemplateRecord[]; programs: Program[] }>('/api/coordinator/journal-templates'),
-    ])
+    const [batchesResponse] = await Promise.all([api.get<Batch[]>('/api/coordinator/batches'), loadTemplates()])
     batches.value = batchesResponse.data
-    templates.value = templatesResponse.data.templates
-    programs.value = templatesResponse.data.programs
   } catch {
     errorMessage.value = 'Unable to load batches.'
   } finally {
@@ -97,6 +106,8 @@ const openCreateModal = () => {
   editingBatchId.value = null
   resetForm()
   isModalOpen.value = true
+  // Refetch so a template just created (in another tab/moment) shows up now.
+  loadTemplates()
 }
 
 const openEditModal = (batch: Batch) => {
@@ -116,6 +127,8 @@ const openEditModal = (batch: Batch) => {
   modalErrors.value = {}
   modalMessage.value = ''
   isModalOpen.value = true
+  // Refetch so a template just created (in another tab/moment) shows up now.
+  loadTemplates()
 }
 
 const closeModal = () => {
