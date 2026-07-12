@@ -235,8 +235,7 @@ onMounted(load)
           <div class="flex items-center justify-between gap-3">
             <div>
               <h2 class="text-sm font-bold text-slate-900">
-                SIPP Notes
-                <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">SIPP</span>
+                SIPP Report (Annex C)
               </h2>
               <p class="mt-1 text-xs text-slate-400">Issues, solutions, and recommendations for your SIPP compliance report.</p>
             </div>
@@ -247,7 +246,7 @@ onMounted(load)
                 :disabled="!editable"
                 @change="toggleSipp(($event.target as HTMLInputElement).checked)"
               />
-              Add SIPP Notes
+              SIPP Report
             </label>
           </div>
 
