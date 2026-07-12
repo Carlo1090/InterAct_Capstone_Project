@@ -7,10 +7,12 @@ use App\Models\BatchStudent;
 use App\Models\Company;
 use App\Models\CompanySupervisor;
 use App\Models\Department;
+use App\Models\JournalTemplate;
 use App\Models\Program;
 use App\Models\StudentProfile;
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 /**
@@ -168,6 +170,38 @@ class CabmbUsersDemoSeeder extends Seeder
             ['position' => 'Executive Director']
         );
 
+        // --- Journal template shared by all four CABM-B programs -------------
+        // Without a template on the batch, the student write page has no
+        // sections to offer (new daily entries can't be written) and the
+        // coordinator's entry-detail view has no labels to key content by.
+        // Seeding bypasses the FormRequest-level enforcement of the fixed
+        // Daily Accomplishment section, so its canonical definition
+        // (ValidatesJournalTemplate::FIXED_SECTION) is mirrored explicitly.
+        $template = JournalTemplate::firstOrCreate(
+            ['name' => 'CABM-B Daily Journal Template'],
+            [
+                'sections' => [
+                    ['key' => 'daily_accomplishment', 'label' => 'Daily Accomplishment', 'prompt' => 'Summarize what you accomplished today.', 'required' => true, 'sipp' => false],
+                    ['key' => 'issues_concerns', 'label' => 'Issues and Concerns Encountered', 'prompt' => 'Describe any issues or concerns encountered today.', 'required' => false, 'sipp' => true],
+                    ['key' => 'solutions', 'label' => 'Solutions', 'prompt' => 'What solutions were applied or proposed?', 'required' => false, 'sipp' => true],
+                    ['key' => 'recommendations', 'label' => 'Recommendations', 'prompt' => 'Any recommendations going forward?', 'required' => false, 'sipp' => true],
+                ],
+                'char_limit' => 1500,
+                'is_active' => true,
+            ]
+        );
+
+        // The pivot has UNIQUE(program_id) — cover every CABM-B program not
+        // already claimed by a DIFFERENT template (idempotent re-runs keep
+        // this template's own rows via syncWithoutDetaching).
+        $claimedElsewhere = DB::table('journal_template_program')
+            ->whereIn('program_id', $programs->values())
+            ->where('journal_template_id', '!=', $template->id)
+            ->pluck('program_id');
+        $template->programs()->syncWithoutDetaching(
+            $programs->values()->diff($claimedElsewhere)->all()
+        );
+
         // --- Batches: one active cohort per CABM-B program -------------------
         $batchNames = [
             'BSA' => 'BSA 2026 Internship',
@@ -191,13 +225,20 @@ class CabmbUsersDemoSeeder extends Seeder
                     'required_hours' => 486,
                     'working_days_per_week' => 5,
                     'daily_reminder_time' => '21:00:00',
-                    'journal_template_id' => null,
+                    'journal_template_id' => $template->id,
                     'academic_year' => now()->format('Y'),
                     'semester' => 'Internship',
                     'is_active' => true,
                 ]
             );
         }
+
+        // Batches that already existed from an earlier run were created with
+        // no template — point them at the CABM-B template without clobbering
+        // a template a coordinator may have assigned since.
+        Batch::whereIn('id', collect($batches)->pluck('id'))
+            ->whereNull('journal_template_id')
+            ->update(['journal_template_id' => $template->id]);
 
         // --- Students (a mix of enrolled and NOT-enrolled per program) -------
         $studentDefs = [
