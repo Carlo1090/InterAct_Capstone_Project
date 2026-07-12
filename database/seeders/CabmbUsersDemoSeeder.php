@@ -19,21 +19,36 @@ use Illuminate\Support\Facades\Hash;
  *
  * CABM-B and its four programs (BSA, BSBA-FM, BSBA-MM, BSBA-OM) already exist
  * via DepartmentProgramSeeder — this seeder only adds students, supervisors,
- * companies, batches and enrollments INTO them, and additively assigns the demo
- * coordinator to CABM-B (kept alongside her existing CAST/BSIT scope).
+ * companies, batches and enrollments INTO them.
+ *
+ * CABM-B has a DEDICATED coordinator, "Maria Antonnette Balbero" (CABM-B only),
+ * so her world is pure CABM-B with no BSIT bleed-through. The CAST/BSIT demo
+ * coordinator is explicitly detached from CABM-B here.
  */
 class CabmbUsersDemoSeeder extends Seeder
 {
     public function run(): void
     {
         $cabmb = Department::where('code', 'CABM-B')->first();
-        $coordinator = User::where('email', 'mdccore@gmail.com')->first();
 
-        if (! $cabmb || ! $coordinator) {
+        if (! $cabmb) {
             return;
         }
 
-        // Additive: the demo coordinator now also runs CABM-B (keeps CAST).
+        // De-pollute: the CAST/BSIT demo coordinator must NOT run CABM-B anymore.
+        User::where('email', 'mdccore@gmail.com')->first()
+            ?->departmentsCoordinated()->detach($cabmb->id);
+
+        // Dedicated CABM-B coordinator (the CABM-B demo login), CABM-B only.
+        $coordinator = User::updateOrCreate(
+            ['email' => 'mdcbalbero@gmail.com'],
+            [
+                'name' => 'Maria Antonnette Balbero',
+                'password' => Hash::make('password'),
+                'role' => 'coordinator',
+                'is_active' => true,
+            ]
+        );
         $coordinator->departmentsCoordinated()->syncWithoutDetaching([$cabmb->id]);
 
         $programs = Program::where('department_id', $cabmb->id)
@@ -69,6 +84,20 @@ class CabmbUsersDemoSeeder extends Seeder
                 'head_name' => 'Ms. Divina Lim',
                 'description' => 'Mall and retail operations placements.',
             ],
+            "Dunkin' Bohol" => [
+                'address' => 'K of C Drive, Tagbilaran City, Bohol',
+                'location' => 'Tagbilaran City, Bohol',
+                'industry' => 'Food & Marketing',
+                'head_name' => 'Ms. Trisha Yap',
+                'description' => 'Marketing and store operations placements.',
+            ],
+            'BayView Resort Panglao' => [
+                'address' => 'Alona Beach, Panglao, Bohol',
+                'location' => 'Panglao, Bohol',
+                'industry' => 'Hospitality & Operations',
+                'head_name' => 'Mr. Leo Amper',
+                'description' => 'Resort operations and front-office placements.',
+            ],
         ];
 
         $companies = [];
@@ -100,6 +129,8 @@ class CabmbUsersDemoSeeder extends Seeder
             'cabmb.sup.fm@gmail.com' => ['name' => 'Mr. Dennis Chua', 'company' => 'Metrobank - Tagbilaran Branch', 'position' => 'Branch Operations Officer'],
             'cabmb.sup.mm@gmail.com' => ['name' => 'Ms. Grace Lim', 'company' => 'Alturas Group of Companies', 'position' => 'Marketing Supervisor'],
             'cabmb.sup.om@gmail.com' => ['name' => 'Mr. Paolo Reyes', 'company' => 'Island City Mall Management', 'position' => 'Operations Supervisor'],
+            'cabmb.sup.mm2@gmail.com' => ['name' => 'Ms. Trisha Yap', 'company' => "Dunkin' Bohol", 'position' => 'Marketing Officer'],
+            'cabmb.sup.om2@gmail.com' => ['name' => 'Mr. Leo Amper', 'company' => 'BayView Resort Panglao', 'position' => 'Operations Officer'],
         ];
 
         $supervisors = [];
@@ -174,6 +205,7 @@ class CabmbUsersDemoSeeder extends Seeder
             ['email' => 'cabmb.bsa1@gmail.com', 'name' => 'Andrea Villanueva', 'sid' => '2022-BSA-001', 'sex' => 'female', 'program' => 'BSA', 'enroll' => ['company' => 'Bohol Quality Corporation', 'supervisor' => 'cabmb.sup.bsa@gmail.com']],
             ['email' => 'cabmb.bsa2@gmail.com', 'name' => 'Miguel Torres', 'sid' => '2022-BSA-002', 'sex' => 'male', 'program' => 'BSA', 'enroll' => ['company' => 'Bohol Quality Corporation', 'supervisor' => 'cabmb.sup.bsa@gmail.com']],
             ['email' => 'cabmb.bsa3@gmail.com', 'name' => 'Bea Salcedo', 'sid' => '2022-BSA-003', 'sex' => 'female', 'program' => 'BSA', 'enroll' => null],
+            ['email' => 'cabmb.bsa4@gmail.com', 'name' => 'Carlos Diaz', 'sid' => '2022-BSA-004', 'sex' => 'male', 'program' => 'BSA', 'enroll' => ['company' => 'Bohol Quality Corporation', 'supervisor' => 'cabmb.sup.bsa@gmail.com']],
             // BSBA-FM
             ['email' => 'cabmb.fm1@gmail.com', 'name' => 'Karlo Mendoza', 'sid' => '2022-FM-001', 'sex' => 'male', 'program' => 'BSBA-FM', 'enroll' => ['company' => 'Metrobank - Tagbilaran Branch', 'supervisor' => 'cabmb.sup.fm@gmail.com']],
             ['email' => 'cabmb.fm2@gmail.com', 'name' => 'Liza Aquino', 'sid' => '2022-FM-002', 'sex' => 'female', 'program' => 'BSBA-FM', 'enroll' => ['company' => 'Metrobank - Tagbilaran Branch', 'supervisor' => 'cabmb.sup.fm@gmail.com']],
@@ -181,9 +213,11 @@ class CabmbUsersDemoSeeder extends Seeder
             // BSBA-MM
             ['email' => 'cabmb.mm1@gmail.com', 'name' => 'Patricia Cruz', 'sid' => '2022-MM-001', 'sex' => 'female', 'program' => 'BSBA-MM', 'enroll' => ['company' => 'Alturas Group of Companies', 'supervisor' => 'cabmb.sup.mm@gmail.com']],
             ['email' => 'cabmb.mm2@gmail.com', 'name' => 'Rafael Ong', 'sid' => '2022-MM-002', 'sex' => 'male', 'program' => 'BSBA-MM', 'enroll' => null],
+            ['email' => 'cabmb.mm3@gmail.com', 'name' => 'Elena Reyes', 'sid' => '2022-MM-003', 'sex' => 'female', 'program' => 'BSBA-MM', 'enroll' => ['company' => "Dunkin' Bohol", 'supervisor' => 'cabmb.sup.mm2@gmail.com']],
             // BSBA-OM
             ['email' => 'cabmb.om1@gmail.com', 'name' => 'Sophia Reyes', 'sid' => '2022-OM-001', 'sex' => 'female', 'program' => 'BSBA-OM', 'enroll' => ['company' => 'Island City Mall Management', 'supervisor' => 'cabmb.sup.om@gmail.com']],
             ['email' => 'cabmb.om2@gmail.com', 'name' => 'Ted Villamor', 'sid' => '2022-OM-002', 'sex' => 'male', 'program' => 'BSBA-OM', 'enroll' => null],
+            ['email' => 'cabmb.om3@gmail.com', 'name' => 'Fritz Gonzales', 'sid' => '2022-OM-003', 'sex' => 'male', 'program' => 'BSBA-OM', 'enroll' => ['company' => 'BayView Resort Panglao', 'supervisor' => 'cabmb.sup.om2@gmail.com']],
         ];
 
         foreach ($studentDefs as $def) {
