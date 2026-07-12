@@ -47,6 +47,9 @@ const editingBatchId = ref<number | null>(null)
 const isSaving = ref(false)
 const modalErrors = ref<Record<string, string[]>>({})
 const modalMessage = ref('')
+// The batch's is_active value as loaded, so save() can tell a true->false
+// deactivation apart from a false->true reactivation (or no change at all).
+const originalIsActive = ref(true)
 
 const emptyForm = (): BatchForm => ({
   program_id: programs.value[0]?.id ?? null,
@@ -124,6 +127,7 @@ const openEditModal = (batch: Batch) => {
   form.daily_reminder_time = batch.daily_reminder_time.slice(0, 5)
   form.journal_template_id = batch.journal_template_id ?? null
   form.is_active = batch.is_active ?? true
+  originalIsActive.value = batch.is_active ?? true
   modalErrors.value = {}
   modalMessage.value = ''
   isModalOpen.value = true
@@ -136,6 +140,16 @@ const closeModal = () => {
 }
 
 const save = async () => {
+  // Deactivating a batch is a critical action — confirm with the truthful
+  // consequence before it goes out. Reactivating needs no confirm.
+  if (editingBatchId.value && originalIsActive.value && !form.is_active) {
+    const confirmed = confirmAction(
+      `Mark "${form.name}" as Inactive? Interns in this batch will stop receiving daily journal reminder emails. ` +
+        'Enrollment, journal writing, and reports keep working as normal. You can reactivate it later.',
+    )
+    if (!confirmed) return
+  }
+
   isSaving.value = true
   modalErrors.value = {}
   modalMessage.value = ''
@@ -472,10 +486,18 @@ onMounted(load)
             <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-reminder">Daily Reminder Time</label>
             <input id="batch-reminder" v-model="form.daily_reminder_time" type="time" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </div>
-          <label v-if="editingBatchId" class="mt-7 flex items-center gap-2 text-sm font-medium text-slate-700">
+          <label v-if="editingBatchId" class="mt-7 flex items-center gap-2 text-sm font-medium" :class="form.is_active ? 'text-slate-700' : 'text-red-700'">
             <input v-model="form.is_active" type="checkbox" />
             Active
           </label>
+        </div>
+
+        <div
+          v-if="editingBatchId && originalIsActive && !form.is_active"
+          class="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700"
+        >
+          Deactivating this batch stops daily journal reminder emails to its interns. Enrollment, journal writing, and reports
+          keep working as normal.
         </div>
 
         <div v-if="Object.keys(modalErrors).length > 0" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
@@ -489,11 +511,12 @@ onMounted(load)
           </button>
           <button
             type="button"
-            class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-400"
+            class="rounded-md px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-400"
+            :class="editingBatchId && originalIsActive && !form.is_active ? 'bg-red-600' : 'bg-slate-950'"
             :disabled="isSaving"
             @click="save"
           >
-            {{ isSaving ? 'Saving...' : 'Save' }}
+            {{ isSaving ? 'Saving...' : editingBatchId && originalIsActive && !form.is_active ? 'Deactivate & Save' : 'Save' }}
           </button>
         </div>
       </section>
