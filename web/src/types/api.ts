@@ -123,6 +123,7 @@ export type CoordinatorSupervisorUser = {
   email: string
   is_active: boolean
   companies: { id: number; name: string; position: string | null }[]
+  batches: { id: number; name: string }[]
 }
 
 export type BatchStudentStatus = 'active' | 'completed' | 'dropped'

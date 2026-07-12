@@ -167,6 +167,60 @@ class CoordinatorUsersTest extends TestCase
         $this->assertTrue($companyNames->contains('Unlinked A Co'));
     }
 
+    public function test_supervisors_list_includes_distinct_in_scope_batches(): void
+    {
+        $inScope = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($inScope);
+
+        $company = Company::create(['name' => 'Multi Batch Co', 'address' => 'Bohol', 'is_active' => true]);
+        $supervisor = User::factory()->create(['role' => 'supervisor', 'name' => 'Two Batch Supervisor']);
+        CompanySupervisor::create(['company_id' => $company->id, 'user_id' => $supervisor->id, 'position' => 'Lead']);
+
+        $batchA = $this->batchFor($inScope, $coordinator);
+        $batchB = $this->batchFor($inScope, $coordinator);
+
+        $studentA = User::factory()->create(['role' => 'student', 'program_id' => $inScope->id]);
+        $studentB = User::factory()->create(['role' => 'student', 'program_id' => $inScope->id]);
+
+        BatchStudent::create(['batch_id' => $batchA->id, 'student_id' => $studentA->id, 'company_id' => $company->id, 'supervisor_id' => $supervisor->id, 'status' => 'active']);
+        BatchStudent::create(['batch_id' => $batchB->id, 'student_id' => $studentB->id, 'company_id' => $company->id, 'supervisor_id' => $supervisor->id, 'status' => 'active']);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->getJson('/api/coordinator/users/supervisors');
+        $response->assertOk();
+
+        $row = collect($response->json())->firstWhere('name', 'Two Batch Supervisor');
+        $this->assertNotNull($row);
+        $batchIds = collect($row['batches'])->pluck('id');
+        $this->assertCount(2, $batchIds);
+        $this->assertTrue($batchIds->contains($batchA->id));
+        $this->assertTrue($batchIds->contains($batchB->id));
+    }
+
+    public function test_interns_filtered_by_program_id_returns_only_that_program(): void
+    {
+        $bsa = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($bsa);
+        // A second program in the SAME department, so it is also in scope.
+        $fm = Program::firstOrCreate(
+            ['department_id' => $bsa->department_id, 'code' => 'BSBA-FM'],
+            ['name' => 'BSBA-FM', 'is_active' => true]
+        );
+
+        $bsaStudent = User::factory()->create(['role' => 'student', 'program_id' => $bsa->id, 'name' => 'BSA Student']);
+        $fmStudent = User::factory()->create(['role' => 'student', 'program_id' => $fm->id, 'name' => 'FM Student']);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->getJson('/api/coordinator/users/interns?program_id='.$bsa->id);
+        $response->assertOk();
+
+        $names = collect($response->json())->pluck('name');
+        $this->assertTrue($names->contains('BSA Student'));
+        $this->assertFalse($names->contains('FM Student'));
+    }
+
     public function test_non_coordinator_cannot_access_users_lists(): void
     {
         $student = User::factory()->create(['role' => 'student']);

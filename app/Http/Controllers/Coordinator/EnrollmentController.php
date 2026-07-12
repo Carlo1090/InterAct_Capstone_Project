@@ -115,19 +115,39 @@ class EnrollmentController extends Controller
      * both halves collapse to "supervisors attached to any company in the
      * coordinator's company-scope" (companies used by in-scope enrollments plus
      * companies not yet linked to any enrollment). Deduplicated by user, each
-     * with the in-scope companies they are attached to.
+     * with the in-scope companies they are attached to AND the distinct in-scope
+     * batches whose students they supervise (so the UI can filter by company and
+     * by batch).
      */
     public function supervisors(Request $request): JsonResponse
     {
-        $scopedCompanyIds = $this->scopedCompanyIds($request->user());
+        $user = $request->user();
+        $programIds = $user->coordinatorProgramIds();
+        $scopedCompanyIds = $this->scopedCompanyIds($user);
 
         $links = CompanySupervisor::whereIn('company_id', $scopedCompanyIds)
             ->with(['user:id,name,email,is_active,role', 'company:id,name'])
             ->get()
             ->filter(fn (CompanySupervisor $link) => $link->user && $link->user->role === 'supervisor');
 
-        $supervisors = $links->groupBy('user_id')->map(function (Collection $group) {
+        $supervisorIds = $links->pluck('user_id')->unique();
+
+        // Distinct in-scope batches each supervisor oversees, via batch_students.
+        $batchesBySupervisor = BatchStudent::whereIn('supervisor_id', $supervisorIds)
+            ->whereHas('batch', fn ($query) => $query->whereIn('program_id', $programIds))
+            ->with('batch:id,name')
+            ->get()
+            ->groupBy('supervisor_id');
+
+        $supervisors = $links->groupBy('user_id')->map(function (Collection $group, $supervisorId) use ($batchesBySupervisor) {
             $supervisor = $group->first()->user;
+
+            $batches = ($batchesBySupervisor->get($supervisorId) ?? collect())
+                ->map(fn (BatchStudent $enrollment) => $enrollment->batch)
+                ->filter()
+                ->unique('id')
+                ->map(fn ($batch) => ['id' => $batch->id, 'name' => $batch->name])
+                ->values();
 
             return [
                 'id' => $supervisor->id,
@@ -139,6 +159,7 @@ class EnrollmentController extends Controller
                     'name' => $link->company->name,
                     'position' => $link->position,
                 ])->values(),
+                'batches' => $batches,
             ];
         })->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)->values();
 
