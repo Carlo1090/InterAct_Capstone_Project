@@ -4,12 +4,14 @@ import axios from 'axios'
 import api from '@/lib/axios'
 import { confirmAction, showToast } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
-import type { CoordinatorCompany } from '@/types/api'
+import type { CoordinatorCompany, EnrollmentOptionSupervisor } from '@/types/api'
 
 const companies = ref<CoordinatorCompany[]>([])
 const search = ref('')
 const isLoading = ref(true)
 const errorMessage = ref('')
+
+const supervisorPool = ref<EnrollmentOptionSupervisor[]>([])
 
 const isModalOpen = ref(false)
 const isSaving = ref(false)
@@ -36,6 +38,9 @@ const originalIsActive = ref(true)
 
 // Supervisors panel (edit mode only).
 const activeCompany = ref<CoordinatorCompany | null>(null)
+const attachForm = reactive({ user_id: null as number | null, position: '' })
+const createSupForm = reactive({ name: '', email: '', password: '', position: '' })
+const supErrors = ref<Record<string, string[]>>({})
 
 const loadCompanies = async () => {
   isLoading.value = true
@@ -50,6 +55,15 @@ const loadCompanies = async () => {
     errorMessage.value = 'Unable to load your partner companies.'
   } finally {
     isLoading.value = false
+  }
+}
+
+const loadSupervisorPool = async () => {
+  try {
+    const { data } = await api.get<{ supervisors: EnrollmentOptionSupervisor[] }>('/api/coordinator/enrollment-options')
+    supervisorPool.value = data.supervisors
+  } catch {
+    // Non-fatal; the attach dropdown just stays empty.
   }
 }
 
@@ -93,6 +107,9 @@ const applyCompanyToForm = (company: CoordinatorCompany) => {
 
 const closeModal = () => {
   isModalOpen.value = false
+  Object.assign(attachForm, { user_id: null, position: '' })
+  Object.assign(createSupForm, { name: '', email: '', password: '', position: '' })
+  supErrors.value = {}
 }
 
 const saveCompany = async () => {
@@ -136,6 +153,41 @@ const saveCompany = async () => {
   }
 }
 
+const attachSupervisor = async () => {
+  if (!editingId.value || !attachForm.user_id) return
+  supErrors.value = {}
+
+  try {
+    const { data } = await api.post<CoordinatorCompany>(`/api/coordinator/companies/${editingId.value}/supervisors`, attachForm)
+    applyCompanyToForm(data)
+    Object.assign(attachForm, { user_id: null, position: '' })
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 422) {
+      supErrors.value = error.response.data.errors ?? {}
+    } else {
+      modalMessage.value = 'Unable to attach the supervisor.'
+    }
+  }
+}
+
+const createSupervisor = async () => {
+  if (!editingId.value) return
+  supErrors.value = {}
+
+  try {
+    const { data } = await api.post<CoordinatorCompany>(`/api/coordinator/companies/${editingId.value}/supervisors/new`, createSupForm)
+    applyCompanyToForm(data)
+    Object.assign(createSupForm, { name: '', email: '', password: '', position: '' })
+    await loadSupervisorPool()
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 422) {
+      supErrors.value = error.response.data.errors ?? {}
+    } else {
+      modalMessage.value = 'Unable to create the supervisor.'
+    }
+  }
+}
+
 const detachSupervisor = async (userId: number) => {
   if (!editingId.value) return
   if (!confirmAction('Remove this supervisor from the company?')) return
@@ -149,7 +201,9 @@ const detachSupervisor = async (userId: number) => {
   }
 }
 
-onMounted(loadCompanies)
+onMounted(async () => {
+  await Promise.all([loadCompanies(), loadSupervisorPool()])
+})
 </script>
 
 <template>
@@ -294,10 +348,41 @@ onMounted(loadCompanies)
               <button type="button" class="text-xs font-semibold text-red-600 hover:text-red-700" @click="detachSupervisor(sup.user_id)">Detach</button>
             </div>
           </div>
+
+          <div v-if="Object.keys(supErrors).length > 0" class="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+            <p v-for="(messages, field) in supErrors" :key="field">{{ field }}: {{ messages.join(' ') }}</p>
+          </div>
+
+          <div class="mt-4 grid gap-4 md:grid-cols-2">
+            <!-- Attach existing -->
+            <div class="rounded-md border border-slate-200 p-3">
+              <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Attach Existing Supervisor</p>
+              <select v-model.number="attachForm.user_id" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                <option :value="null">Select supervisor</option>
+                <option v-for="sup in supervisorPool" :key="sup.id" :value="sup.id">{{ sup.name }} ({{ sup.email }})</option>
+              </select>
+              <input v-model="attachForm.position" type="text" placeholder="Position (optional)" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <button type="button" class="mt-2 rounded-md bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50" :disabled="!attachForm.user_id" @click="attachSupervisor">
+                Attach
+              </button>
+            </div>
+
+            <!-- Create new -->
+            <div class="rounded-md border border-slate-200 p-3">
+              <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Create New Supervisor</p>
+              <input v-model="createSupForm.name" type="text" placeholder="Name" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <input v-model="createSupForm.email" type="email" placeholder="Email" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <input v-model="createSupForm.password" type="password" placeholder="Password (min 8)" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <input v-model="createSupForm.position" type="text" placeholder="Position (optional)" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <button type="button" class="mt-2 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white" @click="createSupervisor">
+                Create &amp; Attach
+              </button>
+            </div>
+          </div>
         </div>
 
         <p v-else-if="!editingId" class="mt-6 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
-          Save the company first to manage supervisors.
+          Save the company first to attach supervisors.
         </p>
       </section>
     </div>
