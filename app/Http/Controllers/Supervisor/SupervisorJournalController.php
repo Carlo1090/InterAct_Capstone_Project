@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Supervisor;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Supervisor\Concerns\ScopesSupervisorWork;
 use App\Http\Requests\Supervisor\ReturnWeeklyLogRequest;
+use App\Models\BatchStudent;
 use App\Models\JournalEntry;
 use App\Models\WeeklyLog;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class SupervisorJournalController extends Controller
 {
@@ -94,6 +97,41 @@ class SupervisorJournalController extends Controller
             'reviewable' => $this->isReviewable($weeklyLog),
             'daily_entries' => $dailyEntries,
         ]);
+    }
+
+    /**
+     * Same document family as the student's own weekly-log PDF and the
+     * daily journal entry PDF — reuses pdf.weekly-log so a supervisor's
+     * downloaded copy looks like the same kind of document they reviewed
+     * on screen.
+     */
+    public function pdf(Request $request, WeeklyLog $weeklyLog): Response
+    {
+        $this->authorizeLog($request->user(), $weeklyLog);
+
+        $weeklyLog->load('student.program');
+
+        $enrollment = BatchStudent::where('batch_id', $weeklyLog->batch_id)
+            ->where('student_id', $weeklyLog->student_id)
+            ->with('company:id,name')
+            ->first();
+
+        $pdf = Pdf::loadView('pdf.weekly-log', [
+            'weekStart' => $weeklyLog->week_start->toDateString(),
+            'weekEnd' => $weeklyLog->week_end->toDateString(),
+            'status' => $weeklyLog->status,
+            'narrative' => $weeklyLog->narrative ?? '',
+            'supervisorComment' => $weeklyLog->supervisor_comment,
+            'submittedAt' => $weeklyLog->submitted_at,
+            'header' => [
+                'student_name' => $weeklyLog->student?->name ?? '',
+                'program' => $weeklyLog->student?->program?->name,
+                'company_name' => $enrollment?->company?->name,
+                'supervisor_name' => $request->user()->name,
+            ],
+        ]);
+
+        return $pdf->download("weekly-log-{$weeklyLog->id}.pdf");
     }
 
     /**

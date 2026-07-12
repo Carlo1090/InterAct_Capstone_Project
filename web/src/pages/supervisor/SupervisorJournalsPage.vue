@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { showToast, confirmAction } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
 import type { SupervisorJournalDetail, SupervisorJournalRow, SupervisorReviewStatus } from '@/types/api'
+
+const WEEKDAY_NAMES = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
 
 const tabs: { key: SupervisorReviewStatus; label: string }[] = [
   { key: 'pending', label: 'Pending' },
@@ -33,6 +35,33 @@ const statusClass = (status: SupervisorReviewStatus): string => {
 }
 
 const formatDateTime = (iso: string | null): string => (iso ? new Date(iso).toLocaleString() : '—')
+
+// Mirrors resources/views/pdf/weekly-log.blade.php's parsing so the on-screen
+// review looks like the same document family as the downloadable PDF: a
+// WeeklyBundlingService-compiled "MONDAY\ntext" block gets a day header,
+// while freely-edited text without that shape still renders as a plain
+// paragraph.
+const narrativeBlocks = computed(() => {
+  const narrative = (detail.value?.narrative ?? '').trim()
+  if (!narrative) return []
+
+  return narrative
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => {
+      const [firstLine, ...rest] = block.split('\n')
+      if (WEEKDAY_NAMES.includes(firstLine.trim())) {
+        return { day: firstLine.trim(), text: rest.join('\n').trim() }
+      }
+      return { day: null as string | null, text: block }
+    })
+})
+
+const downloadPdf = () => {
+  if (!detail.value) return
+  window.open(`/api/supervisor/journals/${detail.value.id}/pdf`, '_blank')
+}
 
 const load = async () => {
   isLoading.value = true
@@ -192,7 +221,10 @@ onMounted(load)
             <h3 class="text-lg font-semibold text-slate-950">{{ detail?.student.name ?? 'Weekly Journal' }}</h3>
             <p v-if="detail" class="mt-0.5 text-xs text-slate-500">Week {{ detail.week_start }} – {{ detail.week_end }}</p>
           </div>
-          <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeDetail">Close</button>
+          <div class="flex items-center gap-3">
+            <button v-if="detail" type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="downloadPdf">Download PDF</button>
+            <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeDetail">Close</button>
+          </div>
         </div>
 
         <p v-if="isDetailLoading" class="mt-5 text-sm text-slate-500">Loading...</p>
@@ -205,9 +237,15 @@ onMounted(load)
 
           <div>
             <h4 class="text-xs font-bold uppercase tracking-wide text-slate-500">Weekly Narrative</h4>
-            <p class="mt-2 whitespace-pre-line rounded-md bg-slate-50 p-3 text-sm text-slate-800">
-              {{ detail.narrative || 'No narrative was written for this week.' }}
-            </p>
+            <div class="mt-2 rounded-md bg-slate-50 p-4 font-serif text-slate-900">
+              <p v-if="narrativeBlocks.length === 0" class="text-sm font-sans text-slate-400">No narrative was written for this week.</p>
+              <div v-for="(block, index) in narrativeBlocks" :key="index" class="mb-4 last:mb-0">
+                <p v-if="block.day" class="mb-1 border-b border-slate-300 pb-1 text-xs font-bold font-sans uppercase tracking-wide text-slate-900">
+                  {{ block.day }}
+                </p>
+                <p class="whitespace-pre-line text-sm leading-relaxed">{{ block.text }}</p>
+              </div>
+            </div>
           </div>
 
           <div v-if="detail.supervisor_comment">

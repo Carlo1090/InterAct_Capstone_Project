@@ -5,11 +5,15 @@ namespace App\Http\Controllers\Student;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Student\Concerns\ResolvesStudentEnrollment;
 use App\Http\Requests\Student\StoreWeeklyLogRequest;
+use App\Models\BatchStudent;
 use App\Models\JournalEntry;
+use App\Models\User;
 use App\Models\WeeklyLog;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class WeeklyLogController extends Controller
 {
@@ -91,6 +95,46 @@ class WeeklyLogController extends Controller
         ]);
     }
 
+    public function pdf(Request $request, string $weekStart): Response
+    {
+        $user = $request->user();
+        $enrollment = $this->activeEnrollment($user->id);
+
+        if (! $enrollment) {
+            return response()->json(['message' => 'You are not currently enrolled in an active OJT batch.'], 422);
+        }
+
+        $start = Carbon::parse($weekStart)->startOfWeek(Carbon::MONDAY);
+        $end = $start->copy()->addDays(6);
+
+        $log = WeeklyLog::where('student_id', $user->id)
+            ->where('batch_id', $enrollment->batch_id)
+            ->whereDate('week_start', $start->toDateString())
+            ->first();
+
+        $pdf = Pdf::loadView('pdf.weekly-log', [
+            'weekStart' => $start->toDateString(),
+            'weekEnd' => $end->toDateString(),
+            'status' => $log->status ?? 'pending',
+            'narrative' => $log->narrative ?? '',
+            'supervisorComment' => $log->supervisor_comment ?? null,
+            'submittedAt' => $log?->submitted_at,
+            'header' => $this->buildHeader($user, $enrollment),
+        ]);
+
+        return $pdf->download("weekly-log-{$start->toDateString()}.pdf");
+    }
+
+    private function buildHeader(User $user, BatchStudent $enrollment): array
+    {
+        return [
+            'student_name' => $user->name,
+            'program' => $user->program?->name,
+            'company_name' => $enrollment->company?->name,
+            'supervisor_name' => $enrollment->supervisor?->name,
+        ];
+    }
+
     /**
      * @param  \Illuminate\Support\Collection<int, JournalEntry>  $dailyEntries
      * @param  array<int, array<string, mixed>>  $sections
@@ -134,14 +178,26 @@ class WeeklyLogController extends Controller
         $start = Carbon::parse($validated['week_start'])->startOfWeek(Carbon::MONDAY);
         $end = $start->copy()->addDays(6);
 
-        // TODO: supervisor review (approve/return) is out of scope for this task.
-        $log = WeeklyLog::updateOrCreate(
-            ['student_id' => $user->id, 'batch_id' => $enrollment->batch_id, 'week_start' => $start->toDateString()],
-            [
+        // Not WeeklyLog::updateOrCreate() with a plain week_start equality
+        // match: under SQLite a date-cast column still stores a time
+        // component (MySQL truncates it), so a second save for the same
+        // week would miss the existing row and insert a duplicate.
+        $log = WeeklyLog::where('student_id', $user->id)
+            ->where('batch_id', $enrollment->batch_id)
+            ->whereDate('week_start', $start->toDateString())
+            ->first();
+
+        if ($log) {
+            $log->update(['week_end' => $end->toDateString(), 'narrative' => $validated['narrative'] ?? null]);
+        } else {
+            $log = WeeklyLog::create([
+                'student_id' => $user->id,
+                'batch_id' => $enrollment->batch_id,
+                'week_start' => $start->toDateString(),
                 'week_end' => $end->toDateString(),
                 'narrative' => $validated['narrative'] ?? null,
-            ]
-        );
+            ]);
+        }
 
         return response()->json($log);
     }

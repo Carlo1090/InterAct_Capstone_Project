@@ -179,6 +179,30 @@ class SupervisorJournalReviewTest extends TestCase
         $this->postJson("/api/supervisor/journals/{$weeklyLog->id}/return", ['supervisor_comment' => 'x'])->assertStatus(403);
     }
 
+    public function test_supervisor_can_download_weekly_log_pdf_for_own_intern(): void
+    {
+        [$supervisor, $batch, $student] = $this->scenario();
+        $weeklyLog = $this->log($student, $batch, 'pending');
+
+        Sanctum::actingAs($supervisor, ['*']);
+
+        $response = $this->get("/api/supervisor/journals/{$weeklyLog->id}/pdf");
+
+        $response->assertOk();
+        $response->assertHeader('content-type', 'application/pdf');
+    }
+
+    public function test_supervisor_cannot_download_pdf_for_another_supervisors_log(): void
+    {
+        [, $batch, $student] = $this->scenario();
+        $weeklyLog = $this->log($student, $batch, 'pending');
+
+        $otherSupervisor = User::factory()->create(['role' => 'supervisor']);
+        Sanctum::actingAs($otherSupervisor, ['*']);
+
+        $this->get("/api/supervisor/journals/{$weeklyLog->id}/pdf")->assertStatus(403);
+    }
+
     public function test_reviewing_a_draft_is_rejected(): void
     {
         [$supervisor, $batch, $student] = $this->scenario();

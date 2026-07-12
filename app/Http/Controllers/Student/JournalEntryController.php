@@ -7,9 +7,12 @@ use App\Http\Controllers\Student\Concerns\ResolvesStudentEnrollment;
 use App\Http\Requests\Student\StoreJournalEntryRequest;
 use App\Models\BatchStudent;
 use App\Models\JournalEntry;
+use App\Models\User;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class JournalEntryController extends Controller
 {
@@ -88,6 +91,41 @@ class JournalEntryController extends Controller
         );
 
         return response()->json($entry);
+    }
+
+    public function pdf(Request $request, string $date): Response
+    {
+        $user = $request->user();
+        $enrollment = $this->activeEnrollment($user->id);
+
+        if (! $enrollment) {
+            return response()->json(['message' => 'You are not currently enrolled in an active OJT batch.'], 422);
+        }
+
+        $entryDate = Carbon::parse($date)->startOfDay();
+
+        $entry = JournalEntry::where('student_id', $user->id)
+            ->whereDate('entry_date', $entryDate)
+            ->first();
+
+        $pdf = Pdf::loadView('pdf.daily-journal-entry', [
+            'entryDate' => $entryDate->toDateString(),
+            'sections' => $enrollment->batch->journalTemplate?->sections ?? [],
+            'content' => $entry->content ?? [],
+            'status' => $entry->status ?? 'draft',
+            'header' => $this->buildHeader($user, $enrollment),
+        ]);
+
+        return $pdf->download("daily-journal-{$entryDate->toDateString()}.pdf");
+    }
+
+    private function buildHeader(User $user, BatchStudent $enrollment): array
+    {
+        return [
+            'student_name' => $user->name,
+            'program' => $user->program?->name,
+            'company_name' => $enrollment->company?->name,
+        ];
     }
 
     private function isEditableDate(Carbon $date, BatchStudent $enrollment): bool

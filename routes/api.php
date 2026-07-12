@@ -134,12 +134,14 @@ Route::middleware(['auth:sanctum', 'role:student'])
 
         Route::get('journal-entries', [JournalEntryController::class, 'index']);
         Route::get('journal-entries/{date}', [JournalEntryController::class, 'show']);
+        Route::get('journal-entries/{date}/pdf', [JournalEntryController::class, 'pdf']);
         Route::post('journal-entries', [JournalEntryController::class, 'store']);
 
         Route::get('journal-calendar', [JournalCalendarController::class, 'index']);
 
         Route::get('weekly-logs', [WeeklyLogController::class, 'index']);
         Route::get('weekly-logs/{weekStart}', [WeeklyLogController::class, 'show']);
+        Route::get('weekly-logs/{weekStart}/pdf', [WeeklyLogController::class, 'pdf']);
         Route::post('weekly-logs', [WeeklyLogController::class, 'store']);
 
         Route::get('weekly-activity-logs', [WeeklyActivityLogController::class, 'index']);
@@ -161,6 +163,7 @@ Route::middleware(['auth:sanctum', 'role:supervisor'])
 
         Route::get('journals', [SupervisorJournalController::class, 'index']);
         Route::get('journals/{weeklyLog}', [SupervisorJournalController::class, 'show']);
+        Route::get('journals/{weeklyLog}/pdf', [SupervisorJournalController::class, 'pdf']);
         Route::post('journals/{weeklyLog}/approve', [SupervisorJournalController::class, 'approve']);
         Route::post('journals/{weeklyLog}/return', [SupervisorJournalController::class, 'returnLog']);
     });

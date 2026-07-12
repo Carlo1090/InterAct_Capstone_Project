@@ -49,6 +49,45 @@ class WeeklyLogTest extends TestCase
         $this->assertSame($weekStart->toDateString(), Carbon::parse($reference->json('daily_entries.0.entry_date'))->toDateString());
     }
 
+    public function test_student_can_download_a_weekly_log_pdf(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $weekStart = Carbon::now()->startOfWeek(Carbon::MONDAY);
+
+        $this->postJson('/api/student/weekly-logs', [
+            'week_start' => $weekStart->toDateString(),
+            'narrative' => 'This week I focused on onboarding and initial setup.',
+        ])->assertOk();
+
+        $response = $this->get("/api/student/weekly-logs/{$weekStart->toDateString()}/pdf");
+
+        $response->assertOk();
+        $response->assertHeader('content-type', 'application/pdf');
+    }
+
+    public function test_saving_the_same_week_twice_updates_in_place_instead_of_duplicating(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $weekStart = Carbon::now()->startOfWeek(Carbon::MONDAY);
+
+        $this->postJson('/api/student/weekly-logs', [
+            'week_start' => $weekStart->toDateString(),
+            'narrative' => 'First draft.',
+        ])->assertOk();
+
+        $this->postJson('/api/student/weekly-logs', [
+            'week_start' => $weekStart->toDateString(),
+            'narrative' => 'Revised draft.',
+        ])->assertOk();
+
+        $this->assertSame(1, \App\Models\WeeklyLog::where('student_id', $student->id)->count());
+        $this->assertDatabaseHas('weekly_logs', ['student_id' => $student->id, 'narrative' => 'Revised draft.']);
+    }
+
     public function test_weekly_sipp_notes_are_aggregated_from_daily_entries_and_kept_separate_from_narrative(): void
     {
         $student = $this->enrolledStudent();

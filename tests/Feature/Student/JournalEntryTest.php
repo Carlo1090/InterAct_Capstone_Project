@@ -13,6 +13,25 @@ class JournalEntryTest extends TestCase
     use RefreshDatabase;
     use EnrollsStudentInBatch;
 
+    public function test_student_can_download_a_daily_entry_pdf(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $date = now()->toDateString();
+
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $date,
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'Worked on the reporting module.'],
+        ])->assertOk();
+
+        $response = $this->get("/api/student/journal-entries/{$date}/pdf");
+
+        $response->assertOk();
+        $response->assertHeader('content-type', 'application/pdf');
+    }
+
     public function test_student_can_submit_todays_entry(): void
     {
         $student = $this->enrolledStudent();

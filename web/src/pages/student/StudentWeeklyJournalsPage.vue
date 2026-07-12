@@ -54,6 +54,10 @@ const loadDetail = async (weekStart: string) => {
   }
 }
 
+const downloadWeeklyLogPdf = (weekStart: string) => {
+  window.open(`/api/student/weekly-logs/${weekStart}/pdf`, '_blank')
+}
+
 const saveNarrative = async (weekStart: string) => {
   const detail = details[weekStart]
   if (!detail) {
@@ -382,6 +386,13 @@ onMounted(() => {
 
           <div class="mt-4 flex items-center justify-end gap-3">
             <span v-if="saveMessage[week.week_start]" class="text-sm text-slate-500">{{ saveMessage[week.week_start] }}</span>
+            <button
+              type="button"
+              class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+              @click="downloadWeeklyLogPdf(week.week_start)"
+            >
+              Download PDF
+            </button>
             <button
               type="button"
               class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"

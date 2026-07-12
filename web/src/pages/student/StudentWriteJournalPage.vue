@@ -152,6 +152,10 @@ const backToEditor = () => {
   isViewMode.value = false
 }
 
+const downloadPdf = () => {
+  window.open(`/api/student/journal-entries/${entryDate.value}/pdf`, '_blank')
+}
+
 const goToDate = (date: string) => {
   router.push({ path: '/student/write-journal', query: { date } })
 }
@@ -170,7 +174,14 @@ onMounted(load)
     <NotEnrolledNotice v-else-if="notEnrolled" />
 
     <template v-else-if="isViewMode">
-      <div class="flex justify-end">
+      <div class="flex justify-end gap-3">
+        <button
+          type="button"
+          class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+          @click="downloadPdf"
+        >
+          Download PDF
+        </button>
         <button
           type="button"
           class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
