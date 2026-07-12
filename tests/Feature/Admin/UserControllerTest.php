@@ -132,10 +132,10 @@ class UserControllerTest extends TestCase
         ]);
 
         $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['department_ids']);
+        $response->assertJsonValidationErrors(['department_id']);
     }
 
-    public function test_creating_a_coordinator_with_departments_attaches_them(): void
+    public function test_creating_a_coordinator_with_a_department_attaches_it(): void
     {
         Sanctum::actingAs($this->admin(), ['*']);
 
@@ -146,12 +146,30 @@ class UserControllerTest extends TestCase
             'email' => 'new.coordinator@example.test',
             'password' => 'a-strong-password',
             'role' => 'coordinator',
-            'department_ids' => [$department->id],
+            'department_id' => $department->id,
         ]);
 
         $response->assertCreated();
         $coordinator = User::where('email', 'new.coordinator@example.test')->firstOrFail();
         $this->assertTrue($coordinator->departmentsCoordinated()->where('departments.id', $department->id)->exists());
+    }
+
+    public function test_two_different_coordinators_can_each_have_their_own_department(): void
+    {
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        $department = Department::create(['code' => 'CAST', 'name' => 'College of Arts, Sciences and Technology', 'is_active' => true]);
+        User::factory()->create(['role' => 'coordinator'])->departmentsCoordinated()->attach($department->id);
+
+        $response = $this->postJson('/api/admin/users', [
+            'name' => 'Another Coordinator',
+            'email' => 'another.coordinator@example.test',
+            'password' => 'a-strong-password',
+            'role' => 'coordinator',
+            'department_id' => $department->id,
+        ]);
+
+        $response->assertCreated();
     }
 
     public function test_creating_a_second_admin_is_rejected(): void

@@ -1,20 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
-import type { Department, PaginatedResponse, Program, User } from '@/types/api'
+import type { Department, PaginatedResponse, User } from '@/types/api'
 
 type UserPayload = {
   name: string
   email: string
   password: string
-  role: User['role']
-  program_id: number | null
-  department_ids: number[]
+  role: 'coordinator'
+  department_id: number | null
 }
 
 const users = ref<User[]>([])
-const programs = ref<Program[]>([])
 const departments = ref<Department[]>([])
 const isLoading = ref(true)
 const isSaving = ref(false)
@@ -28,33 +26,18 @@ const departmentFilter = ref('')
 
 let searchDebounce: ReturnType<typeof setTimeout> | undefined
 
-const userForm = ref<UserPayload>({
+const emptyForm = (): UserPayload => ({
   name: '',
   email: '',
   password: '',
-  role: 'student',
-  program_id: null,
-  department_ids: [],
+  role: 'coordinator',
+  department_id: null,
 })
 
-const groupedPrograms = computed(() => {
-  return programs.value.reduce<Record<string, Program[]>>((groups, program) => {
-    const departmentName = program.department?.name ?? 'No Department'
-    groups[departmentName] = groups[departmentName] ?? []
-    groups[departmentName].push(program)
-    return groups
-  }, {})
-})
+const userForm = ref<UserPayload>(emptyForm())
 
 const resetForm = () => {
-  userForm.value = {
-    name: '',
-    email: '',
-    password: '',
-    role: 'student',
-    program_id: null,
-    department_ids: [],
-  }
+  userForm.value = emptyForm()
   modalError.value = ''
 }
 
@@ -78,21 +61,12 @@ const loadUsers = async () => {
   }
 }
 
-const loadPrograms = async () => {
-  try {
-    const response = await api.get<Program[]>('/api/admin/programs')
-    programs.value = response.data
-  } catch {
-    modalError.value = 'Unable to load programs.'
-  }
-}
-
 const loadDepartments = async () => {
   try {
     const response = await api.get<Department[]>('/api/admin/departments')
     departments.value = response.data
   } catch {
-    // Filter dropdown just stays empty; not critical to the page loading.
+    // Filter/create dropdowns just stay empty; not critical to the page loading.
   }
 }
 
@@ -102,10 +76,9 @@ watch(search, () => {
 })
 watch([roleFilter, departmentFilter], loadUsers)
 
-const openModal = async () => {
+const openModal = () => {
   resetForm()
   isModalOpen.value = true
-  await loadPrograms()
 }
 
 const closeModal = () => {
@@ -114,8 +87,8 @@ const closeModal = () => {
 }
 
 const createUser = async () => {
-  if (userForm.value.role === 'coordinator' && userForm.value.department_ids.length === 0) {
-    modalError.value = 'Select at least one department for this coordinator.'
+  if (!userForm.value.department_id) {
+    modalError.value = 'Select a department for this coordinator.'
     return
   }
 
@@ -134,21 +107,14 @@ const createUser = async () => {
   }
 }
 
-const deactivateUser = async (user: User) => {
+const deleteUser = async (user: User) => {
+  if (!window.confirm(`Delete ${user.name}? This deactivates their account.`)) return
+
   try {
     await api.patch(`/api/admin/users/${user.id}/deactivate`)
     await loadUsers()
   } catch {
-    errorMessage.value = 'Unable to deactivate user.'
-  }
-}
-
-const activateUser = async (user: User) => {
-  try {
-    await api.patch(`/api/admin/users/${user.id}/activate`)
-    await loadUsers()
-  } catch {
-    errorMessage.value = 'Unable to activate user.'
+    errorMessage.value = 'Unable to delete user.'
   }
 }
 
@@ -190,7 +156,7 @@ onMounted(() => {
       {{ errorMessage }}
     </p>
 
-    <div v-else class="mt-6 overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+    <div v-else class="mt-6 overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
       <table class="min-w-full divide-y divide-slate-200">
         <thead class="bg-slate-50">
           <tr>
@@ -226,17 +192,9 @@ onMounted(() => {
                 v-if="user.is_active"
                 type="button"
                 class="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition hover:bg-red-50"
-                @click="deactivateUser(user)"
+                @click="deleteUser(user)"
               >
-                Deactivate
-              </button>
-              <button
-                v-else
-                type="button"
-                class="rounded-md border border-green-200 px-3 py-1.5 text-sm font-medium text-green-700 transition hover:bg-green-50"
-                @click="activateUser(user)"
-              >
-                Activate
+                Delete
               </button>
             </td>
           </tr>
@@ -245,15 +203,15 @@ onMounted(() => {
     </div>
 
     <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4">
-      <section class="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl">
+      <section class="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
         <div class="flex items-center justify-between">
-          <h3 class="text-lg font-semibold text-slate-950">Create User</h3>
+          <h3 class="text-lg font-semibold text-slate-950">Create Coordinator</h3>
           <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeModal">
             Cancel
           </button>
         </div>
 
-        <div class="mt-6 grid gap-4 md:grid-cols-2">
+        <div class="mt-6 space-y-4">
           <div>
             <label class="mb-2 block text-sm font-medium text-slate-700" for="user-name">Full Name</label>
             <input id="user-name" v-model="userForm.name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2" />
@@ -267,34 +225,13 @@ onMounted(() => {
             <input id="user-password" v-model="userForm.password" type="password" class="w-full rounded-md border border-slate-300 px-3 py-2" />
           </div>
           <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="user-role">Role</label>
-            <select id="user-role" v-model="userForm.role" class="w-full rounded-md border border-slate-300 px-3 py-2">
-              <option value="student">Student</option>
-              <option value="supervisor">Supervisor</option>
-              <option value="coordinator">Coordinator</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
-          <div class="md:col-span-2">
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="user-program">Program</label>
-            <select id="user-program" v-model="userForm.program_id" class="w-full rounded-md border border-slate-300 px-3 py-2">
-              <option :value="null">No Program</option>
-              <optgroup v-for="(departmentPrograms, departmentName) in groupedPrograms" :key="departmentName" :label="departmentName">
-                <option v-for="program in departmentPrograms" :key="program.id" :value="program.id">
-                  {{ program.name }}
-                </option>
-              </optgroup>
-            </select>
-          </div>
-          <div v-if="userForm.role === 'coordinator'" class="md:col-span-2">
-            <label class="mb-2 block text-sm font-medium text-slate-700">Departments</label>
-            <div class="grid gap-2 rounded-md border border-slate-300 p-3 sm:grid-cols-2">
-              <label v-for="department in departments" :key="department.id" class="flex items-center gap-2 text-sm text-slate-700">
-                <input v-model="userForm.department_ids" type="checkbox" :value="department.id" />
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="user-department">Department</label>
+            <select id="user-department" v-model="userForm.department_id" class="w-full rounded-md border border-slate-300 px-3 py-2">
+              <option :value="null">Select Department</option>
+              <option v-for="department in departments" :key="department.id" :value="department.id">
                 {{ department.name }}
-              </label>
-              <p v-if="departments.length === 0" class="text-sm text-slate-400">No departments available.</p>
-            </div>
+              </option>
+            </select>
           </div>
         </div>
 

@@ -23,37 +23,17 @@ class ProgramControllerTest extends TestCase
         return Department::create(['code' => 'CAST', 'name' => 'College of Arts, Sciences and Technology', 'is_active' => true]);
     }
 
-    public function test_store_creates_a_program_via_the_form_request(): void
-    {
-        Sanctum::actingAs($this->admin(), ['*']);
-
-        $department = $this->department();
-
-        $response = $this->postJson('/api/admin/programs', [
-            'department_id' => $department->id,
-            'code' => 'BSIT',
-            'name' => 'BS Information Technology',
-        ]);
-
-        $response->assertCreated();
-        $this->assertDatabaseHas('programs', ['code' => 'BSIT', 'department_id' => $department->id, 'is_active' => true]);
-    }
-
-    public function test_store_requires_a_unique_code_within_department(): void
+    public function test_index_returns_programs_with_department(): void
     {
         Sanctum::actingAs($this->admin(), ['*']);
 
         $department = $this->department();
         Program::create(['department_id' => $department->id, 'code' => 'BSIT', 'name' => 'BS Information Technology', 'is_active' => true]);
 
-        $response = $this->postJson('/api/admin/programs', [
-            'department_id' => $department->id,
-            'code' => 'BSIT',
-            'name' => 'Duplicate Program',
-        ]);
+        $response = $this->getJson('/api/admin/programs');
 
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['code']);
+        $response->assertOk();
+        $this->assertSame('CAST', collect($response->json())->firstWhere('code', 'BSIT')['department']['code']);
     }
 
     public function test_show_returns_the_program_with_its_department(): void
@@ -69,58 +49,17 @@ class ProgramControllerTest extends TestCase
         $this->assertSame('CAST', $response->json('department.code'));
     }
 
-    public function test_update_changes_name_code_and_is_active(): void
+    public function test_store_and_update_routes_no_longer_exist(): void
     {
         Sanctum::actingAs($this->admin(), ['*']);
 
         $department = $this->department();
         $program = Program::create(['department_id' => $department->id, 'code' => 'BSIT', 'name' => 'BS Information Technology', 'is_active' => true]);
 
-        $response = $this->putJson("/api/admin/programs/{$program->id}", [
-            'name' => 'BS Information Technology (Updated)',
-            'code' => 'BSIT-2',
-            'is_active' => false,
-        ]);
-
-        $response->assertOk();
-        $this->assertDatabaseHas('programs', [
-            'id' => $program->id,
-            'name' => 'BS Information Technology (Updated)',
-            'code' => 'BSIT-2',
-            'is_active' => false,
-        ]);
-    }
-
-    public function test_update_allows_keeping_the_same_code(): void
-    {
-        Sanctum::actingAs($this->admin(), ['*']);
-
-        $department = $this->department();
-        $program = Program::create(['department_id' => $department->id, 'code' => 'BSIT', 'name' => 'BS Information Technology', 'is_active' => true]);
-
-        $response = $this->putJson("/api/admin/programs/{$program->id}", [
-            'name' => 'BS Information Technology',
-            'code' => 'BSIT',
-        ]);
-
-        $response->assertOk();
-    }
-
-    public function test_update_rejects_a_code_already_used_by_another_program_in_the_same_department(): void
-    {
-        Sanctum::actingAs($this->admin(), ['*']);
-
-        $department = $this->department();
-        Program::create(['department_id' => $department->id, 'code' => 'BSIT', 'name' => 'BS Information Technology', 'is_active' => true]);
-        $program = Program::create(['department_id' => $department->id, 'code' => 'BSA', 'name' => 'BS Accountancy', 'is_active' => true]);
-
-        $response = $this->putJson("/api/admin/programs/{$program->id}", [
-            'name' => 'BS Accountancy',
-            'code' => 'BSIT',
-        ]);
-
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['code']);
+        $this->postJson('/api/admin/programs', ['department_id' => $department->id, 'code' => 'z', 'name' => 'z'])
+            ->assertStatus(405);
+        $this->putJson("/api/admin/programs/{$program->id}", ['name' => 'x', 'code' => 'y'])
+            ->assertStatus(405);
     }
 
     public function test_non_admin_cannot_access_program_routes(): void
@@ -130,8 +69,7 @@ class ProgramControllerTest extends TestCase
         $department = $this->department();
         $program = Program::create(['department_id' => $department->id, 'code' => 'BSIT', 'name' => 'BS Information Technology', 'is_active' => true]);
 
+        $this->getJson('/api/admin/programs')->assertStatus(403);
         $this->getJson("/api/admin/programs/{$program->id}")->assertStatus(403);
-        $this->putJson("/api/admin/programs/{$program->id}", ['name' => 'x', 'code' => 'y'])->assertStatus(403);
-        $this->postJson('/api/admin/programs', ['department_id' => $department->id, 'code' => 'z', 'name' => 'z'])->assertStatus(403);
     }
 }

@@ -53,12 +53,11 @@ class UserController extends Controller
             ],
             'program_id' => ['nullable', 'exists:programs,id'],
             'student_id_number' => ['nullable', 'string', 'max:30', 'unique:users,student_id_number'],
-            'department_ids' => ['required_if:role,coordinator', 'array', 'min:1'],
-            'department_ids.*' => ['exists:departments,id'],
+            'department_id' => ['required_if:role,coordinator', 'exists:departments,id'],
         ]);
 
         $user = User::create([
-            ...collect($validated)->except('department_ids')->all(),
+            ...collect($validated)->except('department_id')->all(),
             'password' => Hash::make($validated['password']),
             'is_active' => true,
         ]);
@@ -71,7 +70,7 @@ class UserController extends Controller
         }
 
         if ($user->role === 'coordinator') {
-            $user->departmentsCoordinated()->attach($validated['department_ids']);
+            $user->departmentsCoordinated()->attach($validated['department_id']);
         }
 
         SystemLog::record('User Created', "Created {$user->role} account ({$user->name})");

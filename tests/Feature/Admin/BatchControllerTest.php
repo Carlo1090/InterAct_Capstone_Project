@@ -21,16 +21,16 @@ class BatchControllerTest extends TestCase
         return User::factory()->create(['role' => 'admin']);
     }
 
-    private function makeBatch(): Batch
+    private function makeBatch(?Department $department = null): Batch
     {
-        $department = Department::create(['code' => 'CAST', 'name' => 'College of Arts, Sciences and Technology', 'is_active' => true]);
-        $program = Program::create(['department_id' => $department->id, 'code' => 'BSIT', 'name' => 'BS Information Technology', 'is_active' => true]);
+        $department ??= Department::create(['code' => 'CAST', 'name' => 'College of Arts, Sciences and Technology', 'is_active' => true]);
+        $program = Program::create(['department_id' => $department->id, 'code' => 'BSIT-'.uniqid(), 'name' => 'BS Information Technology', 'is_active' => true]);
         $coordinator = User::factory()->create(['role' => 'coordinator']);
 
         return Batch::create([
             'program_id' => $program->id,
             'coordinator_id' => $coordinator->id,
-            'name' => 'Batch 2026-A',
+            'name' => 'Batch '.uniqid(),
             'start_date' => now()->subMonth(),
             'end_date' => now()->addMonth(),
             'required_hours' => 486,
@@ -82,46 +82,41 @@ class BatchControllerTest extends TestCase
         $response->assertJsonCount(0, 'batch_students');
     }
 
-    public function test_update_changes_name_end_date_and_coordinator(): void
+    public function test_department_filter_only_returns_batches_in_that_department(): void
+    {
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        $castDepartment = Department::create(['code' => 'CAST', 'name' => 'College of Arts, Sciences and Technology', 'is_active' => true]);
+        $cabmDepartment = Department::create(['code' => 'CABM-B', 'name' => 'College of Business Management', 'is_active' => true]);
+
+        $castBatch = $this->makeBatch($castDepartment);
+        $cabmBatch = $this->makeBatch($cabmDepartment);
+
+        $response = $this->getJson("/api/admin/batches?department_id={$castDepartment->id}");
+
+        $response->assertOk();
+        $names = collect($response->json('data'))->pluck('name');
+        $this->assertTrue($names->contains($castBatch->name));
+        $this->assertFalse($names->contains($cabmBatch->name));
+    }
+
+    public function test_store_and_update_routes_no_longer_exist(): void
     {
         Sanctum::actingAs($this->admin(), ['*']);
 
         $batch = $this->makeBatch();
-        $newCoordinator = User::factory()->create(['role' => 'coordinator']);
 
-        $response = $this->putJson("/api/admin/batches/{$batch->id}", [
-            'name' => 'Batch 2026-B',
-            'end_date' => now()->addMonths(2)->toDateString(),
-            'coordinator_id' => $newCoordinator->id,
-        ]);
-
-        $response->assertOk();
-        $this->assertDatabaseHas('batches', [
-            'id' => $batch->id,
-            'name' => 'Batch 2026-B',
-            'coordinator_id' => $newCoordinator->id,
-        ]);
+        $this->postJson('/api/admin/batches', ['name' => 'x'])->assertStatus(405);
+        $this->putJson("/api/admin/batches/{$batch->id}", ['name' => 'x'])->assertStatus(405);
     }
 
-    public function test_update_can_toggle_is_active(): void
-    {
-        Sanctum::actingAs($this->admin(), ['*']);
-
-        $batch = $this->makeBatch();
-
-        $response = $this->putJson("/api/admin/batches/{$batch->id}", ['is_active' => false]);
-
-        $response->assertOk();
-        $this->assertDatabaseHas('batches', ['id' => $batch->id, 'is_active' => false]);
-    }
-
-    public function test_non_admin_cannot_access_batch_show_or_update(): void
+    public function test_non_admin_cannot_access_batch_show(): void
     {
         Sanctum::actingAs(User::factory()->create(['role' => 'coordinator']), ['*']);
 
         $batch = $this->makeBatch();
 
         $this->getJson("/api/admin/batches/{$batch->id}")->assertStatus(403);
-        $this->putJson("/api/admin/batches/{$batch->id}", ['name' => 'x'])->assertStatus(403);
+        $this->getJson('/api/admin/batches')->assertStatus(403);
     }
 }

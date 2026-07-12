@@ -295,7 +295,7 @@ onMounted(() => {
         <p v-if="isViewLoading" class="mt-6 text-sm text-slate-500">Loading...</p>
         <p v-else-if="viewError" class="mt-6 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ viewError }}</p>
 
-        <div v-else-if="viewedDepartment" class="mt-6 space-y-6">
+        <div v-else-if="viewedDepartment" class="mt-6 max-h-[80vh] space-y-6 overflow-y-auto pr-1">
           <div>
             <span class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-700">
               {{ viewedDepartment.code }}
@@ -303,7 +303,7 @@ onMounted(() => {
             <h4 class="mt-2 text-xl font-bold text-slate-950">{{ viewedDepartment.name }}</h4>
           </div>
 
-          <div class="grid gap-x-6 gap-y-3 text-sm md:grid-cols-2">
+          <div class="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
             <div>
               <span class="block text-xs font-semibold uppercase tracking-wide text-slate-400">Programs</span>
               {{ viewedDepartment.programs.length }}
@@ -316,7 +316,7 @@ onMounted(() => {
 
           <div>
             <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Programs</h5>
-            <div v-if="viewedDepartment.programs.length > 0" class="mt-2 overflow-hidden rounded-lg ring-1 ring-slate-200">
+            <div v-if="viewedDepartment.programs.length > 0" class="mt-2 overflow-x-auto rounded-lg ring-1 ring-slate-200">
               <table class="min-w-full divide-y divide-slate-200">
                 <thead class="bg-slate-50">
                   <tr>
@@ -350,7 +350,7 @@ onMounted(() => {
 
           <div>
             <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Students</h5>
-            <div v-if="viewedDepartment.students.length > 0" class="mt-2 overflow-hidden rounded-lg ring-1 ring-slate-200">
+            <div v-if="viewedDepartment.students.length > 0" class="mt-2 overflow-x-auto rounded-lg ring-1 ring-slate-200">
               <table class="min-w-full divide-y divide-slate-200">
                 <thead class="bg-slate-50">
                   <tr>

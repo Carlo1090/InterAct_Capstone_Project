@@ -52,13 +52,9 @@ Route::middleware(['auth:sanctum', 'role:admin'])
 
         Route::get('programs', [ProgramController::class, 'index']);
         Route::get('programs/{program}', [ProgramController::class, 'show']);
-        Route::post('programs', [ProgramController::class, 'store']);
-        Route::put('programs/{program}', [ProgramController::class, 'update']);
 
         Route::get('batches', [BatchController::class, 'index']);
         Route::get('batches/{batch}', [BatchController::class, 'show']);
-        Route::post('batches', [BatchController::class, 'store']);
-        Route::put('batches/{batch}', [BatchController::class, 'update']);
 
         Route::get('info-sheets', [AdminStudentInfoSheetController::class, 'index']);
         Route::get('info-sheets/{student}', [AdminStudentInfoSheetController::class, 'show']);

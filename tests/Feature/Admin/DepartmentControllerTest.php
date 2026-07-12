@@ -183,6 +183,25 @@ class DepartmentControllerTest extends TestCase
             ->count());
     }
 
+    public function test_assigning_a_coordinator_already_on_a_different_department_is_rejected(): void
+    {
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        $firstDepartment = Department::create(['code' => 'CAST', 'name' => 'College of Arts, Sciences and Technology', 'is_active' => true]);
+        $secondDepartment = Department::create(['code' => 'CABM-B', 'name' => 'College of Business Management', 'is_active' => true]);
+        $coordinator = User::factory()->create(['role' => 'coordinator']);
+        $coordinator->departmentsCoordinated()->attach($firstDepartment->id);
+
+        $response = $this->postJson("/api/admin/departments/{$secondDepartment->id}/coordinators", ['user_id' => $coordinator->id]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['user_id']);
+        $this->assertDatabaseMissing('coordinator_departments', [
+            'coordinator_id' => $coordinator->id,
+            'department_id' => $secondDepartment->id,
+        ]);
+    }
+
     public function test_store_creates_a_department_via_the_form_request(): void
     {
         Sanctum::actingAs($this->admin(), ['*']);
