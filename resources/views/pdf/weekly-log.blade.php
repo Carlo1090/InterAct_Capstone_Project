@@ -4,6 +4,22 @@
 @section('doc-title', 'Weekly Activity Narrative')
 @section('doc-subtitle', \Carbon\Carbon::parse($weekStart)->toFormattedDateString() . ' to ' . \Carbon\Carbon::parse($weekEnd)->toFormattedDateString())
 
+@section('extra-style')
+    <style>
+        {{-- Explicit, named override for this document — not an inherited
+             coincidence that today's shared default also happens to be 12px. --}}
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 12px;
+        }
+
+        .section-body {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 12px;
+        }
+    </style>
+@endsection
+
 @php
     // The narrative is free text a student can edit after Weekly Bundling
     // pre-fills it, so we don't assume structure — but WeeklyBundlingService's
