@@ -3,6 +3,7 @@
 namespace Tests\Feature\Student;
 
 use App\Models\JournalEntry;
+use App\Models\WeeklyLog;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -137,5 +138,148 @@ class WeeklyLogTest extends TestCase
 
         $secondDay = collect($sippNotes)->firstWhere('entry_date', $weekStart->copy()->addDay()->toDateString());
         $this->assertSame('Coordinated with IT to restore VPN access.', collect($secondDay['fields'])->firstWhere('key', 'solutions')['text']);
+    }
+
+    public function test_submit_with_a_saved_draft_succeeds(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $weekStart = Carbon::now()->startOfWeek(Carbon::MONDAY);
+
+        $this->postJson('/api/student/weekly-logs', [
+            'week_start' => $weekStart->toDateString(),
+            'narrative' => 'This week I focused on onboarding and initial setup.',
+        ])->assertOk();
+
+        $response = $this->postJson("/api/student/weekly-logs/{$weekStart->toDateString()}/submit");
+
+        $response->assertOk();
+        $response->assertJsonPath('status', 'pending');
+        $this->assertNotNull($response->json('submitted_at'));
+
+        $log = WeeklyLog::where('student_id', $student->id)->first();
+        $this->assertSame('pending', $log->status);
+        $this->assertNotNull($log->submitted_at);
+    }
+
+    public function test_submit_with_no_draft_fails(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $weekStart = Carbon::now()->startOfWeek(Carbon::MONDAY);
+
+        $response = $this->postJson("/api/student/weekly-logs/{$weekStart->toDateString()}/submit");
+
+        $response->assertStatus(422);
+        $this->assertSame(0, WeeklyLog::where('student_id', $student->id)->count());
+    }
+
+    public function test_double_submit_fails(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $weekStart = Carbon::now()->startOfWeek(Carbon::MONDAY);
+
+        $this->postJson('/api/student/weekly-logs', [
+            'week_start' => $weekStart->toDateString(),
+            'narrative' => 'First submission draft.',
+        ])->assertOk();
+
+        $this->postJson("/api/student/weekly-logs/{$weekStart->toDateString()}/submit")->assertOk();
+
+        $response = $this->postJson("/api/student/weekly-logs/{$weekStart->toDateString()}/submit");
+
+        $response->assertStatus(422);
+        $this->assertSame(1, WeeklyLog::where('student_id', $student->id)->where('status', 'pending')->count());
+    }
+
+    public function test_editing_after_submit_is_rejected(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $weekStart = Carbon::now()->startOfWeek(Carbon::MONDAY);
+
+        $this->postJson('/api/student/weekly-logs', [
+            'week_start' => $weekStart->toDateString(),
+            'narrative' => 'Original draft.',
+        ])->assertOk();
+
+        $this->postJson("/api/student/weekly-logs/{$weekStart->toDateString()}/submit")->assertOk();
+
+        $response = $this->postJson('/api/student/weekly-logs', [
+            'week_start' => $weekStart->toDateString(),
+            'narrative' => 'Trying to edit after submit.',
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertDatabaseHas('weekly_logs', ['student_id' => $student->id, 'narrative' => 'Original draft.']);
+    }
+
+    public function test_editing_an_approved_log_is_rejected(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $weekStart = Carbon::now()->startOfWeek(Carbon::MONDAY);
+
+        $this->postJson('/api/student/weekly-logs', [
+            'week_start' => $weekStart->toDateString(),
+            'narrative' => 'Approved draft.',
+        ])->assertOk();
+
+        $log = WeeklyLog::where('student_id', $student->id)->first();
+        $log->update(['submitted_at' => now(), 'status' => 'approved']);
+
+        $response = $this->postJson('/api/student/weekly-logs', [
+            'week_start' => $weekStart->toDateString(),
+            'narrative' => 'Trying to edit an approved log.',
+        ]);
+
+        $response->assertStatus(422);
+    }
+
+    public function test_returned_log_can_be_edited_and_resubmitted(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $weekStart = Carbon::now()->startOfWeek(Carbon::MONDAY);
+
+        $this->postJson('/api/student/weekly-logs', [
+            'week_start' => $weekStart->toDateString(),
+            'narrative' => 'First attempt.',
+        ])->assertOk();
+
+        $this->postJson("/api/student/weekly-logs/{$weekStart->toDateString()}/submit")->assertOk();
+
+        $log = WeeklyLog::where('student_id', $student->id)->first();
+        $firstSubmittedAt = $log->submitted_at;
+        $log->update([
+            'status' => 'returned',
+            'supervisor_comment' => 'Please add more detail.',
+        ]);
+
+        // Editable again while returned.
+        $this->postJson('/api/student/weekly-logs', [
+            'week_start' => $weekStart->toDateString(),
+            'narrative' => 'Revised after feedback.',
+        ])->assertOk();
+
+        $this->travel(1)->minute();
+
+        $response = $this->postJson("/api/student/weekly-logs/{$weekStart->toDateString()}/submit");
+
+        $response->assertOk();
+        $response->assertJsonPath('status', 'pending');
+
+        $log->refresh();
+        $this->assertSame('pending', $log->status);
+        $this->assertSame('Revised after feedback.', $log->narrative);
+        $this->assertNotNull($log->submitted_at);
+        $this->assertTrue($log->submitted_at->greaterThan($firstSubmittedAt));
     }
 }

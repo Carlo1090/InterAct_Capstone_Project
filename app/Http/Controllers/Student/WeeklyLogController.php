@@ -187,6 +187,10 @@ class WeeklyLogController extends Controller
             ->whereDate('week_start', $start->toDateString())
             ->first();
 
+        if ($lockMessage = $this->submittedLockMessage($log)) {
+            return response()->json(['message' => $lockMessage], 422);
+        }
+
         if ($log) {
             $log->update(['week_end' => $end->toDateString(), 'narrative' => $validated['narrative'] ?? null]);
         } else {
@@ -200,5 +204,63 @@ class WeeklyLogController extends Controller
         }
 
         return response()->json($log);
+    }
+
+    /**
+     * Submit the already-saved draft narrative for review: sets submitted_at
+     * + status='pending', making it reachable by SupervisorJournalController
+     * (which only lists whereNotNull('submitted_at')). Allowed again after a
+     * supervisor returns it (status='returned'), which is what makes the
+     * return-with-comment flow meaningful.
+     */
+    public function submit(Request $request, string $weekStart): JsonResponse
+    {
+        $user = $request->user();
+        $enrollment = $this->activeEnrollment($user->id);
+
+        if (! $enrollment) {
+            return response()->json(['message' => 'You are not currently enrolled in an active OJT batch.'], 422);
+        }
+
+        $start = Carbon::parse($weekStart)->startOfWeek(Carbon::MONDAY);
+
+        // Same SQLite-safe lookup as store()/show(): a date-cast column can
+        // still carry a time component under SQLite, so plain equality can
+        // miss the row that was just saved.
+        $log = WeeklyLog::where('student_id', $user->id)
+            ->where('batch_id', $enrollment->batch_id)
+            ->whereDate('week_start', $start->toDateString())
+            ->first();
+
+        if (! $log || trim((string) $log->narrative) === '') {
+            return response()->json(['message' => 'Save a draft for this week before submitting.'], 422);
+        }
+
+        if ($lockMessage = $this->submittedLockMessage($log)) {
+            return response()->json(['message' => $lockMessage], 422);
+        }
+
+        $log->update([
+            'submitted_at' => now(),
+            'status' => 'pending',
+        ]);
+
+        return response()->json($log->fresh());
+    }
+
+    /**
+     * Non-null once submitted_at is set AND the log is still pending/approved
+     * (blocks further edits and double-submits); a 'returned' log is always
+     * editable/resubmittable again regardless of its old submitted_at.
+     */
+    private function submittedLockMessage(?WeeklyLog $log): ?string
+    {
+        if (! $log || $log->submitted_at === null || ! in_array($log->status, ['pending', 'approved'], true)) {
+            return null;
+        }
+
+        return $log->status === 'approved'
+            ? 'This weekly log has already been approved and can no longer be edited.'
+            : 'This weekly log has already been submitted and is awaiting review.';
     }
 }
