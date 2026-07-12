@@ -355,6 +355,26 @@ const deleteIntern = async (row: BatchRosterRow) => {
   }
 }
 
+const reactivateIntern = async (row: BatchRosterRow) => {
+  if (!rosterBatch.value) return
+  if (!confirmAction(`Reactivate ${row.student.name} in "${rosterBatch.value.name}"? They'll be marked active again with their previous company and supervisor.`)) return
+
+  rosterMessage.value = ''
+  try {
+    await api.patch(`/api/coordinator/batches/${rosterBatch.value.id}/roster/${row.id}/reactivate`)
+    await loadRoster(rosterBatch.value.id)
+    await load()
+    rosterCandidates.value = (await api.get<CoordinatorInternUser[]>('/api/coordinator/users/interns')).data
+    showToast('Intern reactivated.')
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 422) {
+      rosterMessage.value = error.response.data.message ?? 'Unable to reactivate this intern.'
+    } else {
+      rosterMessage.value = 'Unable to reactivate this intern.'
+    }
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -641,6 +661,9 @@ onMounted(load)
                     <td class="px-3 py-2 text-slate-600">{{ row.student.name }}</td>
                     <td class="px-3 py-2 text-slate-500">{{ row.company?.name ?? '—' }}</td>
                     <td class="px-3 py-2 text-right">
+                      <button type="button" class="mr-2 rounded-md border border-green-600 px-3 py-1 text-xs font-semibold text-green-700 hover:bg-green-50" @click="reactivateIntern(row)">
+                        Reactivate
+                      </button>
                       <button type="button" class="rounded-md border border-red-500 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50" @click="deleteIntern(row)">
                         Delete
                       </button>

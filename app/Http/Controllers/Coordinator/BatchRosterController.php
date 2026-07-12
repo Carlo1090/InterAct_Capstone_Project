@@ -128,6 +128,37 @@ class BatchRosterController extends Controller
         return response()->json(['deleted' => true]);
     }
 
+    /**
+     * Undo a drop: flip a 'dropped' row back to 'active' in place (same
+     * company/supervisor/division it had before), rather than re-adding via
+     * the Add-Intern form. Blocked if the student already has an active row
+     * elsewhere — a student may only have one active enrollment at a time
+     * (the same constraint StoreEnrollmentRequest enforces), so reactivating
+     * here would collide with it.
+     */
+    public function reactivate(Request $request, Batch $batch, BatchStudent $batchStudent): JsonResponse
+    {
+        $this->authorizeBatch($request->user(), $batch);
+        $this->assertRowInBatch($batch, $batchStudent);
+
+        abort_unless($batchStudent->status === 'dropped', 422, 'Only a dropped record can be reactivated.');
+
+        $activeElsewhere = BatchStudent::where('student_id', $batchStudent->student_id)
+            ->where('status', 'active')
+            ->with('batch:id,name')
+            ->first();
+
+        if ($activeElsewhere) {
+            return response()->json([
+                'message' => "This student is already active in \"{$activeElsewhere->batch?->name}\". Use Add or Move on that batch instead of reactivating this dropped record.",
+            ], 422);
+        }
+
+        $batchStudent->update(['status' => 'active']);
+
+        return response()->json($batchStudent->fresh(['student:id,name,email,student_id_number', 'company:id,name', 'supervisor:id,name,email']));
+    }
+
     private function authorizeBatch(User $coordinator, Batch $batch): void
     {
         abort_unless(

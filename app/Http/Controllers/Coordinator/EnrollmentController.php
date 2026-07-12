@@ -220,10 +220,35 @@ class EnrollmentController extends Controller
         return response()->json($user->only(['id', 'name', 'email', 'role', 'is_active']), 201);
     }
 
+    /**
+     * A previously-dropped row for this exact student+batch is REACTIVATED
+     * (status flipped back to active, company/supervisor/division refreshed
+     * from this submission) rather than duplicated with a new row.
+     */
     public function store(StoreEnrollmentRequest $request): JsonResponse
     {
+        $validated = $request->validated();
+
+        $droppedRow = BatchStudent::where('batch_id', $validated['batch_id'])
+            ->where('student_id', $validated['student_id'])
+            ->where('status', 'dropped')
+            ->first();
+
+        if ($droppedRow) {
+            $droppedRow->update([
+                'company_id' => $validated['company_id'],
+                'supervisor_id' => $validated['supervisor_id'],
+                'assigned_division' => $validated['assigned_division'] ?? null,
+                'status' => 'active',
+            ]);
+
+            return response()->json(
+                $droppedRow->fresh(['batch.program', 'company', 'supervisor', 'student'])
+            );
+        }
+
         $enrollment = BatchStudent::create([
-            ...$request->validated(),
+            ...$validated,
             'status' => 'active',
         ]);
 

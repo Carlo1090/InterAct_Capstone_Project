@@ -195,6 +195,47 @@ class EnrollmentTest extends TestCase
         $this->assertFalse($filterBatchNames->contains('Other Coordinator Batch'));
     }
 
+    public function test_re_enrolling_a_dropped_student_reactivates_the_row_instead_of_duplicating(): void
+    {
+        $program = $this->programFor('BSIT');
+        $coordinator = User::factory()->create(['role' => 'coordinator', 'program_id' => $program->id]);
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $oldCompany = Company::create(['name' => 'Old Co', 'address' => 'A', 'is_active' => true]);
+        $newCompany = Company::create(['name' => 'New Co', 'address' => 'B', 'is_active' => true]);
+        $oldSupervisor = User::factory()->create(['role' => 'supervisor']);
+        $newSupervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $droppedRow = BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $oldCompany->id,
+            'supervisor_id' => $oldSupervisor->id,
+            'assigned_division' => 'Old Division',
+            'status' => 'dropped',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->postJson('/api/coordinator/enrollments', [
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $newCompany->id,
+            'supervisor_id' => $newSupervisor->id,
+            'assigned_division' => 'New Division',
+        ]);
+
+        $response->assertOk();
+        $this->assertSame(1, BatchStudent::where('batch_id', $batch->id)->where('student_id', $student->id)->count());
+        $this->assertDatabaseHas('batch_students', [
+            'id' => $droppedRow->id,
+            'status' => 'active',
+            'company_id' => $newCompany->id,
+            'supervisor_id' => $newSupervisor->id,
+            'assigned_division' => 'New Division',
+        ]);
+    }
+
     public function test_options_supervisors_carry_their_company_ids(): void
     {
         $program = $this->programFor('BSIT');

@@ -212,6 +212,113 @@ class BatchRosterTest extends TestCase
         $this->assertDatabaseMissing('batch_students', ['id' => $row->id]);
     }
 
+    public function test_reactivate_flips_dropped_row_back_to_active(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program->department_id);
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $row = BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'dropped',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->patchJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}/reactivate");
+
+        $response->assertOk();
+        $this->assertDatabaseHas('batch_students', ['id' => $row->id, 'status' => 'active']);
+    }
+
+    public function test_reactivate_is_blocked_when_student_is_active_elsewhere(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program->department_id);
+        $droppedBatch = $this->batchFor($program, $coordinator, 'Dropped Batch');
+        $activeBatch = $this->batchFor($program, $coordinator, 'Active Batch');
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $droppedRow = BatchStudent::create([
+            'batch_id' => $droppedBatch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'dropped',
+        ]);
+
+        BatchStudent::create([
+            'batch_id' => $activeBatch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'active',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->patchJson("/api/coordinator/batches/{$droppedBatch->id}/roster/{$droppedRow->id}/reactivate");
+
+        $response->assertStatus(422);
+        $response->assertJsonFragment(['message' => 'This student is already active in "'.$activeBatch->name.'". Use Add or Move on that batch instead of reactivating this dropped record.']);
+        $this->assertDatabaseHas('batch_students', ['id' => $droppedRow->id, 'status' => 'dropped']);
+    }
+
+    public function test_reactivate_active_row_is_rejected(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program->department_id);
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $row = BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'active',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->patchJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}/reactivate")->assertStatus(422);
+    }
+
+    public function test_reactivate_out_of_scope_batch_is_forbidden(): void
+    {
+        $inScope = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($inScope->department_id);
+
+        $outProgram = $this->program('CABM-H', 'BSTM');
+        $outCoordinator = User::factory()->create(['role' => 'coordinator']);
+        $outBatch = $this->batchFor($outProgram, $outCoordinator);
+        $outStudent = User::factory()->create(['role' => 'student', 'program_id' => $outProgram->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $row = BatchStudent::create([
+            'batch_id' => $outBatch->id,
+            'student_id' => $outStudent->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'dropped',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->patchJson("/api/coordinator/batches/{$outBatch->id}/roster/{$row->id}/reactivate")->assertStatus(403);
+    }
+
     public function test_out_of_scope_batch_and_student_are_forbidden(): void
     {
         $inScope = $this->program('CABM-B', 'BSA');
