@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { confirmAction, showToast } from '@/lib/toast'
@@ -8,8 +8,6 @@ import type {
   Batch,
   BatchRosterResponse,
   BatchRosterRow,
-  CoordinatorInternUser,
-  EnrollmentOptions,
   JournalTemplateProgramOption,
   JournalTemplateRecord,
 } from '@/types/api'
@@ -197,47 +195,8 @@ const rosterRows = ref<BatchRosterRow[]>([])
 const isRosterLoading = ref(false)
 const rosterMessage = ref('')
 
-const rosterCandidates = ref<CoordinatorInternUser[]>([])
-const rosterOptions = ref<EnrollmentOptions>({ companies: [], supervisors: [] })
-const isAddingIntern = ref(false)
-
-const addForm = reactive({
-  student_id: null as number | null,
-  company_id: null as number | null,
-  supervisor_id: null as number | null,
-  assigned_division: '',
-})
-
-// Supervisor is always a Company Supervisor — the dropdown only lists
-// supervisors attached to the currently selected company.
-const addSupervisorOptions = computed(() =>
-  addForm.company_id
-    ? rosterOptions.value.supervisors.filter((supervisor) => supervisor.company_ids.includes(addForm.company_id as number))
-    : [],
-)
-
-watch(
-  () => addForm.company_id,
-  () => {
-    if (!addSupervisorOptions.value.some((supervisor) => supervisor.id === addForm.supervisor_id)) {
-      addForm.supervisor_id = null
-    }
-  },
-)
-
 const activeRoster = computed(() => rosterRows.value.filter((row) => row.status === 'active'))
 const droppedRoster = computed(() => rosterRows.value.filter((row) => row.status === 'dropped'))
-const activeStudentIds = computed(() => activeRoster.value.map((row) => row.student.id))
-
-// Students who may be added to THIS batch: same program, not already active here.
-// A student active in ANOTHER batch stays selectable (adding them = a MOVE).
-const addableStudents = computed(() => {
-  if (!rosterBatch.value) return []
-  return rosterCandidates.value.filter(
-    (student) =>
-      student.program?.id === rosterBatch.value?.program.id && !activeStudentIds.value.includes(student.id),
-  )
-})
 
 const loadRoster = async (batchId: number) => {
   isRosterLoading.value = true
@@ -255,77 +214,15 @@ const loadRoster = async (batchId: number) => {
 const openRoster = async (batch: Batch) => {
   rosterBatch.value = batch
   rosterRows.value = []
-  addForm.student_id = null
-  addForm.company_id = null
-  addForm.supervisor_id = null
-  addForm.assigned_division = ''
   rosterMessage.value = ''
   isRosterOpen.value = true
 
   await loadRoster(batch.id)
-  try {
-    const [internsResponse, optionsResponse] = await Promise.all([
-      api.get<CoordinatorInternUser[]>('/api/coordinator/users/interns'),
-      api.get<EnrollmentOptions>('/api/coordinator/enrollment-options'),
-    ])
-    rosterCandidates.value = internsResponse.data
-    rosterOptions.value = optionsResponse.data
-  } catch {
-    rosterMessage.value = 'Unable to load the student picker.'
-  }
 }
 
 const closeRoster = () => {
   isRosterOpen.value = false
   rosterBatch.value = null
-}
-
-const addIntern = async () => {
-  if (!rosterBatch.value || !addForm.student_id) return
-
-  const candidate = rosterCandidates.value.find((student) => student.id === addForm.student_id)
-
-  // Enrolled elsewhere -> this is a MOVE. Confirm first (guards a wrong-batch pick).
-  if (candidate?.enrolled && candidate.enrollment && candidate.enrollment.batch.id !== rosterBatch.value.id) {
-    const confirmed = confirmAction(
-      `${candidate.name} is currently enrolled in "${candidate.enrollment.batch.name}". ` +
-        `Adding them to "${rosterBatch.value.name}" will MOVE them: their "${candidate.enrollment.batch.name}" ` +
-        `enrollment will be marked dropped and a new active one created here. ` +
-        `Make sure "${rosterBatch.value.name}" is the correct batch. Continue?`,
-    )
-    if (!confirmed) return
-  }
-
-  isAddingIntern.value = true
-  rosterMessage.value = ''
-  try {
-    const { data } = await api.post<{ moved: boolean }>(`/api/coordinator/batches/${rosterBatch.value.id}/roster`, {
-      student_id: addForm.student_id,
-      company_id: addForm.company_id,
-      supervisor_id: addForm.supervisor_id,
-      assigned_division: addForm.assigned_division || null,
-    })
-
-    addForm.student_id = null
-    addForm.company_id = null
-    addForm.supervisor_id = null
-    addForm.assigned_division = ''
-
-    await loadRoster(rosterBatch.value.id)
-    // Refresh candidates so enrolled-elsewhere state stays accurate.
-    rosterCandidates.value = (await api.get<CoordinatorInternUser[]>('/api/coordinator/users/interns')).data
-    showToast(data.moved ? 'Intern moved to this batch.' : 'Intern added to this batch.')
-  } catch (error) {
-    if (axios.isAxiosError(error) && error.response?.status === 422) {
-      rosterMessage.value = error.response.data.message ?? 'Unable to add this student.'
-    } else if (axios.isAxiosError(error) && error.response?.status === 403) {
-      rosterMessage.value = 'That student or batch is outside your department scope.'
-    } else {
-      rosterMessage.value = 'Unable to add this student.'
-    }
-  } finally {
-    isAddingIntern.value = false
-  }
 }
 
 const removeIntern = async (row: BatchRosterRow) => {
@@ -364,7 +261,6 @@ const reactivateIntern = async (row: BatchRosterRow) => {
     await api.patch(`/api/coordinator/batches/${rosterBatch.value.id}/roster/${row.id}/reactivate`)
     await loadRoster(rosterBatch.value.id)
     await load()
-    rosterCandidates.value = (await api.get<CoordinatorInternUser[]>('/api/coordinator/users/interns')).data
     showToast('Intern reactivated.')
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 422) {
@@ -555,54 +451,46 @@ onMounted(load)
 
         <p v-if="rosterMessage" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ rosterMessage }}</p>
 
-        <!-- Add intern -->
+        <!-- Program / Batch Details -->
         <div class="mt-5 rounded-md border border-slate-200 bg-slate-50 p-4">
-          <p class="mb-3 text-sm font-semibold text-slate-800">Add an intern</p>
-          <div class="grid gap-3 md:grid-cols-2">
+          <p class="mb-3 text-sm font-semibold text-slate-800">Program / Batch Details</p>
+          <div class="grid gap-x-6 gap-y-3 text-sm md:grid-cols-2">
             <div>
-              <label class="mb-1 block text-xs font-medium text-slate-600" for="roster-student">Student (same program)</label>
-              <select id="roster-student" v-model.number="addForm.student_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
-                <option :value="null">Select Student</option>
-                <option v-for="student in addableStudents" :key="student.id" :value="student.id">
-                  {{ student.name }}<template v-if="student.enrolled && student.enrollment"> — currently in {{ student.enrollment.batch.name }}</template>
-                </option>
-              </select>
+              <span class="block text-xs font-bold uppercase tracking-wide text-slate-500">Program</span>
+              {{ rosterBatch.program?.name ?? '—' }}
             </div>
             <div>
-              <label class="mb-1 block text-xs font-medium text-slate-600" for="roster-company">Company</label>
-              <select id="roster-company" v-model.number="addForm.company_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
-                <option :value="null">Select Company</option>
-                <option v-for="company in rosterOptions.companies" :key="company.id" :value="company.id">{{ company.name }}</option>
-              </select>
+              <span class="block text-xs font-bold uppercase tracking-wide text-slate-500">Department</span>
+              {{ rosterBatch.program?.department?.name ?? '—' }}
             </div>
             <div>
-              <label class="mb-1 block text-xs font-medium text-slate-600" for="roster-supervisor">Supervisor</label>
-              <select
-                id="roster-supervisor"
-                v-model.number="addForm.supervisor_id"
-                class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
-                :disabled="!addForm.company_id"
-              >
-                <option :value="null">Select Supervisor</option>
-                <option v-for="supervisor in addSupervisorOptions" :key="supervisor.id" :value="supervisor.id">{{ supervisor.name }}</option>
-              </select>
-              <p v-if="!addForm.company_id" class="mt-1 text-xs text-slate-500">Select a company first.</p>
-              <p v-else-if="addSupervisorOptions.length === 0" class="mt-1 text-xs text-amber-600">This company has no supervisors yet.</p>
+              <span class="block text-xs font-bold uppercase tracking-wide text-slate-500">Academic Year / Semester</span>
+              {{ rosterBatch.academic_year ?? '—' }} / {{ rosterBatch.semester ?? '—' }}
             </div>
             <div>
-              <label class="mb-1 block text-xs font-medium text-slate-600" for="roster-division">Assigned Division (optional)</label>
-              <input id="roster-division" v-model="addForm.assigned_division" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <span class="block text-xs font-bold uppercase tracking-wide text-slate-500">Journal Template</span>
+              {{ rosterBatch.journal_template?.name ?? '—' }}
             </div>
-          </div>
-          <div class="mt-3 flex justify-end">
-            <button
-              type="button"
-              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-blue-300"
-              :disabled="isAddingIntern || !addForm.student_id || !addForm.company_id || !addForm.supervisor_id"
-              @click="addIntern"
-            >
-              {{ isAddingIntern ? 'Adding...' : 'Add Intern' }}
-            </button>
+            <div>
+              <span class="block text-xs font-bold uppercase tracking-wide text-slate-500">Start Date</span>
+              {{ formatDate(rosterBatch.start_date) }}
+            </div>
+            <div>
+              <span class="block text-xs font-bold uppercase tracking-wide text-slate-500">End Date</span>
+              {{ formatDate(rosterBatch.end_date) }}
+            </div>
+            <div>
+              <span class="block text-xs font-bold uppercase tracking-wide text-slate-500">Required Hours</span>
+              {{ rosterBatch.required_hours }}
+            </div>
+            <div>
+              <span class="block text-xs font-bold uppercase tracking-wide text-slate-500">Working Days / Week</span>
+              {{ rosterBatch.working_days_per_week }}
+            </div>
+            <div>
+              <span class="block text-xs font-bold uppercase tracking-wide text-slate-500">Daily Reminder Time</span>
+              {{ rosterBatch.daily_reminder_time?.slice(0, 5) ?? '—' }}
+            </div>
           </div>
         </div>
 
