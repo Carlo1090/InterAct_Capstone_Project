@@ -254,6 +254,10 @@ export type JournalEntryDetail = {
   content: Record<string, string>
   submitted_at: string | null
   editable: boolean
+  student_name: string
+  program: string | null
+  entry_ordinal: number
+  entry_ordinal_label: string
 }
 
 export type JournalEntrySummary = {

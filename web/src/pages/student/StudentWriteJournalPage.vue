@@ -22,6 +22,9 @@ const status = ref<JournalEntryDetail['status']>('draft')
 const editable = ref(true)
 const sections = ref<JournalTemplateSection[]>([])
 const charLimit = ref(1500)
+const studentName = ref('')
+const programName = ref<string | null>(null)
+const entryOrdinalLabel = ref('')
 const content = reactive<Record<string, string>>({})
 const enabledSections = reactive<Record<string, boolean>>({})
 const isViewMode = ref(false)
@@ -83,6 +86,9 @@ const load = async () => {
     charLimit.value = data.char_limit
     status.value = data.status
     editable.value = data.editable
+    studentName.value = data.student_name
+    programName.value = data.program
+    entryOrdinalLabel.value = data.entry_ordinal_label
 
     Object.keys(content).forEach((key) => delete content[key])
     Object.keys(enabledSections).forEach((key) => delete enabledSections[key])
@@ -190,7 +196,14 @@ onMounted(load)
           Edit Entry
         </button>
       </div>
-      <JournalPaperView :entry-date="entryDate" :sections="sections" :content="content" />
+      <JournalPaperView
+        :entry-date="entryDate"
+        :sections="sections"
+        :content="content"
+        :student-name="studentName"
+        :program-name="programName"
+        :entry-ordinal-label="entryOrdinalLabel"
+      />
     </template>
 
     <template v-else>

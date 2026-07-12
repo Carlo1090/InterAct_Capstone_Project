@@ -53,6 +53,8 @@ class JournalEntryController extends Controller
             ->whereDate('entry_date', $entryDate)
             ->first();
 
+        $position = $this->entryPosition($user->id, $entryDate);
+
         return response()->json([
             'entry_date' => $entryDate->toDateString(),
             'sections' => $enrollment->batch->journalTemplate?->sections ?? [],
@@ -61,6 +63,10 @@ class JournalEntryController extends Controller
             'content' => $entry->content ?? [],
             'submitted_at' => $entry?->submitted_at,
             'editable' => $this->isEditableDate($entryDate, $enrollment),
+            'student_name' => $user->name,
+            'program' => $user->program?->name,
+            'entry_ordinal' => $position,
+            'entry_ordinal_label' => $this->dayOrdinalLabel($position),
         ]);
     }
 
@@ -132,11 +138,36 @@ class JournalEntryController extends Controller
             'entryDate' => $entryDate->toDateString(),
             'sections' => $enrollment->batch->journalTemplate?->sections ?? [],
             'content' => $entry->content ?? [],
-            'status' => $entry->status ?? 'draft',
+            'dayLabel' => $this->dayOrdinalLabel($this->entryPosition($user->id, $entryDate)),
             'header' => $this->buildHeader($user, $enrollment),
         ]);
 
         return $pdf->download("daily-journal-{$entryDate->toDateString()}.pdf");
+    }
+
+    /**
+     * 1-based position of this date among the student's journal entries
+     * ordered by entry_date ascending (drafts included) — the "Nth Day"
+     * of their OJT. For a date with no saved entry yet, this is the
+     * position the entry would take once saved.
+     */
+    private function entryPosition(int $studentId, Carbon $entryDate): int
+    {
+        return JournalEntry::where('student_id', $studentId)
+            ->whereDate('entry_date', '<', $entryDate->toDateString())
+            ->count() + 1;
+    }
+
+    /**
+     * "First Day" … "Tenth Day" as words, "Day 11" onward — the day label
+     * on the document, shared verbatim by the PDF and the on-screen paper
+     * view (show() exposes it as entry_ordinal_label).
+     */
+    private function dayOrdinalLabel(int $position): string
+    {
+        $words = [1 => 'First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth', 'Ninth', 'Tenth'];
+
+        return isset($words[$position]) ? "{$words[$position]} Day" : "Day {$position}";
     }
 
     private function buildHeader(User $user, BatchStudent $enrollment): array
