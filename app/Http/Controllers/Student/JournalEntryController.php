@@ -80,15 +80,35 @@ class JournalEntryController extends Controller
             return response()->json(['message' => 'This date is outside your OJT range or is a future date.'], 422);
         }
 
-        $entry = JournalEntry::updateOrCreate(
-            ['student_id' => $user->id, 'entry_date' => $entryDate->toDateString()],
-            [
-                'batch_id' => $enrollment->batch_id,
-                'content' => $validated['content'],
-                'status' => $validated['status'],
-                'submitted_at' => $validated['status'] === 'submitted' ? now() : null,
-            ]
-        );
+        $existing = JournalEntry::where('student_id', $user->id)
+            ->whereDate('entry_date', $entryDate)
+            ->first();
+
+        if ($existing && $existing->status === 'submitted') {
+            return response()->json(['message' => 'This entry has already been submitted for this date and cannot be changed.'], 422);
+        }
+
+        $attributes = [
+            'batch_id' => $enrollment->batch_id,
+            'content' => $validated['content'],
+            'status' => $validated['status'],
+            'submitted_at' => $validated['status'] === 'submitted' ? now() : null,
+        ];
+
+        // updateOrCreate()'s match array is a plain equality check, which can
+        // miss this row under SQLite where a date-cast column still stores a
+        // time component (unlike MySQL, which truncates it) — update the
+        // already-fetched row directly instead, mirroring WeeklyBundlingService.
+        if ($existing) {
+            $existing->update($attributes);
+            $entry = $existing;
+        } else {
+            $entry = JournalEntry::create([
+                'student_id' => $user->id,
+                'entry_date' => $entryDate->toDateString(),
+                ...$attributes,
+            ]);
+        }
 
         return response()->json($entry);
     }

@@ -224,6 +224,82 @@ class JournalEntryTest extends TestCase
         $response->assertOk();
     }
 
+    public function test_resubmitting_a_submitted_entry_is_rejected(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $entryDate = now()->toDateString();
+
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'First submission.'],
+        ])->assertOk();
+
+        $response = $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'Trying to change it after submission.'],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('message', 'This entry has already been submitted for this date and cannot be changed.');
+        $this->assertDatabaseHas('journal_entries', [
+            'student_id' => $student->id,
+            'content->task_performed' => 'First submission.',
+        ]);
+    }
+
+    public function test_draft_can_be_saved_and_overwritten_freely_before_submission(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $entryDate = now()->toDateString();
+
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'draft',
+            'content' => ['task_performed' => 'First draft.'],
+        ])->assertOk();
+
+        $response = $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'draft',
+            'content' => ['task_performed' => 'Revised draft.'],
+        ]);
+
+        $response->assertOk();
+        $this->assertDatabaseHas('journal_entries', [
+            'student_id' => $student->id,
+            'content->task_performed' => 'Revised draft.',
+        ]);
+    }
+
+    public function test_a_different_date_is_unaffected_by_another_dates_submission_lock(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $submittedDate = now()->toDateString();
+        $otherDate = now()->subDay()->toDateString();
+
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $submittedDate,
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'Submitted today.'],
+        ])->assertOk();
+
+        $response = $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $otherDate,
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'Different date entirely.'],
+        ]);
+
+        $response->assertOk()->assertJsonPath('status', 'submitted');
+    }
+
     public function test_all_three_sipp_fields_save_together(): void
     {
         $student = $this->enrolledStudent();
