@@ -395,6 +395,13 @@ export type SystemSettingsMap = {
   system_email: string | null
 }
 
+export type WeeklyBundlingResult = {
+  week_start: string
+  week_end: string
+  compiled: number
+  skipped_submitted: number
+}
+
 export type SystemLogRecord = {
   id: number
   logged_at: string

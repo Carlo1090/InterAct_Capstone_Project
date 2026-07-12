@@ -2,8 +2,9 @@
 import { onMounted, reactive, ref, watch } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
-import { confirmAction } from '@/lib/toast'
-import type { PaginatedResponse, SystemSettingsMap, User } from '@/types/api'
+import { confirmAction, showToast } from '@/lib/toast'
+import ToastHost from '@/components/ToastHost.vue'
+import type { PaginatedResponse, SystemSettingsMap, User, WeeklyBundlingResult } from '@/types/api'
 
 const systemInfo = [
   ['System Version', 'v1.0.0 (Phase 2)'],
@@ -118,11 +119,41 @@ const issueTemporaryPassword = async (student: User) => {
   }
 }
 
+// --- Weekly Bundling demo trigger --------------------------------------
+const weeklyBundlingWeekStart = ref('')
+const isRunningWeeklyBundling = ref(false)
+const weeklyBundlingError = ref('')
+const weeklyBundlingResult = ref<WeeklyBundlingResult | null>(null)
+
+const runWeeklyBundlingNow = async () => {
+  const weekLabel = weeklyBundlingWeekStart.value || 'the most recently completed Mon–Fri week'
+  if (!confirmAction(`Run Weekly Bundling now for ${weekLabel}? This compiles Daily Accomplishment entries into each active student's Weekly Log narrative (drafts only — already-submitted logs are left untouched).`)) {
+    return
+  }
+
+  isRunningWeeklyBundling.value = true
+  weeklyBundlingError.value = ''
+
+  try {
+    const { data } = await api.post<WeeklyBundlingResult>('/api/admin/weekly-bundling/run', {
+      week_start: weeklyBundlingWeekStart.value || undefined,
+    })
+    weeklyBundlingResult.value = data
+    showToast(`Weekly Bundling complete: ${data.compiled} compiled, ${data.skipped_submitted} already submitted.`)
+  } catch (error) {
+    const data = axios.isAxiosError(error) ? error.response?.data : null
+    weeklyBundlingError.value = data?.message ?? 'Unable to run Weekly Bundling.'
+  } finally {
+    isRunningWeeklyBundling.value = false
+  }
+}
+
 onMounted(loadSettings)
 </script>
 
 <template>
   <section class="space-y-5">
+    <ToastHost />
     <div class="grid gap-5 xl:grid-cols-2">
       <div class="space-y-5">
         <div class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
@@ -222,6 +253,39 @@ onMounted(loadSettings)
               <input type="checkbox" />
               Exclude late/overdue entries
             </label>
+          </div>
+        </div>
+
+        <div class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <h2 class="text-sm font-bold text-slate-900">Weekly Bundling</h2>
+          <p class="mt-1 text-xs text-slate-500">
+            Compiles each active student's submitted Daily Accomplishment entries (Mon–Fri) into their Weekly Log narrative.
+            Runs automatically every Saturday at 00:00 for the week that just ended — use this to trigger it on demand.
+          </p>
+
+          <label class="mt-4 block">
+            <span class="text-xs font-bold text-slate-600">Week (optional)</span>
+            <input v-model="weeklyBundlingWeekStart" type="date" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <p class="mt-1 text-xs text-slate-400">Any date within the target week. Leave blank for the most recently completed Mon–Fri.</p>
+          </label>
+
+          <button
+            type="button"
+            class="mt-3 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
+            :disabled="isRunningWeeklyBundling"
+            @click="runWeeklyBundlingNow"
+          >
+            {{ isRunningWeeklyBundling ? 'Running...' : 'Run Weekly Bundling Now' }}
+          </button>
+
+          <p v-if="weeklyBundlingError" class="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ weeklyBundlingError }}</p>
+
+          <div v-if="weeklyBundlingResult" class="mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+            <p class="font-semibold">{{ weeklyBundlingResult.week_start }} to {{ weeklyBundlingResult.week_end }}</p>
+            <p class="mt-1 text-xs">
+              {{ weeklyBundlingResult.compiled }} weekly log{{ weeklyBundlingResult.compiled === 1 ? '' : 's' }} compiled ·
+              {{ weeklyBundlingResult.skipped_submitted }} already submitted (untouched)
+            </p>
           </div>
         </div>
 
