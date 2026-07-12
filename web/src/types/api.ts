@@ -52,6 +52,7 @@ export type User = {
   is_active: boolean
   must_change_password: boolean
   program?: Program | null
+  departments_coordinated?: Department[]
 }
 
 export type Batch = {
