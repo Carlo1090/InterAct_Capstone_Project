@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\ProgramController;
 use App\Http\Controllers\Admin\StudentInfoSheetController as AdminStudentInfoSheetController;
 use App\Http\Controllers\Admin\SystemSettingController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\WeeklyBundlingController;
 use App\Http\Controllers\Coordinator\AnnualSippReportController;
 use App\Http\Controllers\Coordinator\BatchController as CoordinatorBatchController;
 use App\Http\Controllers\Coordinator\BatchRosterController;
@@ -65,6 +66,8 @@ Route::middleware(['auth:sanctum', 'role:admin'])
         Route::get('audit-logs', [AuditLogController::class, 'index']);
         Route::get('audit-logs/actions', [AuditLogController::class, 'actions']);
         Route::get('audit-logs/export', [AuditLogController::class, 'export']);
+
+        Route::post('weekly-bundling/run', [WeeklyBundlingController::class, 'run']);
     });
 
 Route::middleware(['auth:sanctum', 'role:coordinator'])
