@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { showToast } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
 import type {
+  CoordinatorCompany,
   CoordinatorInternUser,
   CoordinatorSupervisorUser,
   EnrollableStudent,
@@ -22,6 +23,55 @@ const errorMessage = ref('')
 
 const enrolledCount = computed(() => interns.value.filter((student) => student.enrolled).length)
 const notEnrolledCount = computed(() => interns.value.length - enrolledCount.value)
+
+// --- Interns tab: program filter ---------------------------------------------
+const programOptions = ref<{ id: number; name: string; code?: string }[]>([])
+const internsProgramFilter = ref<number | null>(null)
+
+const loadInterns = async () => {
+  const params: Record<string, number> = {}
+  if (internsProgramFilter.value) params.program_id = internsProgramFilter.value
+
+  const { data } = await api.get<CoordinatorInternUser[]>('/api/coordinator/users/interns', { params })
+  interns.value = data
+}
+
+watch(internsProgramFilter, () => {
+  loadInterns().catch(() => {
+    errorMessage.value = 'Unable to load interns for that program.'
+  })
+})
+
+// --- Supervisors tab: company + batch filters (client-side) -----------------
+const supervisorCompanyFilter = ref<number | null>(null)
+const supervisorBatchFilter = ref<number | null>(null)
+
+const loadSupervisors = async () => {
+  const { data } = await api.get<CoordinatorSupervisorUser[]>('/api/coordinator/users/supervisors')
+  supervisors.value = data
+}
+
+const companyFilterOptions = computed(() => {
+  const seen = new Map<number, string>()
+  supervisors.value.forEach((supervisor) => supervisor.companies.forEach((company) => seen.set(company.id, company.name)))
+  return Array.from(seen, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
+})
+
+const batchFilterOptions = computed(() => {
+  const seen = new Map<number, string>()
+  supervisors.value.forEach((supervisor) => supervisor.batches.forEach((batch) => seen.set(batch.id, batch.name)))
+  return Array.from(seen, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
+})
+
+const filteredSupervisors = computed(() =>
+  supervisors.value.filter((supervisor) => {
+    const matchesCompany =
+      !supervisorCompanyFilter.value || supervisor.companies.some((company) => company.id === supervisorCompanyFilter.value)
+    const matchesBatch =
+      !supervisorBatchFilter.value || supervisor.batches.some((batch) => batch.id === supervisorBatchFilter.value)
+    return matchesCompany && matchesBatch
+  }),
+)
 
 // --- Enroll (places a student into a batch) --------------------------------
 const isModalOpen = ref(false)
@@ -41,14 +91,13 @@ const enrollForm = reactive({
   assigned_division: '',
 })
 
-// --- Create Account (login only — SEPARATE from enrollment) -----------------
+// --- Create Student Account (login only — SEPARATE from enrollment) ---------
 const isAccountModalOpen = ref(false)
 const isCreatingAccount = ref(false)
 const accountErrors = ref<Record<string, string[]>>({})
 const accountMessage = ref('')
 
 const accountForm = reactive({
-  role: 'student' as 'student' | 'supervisor',
   name: '',
   email: '',
   password: '',
@@ -56,21 +105,48 @@ const accountForm = reactive({
   student_id_number: '',
 })
 
-const loadUsers = async () => {
+// --- Create Supervisor (Supervisors tab only — REQUIRES a company) ----------
+const isSupervisorModalOpen = ref(false)
+const isCreatingSupervisor = ref(false)
+const supervisorErrors = ref<Record<string, string[]>>({})
+const supervisorMessage = ref('')
+const scopedCompanies = ref<CoordinatorCompany[]>([])
+
+const supervisorForm = reactive({
+  company_id: null as number | null,
+  position: '',
+  name: '',
+  email: '',
+  password: '',
+})
+
+const canSubmitSupervisor = computed(
+  () =>
+    !!supervisorForm.company_id &&
+    supervisorForm.name.trim() !== '' &&
+    supervisorForm.email.trim() !== '' &&
+    supervisorForm.password.length >= 8,
+)
+
+const loadAll = async () => {
   isLoading.value = true
   errorMessage.value = ''
 
   try {
-    const [internsResponse, supervisorsResponse] = await Promise.all([
-      api.get<CoordinatorInternUser[]>('/api/coordinator/users/interns'),
-      api.get<CoordinatorSupervisorUser[]>('/api/coordinator/users/supervisors'),
-    ])
-    interns.value = internsResponse.data
-    supervisors.value = supervisorsResponse.data
+    await Promise.all([loadInterns(), loadSupervisors()])
   } catch {
     errorMessage.value = 'Unable to load users.'
   } finally {
     isLoading.value = false
+  }
+}
+
+const loadProgramOptions = async () => {
+  try {
+    const { data } = await api.get<EnrollmentOptions>('/api/coordinator/enrollment-options')
+    programOptions.value = data.programs ?? []
+  } catch {
+    // Non-fatal — the program filter just stays empty if this fails.
   }
 }
 
@@ -114,7 +190,7 @@ const submitEnrollment = async () => {
 
   try {
     await api.post('/api/coordinator/enrollments', enrollForm)
-    await loadUsers()
+    await loadInterns()
     closeModal()
     showToast('Student enrolled.')
   } catch (error) {
@@ -132,7 +208,6 @@ const submitEnrollment = async () => {
 }
 
 const openAccountModal = async () => {
-  accountForm.role = 'student'
   accountForm.name = ''
   accountForm.email = ''
   accountForm.password = ''
@@ -154,22 +229,17 @@ const submitAccount = async () => {
   accountMessage.value = ''
 
   try {
-    const payload: Record<string, unknown> = {
-      role: accountForm.role,
+    await api.post('/api/coordinator/accounts', {
+      role: 'student',
       name: accountForm.name,
       email: accountForm.email,
       password: accountForm.password,
-    }
-    if (accountForm.role === 'student') {
-      payload.program_id = accountForm.program_id
-      if (accountForm.student_id_number) payload.student_id_number = accountForm.student_id_number
-    }
-
-    await api.post('/api/coordinator/accounts', payload)
-    const label = accountForm.role === 'student' ? 'Student' : 'Supervisor'
+      program_id: accountForm.program_id,
+      ...(accountForm.student_id_number ? { student_id_number: accountForm.student_id_number } : {}),
+    })
     closeAccountModal()
-    await loadUsers()
-    showToast(`${label} account created for ${accountForm.name}.`)
+    await loadInterns()
+    showToast(`Student account created for ${accountForm.name}.`)
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 422) {
       accountErrors.value = error.response.data.errors ?? {}
@@ -182,7 +252,64 @@ const submitAccount = async () => {
   }
 }
 
-onMounted(loadUsers)
+const loadScopedCompanies = async () => {
+  try {
+    const { data } = await api.get<CoordinatorCompany[]>('/api/coordinator/companies')
+    scopedCompanies.value = data
+  } catch {
+    supervisorMessage.value = 'Unable to load your companies.'
+  }
+}
+
+const openSupervisorModal = async () => {
+  supervisorForm.company_id = null
+  supervisorForm.position = ''
+  supervisorForm.name = ''
+  supervisorForm.email = ''
+  supervisorForm.password = ''
+  supervisorErrors.value = {}
+  supervisorMessage.value = ''
+  isSupervisorModalOpen.value = true
+  await loadScopedCompanies()
+}
+
+const closeSupervisorModal = () => {
+  isSupervisorModalOpen.value = false
+}
+
+const submitSupervisor = async () => {
+  isCreatingSupervisor.value = true
+  supervisorErrors.value = {}
+  supervisorMessage.value = ''
+
+  try {
+    await api.post(`/api/coordinator/companies/${supervisorForm.company_id}/supervisors/new`, {
+      name: supervisorForm.name,
+      email: supervisorForm.email,
+      password: supervisorForm.password,
+      position: supervisorForm.position || null,
+    })
+    closeSupervisorModal()
+    await loadSupervisors()
+    showToast(`Supervisor account created for ${supervisorForm.name}.`)
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 422) {
+      supervisorErrors.value = error.response.data.errors ?? {}
+      supervisorMessage.value = error.response.data.message ?? 'Please fix the errors below.'
+    } else if (axios.isAxiosError(error) && error.response?.status === 403) {
+      supervisorMessage.value = 'You do not have access to that company.'
+    } else {
+      supervisorMessage.value = 'Unable to create the supervisor.'
+    }
+  } finally {
+    isCreatingSupervisor.value = false
+  }
+}
+
+onMounted(() => {
+  loadAll()
+  loadProgramOptions()
+})
 </script>
 
 <template>
@@ -194,12 +321,18 @@ onMounted(loadUsers)
         <h2 class="text-2xl font-bold text-slate-950">Users</h2>
         <p class="mt-1 text-sm text-slate-500">Interns and supervisors across your department's programs.</p>
       </div>
+      <!-- Header actions are tab-contextual: only what belongs to the active tab. -->
       <div v-if="activeTab === 'interns'" class="flex items-center gap-2">
         <button type="button" class="rounded-md border border-blue-600 bg-white px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-50" @click="openAccountModal">
-          + Create Account
+          + Create Student Account
         </button>
         <button type="button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700" @click="openEnrollModal">
           + Enroll Student
+        </button>
+      </div>
+      <div v-else class="flex items-center gap-2">
+        <button type="button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700" @click="openSupervisorModal">
+          + Create Supervisor
         </button>
       </div>
     </div>
@@ -231,10 +364,16 @@ onMounted(loadUsers)
 
     <!-- Interns tab -->
     <template v-else-if="activeTab === 'interns'">
-      <p class="text-xs text-slate-500">
-        <span class="font-semibold text-green-700">{{ enrolledCount }}</span> enrolled ·
-        <span class="font-semibold text-amber-700">{{ notEnrolledCount }}</span> not yet enrolled
-      </p>
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <p class="text-xs text-slate-500">
+          <span class="font-semibold text-green-700">{{ enrolledCount }}</span> enrolled ·
+          <span class="font-semibold text-amber-700">{{ notEnrolledCount }}</span> not yet enrolled
+        </p>
+        <select v-model.number="internsProgramFilter" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm">
+          <option :value="null">All Programs</option>
+          <option v-for="program in programOptions" :key="program.id" :value="program.id">{{ program.code ?? program.name }}</option>
+        </select>
+      </div>
       <div class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
         <table class="min-w-full divide-y divide-slate-200">
           <thead class="bg-slate-50">
@@ -249,7 +388,7 @@ onMounted(loadUsers)
           </thead>
           <tbody class="divide-y divide-slate-100">
             <tr v-if="interns.length === 0">
-              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="6">No students in your department's programs yet.</td>
+              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="6">No students match this filter.</td>
             </tr>
             <tr v-for="student in interns" :key="student.id">
               <td class="px-4 py-3">
@@ -276,6 +415,19 @@ onMounted(loadUsers)
 
     <!-- Supervisors tab -->
     <template v-else>
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <p class="text-xs text-slate-500">Showing {{ filteredSupervisors.length }} of {{ supervisors.length }} supervisors</p>
+        <div class="flex items-center gap-2">
+          <select v-model.number="supervisorCompanyFilter" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm">
+            <option :value="null">All Companies</option>
+            <option v-for="company in companyFilterOptions" :key="company.id" :value="company.id">{{ company.name }}</option>
+          </select>
+          <select v-model.number="supervisorBatchFilter" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm">
+            <option :value="null">All Batches</option>
+            <option v-for="batch in batchFilterOptions" :key="batch.id" :value="batch.id">{{ batch.name }}</option>
+          </select>
+        </div>
+      </div>
       <div class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
         <table class="min-w-full divide-y divide-slate-200">
           <thead class="bg-slate-50">
@@ -284,13 +436,14 @@ onMounted(loadUsers)
               <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Email</th>
               <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
               <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Companies</th>
+              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Batches</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
-            <tr v-if="supervisors.length === 0">
-              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="4">No supervisors linked to your department's placements yet.</td>
+            <tr v-if="filteredSupervisors.length === 0">
+              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="5">No supervisors match these filters.</td>
             </tr>
-            <tr v-for="supervisor in supervisors" :key="supervisor.id">
+            <tr v-for="supervisor in filteredSupervisors" :key="supervisor.id">
               <td class="px-4 py-3 text-sm font-semibold text-slate-900">{{ supervisor.name }}</td>
               <td class="px-4 py-3 text-sm text-slate-500">{{ supervisor.email }}</td>
               <td class="px-4 py-3">
@@ -310,6 +463,14 @@ onMounted(loadUsers)
                     :title="company.position ?? ''"
                   >
                     {{ company.name }}<span v-if="company.position" class="text-slate-400"> · {{ company.position }}</span>
+                  </span>
+                </div>
+                <span v-else class="text-sm text-slate-400">—</span>
+              </td>
+              <td class="px-4 py-3">
+                <div v-if="supervisor.batches.length" class="flex flex-wrap gap-1.5">
+                  <span v-for="batch in supervisor.batches" :key="batch.id" class="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700">
+                    {{ batch.name }}
                   </span>
                 </div>
                 <span v-else class="text-sm text-slate-400">—</span>
@@ -386,30 +547,18 @@ onMounted(loadUsers)
       </section>
     </div>
 
-    <!-- Create Account modal — login only, separate from enrollment -->
+    <!-- Create Student Account modal — login only, separate from enrollment -->
     <div v-if="isAccountModalOpen" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
       <section class="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
         <div class="flex items-center justify-between">
           <div>
-            <h3 class="text-lg font-semibold text-slate-950">Create Account</h3>
+            <h3 class="text-lg font-semibold text-slate-950">Create Student Account</h3>
             <p class="mt-0.5 text-xs text-slate-500">Creates a login only. Enroll the student separately to place them into a batch.</p>
           </div>
           <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeAccountModal">Cancel</button>
         </div>
 
         <div class="mt-5 space-y-4">
-          <div>
-            <span class="mb-2 block text-sm font-medium text-slate-700">Account Type</span>
-            <div class="flex gap-2">
-              <label class="flex flex-1 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm" :class="accountForm.role === 'student' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-300 text-slate-600'">
-                <input v-model="accountForm.role" type="radio" value="student" /> Student
-              </label>
-              <label class="flex flex-1 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm" :class="accountForm.role === 'supervisor' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-300 text-slate-600'">
-                <input v-model="accountForm.role" type="radio" value="supervisor" /> Supervisor
-              </label>
-            </div>
-          </div>
-
           <div>
             <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-name">Full Name</label>
             <input id="acct-name" v-model="accountForm.name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
@@ -422,22 +571,19 @@ onMounted(loadUsers)
             <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-password">Password (min 8)</label>
             <input id="acct-password" v-model="accountForm.password" type="password" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </div>
-
-          <template v-if="accountForm.role === 'student'">
-            <div>
-              <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-program">Program</label>
-              <select id="acct-program" v-model.number="accountForm.program_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
-                <option :value="null">Select Program</option>
-                <option v-for="program in enrollmentOptions.programs ?? []" :key="program.id" :value="program.id">
-                  {{ program.code ?? program.name }}
-                </option>
-              </select>
-            </div>
-            <div>
-              <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-sid">Student ID Number (optional)</label>
-              <input id="acct-sid" v-model="accountForm.student_id_number" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-            </div>
-          </template>
+          <div>
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-program">Program</label>
+            <select id="acct-program" v-model.number="accountForm.program_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+              <option :value="null">Select Program</option>
+              <option v-for="program in enrollmentOptions.programs ?? []" :key="program.id" :value="program.id">
+                {{ program.code ?? program.name }}
+              </option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-sid">Student ID Number (optional)</label>
+            <input id="acct-sid" v-model="accountForm.student_id_number" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          </div>
         </div>
 
         <div v-if="Object.keys(accountErrors).length > 0" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
@@ -454,6 +600,62 @@ onMounted(loadUsers)
             @click="submitAccount"
           >
             {{ isCreatingAccount ? 'Creating...' : 'Create Account' }}
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <!-- Create Supervisor modal — Supervisors tab only, REQUIRES a company (a supervisor is a Company Supervisor) -->
+    <div v-if="isSupervisorModalOpen" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
+      <section class="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-lg font-semibold text-slate-950">Create Supervisor</h3>
+            <p class="mt-0.5 text-xs text-slate-500">Every supervisor is a Company Supervisor — pick the company first.</p>
+          </div>
+          <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeSupervisorModal">Cancel</button>
+        </div>
+
+        <div class="mt-5 space-y-4">
+          <div>
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="sup-company">Company <span class="text-red-500">*</span></label>
+            <select id="sup-company" v-model.number="supervisorForm.company_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+              <option :value="null">Select Company</option>
+              <option v-for="company in scopedCompanies" :key="company.id" :value="company.id">{{ company.name }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="sup-position">Position (optional)</label>
+            <input id="sup-position" v-model="supervisorForm.position" type="text" placeholder="e.g. Operations Supervisor" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="sup-name">Full Name</label>
+            <input id="sup-name" v-model="supervisorForm.name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="sup-email">Email</label>
+            <input id="sup-email" v-model="supervisorForm.email" type="email" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="sup-password">Password (min 8)</label>
+            <input id="sup-password" v-model="supervisorForm.password" type="password" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+        </div>
+
+        <div v-if="Object.keys(supervisorErrors).length > 0" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+          <p v-for="(messages, field) in supervisorErrors" :key="field">{{ field }}: {{ messages.join(' ') }}</p>
+        </div>
+        <p v-if="supervisorMessage" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ supervisorMessage }}</p>
+
+        <div class="mt-6 flex justify-end gap-3">
+          <button type="button" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" @click="closeSupervisorModal">Cancel</button>
+          <button
+            type="button"
+            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-blue-300"
+            :disabled="isCreatingSupervisor || !canSubmitSupervisor"
+            @click="submitSupervisor"
+          >
+            {{ isCreatingSupervisor ? 'Creating...' : 'Create Supervisor' }}
           </button>
         </div>
       </section>

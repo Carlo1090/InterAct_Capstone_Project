@@ -216,14 +216,30 @@ export type JournalTemplateSection = {
   sipp: boolean
 }
 
+/** A program as it appears nested under a template's `programs` pivot list. */
+export type TemplateProgram = {
+  id: number
+  code?: string
+  name: string
+  is_active: boolean
+}
+
+/**
+ * A program as it appears in the Journal Templates page's `programs[]` list —
+ * carries `assigned_template_id` (the template already claiming it, if any)
+ * so the UI can grey out programs unavailable to a NEW claim.
+ */
+export type JournalTemplateProgramOption = TemplateProgram & {
+  assigned_template_id: number | null
+}
+
 export type JournalTemplateRecord = {
   id: number
-  program_id: number
   name: string
   sections: JournalTemplateSection[]
   char_limit: number
   is_active: boolean
-  program?: Program
+  programs: TemplateProgram[]
 }
 
 export type JournalEntryStatus = 'draft' | 'submitted' | 'overdue' | 'missing'
