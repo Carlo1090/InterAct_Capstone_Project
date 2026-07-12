@@ -145,6 +145,7 @@
             font-style: italic;
         }
     </style>
+    @yield('extra-style')
 </head>
 <body>
     <h1 class="doc-title">@yield('doc-title')</h1>

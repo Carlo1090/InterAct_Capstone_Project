@@ -4,6 +4,27 @@
 @section('doc-title', 'Daily Journal Entry')
 @section('doc-subtitle', \Carbon\Carbon::parse($entryDate)->translatedFormat('l, F j, Y'))
 
+@section('extra-style')
+    <style>
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 16px;
+        }
+
+        .section-body {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 16px;
+        }
+    </style>
+@endsection
+
+@php
+    $dailyAccomplishmentText = trim((string) ($content['daily_accomplishment'] ?? ''));
+    $otherFilledSections = collect($sections)
+        ->reject(fn ($section) => $section['key'] === 'daily_accomplishment')
+        ->filter(fn ($section) => trim((string) ($content[$section['key']] ?? '')) !== '');
+@endphp
+
 @section('content')
     <table class="meta-table">
         <tr>
@@ -12,16 +33,24 @@
         </tr>
         <tr>
             <td><strong>Host Company:</strong> {{ $header['company_name'] ?? '—' }}</td>
-            <td><strong>Status:</strong> <span class="status-badge status-{{ $status }}">{{ $status }}</span></td>
+            <td></td>
         </tr>
     </table>
 
-    @forelse ($sections as $section)
+    @if ($dailyAccomplishmentText !== '')
+        <div class="section">
+            <p class="section-body">{{ $dailyAccomplishmentText }}</p>
+        </div>
+    @endif
+
+    @foreach ($otherFilledSections as $section)
         <div class="section">
             <p class="section-label">{{ $section['label'] }}</p>
-            <p class="section-body">{{ trim((string) ($content[$section['key']] ?? '')) !== '' ? $content[$section['key']] : '—' }}</p>
+            <p class="section-body">{{ $content[$section['key']] }}</p>
         </div>
-    @empty
-        <p class="empty-note">No journal template sections were configured for this entry.</p>
-    @endforelse
+    @endforeach
+
+    @if ($dailyAccomplishmentText === '' && $otherFilledSections->isEmpty())
+        <p class="empty-note">No content was recorded for this entry.</p>
+    @endif
 @endsection
