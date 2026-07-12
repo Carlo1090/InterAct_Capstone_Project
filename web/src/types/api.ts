@@ -284,6 +284,7 @@ export type WeeklyLogSummary = {
   week_end: string
   status: WeeklyLogStatus
   supervisor_comment: string | null
+  submitted_at: string | null
   entries_count: number
 }
 
@@ -309,6 +310,7 @@ export type WeeklyLogDetail = {
   week_end: string
   status: WeeklyLogStatus
   supervisor_comment: string | null
+  submitted_at: string | null
   narrative: string
   sipp_notes: WeeklySippDay[]
   daily_entries: WeeklyLogDailyEntry[]

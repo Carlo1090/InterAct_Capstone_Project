@@ -143,6 +143,7 @@ Route::middleware(['auth:sanctum', 'role:student'])
         Route::get('weekly-logs/{weekStart}', [WeeklyLogController::class, 'show']);
         Route::get('weekly-logs/{weekStart}/pdf', [WeeklyLogController::class, 'pdf']);
         Route::post('weekly-logs', [WeeklyLogController::class, 'store']);
+        Route::post('weekly-logs/{weekStart}/submit', [WeeklyLogController::class, 'submit']);
 
         Route::get('weekly-activity-logs', [WeeklyActivityLogController::class, 'index']);
         Route::post('weekly-activity-logs', [WeeklyActivityLogController::class, 'store']);

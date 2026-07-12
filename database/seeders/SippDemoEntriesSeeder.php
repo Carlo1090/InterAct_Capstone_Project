@@ -35,6 +35,7 @@ class SippDemoEntriesSeeder extends Seeder
                 'days_ago' => 12,
                 'content' => [
                     'task_performed' => 'Assisted in configuring the staging deployment pipeline.',
+                    'daily_accomplishment' => 'Assisted in configuring the staging deployment pipeline.',
                     'issues_concerns' => 'The staging server frequently ran out of memory during builds, halting deployments.',
                     'solutions' => 'Increased the build container memory limit and cleared stale Docker image layers.',
                     'recommendations' => 'Schedule a weekly cleanup of unused build artifacts to prevent recurrence.',
@@ -44,6 +45,7 @@ class SippDemoEntriesSeeder extends Seeder
                 'days_ago' => 9,
                 'content' => [
                     'task_performed' => 'Wrote unit tests for the reporting module.',
+                    'daily_accomplishment' => 'Wrote unit tests for the reporting module.',
                     'issues_concerns' => 'Test data setup was repetitive and error-prone across test files.',
                     'solutions' => 'Introduced a shared factory helper to standardize test fixtures.',
                     'recommendations' => 'Document the factory helpers so future interns adopt the same pattern.',
@@ -53,6 +55,7 @@ class SippDemoEntriesSeeder extends Seeder
                 'days_ago' => 5,
                 'content' => [
                     'task_performed' => 'Reviewed API error handling with the supervisor.',
+                    'daily_accomplishment' => 'Reviewed API error handling with the supervisor.',
                     'issues_concerns' => 'Some endpoints returned inconsistent error shapes, confusing the frontend team.',
                     'solutions' => 'Adopted a single JSON error envelope across the affected endpoints.',
                     'recommendations' => 'Add a linting check so new endpoints follow the agreed error format.',

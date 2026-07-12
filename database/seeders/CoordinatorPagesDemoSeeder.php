@@ -166,7 +166,10 @@ class CoordinatorPagesDemoSeeder extends Seeder
                 ['student_id' => $primaryStudent->id, 'entry_date' => now()->toDateString()],
                 [
                     'batch_id' => $batch->id,
-                    'content' => ['task_performed' => 'Completed sprint tasks and stand-up notes.'],
+                    'content' => [
+                        'task_performed' => 'Completed sprint tasks and stand-up notes.',
+                        'daily_accomplishment' => 'Completed sprint tasks and stand-up notes.',
+                    ],
                     'status' => 'submitted',
                     'submitted_at' => now(),
                 ]
