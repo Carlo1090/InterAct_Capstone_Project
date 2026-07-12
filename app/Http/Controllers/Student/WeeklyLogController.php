@@ -53,6 +53,7 @@ class WeeklyLogController extends Controller
                 'week_end' => $cursor->copy()->addDays(6)->toDateString(),
                 'status' => $log->status ?? null,
                 'supervisor_comment' => $log->supervisor_comment ?? null,
+                'submitted_at' => $log->submitted_at?->toIso8601String() ?? null,
                 'entries_count' => $entryCounts->get($weekStartKey)?->count() ?? 0,
             ];
 
@@ -89,6 +90,7 @@ class WeeklyLogController extends Controller
             'week_end' => $end->toDateString(),
             'status' => $log->status ?? null,
             'supervisor_comment' => $log->supervisor_comment ?? null,
+            'submitted_at' => $log->submitted_at?->toIso8601String() ?? null,
             'narrative' => $log->narrative ?? '',
             'sipp_notes' => $this->sippNotesByDay($dailyEntries, $enrollment->batch->journalTemplate?->sections ?? []),
             'daily_entries' => $dailyEntries,

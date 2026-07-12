@@ -16,7 +16,21 @@ const notEnrolled = ref(false)
 const details = reactive<Record<string, WeeklyLogDetail>>({})
 const loadingDetail = reactive<Record<string, boolean>>({})
 const savingDetail = reactive<Record<string, boolean>>({})
+const submittingDetail = reactive<Record<string, boolean>>({})
 const saveMessage = reactive<Record<string, string>>({})
+
+/**
+ * weekly_logs.status defaults to 'pending' at the DB level even for a
+ * never-submitted draft, so 'pending' alone can't tell "still drafting"
+ * apart from "submitted, awaiting review" -- submitted_at is the signal.
+ */
+type WeekState = 'draft' | 'submitted' | 'approved' | 'returned'
+
+const weekState = (week: WeeklyLogSummary): WeekState => {
+  if (week.status === 'approved') return 'approved'
+  if (week.status === 'returned') return 'returned'
+  return week.submitted_at ? 'submitted' : 'draft'
+}
 
 const loadWeeks = async () => {
   isLoading.value = true
@@ -79,6 +93,30 @@ const saveNarrative = async (weekStart: string) => {
     saveMessage[weekStart] = data?.message ?? 'Unable to save.'
   } finally {
     savingDetail[weekStart] = false
+  }
+}
+
+const submitWeek = async (week: WeeklyLogSummary) => {
+  const isResubmit = weekState(week) === 'returned'
+  const confirmMessage = isResubmit
+    ? 'Resubmit this weekly narrative to your supervisor for review?'
+    : 'Submit this weekly narrative to your supervisor for review? You will not be able to edit it until it is returned.'
+
+  if (!confirmAction(confirmMessage)) return
+
+  submittingDetail[week.week_start] = true
+  saveMessage[week.week_start] = ''
+
+  try {
+    await api.post(`/api/student/weekly-logs/${week.week_start}/submit`)
+    delete details[week.week_start]
+    await Promise.all([loadWeeks(), loadDetail(week.week_start)])
+    showToast(isResubmit ? 'Weekly log resubmitted for review.' : 'Weekly log submitted for review.')
+  } catch (error) {
+    const data = axios.isAxiosError(error) ? error.response?.data : null
+    showToast(data?.message ?? 'Unable to submit.', 'error')
+  } finally {
+    submittingDetail[week.week_start] = false
   }
 }
 
@@ -182,16 +220,20 @@ const downloadPdf = (logId: number) => {
   window.open(`/api/student/weekly-activity-logs/${logId}/pdf`, '_blank')
 }
 
-const statusLabel = (status: WeeklyLogSummary['status']): string => {
-  if (status === 'approved') return 'Approved by Supervisor'
-  if (status === 'returned') return 'Returned for Revision'
-  return 'Pending Supervisor'
+const statusLabel = (week: WeeklyLogSummary): string => {
+  const state = weekState(week)
+  if (state === 'approved') return 'Approved by Supervisor'
+  if (state === 'returned') return 'Returned for Revision'
+  if (state === 'submitted') return 'Submitted — Awaiting Review'
+  return 'Draft'
 }
 
-const statusClass = (status: WeeklyLogSummary['status']): string => {
-  if (status === 'approved') return 'bg-green-50 text-green-700'
-  if (status === 'returned') return 'bg-amber-50 text-amber-700'
-  return 'bg-blue-50 text-blue-700'
+const statusClass = (week: WeeklyLogSummary): string => {
+  const state = weekState(week)
+  if (state === 'approved') return 'bg-green-50 text-green-700'
+  if (state === 'returned') return 'bg-amber-50 text-amber-700'
+  if (state === 'submitted') return 'bg-blue-50 text-blue-700'
+  return 'bg-slate-100 text-slate-600'
 }
 
 onMounted(() => {
@@ -223,8 +265,8 @@ onMounted(() => {
           <h2 class="text-sm font-bold text-slate-900">{{ week.week_start }} to {{ week.week_end }}</h2>
           <p class="mt-1 text-xs text-slate-500">{{ week.entries_count }} daily entries</p>
         </div>
-        <span class="rounded-full px-3 py-1 text-xs font-bold" :class="statusClass(week.status)">
-          {{ statusLabel(week.status) }}
+        <span class="rounded-full px-3 py-1 text-xs font-bold" :class="statusClass(week)">
+          {{ statusLabel(week) }}
         </span>
       </summary>
 
@@ -232,6 +274,19 @@ onMounted(() => {
         <p v-if="loadingDetail[week.week_start]" class="text-sm text-slate-500">Loading...</p>
 
         <template v-else-if="details[week.week_start]">
+          <div
+            v-if="weekState(week) === 'submitted'"
+            class="mb-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800"
+          >
+            Submitted — awaiting supervisor review.
+          </div>
+          <div
+            v-else-if="weekState(week) === 'approved'"
+            class="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
+          >
+            Approved.
+          </div>
+
           <div>
             <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500">Daily Entries (Reference)</h3>
             <table class="mt-2 min-w-full divide-y divide-slate-200">
@@ -260,7 +315,7 @@ onMounted(() => {
               Weekly Narrative
               <textarea
                 v-model="details[week.week_start].narrative"
-                :disabled="week.status === 'approved'"
+                :disabled="weekState(week) === 'submitted' || weekState(week) === 'approved'"
                 class="mt-2 min-h-32 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
               />
             </label>
@@ -394,12 +449,22 @@ onMounted(() => {
               Download PDF
             </button>
             <button
+              v-if="weekState(week) === 'draft' || weekState(week) === 'returned'"
               type="button"
-              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              :disabled="savingDetail[week.week_start] || week.status === 'approved'"
+              class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+              :disabled="savingDetail[week.week_start]"
               @click="saveNarrative(week.week_start)"
             >
               {{ savingDetail[week.week_start] ? 'Saving...' : 'Save Narrative' }}
+            </button>
+            <button
+              v-if="weekState(week) === 'draft' || weekState(week) === 'returned'"
+              type="button"
+              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              :disabled="submittingDetail[week.week_start] || !details[week.week_start].narrative?.trim()"
+              @click="submitWeek(week)"
+            >
+              {{ submittingDetail[week.week_start] ? 'Submitting...' : (weekState(week) === 'returned' ? 'Resubmit' : 'Submit') }}
             </button>
           </div>
         </template>
