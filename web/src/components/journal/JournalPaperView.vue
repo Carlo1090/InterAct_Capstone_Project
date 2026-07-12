@@ -15,15 +15,20 @@ const formattedDate = computed(() => {
   return `${datePart} – ${weekday}`
 })
 
-const mainSection = computed(() => props.sections.find((section) => section.required))
+const mainSection = computed(() => props.sections.find((section) => section.key === 'daily_accomplishment'))
 
 const filledSubSections = computed(() =>
-  props.sections.filter((section) => !section.required && (props.content[section.key] ?? '').trim() !== ''),
+  props.sections.filter(
+    (section) => section.key !== 'daily_accomplishment' && (props.content[section.key] ?? '').trim() !== '',
+  ),
 )
 </script>
 
 <template>
-  <article class="mx-auto max-w-[720px] rounded-sm bg-white p-10 font-serif leading-[1.6] text-slate-900 shadow-md">
+  <article
+    class="mx-auto max-w-[720px] rounded-sm bg-white p-10 leading-[1.6] text-slate-900 shadow-md"
+    style="font-family: 'Times New Roman', Times, serif"
+  >
     <header class="mb-8 border-b border-slate-200 pb-4 text-center">
       <h1 class="text-xl font-bold tracking-wide">Daily Journal Entry</h1>
       <p class="mt-1 text-sm text-slate-500">{{ formattedDate }}</p>
