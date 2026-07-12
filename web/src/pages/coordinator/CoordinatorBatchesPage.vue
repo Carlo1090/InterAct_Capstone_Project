@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { confirmAction, showToast } from '@/lib/toast'
@@ -193,6 +193,23 @@ const addForm = reactive({
   supervisor_id: null as number | null,
   assigned_division: '',
 })
+
+// Supervisor is always a Company Supervisor — the dropdown only lists
+// supervisors attached to the currently selected company.
+const addSupervisorOptions = computed(() =>
+  addForm.company_id
+    ? rosterOptions.value.supervisors.filter((supervisor) => supervisor.company_ids.includes(addForm.company_id as number))
+    : [],
+)
+
+watch(
+  () => addForm.company_id,
+  () => {
+    if (!addSupervisorOptions.value.some((supervisor) => supervisor.id === addForm.supervisor_id)) {
+      addForm.supervisor_id = null
+    }
+  },
+)
 
 const activeRoster = computed(() => rosterRows.value.filter((row) => row.status === 'active'))
 const droppedRoster = computed(() => rosterRows.value.filter((row) => row.status === 'dropped'))
@@ -517,10 +534,17 @@ onMounted(load)
             </div>
             <div>
               <label class="mb-1 block text-xs font-medium text-slate-600" for="roster-supervisor">Supervisor</label>
-              <select id="roster-supervisor" v-model.number="addForm.supervisor_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+              <select
+                id="roster-supervisor"
+                v-model.number="addForm.supervisor_id"
+                class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+                :disabled="!addForm.company_id"
+              >
                 <option :value="null">Select Supervisor</option>
-                <option v-for="supervisor in rosterOptions.supervisors" :key="supervisor.id" :value="supervisor.id">{{ supervisor.name }}</option>
+                <option v-for="supervisor in addSupervisorOptions" :key="supervisor.id" :value="supervisor.id">{{ supervisor.name }}</option>
               </select>
+              <p v-if="!addForm.company_id" class="mt-1 text-xs text-slate-500">Select a company first.</p>
+              <p v-else-if="addSupervisorOptions.length === 0" class="mt-1 text-xs text-amber-600">This company has no supervisors yet.</p>
             </div>
             <div>
               <label class="mb-1 block text-xs font-medium text-slate-600" for="roster-division">Assigned Division (optional)</label>
