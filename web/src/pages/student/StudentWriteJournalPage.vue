@@ -5,6 +5,7 @@ import axios from 'axios'
 import api from '@/lib/axios'
 import JournalPaperView from '@/components/journal/JournalPaperView.vue'
 import NotEnrolledNotice from '@/components/student/NotEnrolledNotice.vue'
+import { confirmAction } from '@/lib/toast'
 import { isNotEnrolledError } from '@/lib/enrollment'
 import type { JournalEntryDetail, JournalTemplateSection } from '@/types/api'
 
@@ -113,6 +114,12 @@ const load = async () => {
         content[section.key] = data.content[section.key] ?? ''
       }
     })
+
+    // A submitted entry is final (one submission per date) — always land on
+    // the read-only document view, never the form.
+    if (data.status === 'submitted') {
+      isViewMode.value = true
+    }
   } catch (error) {
     if (isNotEnrolledError(error)) {
       notEnrolled.value = true
@@ -125,6 +132,15 @@ const load = async () => {
 }
 
 const save = async (nextStatus: 'draft' | 'submitted') => {
+  // Submission is final (the server rejects any later change for the date),
+  // so it gets the confirm-first treatment like other irreversible actions.
+  if (
+    nextStatus === 'submitted' &&
+    !confirmAction('Submit this journal entry? Once submitted, it can no longer be changed for this date.')
+  ) {
+    return
+  }
+
   isSaving.value = true
   errorMessage.value = ''
   statusMessage.value = ''
@@ -158,6 +174,14 @@ const backToEditor = () => {
   isViewMode.value = false
 }
 
+const openDocumentView = () => {
+  isViewMode.value = true
+}
+
+// The document view is directly editable until the entry is submitted
+// (and only within the OJT date range, same as the form fields).
+const paperEditable = computed(() => status.value !== 'submitted' && editable.value)
+
 const downloadPdf = () => {
   window.open(`/api/student/journal-entries/${entryDate.value}/pdf`, '_blank')
 }
@@ -180,7 +204,21 @@ onMounted(load)
     <NotEnrolledNotice v-else-if="notEnrolled" />
 
     <template v-else-if="isViewMode">
-      <div class="flex justify-end gap-3">
+      <div
+        v-if="status === 'submitted'"
+        class="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700"
+      >
+        Submitted for this date — entries cannot be changed after submission.
+      </div>
+
+      <div class="flex flex-wrap items-center justify-end gap-3">
+        <span
+          v-if="paperEditable"
+          class="mr-auto font-mono text-xs"
+          :class="isOverLimit ? 'font-semibold text-red-600' : 'text-slate-400'"
+        >
+          {{ charCount }} / {{ charLimit }}
+        </span>
         <button
           type="button"
           class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
@@ -189,13 +227,36 @@ onMounted(load)
           Download PDF
         </button>
         <button
+          v-if="status !== 'submitted'"
           type="button"
           class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
           @click="backToEditor"
         >
-          Edit Entry
+          Edit in Form
+        </button>
+        <button
+          v-if="paperEditable"
+          type="button"
+          class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+          :disabled="isSaving || isOverLimit || isSippOverLimit"
+          @click="save('draft')"
+        >
+          Save Draft
+        </button>
+        <button
+          v-if="paperEditable"
+          type="button"
+          class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          :disabled="isSaving || isOverLimit || isSippOverLimit"
+          @click="save('submitted')"
+        >
+          Submit Entry
         </button>
       </div>
+
+      <p v-if="errorMessage" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ errorMessage }}</p>
+      <p v-if="statusMessage" class="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{{ statusMessage }}</p>
+
       <JournalPaperView
         :entry-date="entryDate"
         :sections="sections"
@@ -203,6 +264,7 @@ onMounted(load)
         :student-name="studentName"
         :program-name="programName"
         :entry-ordinal-label="entryOrdinalLabel"
+        :editable="paperEditable"
       />
     </template>
 
@@ -320,6 +382,13 @@ onMounted(load)
         <p v-if="statusMessage" class="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{{ statusMessage }}</p>
 
         <div class="flex justify-end gap-3">
+          <button
+            type="button"
+            class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+            @click="openDocumentView"
+          >
+            Document View
+          </button>
           <button
             type="button"
             class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
