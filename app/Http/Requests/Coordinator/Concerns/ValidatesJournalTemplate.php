@@ -14,6 +14,45 @@ trait ValidatesJournalTemplate
      */
     public const SIPP_KEYS = ['issues_concerns', 'solutions', 'recommendations'];
 
+    /**
+     * Every template carries exactly this one fixed, structural section — it
+     * cannot be removed, renamed, or re-keyed by a coordinator; it's the
+     * guaranteed source Weekly Bundling compiles from every department.
+     */
+    public const FIXED_SECTION = [
+        'key' => 'daily_accomplishment',
+        'label' => 'Daily Accomplishment',
+        'prompt' => 'Summarize what you accomplished today.',
+        'required' => true,
+        'sipp' => false,
+    ];
+
+    /**
+     * Silently enforce the fixed Daily Accomplishment section before rules
+     * validate: strip any coordinator-submitted entry under that key (an
+     * attempt to alter it) and prepend the canonical definition. Runs before
+     * rules() so "at least one section must be required" and per-element
+     * checks always see the fixed section already in place — omitting or
+     * tampering with it never fails the request.
+     */
+    protected function prepareForValidation(): void
+    {
+        $sections = $this->input('sections');
+
+        if (! is_array($sections)) {
+            return;
+        }
+
+        $withoutFixed = collect($sections)
+            ->reject(fn ($section) => is_array($section) && ($section['key'] ?? null) === self::FIXED_SECTION['key'])
+            ->values()
+            ->all();
+
+        $this->merge([
+            'sections' => [self::FIXED_SECTION, ...$withoutFixed],
+        ]);
+    }
+
     protected function journalTemplateRules(): array
     {
         return [

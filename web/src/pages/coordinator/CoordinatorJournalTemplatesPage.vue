@@ -6,6 +6,20 @@ import { showToast, confirmAction } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
 import type { JournalTemplateProgramOption, JournalTemplateRecord, JournalTemplateSection } from '@/types/api'
 
+/**
+ * Fixed, structural section every template carries — mirrors the server's
+ * ValidatesJournalTemplate::FIXED_SECTION. Not part of customSections: the
+ * coordinator can't remove, rename, or re-key it, so it's rendered as its
+ * own locked row and always prepended to the saved payload.
+ */
+const FIXED_SECTION: JournalTemplateSection = {
+  key: 'daily_accomplishment',
+  label: 'Daily Accomplishment',
+  prompt: 'Summarize what you accomplished today.',
+  required: true,
+  sipp: false,
+}
+
 type SippKey = 'issues_concerns' | 'solutions' | 'recommendations'
 
 const SIPP_LABELS: Record<SippKey, string> = {
@@ -75,7 +89,7 @@ const sippSections = computed<JournalTemplateSection[]>(() =>
     : [],
 )
 
-const allSections = computed<JournalTemplateSection[]>(() => [...customSections.value, ...sippSections.value])
+const allSections = computed<JournalTemplateSection[]>(() => [FIXED_SECTION, ...customSections.value, ...sippSections.value])
 
 const load = async () => {
   isLoading.value = true
@@ -99,7 +113,7 @@ const resetForm = () => {
   form.name = ''
   form.char_limit = 1500
   form.is_active = true
-  customSections.value = [{ key: 'task_performed', label: 'Task Performed', prompt: '', required: true, sipp: false }]
+  customSections.value = []
   sippEnabled.value = false
   Object.assign(sippPrompts, SIPP_DEFAULT_PROMPTS)
   modalErrors.value = {}
@@ -128,7 +142,9 @@ const openEditModal = (template: JournalTemplateRecord) => {
     if (section.key in sippPrompts) sippPrompts[section.key as SippKey] = section.prompt || sippPrompts[section.key as SippKey]
   })
 
-  customSections.value = template.sections.filter((section) => !section.sipp).map((section) => ({ ...section }))
+  customSections.value = template.sections
+    .filter((section) => !section.sipp && section.key !== FIXED_SECTION.key)
+    .map((section) => ({ ...section }))
   originalKeys.value = template.sections.map((section) => section.key)
   modalErrors.value = {}
   modalMessage.value = ''
@@ -386,6 +402,16 @@ onMounted(load)
               </div>
             </div>
 
+            <!-- Fixed, structural section — always present, cannot be removed/renamed/re-keyed. -->
+            <div class="mt-6 rounded-md border border-slate-300 bg-slate-50 p-3">
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-sm font-semibold text-slate-900">{{ FIXED_SECTION.label }}</p>
+                <span class="rounded-full bg-slate-900 px-2.5 py-0.5 text-xs font-bold text-white">Required — used for Weekly Bundling</span>
+              </div>
+              <p class="mt-1 text-xs text-slate-500">{{ FIXED_SECTION.prompt }}</p>
+              <p class="mt-2 text-xs text-slate-400">Fixed on every template. It can't be removed, renamed, or made optional.</p>
+            </div>
+
             <div class="mt-6">
               <div class="flex items-center justify-between">
                 <h4 class="text-sm font-bold text-slate-900">Sections</h4>
@@ -423,7 +449,7 @@ onMounted(load)
                   </div>
                 </div>
 
-                <p v-if="customSections.length === 0" class="text-sm text-slate-400">No sections yet — add at least one required section.</p>
+                <p v-if="customSections.length === 0" class="text-sm text-slate-400">No additional sections yet. Daily Accomplishment (above) is already required on every entry.</p>
               </div>
 
               <!-- SIPP (Annex C) — one checkbox toggles the fixed trio as a group. -->
@@ -448,7 +474,6 @@ onMounted(load)
               </div>
 
               <ul class="mt-3 space-y-1 text-xs text-red-600">
-                <li v-if="!hasRequiredSection">At least one section must be marked as an always-on required field.</li>
                 <li v-if="duplicateKeys.length > 0">Section labels must be unique (they generate the same underlying key).</li>
                 <li v-if="hasEmptyFields">Every section needs a label.</li>
                 <li v-if="form.program_ids.length === 0">Select at least one program for this template.</li>
@@ -466,6 +491,14 @@ onMounted(load)
             <p class="mt-1 text-xs text-slate-400">How this template will render on the daily journal.</p>
 
             <div class="mt-4 space-y-3">
+              <div class="rounded-md bg-white p-3 ring-1 ring-slate-300">
+                <div class="flex items-center justify-between gap-2">
+                  <p class="text-sm font-semibold text-slate-900">{{ FIXED_SECTION.label }}</p>
+                  <span class="text-xs font-semibold text-red-500">Always shown</span>
+                </div>
+                <p class="mt-1 text-xs text-slate-400">{{ FIXED_SECTION.prompt }}</p>
+              </div>
+
               <div v-for="(section, index) in customSections" :key="index" class="rounded-md bg-white p-3 ring-1 ring-slate-200">
                 <div class="flex items-center justify-between gap-2">
                   <p class="text-sm font-semibold text-slate-900">{{ section.label || '(untitled section)' }}</p>

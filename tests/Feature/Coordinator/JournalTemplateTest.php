@@ -9,6 +9,7 @@ use App\Models\JournalTemplate;
 use App\Models\Program;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -143,7 +144,14 @@ class JournalTemplateTest extends TestCase
         $this->assertFalse($programIds->contains($programB->id));
     }
 
-    public function test_store_rejects_zero_required_sections(): void
+    /**
+     * Intentional behavior change: this used to 422 ("at least one section
+     * must be required") because a coordinator could submit zero required
+     * sections. Since the fixed Daily Accomplishment section is now injected
+     * before that check runs (and is always required=true), the same payload
+     * now succeeds — the fixed section alone always satisfies the rule.
+     */
+    public function test_zero_required_custom_sections_still_succeeds_via_fixed_section(): void
     {
         $program = $this->programFor('BSIT');
         $coordinator = $this->coordinatorWithBatch($program);
@@ -154,13 +162,77 @@ class JournalTemplateTest extends TestCase
 
         $response = $this->postJson('/api/coordinator/journal-templates', [
             'program_ids' => [$program->id],
-            'name' => 'No Required Template',
+            'name' => 'No Required Custom Sections Template',
             'char_limit' => 1500,
             'sections' => $sections,
         ]);
 
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['sections']);
+        $response->assertCreated();
+        $keyed = collect($response->json('sections'))->keyBy('key');
+        $this->assertTrue($keyed['daily_accomplishment']['required']);
+    }
+
+    public function test_new_template_always_has_daily_accomplishment_even_when_omitted(): void
+    {
+        $program = $this->programFor('BSIT');
+        $coordinator = $this->coordinatorWithBatch($program);
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->postJson('/api/coordinator/journal-templates', [
+            'program_ids' => [$program->id],
+            'name' => 'Template Without Fixed Field',
+            'char_limit' => 1500,
+            'sections' => $this->validSections(), // no daily_accomplishment key at all
+        ]);
+
+        $response->assertCreated();
+        $sections = collect($response->json('sections'));
+        $this->assertTrue($sections->contains('key', 'daily_accomplishment'));
+        // Prepended as the first section.
+        $this->assertSame('daily_accomplishment', $sections->first()['key']);
+    }
+
+    public function test_tampering_with_fixed_section_is_silently_overwritten_not_erased(): void
+    {
+        $program = $this->programFor('BSIT');
+        $coordinator = $this->coordinatorWithBatch($program);
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $sections = $this->validSections();
+        $sections[] = ['key' => 'daily_accomplishment', 'label' => 'Renamed Field', 'prompt' => 'Tampered.', 'required' => false, 'sipp' => false];
+
+        $response = $this->postJson('/api/coordinator/journal-templates', [
+            'program_ids' => [$program->id],
+            'name' => 'Tampered Fixed Field Template',
+            'char_limit' => 1500,
+            'sections' => $sections,
+        ]);
+
+        $response->assertCreated();
+        $fixed = collect($response->json('sections'))->firstWhere('key', 'daily_accomplishment');
+        $this->assertSame('Daily Accomplishment', $fixed['label']);
+        $this->assertTrue($fixed['required']);
+    }
+
+    public function test_update_cannot_remove_fixed_section(): void
+    {
+        $program = $this->programFor('BSIT');
+        $coordinator = $this->coordinatorWithBatch($program);
+        $template = $this->makeTemplate($program, 'Editable Template');
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        // Submit an update payload that omits daily_accomplishment entirely.
+        $response = $this->putJson("/api/coordinator/journal-templates/{$template->id}", [
+            'program_ids' => [$program->id],
+            'name' => 'Editable Template',
+            'char_limit' => 1500,
+            'sections' => $this->validSections(),
+        ]);
+
+        $response->assertOk();
+        $sections = collect($response->json('template.sections'));
+        $this->assertTrue($sections->contains('key', 'daily_accomplishment'));
     }
 
     public function test_store_rejects_duplicate_or_invalid_keys(): void
@@ -193,7 +265,9 @@ class JournalTemplateTest extends TestCase
         ]);
 
         $response2->assertStatus(422);
-        $response2->assertJsonValidationErrors(['sections.1.key']);
+        // Index shifted by 1: the fixed Daily Accomplishment section is
+        // prepended (index 0) before validation runs.
+        $response2->assertJsonValidationErrors(['sections.2.key']);
     }
 
     public function test_coordinator_gets_403_editing_another_programs_template(): void
@@ -354,7 +428,9 @@ class JournalTemplateTest extends TestCase
         ]);
 
         $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['sections.1.sipp']);
+        // Index shifted by 1: the fixed Daily Accomplishment section is
+        // prepended (index 0) before validation runs.
+        $response->assertJsonValidationErrors(['sections.2.sipp']);
     }
 
     public function test_sipp_trio_keys_are_accepted(): void
@@ -379,6 +455,53 @@ class JournalTemplateTest extends TestCase
         ]);
 
         $response->assertCreated();
+    }
+
+    /**
+     * The migration itself already ran (against zero rows) as part of
+     * RefreshDatabase's schema setup, so to exercise its backfill logic
+     * against "existing" data we insert a pre-migration-style row directly
+     * and re-invoke up() on it.
+     */
+    public function test_backfill_migration_injects_fixed_section_into_existing_templates_without_it(): void
+    {
+        $id = DB::table('journal_templates')->insertGetId([
+            'name' => 'Legacy Template',
+            'sections' => json_encode($this->validSections()),
+            'char_limit' => 1500,
+            'is_active' => true,
+            'created_at' => now(),
+        ]);
+
+        $migration = require database_path('migrations/2026_07_12_000003_add_daily_accomplishment_to_journal_templates.php');
+        $migration->up();
+
+        $sections = json_decode(DB::table('journal_templates')->where('id', $id)->value('sections'), true);
+        $this->assertSame('daily_accomplishment', $sections[0]['key']);
+        $this->assertSame('task_performed', $sections[1]['key']);
+    }
+
+    public function test_backfill_migration_does_not_touch_templates_that_already_have_it(): void
+    {
+        $sectionsWithFixed = [
+            ['key' => 'daily_accomplishment', 'label' => 'Pre-existing Custom Label', 'prompt' => 'x', 'required' => true, 'sipp' => false],
+            ...$this->validSections(),
+        ];
+
+        $id = DB::table('journal_templates')->insertGetId([
+            'name' => 'Already Has It',
+            'sections' => json_encode($sectionsWithFixed),
+            'char_limit' => 1500,
+            'is_active' => true,
+            'created_at' => now(),
+        ]);
+
+        $migration = require database_path('migrations/2026_07_12_000003_add_daily_accomplishment_to_journal_templates.php');
+        $migration->up();
+
+        $sections = json_decode(DB::table('journal_templates')->where('id', $id)->value('sections'), true);
+        $this->assertSame('Pre-existing Custom Label', $sections[0]['label']);
+        $this->assertCount(3, $sections);
     }
 
     public function test_index_returns_assigned_template_id_per_program(): void
