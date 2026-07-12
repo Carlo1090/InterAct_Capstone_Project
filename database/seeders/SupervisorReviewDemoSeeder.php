@@ -41,6 +41,7 @@ class SupervisorReviewDemoSeeder extends Seeder
                         'batch_id' => $enrollment->batch_id,
                         'content' => [
                             'task_performed' => 'Worked on assigned module tasks and documented progress.',
+                            'daily_accomplishment' => 'Worked on assigned module tasks and documented progress.',
                             'issues_concerns' => 'A configuration mismatch slowed the local build.',
                             'solutions' => 'Aligned the environment file with the senior engineer.',
                         ],
