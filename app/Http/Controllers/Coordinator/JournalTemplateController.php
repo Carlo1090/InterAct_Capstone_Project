@@ -11,6 +11,7 @@ use App\Models\JournalTemplate;
 use App\Models\Program;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class JournalTemplateController extends Controller
 {
@@ -23,7 +24,20 @@ class JournalTemplateController extends Controller
             ->orderBy('name')
             ->get();
 
-        $programs = Program::whereIn('id', $programIds)->orderBy('name')->get();
+        // Which template (if any) already claims each in-scope program, so the
+        // UI can grey out already-covered programs.
+        $assignedByProgram = DB::table('journal_template_program')
+            ->whereIn('program_id', $programIds)
+            ->pluck('journal_template_id', 'program_id');
+
+        $programs = Program::whereIn('id', $programIds)->orderBy('name')->get()
+            ->map(fn (Program $program) => [
+                'id' => $program->id,
+                'code' => $program->code,
+                'name' => $program->name,
+                'is_active' => $program->is_active,
+                'assigned_template_id' => $assignedByProgram[$program->id] ?? null,
+            ]);
 
         return response()->json([
             'templates' => $templates,

@@ -266,4 +266,140 @@ class JournalTemplateTest extends TestCase
         $this->assertSame(1, $response->json('affected_entries'));
         $this->assertDatabaseHas('journal_entries', ['student_id' => $student->id]);
     }
+
+    public function test_template_can_span_two_in_scope_programs(): void
+    {
+        $bsit = $this->programFor('BSIT');
+        $fm = $this->programFor('BSBA-FM'); // same CAST department -> both in scope
+        $coordinator = User::factory()->create(['role' => 'coordinator']);
+        $coordinator->departmentsCoordinated()->attach($bsit->department_id);
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->postJson('/api/coordinator/journal-templates', [
+            'program_ids' => [$bsit->id, $fm->id],
+            'name' => 'Shared Template',
+            'char_limit' => 1500,
+            'sections' => $this->validSections(),
+        ]);
+
+        $response->assertCreated();
+        $template = JournalTemplate::where('name', 'Shared Template')->firstOrFail();
+        $this->assertDatabaseHas('journal_template_program', ['journal_template_id' => $template->id, 'program_id' => $bsit->id]);
+        $this->assertDatabaseHas('journal_template_program', ['journal_template_id' => $template->id, 'program_id' => $fm->id]);
+    }
+
+    public function test_second_template_claiming_a_used_program_is_rejected(): void
+    {
+        $bsit = $this->programFor('BSIT');
+        $coordinator = User::factory()->create(['role' => 'coordinator']);
+        $coordinator->departmentsCoordinated()->attach($bsit->department_id);
+
+        $this->makeTemplate($bsit, 'First Template');
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->postJson('/api/coordinator/journal-templates', [
+            'program_ids' => [$bsit->id],
+            'name' => 'Second Template',
+            'char_limit' => 1500,
+            'sections' => $this->validSections(),
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['program_ids']);
+    }
+
+    public function test_out_of_scope_program_is_rejected(): void
+    {
+        $bsit = $this->programFor('BSIT');
+        $coordinator = User::factory()->create(['role' => 'coordinator']);
+        $coordinator->departmentsCoordinated()->attach($bsit->department_id);
+
+        $otherDepartment = Department::firstOrCreate(['code' => 'CABM-H'], ['name' => 'CABM-H', 'is_active' => true]);
+        $outProgram = Program::firstOrCreate(
+            ['department_id' => $otherDepartment->id, 'code' => 'BSTM'],
+            ['name' => 'BSTM', 'is_active' => true]
+        );
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->postJson('/api/coordinator/journal-templates', [
+            'program_ids' => [$outProgram->id],
+            'name' => 'Out Of Scope Template',
+            'char_limit' => 1500,
+            'sections' => $this->validSections(),
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['program_ids.0']);
+    }
+
+    public function test_sipp_flag_on_non_trio_key_is_rejected(): void
+    {
+        $bsit = $this->programFor('BSIT');
+        $coordinator = User::factory()->create(['role' => 'coordinator']);
+        $coordinator->departmentsCoordinated()->attach($bsit->department_id);
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $sections = [
+            ['key' => 'task_performed', 'label' => 'Task Performed', 'prompt' => 'Tasks.', 'required' => true, 'sipp' => false],
+            ['key' => 'random_notes', 'label' => 'Random Notes', 'prompt' => 'Notes.', 'required' => false, 'sipp' => true],
+        ];
+
+        $response = $this->postJson('/api/coordinator/journal-templates', [
+            'program_ids' => [$bsit->id],
+            'name' => 'Rogue SIPP Template',
+            'char_limit' => 1500,
+            'sections' => $sections,
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['sections.1.sipp']);
+    }
+
+    public function test_sipp_trio_keys_are_accepted(): void
+    {
+        $bsit = $this->programFor('BSIT');
+        $coordinator = User::factory()->create(['role' => 'coordinator']);
+        $coordinator->departmentsCoordinated()->attach($bsit->department_id);
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $sections = [
+            ['key' => 'task_performed', 'label' => 'Task Performed', 'prompt' => 'Tasks.', 'required' => true, 'sipp' => false],
+            ['key' => 'issues_concerns', 'label' => 'Issues', 'prompt' => 'Issues.', 'required' => false, 'sipp' => true],
+            ['key' => 'solutions', 'label' => 'Solutions', 'prompt' => 'Solutions.', 'required' => false, 'sipp' => true],
+            ['key' => 'recommendations', 'label' => 'Recommendations', 'prompt' => 'Recs.', 'required' => false, 'sipp' => true],
+        ];
+
+        $response = $this->postJson('/api/coordinator/journal-templates', [
+            'program_ids' => [$bsit->id],
+            'name' => 'Trio Template',
+            'char_limit' => 1500,
+            'sections' => $sections,
+        ]);
+
+        $response->assertCreated();
+    }
+
+    public function test_index_returns_assigned_template_id_per_program(): void
+    {
+        $bsit = $this->programFor('BSIT');
+        $fm = $this->programFor('BSBA-FM'); // in scope, unclaimed
+        $coordinator = User::factory()->create(['role' => 'coordinator']);
+        $coordinator->departmentsCoordinated()->attach($bsit->department_id);
+
+        $template = $this->makeTemplate($bsit, 'Claiming Template');
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->getJson('/api/coordinator/journal-templates');
+        $response->assertOk();
+
+        $programs = collect($response->json('programs'));
+        $bsitRow = $programs->firstWhere('id', $bsit->id);
+        $fmRow = $programs->firstWhere('id', $fm->id);
+
+        $this->assertSame($template->id, $bsitRow['assigned_template_id']);
+        $this->assertNull($fmRow['assigned_template_id']);
+    }
 }

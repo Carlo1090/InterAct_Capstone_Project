@@ -2,11 +2,18 @@
 
 namespace App\Http\Requests\Coordinator\Concerns;
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 trait ValidatesJournalTemplate
 {
+    /**
+     * SIPP (Annex C) is a fixed trio, identified by section key. A section may
+     * only be flagged sipp=true if its key is one of these three.
+     */
+    public const SIPP_KEYS = ['issues_concerns', 'solutions', 'recommendations'];
+
     protected function journalTemplateRules(): array
     {
         return [
@@ -44,7 +51,49 @@ trait ValidatesJournalTemplate
             if (! $hasRequired) {
                 $validator->errors()->add('sections', 'At least one section must be required.');
             }
+
+            // SIPP (Annex C) is a fixed trio — a sipp=true section must be one of
+            // issues_concerns / solutions / recommendations (never a rogue field).
+            foreach ($sections as $index => $section) {
+                if (! empty($section['sipp']) && ! in_array($section['key'] ?? null, self::SIPP_KEYS, true)) {
+                    $validator->errors()->add(
+                        "sections.{$index}.sipp",
+                        'Only the SIPP trio (issues_concerns, solutions, recommendations) may be marked as SIPP (Annex C) fields.'
+                    );
+                }
+            }
+
+            $this->guardProgramConflicts($validator);
         });
+    }
+
+    /**
+     * A program can belong to at most one template. Reject any selected program
+     * already claimed by a DIFFERENT template (naming the conflict), so the
+     * unique(program_id) constraint never surfaces as a 500.
+     */
+    protected function guardProgramConflicts(Validator $validator): void
+    {
+        $programIds = $this->input('program_ids', []);
+
+        if (! is_array($programIds) || empty($programIds)) {
+            return;
+        }
+
+        $currentTemplateId = optional($this->route('journalTemplate'))->id;
+
+        $conflicts = DB::table('journal_template_program')
+            ->join('programs', 'programs.id', '=', 'journal_template_program.program_id')
+            ->whereIn('journal_template_program.program_id', $programIds)
+            ->when($currentTemplateId, fn ($query) => $query->where('journal_template_program.journal_template_id', '!=', $currentTemplateId))
+            ->pluck('programs.code', 'programs.id');
+
+        if ($conflicts->isNotEmpty()) {
+            $validator->errors()->add(
+                'program_ids',
+                'These programs are already covered by another template: '.$conflicts->implode(', ').'.'
+            );
+        }
     }
 
     /**
