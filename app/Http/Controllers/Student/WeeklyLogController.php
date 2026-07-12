@@ -53,7 +53,7 @@ class WeeklyLogController extends Controller
                 'week_end' => $cursor->copy()->addDays(6)->toDateString(),
                 'status' => $log->status ?? null,
                 'supervisor_comment' => $log->supervisor_comment ?? null,
-                'submitted_at' => $log->submitted_at?->toIso8601String() ?? null,
+                'submitted_at' => $log?->submitted_at?->toIso8601String(),
                 'entries_count' => $entryCounts->get($weekStartKey)?->count() ?? 0,
             ];
 
