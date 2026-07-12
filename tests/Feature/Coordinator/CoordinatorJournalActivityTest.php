@@ -7,6 +7,7 @@ use App\Models\BatchStudent;
 use App\Models\Company;
 use App\Models\Department;
 use App\Models\JournalEntry;
+use App\Models\JournalTemplate;
 use App\Models\Program;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -169,5 +170,120 @@ class CoordinatorJournalActivityTest extends TestCase
 
         $response->assertOk();
         $this->assertCount(0, $response->json('rows'));
+    }
+
+    public function test_program_filter_narrows_rows_and_rejects_out_of_scope_program(): void
+    {
+        // A coordinator's department can have multiple programs (e.g. CABM-B
+        // has BSA + BSBA-FM), so two in-scope programs don't require attaching
+        // the coordinator to a second department (departments are one-per-
+        // coordinator as of the 2026-07-12 admin migration).
+        $bsa = $this->programFor('BSA', 'CABM-B');
+        $bsbaFm = $this->programFor('BSBA-FM', 'CABM-B');
+        $coordinator = $this->coordinatorFor($bsa);
+
+        $bsaBatch = $this->batchFor($bsa, $coordinator);
+        $inScope = $this->enroll($bsaBatch);
+
+        $bsbaFmBatch = $this->batchFor($bsbaFm, $coordinator);
+        $this->enroll($bsbaFmBatch);
+
+        $outsideProgram = $this->programFor('BSIT', 'CAST');
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->getJson("/api/coordinator/journal-activities?program_id={$bsa->id}");
+        $response->assertOk();
+        $rows = collect($response->json('rows'));
+        $this->assertCount(1, $rows);
+        $this->assertSame($inScope->student_id, $rows->first()['student_id']);
+
+        $forbidden = $this->getJson("/api/coordinator/journal-activities?program_id={$outsideProgram->id}");
+        $forbidden->assertForbidden();
+    }
+
+    public function test_status_filter_narrows_rows_for_single_day_and_range(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+
+        $submitted = $this->enroll($batch);
+        $missing = $this->enroll($batch);
+        $this->entry($submitted, 'submitted', now()->toDateString());
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $submittedOnly = $this->getJson('/api/coordinator/journal-activities?status=submitted');
+        $submittedOnly->assertOk();
+        $submittedIds = collect($submittedOnly->json('rows'))->pluck('student_id');
+        $this->assertTrue($submittedIds->contains($submitted->student_id));
+        $this->assertFalse($submittedIds->contains($missing->student_id));
+
+        $missingOnly = $this->getJson('/api/coordinator/journal-activities?status=missing');
+        $missingOnly->assertOk();
+        $missingIds = collect($missingOnly->json('rows'))->pluck('student_id');
+        $this->assertFalse($missingIds->contains($submitted->student_id));
+        $this->assertTrue($missingIds->contains($missing->student_id));
+    }
+
+    public function test_show_returns_full_entry_content_for_in_scope_student(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+
+        $template = JournalTemplate::create([
+            'name' => 'Daily Journal',
+            'sections' => [
+                ['key' => 'task_performed', 'label' => 'Task Performed', 'prompt' => '', 'required' => true, 'sipp' => false],
+                ['key' => 'learnings', 'label' => 'Learnings', 'prompt' => '', 'required' => true, 'sipp' => false],
+            ],
+            'char_limit' => 1500,
+            'is_active' => true,
+        ]);
+        $template->programs()->sync([$bsit->id]);
+
+        $batch = $this->batchFor($bsit, $coordinator);
+        $batch->update(['journal_template_id' => $template->id]);
+
+        $enrollment = $this->enroll($batch);
+        $date = now()->toDateString();
+        JournalEntry::create([
+            'student_id' => $enrollment->student_id,
+            'batch_id' => $batch->id,
+            'entry_date' => $date,
+            'content' => ['task_performed' => 'Wrote unit tests', 'learnings' => 'Laravel scoping'],
+            'status' => 'submitted',
+            'submitted_at' => now(),
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->getJson("/api/coordinator/journal-activities/{$enrollment->student_id}/{$date}");
+
+        $response->assertOk();
+        $response->assertJsonPath('status', 'submitted');
+        $sections = collect($response->json('sections'))->keyBy('key');
+        $this->assertSame('Task Performed', $sections['task_performed']['label']);
+        $this->assertSame('Wrote unit tests', $sections['task_performed']['text']);
+        $this->assertSame('Laravel scoping', $sections['learnings']['text']);
+    }
+
+    public function test_show_is_forbidden_for_out_of_scope_student(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $this->batchFor($bsit, $coordinator);
+
+        $bsba = $this->programFor('BSBA-FM', 'CABM-B');
+        $otherCoord = $this->coordinatorFor($bsba);
+        $otherBatch = $this->batchFor($bsba, $otherCoord);
+        $outsideEnrollment = $this->enroll($otherBatch);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->getJson("/api/coordinator/journal-activities/{$outsideEnrollment->student_id}/".now()->toDateString());
+
+        $response->assertForbidden();
     }
 }

@@ -45,6 +45,20 @@ class EnrollmentController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'email']);
 
+        // Each supervisor's company_ids let the frontend filter the Supervisor
+        // dropdown down to whichever company was picked (a supervisor is always
+        // a Company Supervisor via company_supervisors).
+        $companyIdsBySupervisor = CompanySupervisor::whereIn('user_id', $supervisors->pluck('id'))
+            ->get(['user_id', 'company_id'])
+            ->groupBy('user_id')
+            ->map(fn (Collection $links) => $links->pluck('company_id')->unique()->values());
+
+        $supervisors = $supervisors->map(function (User $supervisor) use ($companyIdsBySupervisor) {
+            $supervisor->setAttribute('company_ids', $companyIdsBySupervisor->get($supervisor->id, collect())->values());
+
+            return $supervisor;
+        })->values();
+
         $programs = Program::whereIn('id', $request->user()->coordinatorProgramIds())
             ->orderBy('name')
             ->get(['id', 'name', 'code']);

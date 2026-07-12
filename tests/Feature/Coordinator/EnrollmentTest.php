@@ -5,6 +5,7 @@ namespace Tests\Feature\Coordinator;
 use App\Models\Batch;
 use App\Models\BatchStudent;
 use App\Models\Company;
+use App\Models\CompanySupervisor;
 use App\Models\Department;
 use App\Models\Program;
 use App\Models\User;
@@ -192,5 +193,37 @@ class EnrollmentTest extends TestCase
         $this->assertTrue($filterBatchNames->contains('Batch 1'));
         $this->assertTrue($filterBatchNames->contains('Batch 2'));
         $this->assertFalse($filterBatchNames->contains('Other Coordinator Batch'));
+    }
+
+    public function test_options_supervisors_carry_their_company_ids(): void
+    {
+        $program = $this->programFor('BSIT');
+        $coordinator = User::factory()->create(['role' => 'coordinator', 'program_id' => $program->id]);
+
+        $companyA = Company::create(['name' => 'Alpha Co', 'address' => 'Addr A', 'is_active' => true]);
+        $companyB = Company::create(['name' => 'Beta Co', 'address' => 'Addr B', 'is_active' => true]);
+
+        $supervisorInBoth = User::factory()->create(['role' => 'supervisor', 'name' => 'Multi Supervisor']);
+        CompanySupervisor::create(['company_id' => $companyA->id, 'user_id' => $supervisorInBoth->id, 'position' => 'Lead']);
+        CompanySupervisor::create(['company_id' => $companyB->id, 'user_id' => $supervisorInBoth->id, 'position' => 'Lead']);
+
+        $supervisorInA = User::factory()->create(['role' => 'supervisor', 'name' => 'Alpha-Only Supervisor']);
+        CompanySupervisor::create(['company_id' => $companyA->id, 'user_id' => $supervisorInA->id, 'position' => 'Staff']);
+
+        $unassignedSupervisor = User::factory()->create(['role' => 'supervisor', 'name' => 'Unassigned Supervisor']);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->getJson('/api/coordinator/enrollment-options');
+
+        $response->assertOk();
+        $supervisors = collect($response->json('supervisors'))->keyBy('id');
+
+        $this->assertEqualsCanonicalizing(
+            [$companyA->id, $companyB->id],
+            $supervisors[$supervisorInBoth->id]['company_ids']
+        );
+        $this->assertEqualsCanonicalizing([$companyA->id], $supervisors[$supervisorInA->id]['company_ids']);
+        $this->assertSame([], $supervisors[$unassignedSupervisor->id]['company_ids']);
     }
 }

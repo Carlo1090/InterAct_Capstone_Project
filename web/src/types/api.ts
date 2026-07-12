@@ -88,6 +88,7 @@ export type EnrollmentOptionSupervisor = {
   id: number
   name: string
   email: string
+  company_ids: number[]
 }
 
 export type EnrollmentOptionProgram = {
@@ -510,11 +511,27 @@ export type JournalActivityRow = {
   submitted_at: string | null
 }
 
+export type JournalActivityDetailSection = {
+  key: string
+  label: string
+  text: string | null
+}
+
+export type JournalActivityDetail = {
+  student_id: number
+  student_name: string
+  entry_date: string
+  status: string
+  submitted_at: string | null
+  sections: JournalActivityDetailSection[]
+}
+
 export type JournalActivityResponse = {
   from: string
   to: string
   is_single_day: boolean
   companies: { id: number; name: string }[]
+  programs: { id: number; name: string; code?: string }[]
   rows: JournalActivityRow[]
 }
 

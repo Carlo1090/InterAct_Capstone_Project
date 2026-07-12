@@ -72,6 +72,7 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
     ->group(function () {
         Route::get('dashboard', [CoordinatorDashboardController::class, 'index']);
         Route::get('journal-activities', [CoordinatorJournalActivityController::class, 'index']);
+        Route::get('journal-activities/{student}/{date}', [CoordinatorJournalActivityController::class, 'show']);
 
         Route::get('companies', [CoordinatorCompanyController::class, 'index']);
         Route::post('companies', [CoordinatorCompanyController::class, 'store']);
