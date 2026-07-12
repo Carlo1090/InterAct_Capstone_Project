@@ -18,8 +18,8 @@ class JournalTemplateController extends Controller
     {
         $programIds = $request->user()->coordinatorProgramIds();
 
-        $templates = JournalTemplate::with('program')
-            ->whereIn('program_id', $programIds)
+        $templates = JournalTemplate::with('programs')
+            ->whereHas('programs', fn ($query) => $query->whereIn('programs.id', $programIds))
             ->orderBy('name')
             ->get();
 
@@ -33,12 +33,18 @@ class JournalTemplateController extends Controller
 
     public function store(StoreJournalTemplateRequest $request): JsonResponse
     {
+        $data = $request->validated();
+        $programIds = $data['program_ids'];
+        unset($data['program_ids']);
+
         $template = JournalTemplate::create([
-            ...$request->validated(),
+            ...$data,
             'is_active' => $request->boolean('is_active', true),
         ]);
 
-        return response()->json($template->load('program'), 201);
+        $template->programs()->sync($programIds);
+
+        return response()->json($template->load('programs'), 201);
     }
 
     public function update(UpdateJournalTemplateRequest $request, JournalTemplate $journalTemplate): JsonResponse
@@ -50,13 +56,21 @@ class JournalTemplateController extends Controller
 
         $affectedEntries = $this->countEntriesUsingKeys($journalTemplate, $removedKeys);
 
+        $data = $request->validated();
+        $programIds = $data['program_ids'] ?? null;
+        unset($data['program_ids']);
+
         $journalTemplate->update([
-            ...$request->validated(),
+            ...$data,
             'is_active' => $request->boolean('is_active', $journalTemplate->is_active),
         ]);
 
+        if ($programIds !== null) {
+            $journalTemplate->programs()->sync($programIds);
+        }
+
         return response()->json([
-            'template' => $journalTemplate->fresh('program'),
+            'template' => $journalTemplate->fresh('programs'),
             'affected_entries' => $affectedEntries,
         ]);
     }
@@ -65,13 +79,13 @@ class JournalTemplateController extends Controller
     {
         $programIds = $request->user()->coordinatorProgramIds();
 
-        if (! $programIds->contains($journalTemplate->program_id)) {
+        if (! $journalTemplate->programs()->whereIn('programs.id', $programIds)->exists()) {
             return response()->json(['message' => 'Forbidden.'], 403);
         }
 
         $journalTemplate->update(['is_active' => ! $journalTemplate->is_active]);
 
-        return response()->json($journalTemplate->fresh('program'));
+        return response()->json($journalTemplate->fresh('programs'));
     }
 
     /**

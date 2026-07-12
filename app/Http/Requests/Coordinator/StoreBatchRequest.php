@@ -29,7 +29,9 @@ class StoreBatchRequest extends FormRequest
             'journal_template_id' => [
                 'nullable',
                 'integer',
-                Rule::exists('journal_templates', 'id')->where('program_id', $this->input('program_id')),
+                // The chosen template must cover the batch's program (pivot is the
+                // source of truth now that journal_templates.program_id is gone).
+                Rule::exists('journal_template_program', 'journal_template_id')->where('program_id', $this->input('program_id')),
             ],
         ];
     }

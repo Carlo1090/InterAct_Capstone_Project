@@ -50,6 +50,26 @@ class JournalTemplateTest extends TestCase
         return $coordinator;
     }
 
+    /**
+     * Create a template covering the given program(s) via the pivot.
+     *
+     * @param  Program|array<int, Program>  $programs
+     */
+    private function makeTemplate(Program|array $programs, string $name, ?array $sections = null): JournalTemplate
+    {
+        $template = JournalTemplate::create([
+            'name' => $name,
+            'sections' => $sections ?? $this->validSections(),
+            'char_limit' => 1500,
+            'is_active' => true,
+        ]);
+
+        $ids = collect(is_array($programs) ? $programs : [$programs])->pluck('id')->all();
+        $template->programs()->sync($ids);
+
+        return $template;
+    }
+
     private function validSections(): array
     {
         return [
@@ -64,13 +84,7 @@ class JournalTemplateTest extends TestCase
         $coordinator = User::factory()->create(['role' => 'coordinator', 'program_id' => $program->id]);
         $coordinator->departmentsCoordinated()->attach($program->department_id);
 
-        JournalTemplate::create([
-            'program_id' => $program->id,
-            'name' => 'Bootstrap Template',
-            'sections' => $this->validSections(),
-            'char_limit' => 1500,
-            'is_active' => true,
-        ]);
+        $this->makeTemplate($program, 'Bootstrap Template');
 
         Sanctum::actingAs($coordinator, ['*']);
 
@@ -91,14 +105,18 @@ class JournalTemplateTest extends TestCase
         Sanctum::actingAs($coordinator, ['*']);
 
         $response = $this->postJson('/api/coordinator/journal-templates', [
-            'program_id' => $program->id,
+            'program_ids' => [$program->id],
             'name' => 'Bootstrap Template',
             'char_limit' => 1500,
             'sections' => $this->validSections(),
         ]);
 
         $response->assertCreated();
-        $this->assertDatabaseHas('journal_templates', ['name' => 'Bootstrap Template', 'program_id' => $program->id]);
+        $template = JournalTemplate::where('name', 'Bootstrap Template')->firstOrFail();
+        $this->assertDatabaseHas('journal_template_program', [
+            'journal_template_id' => $template->id,
+            'program_id' => $program->id,
+        ]);
     }
 
     public function test_coordinator_lists_only_own_program_templates(): void
@@ -108,21 +126,8 @@ class JournalTemplateTest extends TestCase
 
         $coordinator = $this->coordinatorWithBatch($programA);
 
-        JournalTemplate::create([
-            'program_id' => $programA->id,
-            'name' => 'Own Template',
-            'sections' => $this->validSections(),
-            'char_limit' => 1500,
-            'is_active' => true,
-        ]);
-
-        JournalTemplate::create([
-            'program_id' => $programB->id,
-            'name' => 'Other Template',
-            'sections' => $this->validSections(),
-            'char_limit' => 1500,
-            'is_active' => true,
-        ]);
+        $this->makeTemplate($programA, 'Own Template');
+        $this->makeTemplate($programB, 'Other Template');
 
         Sanctum::actingAs($coordinator, ['*']);
 
@@ -148,7 +153,7 @@ class JournalTemplateTest extends TestCase
         $sections[0]['required'] = false;
 
         $response = $this->postJson('/api/coordinator/journal-templates', [
-            'program_id' => $program->id,
+            'program_ids' => [$program->id],
             'name' => 'No Required Template',
             'char_limit' => 1500,
             'sections' => $sections,
@@ -168,7 +173,7 @@ class JournalTemplateTest extends TestCase
         $duplicateKeySections[1]['key'] = 'task_performed';
 
         $response = $this->postJson('/api/coordinator/journal-templates', [
-            'program_id' => $program->id,
+            'program_ids' => [$program->id],
             'name' => 'Duplicate Keys Template',
             'char_limit' => 1500,
             'sections' => $duplicateKeySections,
@@ -181,7 +186,7 @@ class JournalTemplateTest extends TestCase
         $invalidKeySections[1]['key'] = 'Invalid Key!';
 
         $response2 = $this->postJson('/api/coordinator/journal-templates', [
-            'program_id' => $program->id,
+            'program_ids' => [$program->id],
             'name' => 'Invalid Key Template',
             'char_limit' => 1500,
             'sections' => $invalidKeySections,
@@ -199,18 +204,12 @@ class JournalTemplateTest extends TestCase
         $this->coordinatorWithBatch($programA);
         $otherCoordinator = $this->coordinatorWithBatch($programB);
 
-        $template = JournalTemplate::create([
-            'program_id' => $programA->id,
-            'name' => 'Template A',
-            'sections' => $this->validSections(),
-            'char_limit' => 1500,
-            'is_active' => true,
-        ]);
+        $template = $this->makeTemplate($programA, 'Template A');
 
         Sanctum::actingAs($otherCoordinator, ['*']);
 
         $response = $this->putJson("/api/coordinator/journal-templates/{$template->id}", [
-            'program_id' => $programA->id,
+            'program_ids' => [$programA->id],
             'name' => 'Hacked Template',
             'char_limit' => 1500,
             'sections' => $this->validSections(),
@@ -224,13 +223,7 @@ class JournalTemplateTest extends TestCase
         $program = $this->programFor('BSIT');
         $coordinator = $this->coordinatorWithBatch($program);
 
-        $template = JournalTemplate::create([
-            'program_id' => $program->id,
-            'name' => 'Template With Data',
-            'sections' => $this->validSections(),
-            'char_limit' => 1500,
-            'is_active' => true,
-        ]);
+        $template = $this->makeTemplate($program, 'Template With Data');
 
         $batch = Batch::create([
             'program_id' => $program->id,
@@ -263,7 +256,7 @@ class JournalTemplateTest extends TestCase
         $newSections = [$this->validSections()[0]];
 
         $response = $this->putJson("/api/coordinator/journal-templates/{$template->id}", [
-            'program_id' => $program->id,
+            'program_ids' => [$program->id],
             'name' => 'Template With Data',
             'char_limit' => 1500,
             'sections' => $newSections,

@@ -29,7 +29,7 @@ class StudentDemoEnrollmentSeeder extends Seeder
         $endDate = now()->addMonths(2)->startOfDay();
 
         $template = JournalTemplate::firstOrCreate(
-            ['program_id' => $program->id, 'name' => 'BSIT Daily Journal Template'],
+            ['name' => 'BSIT Daily Journal Template'],
             [
                 'sections' => [
                     ['key' => 'task_performed', 'label' => 'Task Performed', 'prompt' => 'Describe the specific tasks you completed today.', 'required' => true, 'sipp' => false],
@@ -43,6 +43,9 @@ class StudentDemoEnrollmentSeeder extends Seeder
                 'is_active' => true,
             ]
         );
+
+        // Template<->program is a pivot now; keep this program covered (idempotent).
+        $template->programs()->syncWithoutDetaching([$program->id]);
 
         $batch = Batch::firstOrCreate(
             ['program_id' => $program->id, 'name' => 'Program 2025-A'],

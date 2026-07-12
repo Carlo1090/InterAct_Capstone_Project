@@ -10,7 +10,8 @@ trait ValidatesJournalTemplate
     protected function journalTemplateRules(): array
     {
         return [
-            'program_id' => ['required', 'integer', Rule::exists('programs', 'id'), Rule::in($this->coordinatorProgramIds())],
+            'program_ids' => ['required', 'array', 'min:1'],
+            'program_ids.*' => ['integer', Rule::exists('programs', 'id'), Rule::in($this->coordinatorProgramIds())],
             'name' => ['required', 'string', 'max:150'],
             'char_limit' => ['required', 'integer', 'between:100,10000'],
             'is_active' => ['sometimes', 'boolean'],

@@ -36,7 +36,8 @@ class UpdateBatchRequest extends FormRequest
                 'sometimes',
                 'nullable',
                 'integer',
-                Rule::exists('journal_templates', 'id')->where('program_id', $batch?->program_id),
+                // The chosen template must cover the batch's program (via the pivot).
+                Rule::exists('journal_template_program', 'journal_template_id')->where('program_id', $batch?->program_id),
             ],
         ];
     }

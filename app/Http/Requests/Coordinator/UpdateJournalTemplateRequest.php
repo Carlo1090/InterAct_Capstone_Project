@@ -17,7 +17,9 @@ class UpdateJournalTemplateRequest extends FormRequest
 
         $journalTemplate = $this->route('journalTemplate');
 
-        return $journalTemplate && in_array($journalTemplate->program_id, $this->coordinatorProgramIds(), true);
+        // In scope when the template covers at least one of the coordinator's programs.
+        return $journalTemplate
+            && $journalTemplate->programs()->whereIn('programs.id', $this->coordinatorProgramIds())->exists();
     }
 
     public function rules(): array
