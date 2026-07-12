@@ -107,7 +107,6 @@ class WeeklyLogController extends Controller
         }
 
         $start = Carbon::parse($weekStart)->startOfWeek(Carbon::MONDAY);
-        $end = $start->copy()->addDays(6);
 
         $log = WeeklyLog::where('student_id', $user->id)
             ->where('batch_id', $enrollment->batch_id)
@@ -115,16 +114,25 @@ class WeeklyLogController extends Controller
             ->first();
 
         $pdf = Pdf::loadView('pdf.weekly-log', [
-            'weekStart' => $start->toDateString(),
-            'weekEnd' => $end->toDateString(),
-            'status' => $log->status ?? 'pending',
             'narrative' => $log->narrative ?? '',
-            'supervisorComment' => $log->supervisor_comment ?? null,
-            'submittedAt' => $log?->submitted_at,
+            'weekNumber' => $this->weekNumber($user->id, $start),
             'header' => $this->buildHeader($user, $enrollment),
         ]);
 
         return $pdf->download("weekly-log-{$start->toDateString()}.pdf");
+    }
+
+    /**
+     * 1-based position of this week among the student's WeeklyLogs ordered
+     * by week_start ascending — the N in the document's "My OJT Journal
+     * Week N (Company)" title. For a week with no WeeklyLog row yet, this
+     * is the position it would take once created.
+     */
+    private function weekNumber(int $studentId, Carbon $weekStart): int
+    {
+        return WeeklyLog::where('student_id', $studentId)
+            ->whereDate('week_start', '<', $weekStart->toDateString())
+            ->count() + 1;
     }
 
     private function buildHeader(User $user, BatchStudent $enrollment): array

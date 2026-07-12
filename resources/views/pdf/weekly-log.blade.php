@@ -1,25 +1,13 @@
-@extends('pdf.layout')
-
-@section('title', 'Weekly Log - ' . $header['student_name'])
-@section('doc-title', 'Weekly Activity Narrative')
-@section('doc-subtitle', \Carbon\Carbon::parse($weekStart)->toFormattedDateString() . ' to ' . \Carbon\Carbon::parse($weekEnd)->toFormattedDateString())
-
-@section('extra-style')
-    <style>
-        {{-- Explicit, named override for this document — not an inherited
-             coincidence that today's shared default also happens to be 12px. --}}
-        body {
-            font-family: 'Times New Roman', Times, serif;
-            font-size: 12px;
-        }
-
-        .section-body {
-            font-family: 'Times New Roman', Times, serif;
-            font-size: 12px;
-        }
-    </style>
-@endsection
-
+{{--
+    Plain typed-document weekly journal, matching the client's weekly
+    reference (Weekly_journal_reference.webp): a bold "My OJT Journal
+    Week N (Company)" title line, then bold uppercase day headers each
+    followed by a plain narrative paragraph — nothing else (no meta
+    table, status, supervisor comment, or signature block; those stay
+    in the app UI only). Standalone on purpose, same reasoning as
+    pdf/daily-journal-entry.blade.php. Rendered by BOTH the student
+    weekly-log PDF and the supervisor review-copy PDF.
+--}}
 @php
     // The narrative is free text a student can edit after Weekly Bundling
     // pre-fills it, so we don't assume structure — but WeeklyBundlingService's
@@ -40,48 +28,59 @@
             return ['day' => null, 'text' => trim($block)];
         });
 @endphp
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Weekly Journal - {{ $header['student_name'] }}</title>
+    <style>
+        @page {
+            margin: 70px 55px 60px 55px;
+        }
 
-@section('content')
-    <table class="meta-table">
-        <tr>
-            <td style="width: 50%"><strong>Student Name:</strong> {{ $header['student_name'] }}</td>
-            <td style="width: 50%"><strong>Program:</strong> {{ $header['program'] ?? '—' }}</td>
-        </tr>
-        <tr>
-            <td><strong>Host Company:</strong> {{ $header['company_name'] ?? '—' }}</td>
-            <td><strong>Status:</strong> <span class="status-badge status-{{ $status }}">{{ $status }}</span></td>
-        </tr>
-        @if ($header['supervisor_name'] ?? null)
-            <tr>
-                <td><strong>Company Supervisor:</strong> {{ $header['supervisor_name'] }}</td>
-                <td>@if ($submittedAt)<strong>Submitted:</strong> {{ \Carbon\Carbon::parse($submittedAt)->toDayDateTimeString() }}@endif</td>
-            </tr>
-        @endif
-    </table>
+        * {
+            box-sizing: border-box;
+        }
 
-    <div class="section">
-        <p class="section-label">Weekly Narrative</p>
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #000;
+            background: #fff;
+        }
 
-        @forelse ($narrativeBlocks as $block)
-            <div class="day-block">
-                @if ($block['day'])
-                    <p class="day-header">{{ $block['day'] }}</p>
-                @endif
-                <p class="section-body">{{ $block['text'] }}</p>
-            </div>
-        @empty
-            <p class="empty-note">No narrative was written for this week.</p>
-        @endforelse
-    </div>
+        .doc-title {
+            font-weight: bold;
+            margin: 0 0 20px;
+        }
 
-    @if ($supervisorComment)
-        <div class="comment-box">
-            <p class="section-label">Supervisor's Comment</p>
-            <p class="section-body">{{ $supervisorComment }}</p>
+        .day-block {
+            margin: 0 0 16px;
+            page-break-inside: avoid;
+        }
+
+        .day-header {
+            font-weight: bold;
+            margin: 0 0 2px;
+        }
+
+        .day-text {
+            margin: 0;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <p class="doc-title">My OJT Journal Week {{ $weekNumber }}@if ($header['company_name'] ?? null) ({{ $header['company_name'] }})@endif</p>
+
+    @foreach ($narrativeBlocks as $block)
+        <div class="day-block">
+            @if ($block['day'])
+                <p class="day-header">{{ $block['day'] }}</p>
+            @endif
+            <p class="day-text">{{ $block['text'] }}</p>
         </div>
-    @endif
-
-    <div class="signature-block">
-        <p class="signature-line">{{ $header['supervisor_name'] ?? 'Company Supervisor' }} — Signature</p>
-    </div>
-@endsection
+    @endforeach
+</body>
+</html>

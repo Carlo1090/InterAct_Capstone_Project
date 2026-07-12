@@ -116,13 +116,15 @@ class SupervisorJournalController extends Controller
             ->with('company:id,name')
             ->first();
 
+        // Same "Week N" numbering as the student's own PDF: 1-based position
+        // among that student's WeeklyLogs ordered by week_start ascending.
+        $weekNumber = WeeklyLog::where('student_id', $weeklyLog->student_id)
+            ->whereDate('week_start', '<', $weeklyLog->week_start->toDateString())
+            ->count() + 1;
+
         $pdf = Pdf::loadView('pdf.weekly-log', [
-            'weekStart' => $weeklyLog->week_start->toDateString(),
-            'weekEnd' => $weeklyLog->week_end->toDateString(),
-            'status' => $weeklyLog->status,
             'narrative' => $weeklyLog->narrative ?? '',
-            'supervisorComment' => $weeklyLog->supervisor_comment,
-            'submittedAt' => $weeklyLog->submitted_at,
+            'weekNumber' => $weekNumber,
             'header' => [
                 'student_name' => $weeklyLog->student?->name ?? '',
                 'program' => $weeklyLog->student?->program?->name,
