@@ -8,7 +8,7 @@ InternTrack is a capstone OJT/internship monitoring system for Mater Dei College
 This is a **monorepo** with three parts:
 - **repo root** — Laravel 13 REST API (PHP 8.3, MySQL/SQLite). There is no `api/` subfolder — the Laravel app lives at the top level (`app/`, `routes/`, `database/`, etc.)
 - `web/` — Vue 3 SPA (Vite, Tailwind CSS v4, **TypeScript** — `.ts` files, `tsconfig.json`, and the `typescript` package are already in use under `web/src`)
-- `mobile/` — React Native / Expo app (Expo SDK 56, TypeScript, expo-router). Currently just the default Expo template scaffolding — deferred until Phase 7, do not wire real auth/endpoints into it yet unless asked
+- `mobile/` — React Native / Expo app (Expo SDK 56, TypeScript, expo-router). Currently just the default Expo template scaffolding — deferred until Phase 7, do not wire real auth/endpoints into it yet unless asked. It has its own `mobile/CLAUDE.md` (imports `mobile/AGENTS.md`) with an Expo-SDK-56-specific instruction to check the versioned docs at `docs.expo.dev/versions/v56.0.0/` before writing any mobile code — read it once mobile work actually starts
 
 ## Tech Stack (do not change without asking)
 - Laravel 13, PHP 8.3, MySQL (SQLite for local/testing)
@@ -89,6 +89,7 @@ php artisan serve
 php artisan migrate:fresh --seed
 php artisan test
 php artisan test --filter=TestName   # single test
+php artisan test tests/Feature/Coordinator   # a whole role folder (tests/Feature splits into Admin/Auth/Console/Coordinator/Services/Student/Supervisor)
 composer install
 
 # Or run backend + queue + logs + Vite together:
@@ -103,6 +104,8 @@ npm run build
 npm install
 npx expo start
 ```
+
+Seeded demo accounts (from `php artisan db:seed`, password `password` for both) for manual login verification: `admin@interntrack.local` (admin), `student@interntrack.local` (student). `system@interntrack.local` is a non-login automation account.
 
 ## Workflow Preferences (project owner)
 - Propose a plan for any multi-file change before implementing; wait for approval.
