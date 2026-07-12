@@ -2,6 +2,8 @@
 import { onMounted, ref, watch } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
+import { confirmAction, showToast } from '@/lib/toast'
+import ToastHost from '@/components/ToastHost.vue'
 import type { Department, PaginatedResponse, User } from '@/types/api'
 
 type UserPayload = {
@@ -108,11 +110,12 @@ const createUser = async () => {
 }
 
 const deleteUser = async (user: User) => {
-  if (!window.confirm(`Delete ${user.name}? This deactivates their account.`)) return
+  if (!confirmAction(`Delete ${user.name}? This deactivates their account.`)) return
 
   try {
     await api.patch(`/api/admin/users/${user.id}/deactivate`)
     await loadUsers()
+    showToast(`${user.name}'s account deactivated.`)
   } catch {
     errorMessage.value = 'Unable to delete user.'
   }
@@ -126,6 +129,7 @@ onMounted(() => {
 
 <template>
   <section>
+    <ToastHost />
     <div class="flex items-center justify-between gap-4">
       <h2 class="text-2xl font-bold text-slate-950">Users</h2>
       <button

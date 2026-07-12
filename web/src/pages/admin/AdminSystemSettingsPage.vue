@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref, watch } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
+import { confirmAction } from '@/lib/toast'
 import type { PaginatedResponse, SystemSettingsMap, User } from '@/types/api'
 
 const systemInfo = [
@@ -99,7 +100,7 @@ watch(studentSearch, () => {
 })
 
 const issueTemporaryPassword = async (student: User) => {
-  if (!window.confirm(`Issue a temporary password for ${student.name}? Their current password will stop working immediately.`)) {
+  if (!confirmAction(`Issue a temporary password for ${student.name}? Their current password will stop working immediately.`)) {
     return
   }
 

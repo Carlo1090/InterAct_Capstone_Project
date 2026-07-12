@@ -2,6 +2,8 @@
 import { onMounted, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
+import { confirmAction, showToast } from '@/lib/toast'
+import ToastHost from '@/components/ToastHost.vue'
 import type { Department, DepartmentDetail, PaginatedResponse, User } from '@/types/api'
 
 type DepartmentForm = {
@@ -100,8 +102,9 @@ const assignCoordinator = async () => {
   }
 }
 
-const removeCoordinator = async (coordinatorId: number) => {
+const removeCoordinator = async (coordinatorId: number, coordinatorName: string) => {
   if (!viewedDepartment.value) return
+  if (!confirmAction(`Remove ${coordinatorName} as coordinator of "${viewedDepartment.value.name}"?`)) return
 
   removingCoordinatorId.value = coordinatorId
   coordinatorError.value = ''
@@ -111,6 +114,7 @@ const removeCoordinator = async (coordinatorId: number) => {
       `/api/admin/departments/${viewedDepartment.value.id}/coordinators/${coordinatorId}`,
     )
     viewedDepartment.value.coordinators = response.data
+    showToast(`${coordinatorName} removed as coordinator.`)
   } catch (error) {
     const data = axios.isAxiosError(error) ? error.response?.data : null
     coordinatorError.value = data?.message ?? 'Unable to remove coordinator.'
@@ -180,6 +184,7 @@ onMounted(() => {
 
 <template>
   <section class="space-y-5">
+    <ToastHost />
     <div class="flex items-center justify-between gap-4">
       <h2 class="text-2xl font-bold text-slate-950">Departments</h2>
       <button
@@ -402,7 +407,7 @@ onMounted(() => {
                   type="button"
                   class="text-sm font-semibold text-red-600 disabled:text-slate-400"
                   :disabled="removingCoordinatorId === coordinator.id"
-                  @click="removeCoordinator(coordinator.id)"
+                  @click="removeCoordinator(coordinator.id, coordinator.name)"
                 >
                   {{ removingCoordinatorId === coordinator.id ? 'Removing...' : 'Remove' }}
                 </button>

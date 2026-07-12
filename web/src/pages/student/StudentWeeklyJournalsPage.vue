@@ -3,6 +3,8 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import NotEnrolledNotice from '@/components/student/NotEnrolledNotice.vue'
+import ToastHost from '@/components/ToastHost.vue'
+import { confirmAction, showToast } from '@/lib/toast'
 import { isNotEnrolledError } from '@/lib/enrollment'
 import type { WeeklyActivityEntryRecord, WeeklyActivityLogRecord, WeeklyLogDetail, WeeklyLogSummary } from '@/types/api'
 
@@ -161,11 +163,14 @@ const addEntry = async (log: WeeklyActivityLogRecord) => {
 }
 
 const removeEntry = async (log: WeeklyActivityLogRecord, entryId: number) => {
+  if (!confirmAction('Remove this entry from your Weekly Activity Log? This cannot be undone.')) return
+
   try {
     await api.delete(`/api/student/weekly-activity-logs/${log.id}/entries/${entryId}`)
     log.entries = (log.entries ?? []).filter((entry) => entry.id !== entryId)
+    showToast('Entry removed.')
   } catch {
-    // No-op; row stays visible so the student can retry.
+    showToast('Unable to remove this entry.', 'error')
   }
 }
 
@@ -193,6 +198,7 @@ onMounted(() => {
 
 <template>
   <section class="space-y-4">
+    <ToastHost />
     <div class="flex items-start justify-between gap-4 rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
       <p>Write a short narrative for each week alongside your daily entries. Approval happens with your company supervisor.</p>
     </div>

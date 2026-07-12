@@ -2,13 +2,14 @@
 import { onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
+import { confirmAction, showToast } from '@/lib/toast'
+import ToastHost from '@/components/ToastHost.vue'
 import type { CoordinatorCompany, EnrollmentOptionSupervisor } from '@/types/api'
 
 const companies = ref<CoordinatorCompany[]>([])
 const search = ref('')
 const isLoading = ref(true)
 const errorMessage = ref('')
-const statusMessage = ref('')
 
 const supervisorPool = ref<EnrollmentOptionSupervisor[]>([])
 
@@ -31,6 +32,9 @@ const blankForm = () => ({
 })
 
 const form = reactive(blankForm())
+// The company's is_active value as loaded, so saveCompany() can tell a
+// true->false deactivation apart from a reactivation or no change.
+const originalIsActive = ref(true)
 
 // Supervisors panel (edit mode only).
 const activeCompany = ref<CoordinatorCompany | null>(null)
@@ -67,6 +71,7 @@ const openCreate = () => {
   editingId.value = null
   activeCompany.value = null
   Object.assign(form, blankForm())
+  originalIsActive.value = true
   modalErrors.value = {}
   modalMessage.value = ''
   isModalOpen.value = true
@@ -97,6 +102,7 @@ const applyCompanyToForm = (company: CoordinatorCompany) => {
   form.contact_number = company.contact_number ?? ''
   form.description = company.description ?? ''
   form.is_active = company.is_active
+  originalIsActive.value = company.is_active
 }
 
 const closeModal = () => {
@@ -107,6 +113,16 @@ const closeModal = () => {
 }
 
 const saveCompany = async () => {
+  // Deactivating a company is a critical action — confirm with the truthful
+  // consequence before it goes out. Reactivating needs no confirm.
+  if (editingId.value && originalIsActive.value && !form.is_active) {
+    const confirmed = confirmAction(
+      `Mark "${form.name}" as Inactive? It will no longer be selectable when enrolling students or adding interns to a batch. ` +
+        'Existing enrollments at this company are unaffected. You can reactivate it later.',
+    )
+    if (!confirmed) return
+  }
+
   isSaving.value = true
   modalErrors.value = {}
   modalMessage.value = ''
@@ -115,12 +131,12 @@ const saveCompany = async () => {
     if (editingId.value) {
       const { data } = await api.put<CoordinatorCompany>(`/api/coordinator/companies/${editingId.value}`, form)
       applyCompanyToForm(data)
-      statusMessage.value = 'Company updated.'
+      showToast('Company updated.')
     } else {
       const { data } = await api.post<CoordinatorCompany>('/api/coordinator/companies', form)
       editingId.value = data.id
       applyCompanyToForm(data)
-      statusMessage.value = 'Company created.'
+      showToast('Company created.')
     }
     await loadCompanies()
   } catch (error) {
@@ -174,11 +190,12 @@ const createSupervisor = async () => {
 
 const detachSupervisor = async (userId: number) => {
   if (!editingId.value) return
-  if (!window.confirm('Remove this supervisor from the company?')) return
+  if (!confirmAction('Remove this supervisor from the company?')) return
 
   try {
     const { data } = await api.delete<CoordinatorCompany>(`/api/coordinator/companies/${editingId.value}/supervisors/${userId}`)
     applyCompanyToForm(data)
+    showToast('Supervisor removed from company.')
   } catch {
     modalMessage.value = 'Unable to remove the supervisor.'
   }
@@ -191,6 +208,7 @@ onMounted(async () => {
 
 <template>
   <section class="space-y-5">
+    <ToastHost />
     <div class="flex flex-wrap gap-3">
       <input
         v-model="search"
@@ -206,7 +224,6 @@ onMounted(async () => {
       </button>
     </div>
 
-    <p v-if="statusMessage" class="rounded-md bg-green-50 px-4 py-2 text-sm text-green-700">{{ statusMessage }}</p>
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
     <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
 
@@ -282,14 +299,21 @@ onMounted(async () => {
             <span class="text-xs font-bold text-slate-600">Contact Number (optional)</span>
             <input v-model="form.contact_number" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </label>
-          <label class="flex items-center gap-2 pt-6">
+          <label class="flex items-center gap-2 pt-6 text-sm font-medium" :class="form.is_active ? 'text-slate-700' : 'text-red-700'">
             <input v-model="form.is_active" type="checkbox" />
-            <span class="text-sm font-medium text-slate-700">Active</span>
+            <span>Active</span>
           </label>
           <label class="block md:col-span-2">
             <span class="text-xs font-bold text-slate-600">Description (optional)</span>
             <textarea v-model="form.description" rows="2" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"></textarea>
           </label>
+        </div>
+
+        <div
+          v-if="editingId && originalIsActive && !form.is_active"
+          class="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700"
+        >
+          Deactivating this company hides it from the enrollment company picker. Existing enrollments are unaffected.
         </div>
 
         <div v-if="Object.keys(modalErrors).length > 0" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
@@ -301,11 +325,12 @@ onMounted(async () => {
           <button type="button" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" @click="closeModal">Cancel</button>
           <button
             type="button"
-            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-blue-300"
+            class="rounded-md px-4 py-2 text-sm font-semibold text-white disabled:bg-blue-300"
+            :class="editingId && originalIsActive && !form.is_active ? 'bg-red-600' : 'bg-blue-600'"
             :disabled="isSaving"
             @click="saveCompany"
           >
-            {{ isSaving ? 'Saving...' : editingId ? 'Save Changes' : 'Create Company' }}
+            {{ isSaving ? 'Saving...' : editingId && originalIsActive && !form.is_active ? 'Deactivate & Save' : editingId ? 'Save Changes' : 'Create Company' }}
           </button>
         </div>
 
