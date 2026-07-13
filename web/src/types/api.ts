@@ -549,6 +549,43 @@ export type JournalActivityResponse = {
   rows: JournalActivityRow[]
 }
 
+export type CoordinatorWeeklyJournalRow = {
+  id: number
+  student_id: number
+  student_name: string
+  student_id_number: string | null
+  program: string
+  week_start: string
+  week_end: string
+  status: SupervisorReviewStatus
+  submitted_at: string | null
+}
+
+export type CoordinatorWeeklyJournalsResponse = {
+  programs: { id: number; name: string; code?: string }[]
+  logs: {
+    data: CoordinatorWeeklyJournalRow[]
+    current_page: number
+    last_page: number
+    total: number
+  }
+}
+
+// Same shape as SupervisorJournalDetail minus `reviewable` — coordinators
+// observe; review verdicts belong to supervisors.
+export type CoordinatorWeeklyJournalDetail = {
+  id: number
+  student: { id: number; name: string; student_id_number: string | null }
+  week_start: string
+  week_end: string
+  status: SupervisorReviewStatus
+  supervisor_comment: string | null
+  narrative: string
+  submitted_at: string | null
+  reviewed_at: string | null
+  daily_entries: { entry_date: string; status: JournalEntryStatus; content: Record<string, string> }[]
+}
+
 export type CompanySupervisorRecord = {
   id: number
   user_id: number

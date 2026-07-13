@@ -106,6 +106,11 @@ const router = createRouter({
           meta: { title: 'Daily Journal Activities' },
         },
         {
+          path: 'weekly-journals',
+          component: () => import('@/pages/coordinator/CoordinatorWeeklyJournalsPage.vue'),
+          meta: { title: 'Weekly Journals' },
+        },
+        {
           path: 'journal-templates',
           component: () => import('@/pages/coordinator/CoordinatorJournalTemplatesPage.vue'),
           meta: { title: 'Journal Templates' },
