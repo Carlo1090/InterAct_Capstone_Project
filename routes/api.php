@@ -15,6 +15,7 @@ use App\Http\Controllers\Coordinator\CoordinatorCompanyController;
 use App\Http\Controllers\Coordinator\CoordinatorDashboardController;
 use App\Http\Controllers\Coordinator\CoordinatorInfoSheetController;
 use App\Http\Controllers\Coordinator\CoordinatorJournalActivityController;
+use App\Http\Controllers\Coordinator\CoordinatorWeeklyJournalController;
 use App\Http\Controllers\Coordinator\EnrollmentController;
 use App\Http\Controllers\Coordinator\HteReportController;
 use App\Http\Controllers\Coordinator\JournalTemplateController;
@@ -76,6 +77,10 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::get('dashboard', [CoordinatorDashboardController::class, 'index']);
         Route::get('journal-activities', [CoordinatorJournalActivityController::class, 'index']);
         Route::get('journal-activities/{student}/{date}', [CoordinatorJournalActivityController::class, 'show']);
+
+        Route::get('weekly-journals', [CoordinatorWeeklyJournalController::class, 'index']);
+        Route::get('weekly-journals/{weeklyLog}', [CoordinatorWeeklyJournalController::class, 'show']);
+        Route::get('weekly-journals/{weeklyLog}/pdf', [CoordinatorWeeklyJournalController::class, 'pdf']);
 
         Route::get('companies', [CoordinatorCompanyController::class, 'index']);
         Route::post('companies', [CoordinatorCompanyController::class, 'store']);
