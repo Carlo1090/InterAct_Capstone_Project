@@ -4,9 +4,13 @@ import axios from 'axios'
 import api from '@/lib/axios'
 import NotEnrolledNotice from '@/components/student/NotEnrolledNotice.vue'
 import ToastHost from '@/components/ToastHost.vue'
+import WeeklyJournalPaperView from '@/components/journal/WeeklyJournalPaperView.vue'
 import { confirmAction, showToast } from '@/lib/toast'
 import { isNotEnrolledError } from '@/lib/enrollment'
+import { useAuthStore } from '@/stores/auth'
 import type { WeeklyActivityEntryRecord, WeeklyActivityLogRecord, WeeklyLogDetail, WeeklyLogSummary } from '@/types/api'
+
+const auth = useAuthStore()
 
 const weeks = ref<WeeklyLogSummary[]>([])
 const isLoading = ref(true)
@@ -311,12 +315,25 @@ onMounted(() => {
           </div>
 
           <div class="mt-5">
-            <label class="block text-sm font-medium text-slate-700">
+            <!-- Read-only states show the same typed document the PDF and the
+                 supervisor's preview render; draft/returned keep the editable
+                 textarea (editing/submit mechanics untouched). -->
+            <template v-if="weekState(week) === 'submitted' || weekState(week) === 'approved'">
+              <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500">Weekly Narrative</h3>
+              <div class="mt-2 rounded-md bg-slate-100 p-4 sm:p-6">
+                <WeeklyJournalPaperView
+                  :narrative="details[week.week_start].narrative ?? ''"
+                  :student-name="auth.user?.name ?? ''"
+                  :week-start="week.week_start"
+                  :week-end="week.week_end"
+                />
+              </div>
+            </template>
+            <label v-else class="block text-sm font-medium text-slate-700">
               Weekly Narrative
               <textarea
                 v-model="details[week.week_start].narrative"
-                :disabled="weekState(week) === 'submitted' || weekState(week) === 'approved'"
-                class="mt-2 min-h-32 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                class="mt-2 min-h-32 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
               />
             </label>
           </div>
