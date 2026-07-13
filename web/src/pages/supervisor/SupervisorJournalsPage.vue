@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { showToast, confirmAction } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
+import WeeklyJournalPaperView from '@/components/journal/WeeklyJournalPaperView.vue'
 import type { SupervisorJournalDetail, SupervisorJournalRow, SupervisorReviewStatus } from '@/types/api'
-
-const WEEKDAY_NAMES = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
 
 const tabs: { key: SupervisorReviewStatus; label: string }[] = [
   { key: 'pending', label: 'Pending' },
@@ -35,28 +34,6 @@ const statusClass = (status: SupervisorReviewStatus): string => {
 }
 
 const formatDateTime = (iso: string | null): string => (iso ? new Date(iso).toLocaleString() : '—')
-
-// Mirrors resources/views/pdf/weekly-log.blade.php's parsing so the on-screen
-// review looks like the same document family as the downloadable PDF: a
-// WeeklyBundlingService-compiled "MONDAY\ntext" block gets a day header,
-// while freely-edited text without that shape still renders as a plain
-// paragraph.
-const narrativeBlocks = computed(() => {
-  const narrative = (detail.value?.narrative ?? '').trim()
-  if (!narrative) return []
-
-  return narrative
-    .split(/\n{2,}/)
-    .map((block) => block.trim())
-    .filter(Boolean)
-    .map((block) => {
-      const [firstLine, ...rest] = block.split('\n')
-      if (WEEKDAY_NAMES.includes(firstLine.trim())) {
-        return { day: firstLine.trim(), text: rest.join('\n').trim() }
-      }
-      return { day: null as string | null, text: block }
-    })
-})
 
 const downloadPdf = () => {
   if (!detail.value) return
@@ -215,7 +192,7 @@ onMounted(load)
 
     <!-- Review modal -->
     <div v-if="isDetailOpen" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
-      <section class="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl">
+      <section class="w-full max-w-3xl rounded-lg bg-white p-6 shadow-xl">
         <div class="flex items-center justify-between">
           <div>
             <h3 class="text-lg font-semibold text-slate-950">{{ detail?.student.name ?? 'Weekly Journal' }}</h3>
@@ -235,17 +212,16 @@ onMounted(load)
             <span class="text-xs text-slate-400">Submitted {{ formatDateTime(detail.submitted_at) }}</span>
           </div>
 
-          <div>
-            <h4 class="text-xs font-bold uppercase tracking-wide text-slate-500">Weekly Narrative</h4>
-            <div class="mt-2 rounded-md bg-slate-50 p-4 font-serif text-slate-900">
-              <p v-if="narrativeBlocks.length === 0" class="text-sm font-sans text-slate-400">No narrative was written for this week.</p>
-              <div v-for="(block, index) in narrativeBlocks" :key="index" class="mb-4 last:mb-0">
-                <p v-if="block.day" class="mb-1 border-b border-slate-300 pb-1 text-xs font-bold font-sans uppercase tracking-wide text-slate-900">
-                  {{ block.day }}
-                </p>
-                <p class="whitespace-pre-line text-sm leading-relaxed">{{ block.text }}</p>
-              </div>
-            </div>
+          <!-- Document preview: the weekly narrative rendered as the same
+               typed document the PDF produces. Status/actions stay out here
+               in the page chrome. -->
+          <div class="rounded-md bg-slate-100 p-4 sm:p-6">
+            <WeeklyJournalPaperView
+              :narrative="detail.narrative"
+              :student-name="detail.student.name"
+              :week-start="detail.week_start"
+              :week-end="detail.week_end"
+            />
           </div>
 
           <div v-if="detail.supervisor_comment">
@@ -253,21 +229,25 @@ onMounted(load)
             <p class="mt-2 rounded-md bg-red-50 p-3 text-sm text-red-700">{{ detail.supervisor_comment }}</p>
           </div>
 
-          <div>
-            <h4 class="text-xs font-bold uppercase tracking-wide text-slate-500">Daily Entries This Week ({{ detail.daily_entries.length }})</h4>
-            <div v-if="detail.daily_entries.length === 0" class="mt-2 text-sm text-slate-400">No daily entries for this week.</div>
-            <div v-else class="mt-2 space-y-2">
-              <div v-for="entry in detail.daily_entries" :key="entry.entry_date" class="rounded-md border border-slate-200 p-3">
-                <div class="flex items-center justify-between">
-                  <p class="font-mono text-xs font-semibold text-slate-600">{{ entry.entry_date }}</p>
-                  <span class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{{ entry.status }}</span>
+          <details class="rounded-md border border-slate-200">
+            <summary class="cursor-pointer px-3 py-2 text-xs font-bold uppercase tracking-wide text-slate-500 transition hover:text-slate-700">
+              Daily Entries This Week ({{ detail.daily_entries.length }})
+            </summary>
+            <div class="border-t border-slate-100 p-3">
+              <div v-if="detail.daily_entries.length === 0" class="text-sm text-slate-400">No daily entries for this week.</div>
+              <div v-else class="space-y-2">
+                <div v-for="entry in detail.daily_entries" :key="entry.entry_date" class="rounded-md border border-slate-200 p-3">
+                  <div class="flex items-center justify-between">
+                    <p class="font-mono text-xs font-semibold text-slate-600">{{ entry.entry_date }}</p>
+                    <span class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{{ entry.status }}</span>
+                  </div>
+                  <p v-for="(value, key) in entry.content" :key="key" class="mt-1 text-xs text-slate-600">
+                    <span class="font-semibold text-slate-500">{{ key }}:</span> {{ value }}
+                  </p>
                 </div>
-                <p v-for="(value, key) in entry.content" :key="key" class="mt-1 text-xs text-slate-600">
-                  <span class="font-semibold text-slate-500">{{ key }}:</span> {{ value }}
-                </p>
               </div>
             </div>
-          </div>
+          </details>
 
           <p v-if="reviewError" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ reviewError }}</p>
 
