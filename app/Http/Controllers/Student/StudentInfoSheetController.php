@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Student;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Student\Concerns\ResolvesStudentEnrollment;
 use App\Http\Requests\Student\StoreInfoSheetRequest;
+use App\Models\Batch;
+use App\Models\Company;
 use App\Models\StudentInformationSheet;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,6 +24,8 @@ class StudentInfoSheetController extends Controller
             return response()->json($sheet);
         }
 
+        // Backward-compat: a student who predates the intake flow (directly
+        // enrolled, no scaffolded sheet) gets a prefilled empty scaffold.
         $enrollment = $this->activeEnrollment($user->id);
         $profile = $user->studentProfile;
         [$firstName, $lastName] = array_pad(explode(' ', $user->name, 2), 2, '');
@@ -29,12 +33,14 @@ class StudentInfoSheetController extends Controller
         return response()->json([
             'id' => null,
             'submission_status' => null,
+            'rejection_reason' => null,
             'submitted_at' => null,
             'personal_info' => [
                 'last_name' => $lastName,
                 'first_name' => $firstName,
                 'middle_name' => $profile?->middle_name,
                 'parent_guardian_name' => null,
+                'parent_guardian_contact' => null,
                 'date_of_birth' => $profile?->date_of_birth?->toDateString(),
                 'sex' => $profile?->sex,
                 'home_address' => $profile?->home_address,
@@ -57,7 +63,6 @@ class StudentInfoSheetController extends Controller
                 'supervisor_name' => $enrollment?->supervisor?->name,
                 'supervisor_contact' => null,
                 'area_assigned' => $enrollment?->assigned_division,
-                'division_assigned' => $enrollment?->assigned_division,
                 'intern_duty_schedule' => null,
                 'ojt_start_date' => $enrollment?->batch?->start_date?->toDateString(),
                 'ojt_end_date' => $enrollment?->batch?->end_date?->toDateString(),
@@ -69,25 +74,69 @@ class StudentInfoSheetController extends Controller
     public function store(StoreInfoSheetRequest $request): JsonResponse
     {
         $user = $request->user();
-        $enrollment = $this->activeEnrollment($user->id);
+        $sheet = StudentInformationSheet::where('student_id', $user->id)->latest('id')->first();
 
-        if (! $enrollment) {
-            return response()->json(['message' => 'You are not currently enrolled in an active OJT batch.'], 422);
+        // No scaffolded sheet (legacy path): fall back to the active enrollment's
+        // batch. Without either, the student has no assigned batch to write against.
+        if (! $sheet) {
+            $enrollment = $this->activeEnrollment($user->id);
+
+            if (! $enrollment) {
+                return response()->json([
+                    'message' => 'Your account has no assigned batch yet. Please contact your coordinator.',
+                ], 422);
+            }
+
+            $sheet = new StudentInformationSheet([
+                'student_id' => $user->id,
+                'batch_id' => $enrollment->batch_id,
+            ]);
+        }
+
+        // Once approved the sheet is final — the student can no longer edit it.
+        if ($sheet->exists && $sheet->submission_status === 'approved') {
+            return response()->json([
+                'message' => 'Your information sheet has been approved and can no longer be edited.',
+            ], 422);
         }
 
         $validated = $request->validated();
         $status = $validated['status'];
         unset($validated['status']);
 
-        $sheet = StudentInformationSheet::updateOrCreate(
-            ['student_id' => $user->id, 'batch_id' => $enrollment->batch_id],
-            [
-                ...$validated,
-                'submission_status' => $status,
-                'submitted_at' => $status === 'submitted' ? now() : null,
-            ]
-        );
+        // ojt_info is `present` (may be empty) — guarantee the NOT-NULL column.
+        $validated['ojt_info'] = $validated['ojt_info'] ?? [];
+
+        // Program & Year and the Internship Coordinator are read-only on the
+        // form — re-derive them from the intended batch so they can't be spoofed.
+        $batch = Batch::with(['program.department', 'coordinator'])->find($sheet->batch_id);
+        $validated['academic_info'] = [
+            ...($validated['academic_info'] ?? []),
+            'program_course' => $batch?->program?->name,
+            'department' => $batch?->program?->department?->name,
+            'internship_coordinator' => $batch?->coordinator?->name,
+        ];
+
+        $sheet->fill([
+            ...$validated,
+            'submission_status' => $status,
+            'submitted_at' => $status === 'submitted' ? now() : null,
+            // A fresh student action supersedes any prior rejection.
+            'rejection_reason' => null,
+        ]);
+        $sheet->save();
 
         return response()->json($sheet);
+    }
+
+    /**
+     * The coordinator-curated company list backing the "Name of Company"
+     * dropdown — the one constrained field on the info sheet.
+     */
+    public function companies(): JsonResponse
+    {
+        return response()->json(
+            Company::where('is_active', true)->orderBy('name')->get(['id', 'name'])
+        );
     }
 }

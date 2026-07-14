@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
-const navItems = [
+const allNavItems = [
   { label: 'Dashboard', to: '/student/dashboard', badge: '' },
   { label: 'My Journal Calendar', to: '/student/calendar', badge: '' },
   { label: 'My Journals', to: '/student/journals', badge: '2' },
@@ -16,6 +16,15 @@ const navItems = [
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
+
+// Until their info sheet is approved, a student may only reach the info-sheet
+// page + change-password — so the rest of the nav is hidden while gated.
+const isGated = computed(() => auth.user?.role === 'student' && auth.user?.student_gated === true)
+const navItems = computed(() =>
+  isGated.value
+    ? allNavItems.filter((item) => item.to === '/student/info-sheet' || item.to === '/student/change-password')
+    : allNavItems,
+)
 
 const pageTitle = computed(() => (typeof route.meta.title === 'string' ? route.meta.title : 'Dashboard'))
 const userName = computed(() => auth.user?.name ?? 'Student')
@@ -87,7 +96,7 @@ const logout = async () => {
       <header class="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-8">
         <h1 class="text-lg font-bold text-slate-950">{{ pageTitle }}</h1>
         <RouterLink
-          v-if="route.path !== '/student/write-journal'"
+          v-if="!isGated && route.path !== '/student/write-journal'"
           to="/student/write-journal"
           class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
         >

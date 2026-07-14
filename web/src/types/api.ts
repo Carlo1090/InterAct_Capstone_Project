@@ -187,6 +187,7 @@ export type InfoSheetPersonalInfo = {
   first_name: string
   middle_name?: string | null
   parent_guardian_name?: string | null
+  parent_guardian_contact?: string | null
   date_of_birth?: string | null
   sex?: string | null
   home_address?: string | null
@@ -204,6 +205,7 @@ export type InfoSheetAcademicInfo = {
 }
 
 export type InfoSheetOjtInfo = {
+  company_id?: number | null
   host_company?: string | null
   company_address?: string | null
   company_signatory_moa?: string | null
@@ -379,14 +381,22 @@ export type CompanyDetail = Company & {
   departments: Department[]
 }
 
+export type InfoSheetStatus = 'draft' | 'submitted' | 'approved' | 'rejected'
+
 export type InfoSheet = {
   id: number | null
-  submission_status: 'draft' | 'submitted' | 'approved' | null
+  submission_status: InfoSheetStatus | null
+  rejection_reason?: string | null
   submitted_at: string | null
   personal_info: InfoSheetPersonalInfo | null
   academic_info: InfoSheetAcademicInfo | null
   ojt_info: InfoSheetOjtInfo | null
   emergency_contact: Record<string, unknown> | null
+}
+
+export type StudentCompanyOption = {
+  id: number
+  name: string
 }
 
 export type StudentInfoSheetSummary = {
@@ -395,7 +405,7 @@ export type StudentInfoSheetSummary = {
   email: string
   program: Program | null
   batch_enrollment: { company: { name: string } | null } | null
-  submission_status: 'draft' | 'submitted' | 'approved' | null
+  submission_status: InfoSheetStatus | null
 }
 
 export type InfoSheetDetail = InfoSheet & {

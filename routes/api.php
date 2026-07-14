@@ -32,7 +32,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
-    return response()->json($request->user()->load('program.department'));
+    $user = $request->user()->load('program.department');
+
+    // Drives the frontend info-sheet gate for students (backend enforces it too).
+    if ($user->isStudent()) {
+        $user->setAttribute('student_gated', $user->isInfoSheetGated());
+    }
+
+    return response()->json($user);
 });
 
 Route::middleware(['auth:sanctum', 'role:admin'])
@@ -132,11 +139,18 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
 Route::middleware(['auth:sanctum', 'role:student'])
     ->prefix('student')
     ->group(function () {
+        // Always reachable — the info-sheet gateway itself + account essentials.
         Route::get('info-sheet', [StudentInfoSheetController::class, 'show']);
         Route::post('info-sheet', [StudentInfoSheetController::class, 'store']);
+        Route::get('companies', [StudentInfoSheetController::class, 'companies']);
 
         Route::put('password', [PasswordController::class, 'update']);
+    });
 
+// Everything else a student does is gated behind an APPROVED info sheet.
+Route::middleware(['auth:sanctum', 'role:student', 'infosheet.approved'])
+    ->prefix('student')
+    ->group(function () {
         Route::get('journal-entries', [JournalEntryController::class, 'index']);
         Route::get('journal-entries/{date}', [JournalEntryController::class, 'show']);
         Route::get('journal-entries/{date}/pdf', [JournalEntryController::class, 'pdf']);

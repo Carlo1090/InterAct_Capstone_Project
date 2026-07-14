@@ -21,6 +21,7 @@ class StoreInfoSheetRequest extends FormRequest
             'personal_info.first_name' => ['required', 'string', 'max:100'],
             'personal_info.middle_name' => ['nullable', 'string', 'max:100'],
             'personal_info.parent_guardian_name' => ['nullable', 'string', 'max:150'],
+            'personal_info.parent_guardian_contact' => ['nullable', 'string', 'max:30'],
             'personal_info.date_of_birth' => ['nullable', 'date'],
             'personal_info.sex' => ['nullable', 'in:male,female'],
             'personal_info.home_address' => ['nullable', 'string', 'max:255'],
@@ -28,14 +29,18 @@ class StoreInfoSheetRequest extends FormRequest
             'personal_info.email' => ['nullable', 'email', 'max:255'],
             'personal_info.student_id_number' => ['nullable', 'string', 'max:30'],
 
-            'academic_info' => ['required', 'array'],
+            'academic_info' => ['present', 'array'],
             'academic_info.program_course' => ['nullable', 'string', 'max:255'],
             'academic_info.year_level' => ['nullable', 'string', 'max:20'],
             'academic_info.department' => ['nullable', 'string', 'max:150'],
             'academic_info.internship_coordinator' => ['nullable', 'string', 'max:150'],
             'academic_info.coordinator_contact_no' => ['nullable', 'string', 'max:30'],
 
-            'ojt_info' => ['required', 'array'],
+            'ojt_info' => ['present', 'array'],
+            // The one constrained field: the chosen company is picked from the
+            // coordinator-curated dropdown. company_id drives the Accept step;
+            // host_company keeps the name for display/PDF.
+            'ojt_info.company_id' => ['nullable', 'integer', 'exists:companies,id'],
             'ojt_info.host_company' => ['nullable', 'string', 'max:200'],
             'ojt_info.company_address' => ['nullable', 'string', 'max:255'],
             'ojt_info.company_signatory_moa' => ['nullable', 'string', 'max:150'],

@@ -20,6 +20,8 @@ export type AuthUser = {
   role: string
   must_change_password: boolean
   program?: Program | null
+  // Students only: true until their info sheet is approved (enrollment gate).
+  student_gated?: boolean
 }
 
 type AuthState = {

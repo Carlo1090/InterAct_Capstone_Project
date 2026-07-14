@@ -122,6 +122,25 @@ class User extends Authenticatable
         return $this->role === 'student';
     }
 
+    /**
+     * Whether this student is still behind the info-sheet enrollment gate.
+     * The gate lifts once their sheet is approved — or, for legacy/direct
+     * enrollments that predate the intake flow, once they have any active
+     * batch_students row (an already-enrolled student has cleared intake).
+     */
+    public function isInfoSheetGated(): bool
+    {
+        if ($this->role !== 'student') {
+            return false;
+        }
+
+        if ($this->studentInformationSheets()->where('submission_status', 'approved')->exists()) {
+            return false;
+        }
+
+        return ! BatchStudent::where('student_id', $this->id)->where('status', 'active')->exists();
+    }
+
     public function studentProfile(): HasOne
     {
         return $this->hasOne(StudentProfile::class);

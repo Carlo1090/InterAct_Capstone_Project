@@ -230,6 +230,17 @@ router.beforeEach(async (to) => {
     return '/student/change-password'
   }
 
+  // Info-sheet enrollment gate: a not-yet-approved student may only reach the
+  // info-sheet page (and change-password). Backend enforces this too.
+  if (
+    auth.user?.role === 'student' &&
+    auth.user?.student_gated &&
+    to.path !== '/student/info-sheet' &&
+    to.path !== '/student/change-password'
+  ) {
+    return '/student/info-sheet'
+  }
+
   document.title = `${pageTitle(to)} | InternTrack`
 
   return true
