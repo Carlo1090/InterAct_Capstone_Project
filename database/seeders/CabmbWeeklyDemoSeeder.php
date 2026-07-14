@@ -43,6 +43,7 @@ class CabmbWeeklyDemoSeeder extends Seeder
             ['email' => 'mdcbalberostudent@gmail.com'],
             [
                 'name' => 'Renz Adrian Corvera',
+                'username' => 'mdcbalberostudent',
                 'password' => Hash::make('password'),
                 'role' => 'student',
                 'student_id_number' => '2022-FM-100',

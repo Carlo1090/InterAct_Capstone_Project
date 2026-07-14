@@ -7,7 +7,7 @@ import { roleRedirect } from '@/router/index.ts'
 const auth = useAuthStore()
 const router = useRouter()
 
-const email = ref('')
+const identifier = ref('')
 const password = ref('')
 const errorMessage = ref('')
 const isLoading = ref(false)
@@ -17,7 +17,7 @@ const login = async () => {
   isLoading.value = true
 
   try {
-    await auth.login(email.value, password.value)
+    await auth.login(identifier.value, password.value)
     router.push(roleRedirect(auth.role))
   } catch {
     errorMessage.value = 'Invalid credentials. Please try again.'
@@ -37,13 +37,13 @@ const login = async () => {
 
       <div class="space-y-5">
         <div>
-          <label class="mb-2 block text-sm font-medium text-slate-700" for="email">Email</label>
+          <label class="mb-2 block text-sm font-medium text-slate-700" for="identifier">Username or Email</label>
           <input
-            id="email"
-            v-model="email"
-            type="email"
+            id="identifier"
+            v-model="identifier"
+            type="text"
             class="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
-            autocomplete="email"
+            autocomplete="username"
           />
         </div>
 

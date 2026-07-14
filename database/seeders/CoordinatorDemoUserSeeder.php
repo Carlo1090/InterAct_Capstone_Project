@@ -18,6 +18,7 @@ class CoordinatorDemoUserSeeder extends Seeder
             ['email' => 'mdccore@gmail.com'],
             [
                 'name' => 'Prof. Alicia Montoya',
+                'username' => 'mdccore',
                 'password' => Hash::make('password'),
                 'role' => 'coordinator',
                 'program_id' => $coordinatorProgram?->id,

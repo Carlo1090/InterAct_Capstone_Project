@@ -26,6 +26,7 @@ class SupervisorDemoUserSeeder extends Seeder
             ['email' => 'mdcsupervisor@gmail.com'],
             [
                 'name' => 'Engr. Ramon Villanueva',
+                'username' => 'mdcsupervisor',
                 'password' => Hash::make('password'),
                 'role' => 'supervisor',
                 'is_active' => true,

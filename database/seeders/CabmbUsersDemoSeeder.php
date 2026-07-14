@@ -14,6 +14,7 @@ use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 /**
  * Broad, re-runnable CABM-B demo data so the coordinator "Users" page (interns
@@ -46,6 +47,7 @@ class CabmbUsersDemoSeeder extends Seeder
             ['email' => 'mdcbalbero@gmail.com'],
             [
                 'name' => 'Maria Antonnette Balbero',
+                'username' => 'mdcbalbero',
                 'password' => Hash::make('password'),
                 'role' => 'coordinator',
                 'is_active' => true,
@@ -141,6 +143,7 @@ class CabmbUsersDemoSeeder extends Seeder
                 ['email' => $email],
                 [
                     'name' => $def['name'],
+                    'username' => Str::before($email, '@'),
                     'password' => Hash::make('password'),
                     'role' => 'supervisor',
                     'is_active' => true,
@@ -160,6 +163,7 @@ class CabmbUsersDemoSeeder extends Seeder
             ['email' => 'cabmb.sup.created@gmail.com'],
             [
                 'name' => 'Atty. Marisol Fuentes',
+                'username' => 'cabmb.sup.created',
                 'password' => Hash::make('password'),
                 'role' => 'supervisor',
                 'is_active' => true,
@@ -270,6 +274,7 @@ class CabmbUsersDemoSeeder extends Seeder
                 ['email' => $def['email']],
                 [
                     'name' => $def['name'],
+                    'username' => Str::before($def['email'], '@'),
                     'password' => Hash::make('password'),
                     'role' => 'student',
                     'student_id_number' => $def['sid'],

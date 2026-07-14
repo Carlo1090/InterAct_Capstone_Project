@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
 
 #[ObservedBy([UserObserver::class])]
@@ -26,6 +27,7 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'name',
+        'username',
         'email',
         'password',
         'role',
@@ -56,6 +58,48 @@ class User extends Authenticatable
             'is_active' => 'boolean',
             'must_change_password' => 'boolean',
         ];
+    }
+
+    /**
+     * Guarantee every user has a unique username even when a creator (seeder,
+     * factory fallback, tinker) doesn't supply one — derived from the email
+     * local-part, then name/role, then a generic base. An explicitly-set
+     * username always wins.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (User $user): void {
+            if (blank($user->username)) {
+                $base = filled($user->email)
+                    ? Str::before($user->email, '@')
+                    : ($user->name ?: $user->role);
+
+                $user->username = static::generateUniqueUsername($base);
+            }
+        });
+    }
+
+    /**
+     * Slug a base string into a unique username, appending a numeric suffix
+     * until it no longer collides with an existing row.
+     */
+    public static function generateUniqueUsername(?string $base): string
+    {
+        $slug = Str::of((string) $base)->lower()->replaceMatches('/[^a-z0-9._-]+/', '')->trim('._-')->value();
+
+        if ($slug === '') {
+            $slug = 'user';
+        }
+
+        $candidate = $slug;
+        $suffix = 1;
+
+        while (static::where('username', $candidate)->exists()) {
+            $candidate = $slug.$suffix;
+            $suffix++;
+        }
+
+        return $candidate;
     }
 
     public function isAdmin(): bool

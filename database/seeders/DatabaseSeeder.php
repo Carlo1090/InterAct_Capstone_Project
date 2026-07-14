@@ -27,6 +27,7 @@ class DatabaseSeeder extends Seeder
             ['email' => 'system@interntrack.local'],
             [
                 'name' => 'System',
+                'username' => 'system',
                 'password' => Hash::make('change-this-password'),
                 'role' => 'admin',
                 'is_active' => true,
@@ -38,6 +39,7 @@ class DatabaseSeeder extends Seeder
             ['email' => 'mdcadmin@gmail.com'],
             [
                 'name' => 'Test Admin',
+                'username' => 'mdcadmin',
                 'password' => Hash::make('password'),
                 'role' => 'admin',
                 'is_active' => true,

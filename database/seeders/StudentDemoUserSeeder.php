@@ -18,6 +18,7 @@ class StudentDemoUserSeeder extends Seeder
             ['email' => 'mdcstudent@gmail.com'],
             [
                 'name' => 'Juan Dela Cruz',
+                'username' => 'mdcstudent',
                 'password' => Hash::make('password'),
                 'role' => 'student',
                 'student_id_number' => '2021-IT-001',

@@ -15,7 +15,8 @@ type Program = {
 export type AuthUser = {
   id: number
   name: string
-  email: string
+  username: string
+  email: string | null
   role: string
   must_change_password: boolean
   program?: Program | null
@@ -34,10 +35,10 @@ export const useAuthStore = defineStore('auth', {
     role: (state): string | null => state.user?.role ?? null,
   },
   actions: {
-    async login(email: string, password: string): Promise<void> {
+    async login(identifier: string, password: string): Promise<void> {
       try {
         await api.get('/sanctum/csrf-cookie')
-        await api.post('/login', { email, password })
+        await api.post('/login', { login: identifier, password })
         await this.fetchUser()
       } catch (error) {
         this.user = null

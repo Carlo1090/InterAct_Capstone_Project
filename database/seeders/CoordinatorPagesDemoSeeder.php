@@ -13,6 +13,7 @@ use App\Models\StudentProfile;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 /**
  * Extra demo data so the newly-wired coordinator pages (dashboard, journal
@@ -51,6 +52,7 @@ class CoordinatorPagesDemoSeeder extends Seeder
             ['email' => 'mdcsupervisor2@gmail.com'],
             [
                 'name' => 'Ms. Hazel Empleo',
+                'username' => 'mdcsupervisor2',
                 'password' => Hash::make('password'),
                 'role' => 'supervisor',
                 'is_active' => true,
@@ -91,6 +93,7 @@ class CoordinatorPagesDemoSeeder extends Seeder
                 ['email' => $data['email']],
                 [
                     'name' => $data['name'],
+                    'username' => Str::before($data['email'], '@'),
                     'password' => Hash::make('password'),
                     'role' => 'student',
                     'student_id_number' => $data['student_id_number'],
