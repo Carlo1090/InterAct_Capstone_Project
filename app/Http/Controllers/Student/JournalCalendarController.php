@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Student;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Student\Concerns\ResolvesStudentEnrollment;
+use App\Models\BatchStudent;
 use App\Models\JournalEntry;
 use App\Support\BatchWorkingDays;
 use Carbon\CarbonImmutable;
@@ -45,7 +46,7 @@ class JournalCalendarController extends Controller
         while ($cursor->lessThanOrEqualTo($end)) {
             $days[] = [
                 'date' => $cursor->toDateString(),
-                'status' => $this->statusFor($cursor, $range, $workingDaysPerWeek, $today, $entriesByDate->get($cursor->toDateString())),
+                'status' => $this->statusFor($cursor, $range, $workingDaysPerWeek, $today, $enrollment, $entriesByDate->get($cursor->toDateString())),
             ];
             $cursor = $cursor->addDay();
         }
@@ -59,9 +60,17 @@ class JournalCalendarController extends Controller
     /**
      * @param  array{start: CarbonInterface, end: CarbonInterface}  $range
      */
-    private function statusFor(CarbonImmutable $date, array $range, int $workingDaysPerWeek, CarbonInterface $today, ?JournalEntry $entry): string
+    private function statusFor(CarbonImmutable $date, array $range, int $workingDaysPerWeek, CarbonInterface $today, BatchStudent $enrollment, ?JournalEntry $entry): string
     {
-        if ($date->lt($range['start']) || $date->gt($range['end'])) {
+        if ($date->lt($range['start'])) {
+            return 'no_entry';
+        }
+
+        // Completion freezes the window: days past completed_at are outside
+        // the OJT range for good. While the enrollment is still open the
+        // upper bound is rolling, so days after today stay 'future' — never
+        // 'no_entry'.
+        if ($enrollment->status === 'completed' && $date->gt($range['end'])) {
             return 'no_entry';
         }
 
