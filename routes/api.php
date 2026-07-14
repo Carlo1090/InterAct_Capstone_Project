@@ -99,6 +99,7 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
 
         Route::get('info-sheets', [CoordinatorInfoSheetController::class, 'index']);
         Route::get('info-sheets/{student}', [CoordinatorInfoSheetController::class, 'show']);
+        Route::get('info-sheets/{student}/pdf', [CoordinatorInfoSheetController::class, 'pdf']);
         Route::post('info-sheets/{student}/accept', [CoordinatorInfoSheetController::class, 'accept']);
         Route::post('info-sheets/{student}/reject', [CoordinatorInfoSheetController::class, 'reject']);
 
@@ -144,6 +145,7 @@ Route::middleware(['auth:sanctum', 'role:student'])
         // Always reachable — the info-sheet gateway itself + account essentials.
         Route::get('info-sheet', [StudentInfoSheetController::class, 'show']);
         Route::post('info-sheet', [StudentInfoSheetController::class, 'store']);
+        Route::get('info-sheet/pdf', [StudentInfoSheetController::class, 'pdf']);
         Route::get('companies', [StudentInfoSheetController::class, 'companies']);
 
         Route::put('password', [PasswordController::class, 'update']);

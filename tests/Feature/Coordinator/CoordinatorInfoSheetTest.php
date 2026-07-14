@@ -275,6 +275,36 @@ class CoordinatorInfoSheetTest extends TestCase
             ->assertJsonValidationErrors('reason');
     }
 
+    public function test_coordinator_can_download_in_scope_info_sheet_pdf(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        [$student] = $this->submittedSheetStudent($batch);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->get("/api/coordinator/info-sheets/{$student->id}/pdf");
+
+        $response->assertOk();
+        $this->assertSame('application/pdf', $response->headers->get('content-type'));
+    }
+
+    public function test_coordinator_pdf_out_of_scope_returns_403(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+
+        $bsba = $this->programFor('BSBA-FM', 'CABM-B');
+        $otherCoord = $this->coordinatorFor($bsba);
+        $otherBatch = $this->batchFor($bsba, $otherCoord);
+        [$outStudent] = $this->submittedSheetStudent($otherBatch);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->get("/api/coordinator/info-sheets/{$outStudent->id}/pdf")->assertStatus(403);
+    }
+
     public function test_accept_out_of_scope_returns_403(): void
     {
         $bsit = $this->programFor('BSIT', 'CAST');

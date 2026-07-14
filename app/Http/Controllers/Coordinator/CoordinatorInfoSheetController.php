@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Coordinator;
 
+use App\Http\Controllers\Concerns\BuildsInfoSheetPdf;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Coordinator\RejectInfoSheetRequest;
 use App\Models\BatchStudent;
@@ -13,9 +14,12 @@ use App\Models\User;
 use App\Services\EnrollmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class CoordinatorInfoSheetController extends Controller
 {
+    use BuildsInfoSheetPdf;
+
     /**
      * Info sheets whose intended batch is in the coordinator's program scope.
      * This is the Accept/Reject queue — it deliberately includes NOT-yet-
@@ -155,6 +159,20 @@ class CoordinatorInfoSheetController extends Controller
         ]);
 
         return response()->json(['message' => 'Sheet returned to the student.', 'sheet' => $sheet->fresh()]);
+    }
+
+    /**
+     * Download an in-scope student's info sheet as the official MDC PDF.
+     */
+    public function pdf(Request $request, User $student): Response
+    {
+        abort_unless($student->role === 'student', 404);
+        $this->assertInScope($request->user(), $student);
+
+        $sheet = StudentInformationSheet::where('student_id', $student->id)->latest('id')->first();
+        abort_if($sheet === null, 404, 'This student has no information sheet yet.');
+
+        return $this->renderInfoSheetPdf($sheet, $student);
     }
 
     /**

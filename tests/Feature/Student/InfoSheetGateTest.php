@@ -115,6 +115,17 @@ class InfoSheetGateTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_student_can_download_their_info_sheet_pdf(): void
+    {
+        [$student] = $this->studentWithSheet('submitted');
+        Sanctum::actingAs($student, ['*']);
+
+        $response = $this->get('/api/student/info-sheet/pdf');
+
+        $response->assertOk();
+        $this->assertSame('application/pdf', $response->headers->get('content-type'));
+    }
+
     public function test_rejected_sheet_can_be_edited_and_resubmitted(): void
     {
         [$student, , $sheet] = $this->studentWithSheet('rejected');

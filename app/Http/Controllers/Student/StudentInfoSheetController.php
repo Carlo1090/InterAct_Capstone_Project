@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Student;
 
+use App\Http\Controllers\Concerns\BuildsInfoSheetPdf;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Student\Concerns\ResolvesStudentEnrollment;
 use App\Http\Requests\Student\StoreInfoSheetRequest;
@@ -10,9 +11,11 @@ use App\Models\Company;
 use App\Models\StudentInformationSheet;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class StudentInfoSheetController extends Controller
 {
+    use BuildsInfoSheetPdf;
     use ResolvesStudentEnrollment;
 
     public function show(Request $request): JsonResponse
@@ -138,5 +141,18 @@ class StudentInfoSheetController extends Controller
         return response()->json(
             Company::where('is_active', true)->orderBy('name')->get(['id', 'name'])
         );
+    }
+
+    /**
+     * Download the student's own information sheet as the official MDC PDF.
+     */
+    public function pdf(Request $request): Response
+    {
+        $user = $request->user();
+        $sheet = StudentInformationSheet::where('student_id', $user->id)->latest('id')->first();
+
+        abort_if($sheet === null, 404, 'You have not started your information sheet yet.');
+
+        return $this->renderInfoSheetPdf($sheet, $user);
     }
 }

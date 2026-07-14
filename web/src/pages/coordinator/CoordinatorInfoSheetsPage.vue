@@ -81,6 +81,11 @@ const closeDetail = () => {
   detail.value = null
 }
 
+const downloadPdf = () => {
+  if (!detail.value?.student) return
+  window.open(`/api/coordinator/info-sheets/${detail.value.student.id}/pdf`, '_blank')
+}
+
 const accept = async () => {
   const student = detail.value?.student
   if (!student) return
@@ -220,7 +225,10 @@ onMounted(load)
               :class="statusClass(detailStatus)"
             >{{ statusLabel(detailStatus) }}</span>
           </div>
-          <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeDetail">Close</button>
+          <div class="flex items-center gap-3">
+            <button v-if="detail?.sheet" type="button" class="text-sm font-semibold text-blue-700 hover:text-blue-900" @click="downloadPdf">Download PDF</button>
+            <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeDetail">Close</button>
+          </div>
         </div>
 
         <p v-if="isDetailLoading" class="mt-5 text-sm text-slate-500">Loading...</p>

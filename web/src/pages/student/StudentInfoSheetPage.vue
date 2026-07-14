@@ -60,6 +60,12 @@ const onCompanyChange = () => {
   ojtInfo.host_company = picked?.name ?? ''
 }
 
+// A saved sheet (draft or beyond) can be downloaded as the official MDC PDF.
+const canDownload = computed(() => submissionStatus.value !== null)
+const downloadPdf = () => {
+  window.open('/api/student/info-sheet/pdf', '_blank')
+}
+
 const loadInfoSheet = async () => {
   isLoading.value = true
   errorMessage.value = ''
@@ -140,6 +146,16 @@ onMounted(loadInfoSheet)
     </div>
     <div v-else class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
       Complete this Student Information Sheet and submit it. Your coordinator reviews it and, once accepted, you'll be enrolled and gain full access.
+    </div>
+
+    <div v-if="canDownload" class="flex justify-end">
+      <button
+        type="button"
+        class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+        @click="downloadPdf"
+      >
+        Download PDF
+      </button>
     </div>
 
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
