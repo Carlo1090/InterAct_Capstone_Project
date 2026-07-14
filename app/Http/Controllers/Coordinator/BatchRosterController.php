@@ -159,6 +159,53 @@ class BatchRosterController extends Controller
         return response()->json($batchStudent->fresh(['student:id,name,email,student_id_number', 'company:id,name', 'supervisor:id,name,email']));
     }
 
+    /**
+     * Mark an active intern's OJT as completed. The BatchStudent saving
+     * hook stamps completed_at, which freezes the student's real-time
+     * journal window at the completion date: reads stay open, writes and
+     * dates after completion lock, and the weekly bundler skips them.
+     */
+    public function complete(Request $request, Batch $batch, BatchStudent $batchStudent): JsonResponse
+    {
+        $this->authorizeBatch($request->user(), $batch);
+        $this->assertRowInBatch($batch, $batchStudent);
+
+        abort_unless($batchStudent->status === 'active', 422, 'Only an active intern can be marked completed.');
+
+        $batchStudent->update(['status' => 'completed']);
+
+        return response()->json($batchStudent->fresh(['student:id,name,email,student_id_number', 'company:id,name', 'supervisor:id,name,email']));
+    }
+
+    /**
+     * Undo a completion: flip the row back to 'active' (the saving hook
+     * clears completed_at), reopening the student's journal window.
+     * Blocked if the student already has an active enrollment elsewhere —
+     * same one-active-enrollment constraint reactivate() enforces.
+     */
+    public function reopen(Request $request, Batch $batch, BatchStudent $batchStudent): JsonResponse
+    {
+        $this->authorizeBatch($request->user(), $batch);
+        $this->assertRowInBatch($batch, $batchStudent);
+
+        abort_unless($batchStudent->status === 'completed', 422, 'Only a completed record can be reopened.');
+
+        $activeElsewhere = BatchStudent::where('student_id', $batchStudent->student_id)
+            ->where('status', 'active')
+            ->with('batch:id,name')
+            ->first();
+
+        if ($activeElsewhere) {
+            return response()->json([
+                'message' => "This student is already active in \"{$activeElsewhere->batch?->name}\". Resolve that enrollment before reopening this completed record.",
+            ], 422);
+        }
+
+        $batchStudent->update(['status' => 'active']);
+
+        return response()->json($batchStudent->fresh(['student:id,name,email,student_id_number', 'company:id,name', 'supervisor:id,name,email']));
+    }
+
     private function authorizeBatch(User $coordinator, Batch $batch): void
     {
         abort_unless(

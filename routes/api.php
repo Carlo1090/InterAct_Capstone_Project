@@ -116,6 +116,8 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::post('batches/{batch}/roster', [BatchRosterController::class, 'add']);
         Route::patch('batches/{batch}/roster/{batchStudent}/drop', [BatchRosterController::class, 'remove']);
         Route::patch('batches/{batch}/roster/{batchStudent}/reactivate', [BatchRosterController::class, 'reactivate']);
+        Route::patch('batches/{batch}/roster/{batchStudent}/complete', [BatchRosterController::class, 'complete']);
+        Route::patch('batches/{batch}/roster/{batchStudent}/reopen', [BatchRosterController::class, 'reopen']);
         Route::delete('batches/{batch}/roster/{batchStudent}', [BatchRosterController::class, 'destroy']);
 
         Route::get('users/interns', [EnrollmentController::class, 'interns']);
