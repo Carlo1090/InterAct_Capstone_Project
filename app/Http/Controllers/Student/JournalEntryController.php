@@ -41,7 +41,7 @@ class JournalEntryController extends Controller
     public function show(Request $request, string $date): JsonResponse
     {
         $user = $request->user();
-        $enrollment = $this->activeEnrollment($user->id);
+        $enrollment = $this->currentEnrollment($user->id);
 
         if (! $enrollment) {
             return response()->json(['message' => 'You are not currently enrolled in an active OJT batch.'], 422);
@@ -122,7 +122,7 @@ class JournalEntryController extends Controller
     public function pdf(Request $request, string $date): Response
     {
         $user = $request->user();
-        $enrollment = $this->activeEnrollment($user->id);
+        $enrollment = $this->currentEnrollment($user->id);
 
         if (! $enrollment) {
             return response()->json(['message' => 'You are not currently enrolled in an active OJT batch.'], 422);
@@ -179,15 +179,22 @@ class JournalEntryController extends Controller
         ];
     }
 
+    /**
+     * A date is writable only while the enrollment is still active (a
+     * completed/dropped student reads but never writes), and only for
+     * dates inside the real-time window: batch start .. today.
+     */
     private function isEditableDate(Carbon $date, BatchStudent $enrollment): bool
     {
+        if ($enrollment->status !== 'active') {
+            return false;
+        }
+
         if ($date->isAfter(today())) {
             return false;
         }
 
-        $range = $this->ojtRange($enrollment);
-
-        return $date->between($range['start'], $range['end']);
+        return $date->greaterThanOrEqualTo($this->ojtRange($enrollment)['start']);
     }
 
     private function wordCount(array $content): int

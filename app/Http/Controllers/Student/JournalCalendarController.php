@@ -18,7 +18,7 @@ class JournalCalendarController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
-        $enrollment = $this->activeEnrollment($user->id);
+        $enrollment = $this->currentEnrollment($user->id);
 
         if (! $enrollment) {
             return response()->json(['message' => 'You are not currently enrolled in an active OJT batch.'], 422);
