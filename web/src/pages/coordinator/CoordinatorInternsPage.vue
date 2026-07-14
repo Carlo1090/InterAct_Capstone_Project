@@ -116,11 +116,29 @@ const accountMessage = ref('')
 
 const accountForm = reactive({
   name: '',
-  email: '',
+  username: '',
   password: '',
   program_id: null as number | null,
+  batch_id: null as number | null,
   student_id_number: '',
 })
+
+// Intended batch is scoped to the pre-set program — the coordinator picks a
+// program first, then a batch belonging to it.
+const accountBatchOptions = computed(() =>
+  accountForm.program_id
+    ? (enrollmentOptions.value.batches ?? []).filter((batch) => batch.program_id === accountForm.program_id)
+    : [],
+)
+
+watch(
+  () => accountForm.program_id,
+  () => {
+    if (!accountBatchOptions.value.some((batch) => batch.id === accountForm.batch_id)) {
+      accountForm.batch_id = null
+    }
+  },
+)
 
 // --- Create Supervisor (Supervisors tab only — REQUIRES a company) ----------
 const isSupervisorModalOpen = ref(false)
@@ -226,9 +244,10 @@ const submitEnrollment = async () => {
 
 const openAccountModal = async () => {
   accountForm.name = ''
-  accountForm.email = ''
+  accountForm.username = ''
   accountForm.password = ''
   accountForm.program_id = null
+  accountForm.batch_id = null
   accountForm.student_id_number = ''
   accountErrors.value = {}
   accountMessage.value = ''
@@ -249,9 +268,10 @@ const submitAccount = async () => {
     await api.post('/api/coordinator/accounts', {
       role: 'student',
       name: accountForm.name,
-      email: accountForm.email,
+      username: accountForm.username,
       password: accountForm.password,
       program_id: accountForm.program_id,
+      batch_id: accountForm.batch_id,
       ...(accountForm.student_id_number ? { student_id_number: accountForm.student_id_number } : {}),
     })
     closeAccountModal()
@@ -577,7 +597,7 @@ onMounted(() => {
         <div class="flex items-center justify-between">
           <div>
             <h3 class="text-lg font-semibold text-slate-950">Create Student Account</h3>
-            <p class="mt-0.5 text-xs text-slate-500">Creates a login only. Enroll the student separately to place them into a batch.</p>
+            <p class="mt-0.5 text-xs text-slate-500">Creates a login with a pre-set program + intended batch. The student completes their Info Sheet, then you Accept it to enroll them.</p>
           </div>
           <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeAccountModal">Cancel</button>
         </div>
@@ -588,8 +608,9 @@ onMounted(() => {
             <input id="acct-name" v-model="accountForm.name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </div>
           <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-email">Email</label>
-            <input id="acct-email" v-model="accountForm.email" type="email" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-username">Username</label>
+            <input id="acct-username" v-model="accountForm.username" type="text" autocomplete="off" placeholder="e.g. 2021-IT-001" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <p class="mt-1 text-xs text-slate-500">The student signs in with this. Letters, numbers, dots, dashes and underscores.</p>
           </div>
           <div>
             <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-password">Password (min 8)</label>
@@ -603,6 +624,20 @@ onMounted(() => {
                 {{ program.code ?? program.name }}
               </option>
             </select>
+          </div>
+          <div>
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-batch">Batch</label>
+            <select
+              id="acct-batch"
+              v-model.number="accountForm.batch_id"
+              class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+              :disabled="!accountForm.program_id"
+            >
+              <option :value="null">Select Batch</option>
+              <option v-for="batch in accountBatchOptions" :key="batch.id" :value="batch.id">{{ batch.name }}</option>
+            </select>
+            <p v-if="!accountForm.program_id" class="mt-1 text-xs text-slate-500">Select a program first.</p>
+            <p v-else-if="accountBatchOptions.length === 0" class="mt-1 text-xs text-amber-600">You have no batches for this program yet.</p>
           </div>
           <div>
             <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-sid">Student ID Number (optional)</label>

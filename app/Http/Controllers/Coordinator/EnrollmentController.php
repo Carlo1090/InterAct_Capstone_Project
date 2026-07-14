@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Coordinator\CreateAccountRequest;
 use App\Http\Requests\Coordinator\StoreEnrollmentRequest;
 use App\Http\Requests\Coordinator\UpdateEnrollmentRequest;
+use App\Models\Batch;
 use App\Models\BatchStudent;
 use App\Models\Company;
 use App\Models\CompanySupervisor;
 use App\Models\Program;
+use App\Models\StudentInformationSheet;
 use App\Models\StudentProfile;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -63,10 +65,18 @@ class EnrollmentController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'code']);
 
+        // The coordinator's own batches (the set they may enroll into), carrying
+        // program_id so the Create-Account form can filter the Batch dropdown by
+        // the selected program.
+        $batches = $request->user()->batchesCoordinated()
+            ->orderByDesc('start_date')
+            ->get(['id', 'name', 'program_id']);
+
         return response()->json([
             'companies' => $companies,
             'supervisors' => $supervisors,
             'programs' => $programs,
+            'batches' => $batches,
         ]);
     }
 
@@ -182,27 +192,41 @@ class EnrollmentController extends Controller
 
     /**
      * Create a student OR supervisor login account (role restricted to those
-     * two only). This is NOT enrollment — a created student still needs to be
-     * enrolled into a batch (company + supervisor) via store(). Mirrors
-     * Admin\UserController::store for the lean create.
+     * two only), using USERNAME credentials (email is parked, not collected).
+     *
+     * This is account creation, NOT enrollment. For a student the coordinator
+     * pre-sets a program + intended batch, which is recorded as a DRAFT info
+     * sheet (its batch_id = the intended batch). The real batch_students
+     * placement is realized only when the coordinator ACCEPTS the student's
+     * submitted sheet — so a freshly-created student is NOT-ENROLLED.
      */
     public function createAccount(CreateAccountRequest $request): JsonResponse
     {
         $validated = $request->validated();
 
-        // A student account is only useful in-scope, so a supplied program must
-        // belong to the coordinator's department(s).
-        if ($validated['role'] === 'student' && ! empty($validated['program_id'])) {
+        $intendedBatch = null;
+
+        if ($validated['role'] === 'student') {
+            // A student account is only useful in-scope, so the program must
+            // belong to the coordinator's department(s).
             abort_unless(
                 $request->user()->coordinatorProgramIds()->contains((int) $validated['program_id']),
                 422,
                 'That program is outside your assigned department(s).'
             );
+
+            // The intended batch must belong to the pre-set program (it is
+            // already constrained to the coordinator's own batches by the request).
+            $intendedBatch = Batch::where('id', $validated['batch_id'])
+                ->where('program_id', $validated['program_id'])
+                ->first();
+
+            abort_unless($intendedBatch !== null, 422, 'The selected batch does not belong to that program.');
         }
 
         $user = User::create([
             'name' => $validated['name'],
-            'email' => $validated['email'],
+            'username' => $validated['username'],
             'password' => Hash::make($validated['password']),
             'role' => $validated['role'],
             'program_id' => $validated['role'] === 'student' ? ($validated['program_id'] ?? null) : null,
@@ -215,9 +239,42 @@ class EnrollmentController extends Controller
                 ['user_id' => $user->id],
                 ['student_id_number' => $user->student_id_number],
             );
+
+            $this->scaffoldIntendedSheet($user, $intendedBatch);
         }
 
-        return response()->json($user->only(['id', 'name', 'email', 'role', 'is_active']), 201);
+        return response()->json($user->only(['id', 'name', 'username', 'role', 'is_active']), 201);
+    }
+
+    /**
+     * Record the coordinator's intended placement as a DRAFT info sheet whose
+     * batch_id is the intended batch — the single home for "intended batch
+     * before Accept". Program/department/coordinator are pre-filled from the
+     * batch so the student's gated info-sheet form opens partly populated; the
+     * student supplies the rest and chooses their company from the dropdown.
+     */
+    private function scaffoldIntendedSheet(User $student, Batch $batch): void
+    {
+        $batch->loadMissing(['program.department', 'coordinator']);
+        [$firstName, $lastName] = array_pad(explode(' ', trim($student->name), 2), 2, '');
+
+        StudentInformationSheet::create([
+            'student_id' => $student->id,
+            'batch_id' => $batch->id,
+            'submission_status' => 'draft',
+            'personal_info' => [
+                'last_name' => $lastName,
+                'first_name' => $firstName,
+                'student_id_number' => $student->student_id_number,
+            ],
+            'academic_info' => [
+                'program_course' => $batch->program?->name,
+                'department' => $batch->program?->department?->name,
+                'internship_coordinator' => $batch->coordinator?->name,
+            ],
+            'ojt_info' => [],
+            'emergency_contact' => null,
+        ]);
     }
 
     /**

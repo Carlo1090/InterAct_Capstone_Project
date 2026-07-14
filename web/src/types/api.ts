@@ -98,10 +98,17 @@ export type EnrollmentOptionProgram = {
   code?: string
 }
 
+export type EnrollmentOptionBatch = {
+  id: number
+  name: string
+  program_id: number
+}
+
 export type EnrollmentOptions = {
   companies: EnrollmentOptionCompany[]
   supervisors: EnrollmentOptionSupervisor[]
   programs?: EnrollmentOptionProgram[]
+  batches?: EnrollmentOptionBatch[]
 }
 
 export type CoordinatorInternUser = {
