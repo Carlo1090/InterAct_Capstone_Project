@@ -99,6 +99,8 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
 
         Route::get('info-sheets', [CoordinatorInfoSheetController::class, 'index']);
         Route::get('info-sheets/{student}', [CoordinatorInfoSheetController::class, 'show']);
+        Route::post('info-sheets/{student}/accept', [CoordinatorInfoSheetController::class, 'accept']);
+        Route::post('info-sheets/{student}/reject', [CoordinatorInfoSheetController::class, 'reject']);
 
         Route::get('journal-templates', [JournalTemplateController::class, 'index']);
         Route::post('journal-templates', [JournalTemplateController::class, 'store']);

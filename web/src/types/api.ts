@@ -632,14 +632,16 @@ export type CoordinatorInfoSheetRow = {
   program: string
   company: string
   info_sheet_id: number | null
-  submission_status: string | null
+  submission_status: InfoSheetStatus | null
+  submitted_at?: string | null
 }
 
 export type CoordinatorInfoSheetDetail = {
   student: { id: number; name: string; email: string }
   sheet: {
     id: number
-    submission_status: string | null
+    submission_status: InfoSheetStatus | null
+    rejection_reason?: string | null
     submitted_at: string | null
     personal_info: Record<string, unknown> | null
     academic_info: Record<string, unknown> | null

@@ -5,6 +5,7 @@ namespace Tests\Feature\Coordinator;
 use App\Models\Batch;
 use App\Models\BatchStudent;
 use App\Models\Company;
+use App\Models\CompanySupervisor;
 use App\Models\Department;
 use App\Models\Program;
 use App\Models\StudentInformationSheet;
@@ -142,5 +143,151 @@ class CoordinatorInfoSheetTest extends TestCase
         Sanctum::actingAs($coordinator, ['*']);
 
         $this->getJson("/api/coordinator/info-sheets/{$outStudent->id}")->assertStatus(403);
+    }
+
+    /**
+     * A NOT-yet-enrolled student with a submitted sheet pointing at an in-scope
+     * batch, plus a chosen company that has a supervisor attached.
+     *
+     * @return array{0: User, 1: Company}
+     */
+    private function submittedSheetStudent(Batch $batch): array
+    {
+        $company = Company::create(['name' => 'Chosen Co '.uniqid(), 'address' => 'Tagbilaran', 'is_active' => true]);
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+        CompanySupervisor::create(['company_id' => $company->id, 'user_id' => $supervisor->id, 'position' => 'Head']);
+
+        $student = User::factory()->create(['role' => 'student']);
+        StudentInformationSheet::create([
+            'student_id' => $student->id,
+            'batch_id' => $batch->id,
+            'personal_info' => ['first_name' => 'Ana', 'last_name' => 'Cruz'],
+            'academic_info' => ['program_course' => 'BSIT'],
+            'ojt_info' => ['company_id' => $company->id, 'host_company' => $company->name, 'area_assigned' => 'Finance'],
+            'submission_status' => 'submitted',
+            'submitted_at' => now(),
+        ]);
+
+        return [$student, $company];
+    }
+
+    public function test_accept_enrolls_student_and_approves_sheet(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        [$student, $company] = $this->submittedSheetStudent($batch);
+
+        // Precondition: not enrolled yet.
+        $this->assertDatabaseMissing('batch_students', ['student_id' => $student->id]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson("/api/coordinator/info-sheets/{$student->id}/accept")->assertOk();
+
+        // The Accept realized the placement into the pre-set batch + chosen company.
+        $this->assertDatabaseHas('batch_students', [
+            'student_id' => $student->id,
+            'batch_id' => $batch->id,
+            'company_id' => $company->id,
+            'status' => 'active',
+        ]);
+        $this->assertDatabaseHas('student_information_sheets', [
+            'student_id' => $student->id,
+            'submission_status' => 'approved',
+        ]);
+        // Gate has lifted.
+        $this->assertFalse($student->fresh()->isInfoSheetGated());
+    }
+
+    public function test_accept_is_idempotent_once_approved(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        [$student] = $this->submittedSheetStudent($batch);
+
+        Sanctum::actingAs($coordinator, ['*']);
+        $this->postJson("/api/coordinator/info-sheets/{$student->id}/accept")->assertOk();
+
+        // Re-accepting an already-approved sheet is rejected, and no second
+        // enrollment row is created.
+        $this->postJson("/api/coordinator/info-sheets/{$student->id}/accept")->assertStatus(422);
+        $this->assertSame(1, BatchStudent::where('student_id', $student->id)->count());
+    }
+
+    public function test_accept_requires_company_supervisor(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+
+        // Chosen company with NO supervisor attached.
+        $company = Company::create(['name' => 'No Sup Co', 'address' => 'A', 'is_active' => true]);
+        $student = User::factory()->create(['role' => 'student']);
+        StudentInformationSheet::create([
+            'student_id' => $student->id,
+            'batch_id' => $batch->id,
+            'personal_info' => ['first_name' => 'X'],
+            'academic_info' => [],
+            'ojt_info' => ['company_id' => $company->id, 'host_company' => $company->name],
+            'submission_status' => 'submitted',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson("/api/coordinator/info-sheets/{$student->id}/accept")->assertStatus(422);
+        $this->assertDatabaseMissing('batch_students', ['student_id' => $student->id]);
+    }
+
+    public function test_reject_sets_rejected_with_reason(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        [$student] = $this->submittedSheetStudent($batch);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson("/api/coordinator/info-sheets/{$student->id}/reject", [
+            'reason' => 'Company address is missing.',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('student_information_sheets', [
+            'student_id' => $student->id,
+            'submission_status' => 'rejected',
+            'rejection_reason' => 'Company address is missing.',
+        ]);
+        $this->assertDatabaseMissing('batch_students', ['student_id' => $student->id]);
+    }
+
+    public function test_reject_requires_a_reason(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        [$student] = $this->submittedSheetStudent($batch);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson("/api/coordinator/info-sheets/{$student->id}/reject", ['reason' => ''])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('reason');
+    }
+
+    public function test_accept_out_of_scope_returns_403(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+
+        $bsba = $this->programFor('BSBA-FM', 'CABM-B');
+        $otherCoord = $this->coordinatorFor($bsba);
+        $otherBatch = $this->batchFor($bsba, $otherCoord);
+        [$outStudent] = $this->submittedSheetStudent($otherBatch);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson("/api/coordinator/info-sheets/{$outStudent->id}/accept")->assertStatus(403);
+        $this->assertDatabaseMissing('batch_students', ['student_id' => $outStudent->id]);
     }
 }

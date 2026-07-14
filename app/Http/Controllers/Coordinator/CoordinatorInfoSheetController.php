@@ -3,68 +3,82 @@
 namespace App\Http\Controllers\Coordinator;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Coordinator\RejectInfoSheetRequest;
 use App\Models\BatchStudent;
+use App\Models\Company;
+use App\Models\CompanySupervisor;
+use App\Models\Program;
 use App\Models\StudentInformationSheet;
 use App\Models\User;
+use App\Services\EnrollmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 
 class CoordinatorInfoSheetController extends Controller
 {
     /**
-     * Read-only list of the coordinator's students and their latest info-sheet
-     * submission status. Scoped to students enrolled in the coordinator's
-     * department programs.
+     * Info sheets whose intended batch is in the coordinator's program scope.
+     * This is the Accept/Reject queue — it deliberately includes NOT-yet-
+     * enrolled students (whose sheet points at an in-scope batch), which the
+     * old enrollment-only scoping could never surface. Filters: status
+     * (draft|submitted|approved|rejected), program_id (403 out of scope),
+     * search by name.
      */
     public function index(Request $request): JsonResponse
     {
-        $studentIds = $this->scopedStudentIds($request->user());
+        $coordinator = $request->user();
+        $programIds = $coordinator->coordinatorProgramIds();
 
-        $students = User::whereIn('id', $studentIds)
-            ->where('role', 'student')
-            ->with(['program:id,code,name', 'batchEnrollment.company:id,name'])
+        if ($request->filled('program_id')) {
+            $requested = $request->integer('program_id');
+            abort_unless($programIds->contains($requested), 403, 'That program is outside your assigned department(s).');
+            $programIds = collect([$requested]);
+        }
+
+        $sheets = StudentInformationSheet::whereHas('batch', fn ($query) => $query->whereIn('program_id', $programIds))
+            ->when(
+                $request->filled('status'),
+                fn ($query) => $query->where('submission_status', $request->string('status'))
+            )
             ->when(
                 $request->filled('search'),
-                fn ($query) => $query->where('name', 'like', '%'.$request->string('search').'%')
+                fn ($query) => $query->whereHas('student', fn ($q) => $q->where('name', 'like', '%'.$request->string('search').'%'))
             )
-            ->orderBy('name')
+            ->with(['student:id,name,student_id_number', 'batch.program:id,code,name'])
+            ->orderByRaw("CASE submission_status WHEN 'submitted' THEN 0 WHEN 'rejected' THEN 1 WHEN 'draft' THEN 2 ELSE 3 END")
+            ->orderByDesc('submitted_at')
             ->get();
 
-        $latestSheetByStudent = StudentInformationSheet::whereIn('student_id', $students->pluck('id'))
-            ->orderByDesc('id')
-            ->get(['id', 'student_id', 'submission_status'])
-            ->unique('student_id')
-            ->keyBy('student_id');
-
-        $rows = $students->map(function (User $student) use ($latestSheetByStudent) {
-            $sheet = $latestSheetByStudent->get($student->id);
+        $rows = $sheets->map(function (StudentInformationSheet $sheet) {
+            $program = $sheet->batch?->program;
 
             return [
-                'student_id' => $student->id,
-                'name' => $student->name,
-                'student_id_number' => $student->student_id_number,
-                'program' => $student->program?->code ?? $student->program?->name ?? '',
-                'company' => $student->batchEnrollment?->company?->name ?? '',
-                'info_sheet_id' => $sheet?->id,
-                'submission_status' => $sheet?->submission_status,
+                'info_sheet_id' => $sheet->id,
+                'student_id' => $sheet->student_id,
+                'name' => $sheet->student?->name ?? '',
+                'student_id_number' => $sheet->student?->student_id_number,
+                'program' => $program?->code ?? $program?->name ?? '',
+                'company' => $sheet->ojt_info['host_company'] ?? '',
+                'submission_status' => $sheet->submission_status,
+                'submitted_at' => $sheet->submitted_at?->toIso8601String(),
             ];
         })->values();
 
-        return response()->json(['students' => $rows]);
+        return response()->json([
+            'students' => $rows,
+            'programs' => Program::whereIn('id', $coordinator->coordinatorProgramIds())
+                ->orderBy('name')
+                ->get(['id', 'name', 'code']),
+        ]);
     }
 
     /**
-     * Read-only view of one in-scope student's latest info sheet.
+     * One in-scope student's latest info sheet (full read-only document view).
      */
     public function show(Request $request, User $student): JsonResponse
     {
         abort_unless($student->role === 'student', 404);
-        abort_unless(
-            $this->scopedStudentIds($request->user())->contains($student->id),
-            403,
-            'This student is not in your scope.'
-        );
+        $this->assertInScope($request->user(), $student);
 
         $sheet = StudentInformationSheet::where('student_id', $student->id)->latest('id')->first();
 
@@ -75,15 +89,91 @@ class CoordinatorInfoSheetController extends Controller
     }
 
     /**
-     * Student IDs enrolled (via batch_students) in the coordinator's programs.
+     * ACCEPT = enroll. Realizes the intended placement: an active batch_students
+     * row for the sheet's pre-set batch + the student's chosen company + that
+     * company's supervisor, then marks the sheet approved (which lifts the
+     * student's info-sheet gate).
      */
-    private function scopedStudentIds(User $coordinator): Collection
+    public function accept(Request $request, User $student, EnrollmentService $enrollments): JsonResponse
+    {
+        abort_unless($student->role === 'student', 404);
+        $this->assertInScope($request->user(), $student);
+
+        $sheet = StudentInformationSheet::where('student_id', $student->id)->latest('id')->first();
+
+        abort_if($sheet === null || $sheet->submission_status !== 'submitted', 422, 'Only a submitted information sheet can be accepted.');
+
+        $companyId = $sheet->ojt_info['company_id'] ?? null;
+        $company = $companyId ? Company::find($companyId) : null;
+        abort_if($company === null, 422, 'The student has not selected a valid company on their sheet.');
+
+        // A supervisor is always a Company Supervisor — use the one the
+        // coordinator attached to the chosen company.
+        $supervisorId = CompanySupervisor::where('company_id', $company->id)->value('user_id');
+        abort_if($supervisorId === null, 422, 'The chosen company has no supervisor yet. Add one to the company before accepting.');
+
+        // Idempotent: if already active in this batch, don't create a second row.
+        $alreadyActive = BatchStudent::where('batch_id', $sheet->batch_id)
+            ->where('student_id', $student->id)
+            ->where('status', 'active')
+            ->exists();
+
+        if (! $alreadyActive) {
+            $enrollments->enrollOrReactivate(
+                $sheet->batch_id,
+                $student->id,
+                $company->id,
+                (int) $supervisorId,
+                $sheet->ojt_info['area_assigned'] ?? null,
+            );
+        }
+
+        $sheet->update(['submission_status' => 'approved', 'rejection_reason' => null]);
+
+        return response()->json([
+            'message' => 'Student enrolled.',
+            'sheet' => $sheet->fresh(),
+        ]);
+    }
+
+    /**
+     * REJECT: return the sheet to the student with a reason so they can edit
+     * and resubmit. No enrollment happens.
+     */
+    public function reject(RejectInfoSheetRequest $request, User $student): JsonResponse
+    {
+        abort_unless($student->role === 'student', 404);
+        $this->assertInScope($request->user(), $student);
+
+        $sheet = StudentInformationSheet::where('student_id', $student->id)->latest('id')->first();
+
+        abort_if($sheet === null || $sheet->submission_status !== 'submitted', 422, 'Only a submitted information sheet can be rejected.');
+
+        $sheet->update([
+            'submission_status' => 'rejected',
+            'rejection_reason' => $request->validated()['reason'],
+        ]);
+
+        return response()->json(['message' => 'Sheet returned to the student.', 'sheet' => $sheet->fresh()]);
+    }
+
+    /**
+     * In scope when the student has an info sheet whose batch program is in the
+     * coordinator's scope, OR they are enrolled in one of the coordinator's
+     * programs (backward-compat for directly-enrolled students).
+     */
+    private function assertInScope(User $coordinator, User $student): void
     {
         $programIds = $coordinator->coordinatorProgramIds();
 
-        return BatchStudent::whereHas('batch', fn ($query) => $query->whereIn('program_id', $programIds))
-            ->pluck('student_id')
-            ->unique()
-            ->values();
+        $hasInScopeSheet = StudentInformationSheet::where('student_id', $student->id)
+            ->whereHas('batch', fn ($query) => $query->whereIn('program_id', $programIds))
+            ->exists();
+
+        $enrolledInScope = BatchStudent::where('student_id', $student->id)
+            ->whereHas('batch', fn ($query) => $query->whereIn('program_id', $programIds))
+            ->exists();
+
+        abort_unless($hasInScopeSheet || $enrolledInScope, 403, 'This student is not in your scope.');
     }
 }

@@ -14,6 +14,7 @@ use App\Models\Program;
 use App\Models\StudentInformationSheet;
 use App\Models\StudentProfile;
 use App\Models\User;
+use App\Services\EnrollmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -280,38 +281,29 @@ class EnrollmentController extends Controller
     /**
      * A previously-dropped row for this exact student+batch is REACTIVATED
      * (status flipped back to active, company/supervisor/division refreshed
-     * from this submission) rather than duplicated with a new row.
+     * from this submission) rather than duplicated with a new row — shared with
+     * the info-sheet Accept flow via EnrollmentService.
      */
-    public function store(StoreEnrollmentRequest $request): JsonResponse
+    public function store(StoreEnrollmentRequest $request, EnrollmentService $enrollments): JsonResponse
     {
         $validated = $request->validated();
 
-        $droppedRow = BatchStudent::where('batch_id', $validated['batch_id'])
+        $wasDropped = BatchStudent::where('batch_id', $validated['batch_id'])
             ->where('student_id', $validated['student_id'])
             ->where('status', 'dropped')
-            ->first();
+            ->exists();
 
-        if ($droppedRow) {
-            $droppedRow->update([
-                'company_id' => $validated['company_id'],
-                'supervisor_id' => $validated['supervisor_id'],
-                'assigned_division' => $validated['assigned_division'] ?? null,
-                'status' => 'active',
-            ]);
-
-            return response()->json(
-                $droppedRow->fresh(['batch.program', 'company', 'supervisor', 'student'])
-            );
-        }
-
-        $enrollment = BatchStudent::create([
-            ...$validated,
-            'status' => 'active',
-        ]);
+        $enrollment = $enrollments->enrollOrReactivate(
+            $validated['batch_id'],
+            $validated['student_id'],
+            $validated['company_id'],
+            $validated['supervisor_id'],
+            $validated['assigned_division'] ?? null,
+        );
 
         return response()->json(
-            $enrollment->load(['batch.program', 'company', 'supervisor', 'student']),
-            201
+            $enrollment->fresh(['batch.program', 'company', 'supervisor', 'student']),
+            $wasDropped ? 200 : 201
         );
     }
 
