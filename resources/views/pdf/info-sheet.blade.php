@@ -32,6 +32,9 @@
         td.value { border-bottom: 1px solid #000; }
         td.value.empty { color: #000; }
         .spacer td { padding: 3px 0; border: none; }
+
+        .sketch-label { font-weight: bold; font-size: 12px; margin: 14px 0 4px; }
+        .sketch-box { border: 1px solid #000; width: 100%; height: 35mm; }
     </style>
 </head>
 <body>
@@ -124,5 +127,8 @@
             <td class="value">{{ $fmtDate($ojt['ojt_end_date'] ?? null) }}</td>
         </tr>
     </table>
+
+    <p class="sketch-label">Sketch of Internship Company Location:</p>
+    <div class="sketch-box"></div>
 </body>
 </html>
