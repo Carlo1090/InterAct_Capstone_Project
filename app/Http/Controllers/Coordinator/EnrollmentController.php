@@ -288,9 +288,10 @@ class EnrollmentController extends Controller
     {
         $validated = $request->validated();
 
-        $wasDropped = BatchStudent::where('batch_id', $validated['batch_id'])
+        // Reused-in-place (any prior row for the pair — dropped, completed,
+        // or active) responds 200; a brand-new enrollment row responds 201.
+        $wasReused = BatchStudent::where('batch_id', $validated['batch_id'])
             ->where('student_id', $validated['student_id'])
-            ->where('status', 'dropped')
             ->exists();
 
         $enrollment = $enrollments->enrollOrReactivate(
@@ -303,7 +304,7 @@ class EnrollmentController extends Controller
 
         return response()->json(
             $enrollment->fresh(['batch.program', 'company', 'supervisor', 'student']),
-            $wasDropped ? 200 : 201
+            $wasReused ? 200 : 201
         );
     }
 

@@ -7,6 +7,7 @@ use App\Http\Requests\Coordinator\AddRosterStudentRequest;
 use App\Models\Batch;
 use App\Models\BatchStudent;
 use App\Models\User;
+use App\Services\EnrollmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -46,7 +47,7 @@ class BatchRosterController extends Controller
      *  - if already active in THIS batch, 422;
      *  - otherwise just enroll them active (moved=false).
      */
-    public function add(AddRosterStudentRequest $request, Batch $batch): JsonResponse
+    public function add(AddRosterStudentRequest $request, Batch $batch, EnrollmentService $enrollments): JsonResponse
     {
         $coordinator = $request->user();
         $this->authorizeBatch($coordinator, $batch);
@@ -84,14 +85,16 @@ class BatchRosterController extends Controller
             $moved = true;
         }
 
-        $enrollment = BatchStudent::create([
-            'batch_id' => $batch->id,
-            'student_id' => $student->id,
-            'company_id' => $request->integer('company_id'),
-            'supervisor_id' => $request->integer('supervisor_id'),
-            'assigned_division' => $request->input('assigned_division'),
-            'status' => 'active',
-        ]);
+        // Through the shared service so a prior dropped/completed row for
+        // this exact (batch, student) pair is reconciled in place, never
+        // duplicated (the DB unique index would reject a second row).
+        $enrollment = $enrollments->enrollOrReactivate(
+            $batch->id,
+            $student->id,
+            $request->integer('company_id'),
+            $request->integer('supervisor_id'),
+            $request->input('assigned_division'),
+        );
 
         return response()->json([
             'moved' => $moved,

@@ -216,6 +216,69 @@ class CoordinatorInfoSheetTest extends TestCase
         $this->assertSame(1, BatchStudent::where('student_id', $student->id)->count());
     }
 
+    public function test_re_accept_after_revision_reconciles_the_existing_row_in_place(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        [$student, $oldCompany] = $this->submittedSheetStudent($batch);
+
+        Sanctum::actingAs($coordinator, ['*']);
+        $this->postJson("/api/coordinator/info-sheets/{$student->id}/accept")->assertOk();
+
+        // The student revises the sheet with a different company and
+        // resubmits (reject -> edit -> resubmit flow, condensed).
+        $newCompany = Company::create(['name' => 'Revised Co '.uniqid(), 'address' => 'Tagbilaran', 'is_active' => true]);
+        $newSupervisor = User::factory()->create(['role' => 'supervisor']);
+        CompanySupervisor::create(['company_id' => $newCompany->id, 'user_id' => $newSupervisor->id, 'position' => 'Manager']);
+
+        StudentInformationSheet::where('student_id', $student->id)->latest('id')->first()->update([
+            'ojt_info' => ['company_id' => $newCompany->id, 'host_company' => $newCompany->name, 'area_assigned' => 'Audit'],
+            'submission_status' => 'submitted',
+        ]);
+
+        $this->postJson("/api/coordinator/info-sheets/{$student->id}/accept")->assertOk();
+
+        // Still exactly one row for the pair — reconciled, not duplicated,
+        // and not left stale on the old company.
+        $this->assertSame(1, BatchStudent::where('student_id', $student->id)->where('batch_id', $batch->id)->count());
+        $this->assertDatabaseHas('batch_students', [
+            'student_id' => $student->id,
+            'batch_id' => $batch->id,
+            'company_id' => $newCompany->id,
+            'supervisor_id' => $newSupervisor->id,
+            'assigned_division' => 'Audit',
+            'status' => 'active',
+        ]);
+        $this->assertDatabaseMissing('batch_students', [
+            'student_id' => $student->id,
+            'company_id' => $oldCompany->id,
+        ]);
+    }
+
+    public function test_accept_picks_the_first_attached_supervisor_of_a_multi_supervisor_company(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        [$student, $company] = $this->submittedSheetStudent($batch);
+
+        // A second supervisor attached later must not win the pick.
+        $laterSupervisor = User::factory()->create(['role' => 'supervisor']);
+        CompanySupervisor::create(['company_id' => $company->id, 'user_id' => $laterSupervisor->id, 'position' => 'Assistant']);
+
+        $firstAttached = CompanySupervisor::where('company_id', $company->id)->orderBy('id')->value('user_id');
+
+        Sanctum::actingAs($coordinator, ['*']);
+        $this->postJson("/api/coordinator/info-sheets/{$student->id}/accept")->assertOk();
+
+        $this->assertDatabaseHas('batch_students', [
+            'student_id' => $student->id,
+            'batch_id' => $batch->id,
+            'supervisor_id' => $firstAttached,
+        ]);
+    }
+
     public function test_accept_requires_company_supervisor(): void
     {
         $bsit = $this->programFor('BSIT', 'CAST');

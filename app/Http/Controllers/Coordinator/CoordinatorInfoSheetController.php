@@ -111,26 +111,23 @@ class CoordinatorInfoSheetController extends Controller
         $company = $companyId ? Company::find($companyId) : null;
         abort_if($company === null, 422, 'The student has not selected a valid company on their sheet.');
 
-        // A supervisor is always a Company Supervisor — use the one the
-        // coordinator attached to the chosen company.
-        $supervisorId = CompanySupervisor::where('company_id', $company->id)->value('user_id');
+        // A supervisor is always a Company Supervisor — use the first one
+        // attached to the chosen company (orderBy id = attachment order, so
+        // a multi-supervisor company yields a stable pick, not an arbitrary
+        // one).
+        $supervisorId = CompanySupervisor::where('company_id', $company->id)->orderBy('id')->value('user_id');
         abort_if($supervisorId === null, 422, 'The chosen company has no supervisor yet. Add one to the company before accepting.');
 
-        // Idempotent: if already active in this batch, don't create a second row.
-        $alreadyActive = BatchStudent::where('batch_id', $sheet->batch_id)
-            ->where('student_id', $student->id)
-            ->where('status', 'active')
-            ->exists();
-
-        if (! $alreadyActive) {
-            $enrollments->enrollOrReactivate(
-                $sheet->batch_id,
-                $student->id,
-                $company->id,
-                (int) $supervisorId,
-                $sheet->ojt_info['area_assigned'] ?? null,
-            );
-        }
+        // Always reconcile through the shared service: a re-accept after a
+        // revised sheet updates the existing row's company/supervisor in
+        // place (never a stale placement, never a second row for the pair).
+        $enrollments->enrollOrReactivate(
+            $sheet->batch_id,
+            $student->id,
+            $company->id,
+            (int) $supervisorId,
+            $sheet->ojt_info['area_assigned'] ?? null,
+        );
 
         $sheet->update(['submission_status' => 'approved', 'rejection_reason' => null]);
 
