@@ -125,8 +125,10 @@ class User extends Authenticatable
     /**
      * Whether this student is still behind the info-sheet enrollment gate.
      * The gate lifts once their sheet is approved — or, for legacy/direct
-     * enrollments that predate the intake flow, once they have any active
-     * batch_students row (an already-enrolled student has cleared intake).
+     * enrollments that predate the intake flow, once they have an active
+     * OR completed batch_students row (either proves they cleared intake;
+     * marking a legacy student's OJT completed must not re-gate them and
+     * lock them out of reading their own journals).
      */
     public function isInfoSheetGated(): bool
     {
@@ -138,7 +140,7 @@ class User extends Authenticatable
             return false;
         }
 
-        return ! BatchStudent::where('student_id', $this->id)->where('status', 'active')->exists();
+        return ! BatchStudent::where('student_id', $this->id)->whereIn('status', ['active', 'completed'])->exists();
     }
 
     public function studentProfile(): HasOne

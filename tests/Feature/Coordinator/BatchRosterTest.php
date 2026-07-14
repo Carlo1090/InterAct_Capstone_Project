@@ -319,6 +319,136 @@ class BatchRosterTest extends TestCase
         $this->patchJson("/api/coordinator/batches/{$outBatch->id}/roster/{$row->id}/reactivate")->assertStatus(403);
     }
 
+    public function test_complete_marks_active_row_completed_and_stamps_completed_at(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program->department_id);
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $row = BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'active',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->patchJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}/complete");
+
+        $response->assertOk()->assertJsonPath('status', 'completed');
+        $this->assertNotNull($row->fresh()->completed_at);
+    }
+
+    public function test_complete_rejects_a_non_active_row(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program->department_id);
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $row = BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'dropped',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->patchJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}/complete")->assertStatus(422);
+    }
+
+    public function test_reopen_restores_active_and_clears_completed_at(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program->department_id);
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $row = BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'active',
+        ]);
+        $row->update(['status' => 'completed']);
+        $this->assertNotNull($row->fresh()->completed_at);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->patchJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}/reopen");
+
+        $response->assertOk()->assertJsonPath('status', 'active');
+        $this->assertNull($row->fresh()->completed_at);
+    }
+
+    public function test_reopen_is_blocked_when_student_is_active_elsewhere(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program->department_id);
+        $completedBatch = $this->batchFor($program, $coordinator, 'Completed Batch');
+        $activeBatch = $this->batchFor($program, $coordinator, 'Active Batch');
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $completedRow = BatchStudent::create([
+            'batch_id' => $completedBatch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'completed',
+        ]);
+
+        BatchStudent::create([
+            'batch_id' => $activeBatch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'active',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->patchJson("/api/coordinator/batches/{$completedBatch->id}/roster/{$completedRow->id}/reopen");
+
+        $response->assertStatus(422);
+        $this->assertDatabaseHas('batch_students', ['id' => $completedRow->id, 'status' => 'completed']);
+    }
+
+    public function test_reopen_rejects_a_non_completed_row(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program->department_id);
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $row = BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'active',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->patchJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}/reopen")->assertStatus(422);
+    }
+
     public function test_out_of_scope_batch_and_student_are_forbidden(): void
     {
         $inScope = $this->program('CABM-B', 'BSA');
