@@ -8,6 +8,7 @@ use App\Http\Requests\Student\StoreJournalEntryRequest;
 use App\Models\BatchStudent;
 use App\Models\JournalEntry;
 use App\Models\User;
+use App\Models\WeeklyLog;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -63,6 +64,7 @@ class JournalEntryController extends Controller
             'content' => $entry->content ?? [],
             'submitted_at' => $entry?->submitted_at,
             'editable' => $this->isEditableDate($entryDate, $enrollment),
+            'locked_reason' => $this->lockedReason($entryDate, $enrollment),
             'student_name' => $user->name,
             'program' => $user->program?->name,
             'entry_ordinal' => $position,
@@ -82,6 +84,10 @@ class JournalEntryController extends Controller
         $validated = $request->validated();
         $entryDate = Carbon::parse($validated['entry_date'])->startOfDay();
 
+        if ($this->isBundledWeek($enrollment->student_id, $enrollment->batch_id, $entryDate)) {
+            return response()->json(['message' => 'This week has already been compiled into your Weekly Log and can no longer be edited.'], 422);
+        }
+
         if (! $this->isEditableDate($entryDate, $enrollment)) {
             return response()->json(['message' => 'This date is outside your OJT range or is a future date.'], 422);
         }
@@ -89,10 +95,6 @@ class JournalEntryController extends Controller
         $existing = JournalEntry::where('student_id', $user->id)
             ->whereDate('entry_date', $entryDate)
             ->first();
-
-        if ($existing && $existing->status === 'submitted') {
-            return response()->json(['message' => 'This entry has already been submitted for this date and cannot be changed.'], 422);
-        }
 
         $attributes = [
             'batch_id' => $enrollment->batch_id,
@@ -181,20 +183,53 @@ class JournalEntryController extends Controller
 
     /**
      * A date is writable only while the enrollment is still active (a
-     * completed/dropped student reads but never writes), and only for
-     * dates inside the real-time window: batch start .. today.
+     * completed/dropped student reads but never writes), only for dates
+     * inside the real-time window: batch start .. today, and only until
+     * the week it belongs to has been bundled into a WeeklyLog.
      */
     private function isEditableDate(Carbon $date, BatchStudent $enrollment): bool
     {
+        return $this->lockedReason($date, $enrollment) === null;
+    }
+
+    /**
+     * True once a WeeklyLog row exists for the Mon-Fri week containing this
+     * date, for this student+batch — i.e. WeeklyBundlingService has compiled
+     * this week at least once (via the Saturday-midnight schedule or the
+     * admin on-demand trigger). This is a one-way lock: even if the
+     * resulting WeeklyLog is later returned by a supervisor for revision,
+     * the underlying daily entries stay locked — corrections happen on the
+     * weekly narrative itself, not by reopening daily entries.
+     */
+    private function isBundledWeek(int $studentId, int $batchId, Carbon $date): bool
+    {
+        $monday = $date->copy()->startOfWeek(Carbon::MONDAY);
+
+        return WeeklyLog::where('student_id', $studentId)
+            ->where('batch_id', $batchId)
+            ->whereDate('week_start', $monday->toDateString())
+            ->exists();
+    }
+
+    /**
+     * Which guard is blocking edits, if any — null means editable. Lets the
+     * frontend show the right banner copy instead of one generic message.
+     */
+    private function lockedReason(Carbon $date, BatchStudent $enrollment): ?string
+    {
         if ($enrollment->status !== 'active') {
-            return false;
+            return 'not_active';
         }
 
-        if ($date->isAfter(today())) {
-            return false;
+        if ($date->isAfter(today()) || $date->lessThan($this->ojtRange($enrollment)['start'])) {
+            return 'range';
         }
 
-        return $date->greaterThanOrEqualTo($this->ojtRange($enrollment)['start']);
+        if ($this->isBundledWeek($enrollment->student_id, $enrollment->batch_id, $date)) {
+            return 'bundled';
+        }
+
+        return null;
     }
 
     private function wordCount(array $content): int

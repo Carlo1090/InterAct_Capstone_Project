@@ -2,7 +2,10 @@
 
 namespace Tests\Feature\Student;
 
+use App\Models\BatchStudent;
 use App\Models\JournalEntry;
+use App\Models\WeeklyLog;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\Feature\Student\Concerns\EnrollsStudentInBatch;
@@ -224,7 +227,7 @@ class JournalEntryTest extends TestCase
         $response->assertOk();
     }
 
-    public function test_resubmitting_a_submitted_entry_is_rejected(): void
+    public function test_a_submitted_entry_stays_editable_before_its_week_is_bundled(): void
     {
         $student = $this->enrolledStudent();
         Sanctum::actingAs($student, ['*']);
@@ -240,15 +243,58 @@ class JournalEntryTest extends TestCase
         $response = $this->postJson('/api/student/journal-entries', [
             'entry_date' => $entryDate,
             'status' => 'submitted',
-            'content' => ['task_performed' => 'Trying to change it after submission.'],
+            'content' => ['task_performed' => 'Revised after submission, before bundling.'],
+        ]);
+
+        $response->assertOk();
+        $this->assertDatabaseHas('journal_entries', [
+            'student_id' => $student->id,
+            'content->task_performed' => 'Revised after submission, before bundling.',
+        ]);
+    }
+
+    public function test_a_bundled_week_locks_its_daily_entries(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $entryDate = now()->toDateString();
+
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'First submission.'],
+        ])->assertOk();
+
+        $enrollment = BatchStudent::where('student_id', $student->id)->firstOrFail();
+        $monday = Carbon::parse($entryDate)->startOfWeek(Carbon::MONDAY);
+
+        WeeklyLog::create([
+            'batch_id' => $enrollment->batch_id,
+            'student_id' => $student->id,
+            'week_start' => $monday->toDateString(),
+            'week_end' => $monday->copy()->addDays(4)->toDateString(),
+            'status' => 'pending',
+            'narrative' => 'Compiled narrative.',
+        ]);
+
+        $response = $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'Trying to change it after bundling.'],
         ]);
 
         $response->assertStatus(422);
-        $response->assertJsonPath('message', 'This entry has already been submitted for this date and cannot be changed.');
+        $response->assertJsonPath('message', 'This week has already been compiled into your Weekly Log and can no longer be edited.');
         $this->assertDatabaseHas('journal_entries', [
             'student_id' => $student->id,
             'content->task_performed' => 'First submission.',
         ]);
+
+        $showResponse = $this->getJson("/api/student/journal-entries/{$entryDate}");
+        $showResponse->assertOk();
+        $showResponse->assertJsonPath('editable', false);
+        $showResponse->assertJsonPath('locked_reason', 'bundled');
     }
 
     public function test_draft_can_be_saved_and_overwritten_freely_before_submission(): void

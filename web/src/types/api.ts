@@ -263,6 +263,7 @@ export type JournalEntryDetail = {
   content: Record<string, string>
   submitted_at: string | null
   editable: boolean
+  locked_reason?: 'range' | 'not_active' | 'bundled' | null
   student_name: string
   program: string | null
   entry_ordinal: number

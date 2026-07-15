@@ -21,6 +21,7 @@ const statusMessage = ref('')
 const notEnrolled = ref(false)
 const status = ref<JournalEntryDetail['status']>('draft')
 const editable = ref(true)
+const lockedReason = ref<JournalEntryDetail['locked_reason']>(null)
 const sections = ref<JournalTemplateSection[]>([])
 const charLimit = ref(1500)
 const studentName = ref('')
@@ -87,6 +88,7 @@ const load = async () => {
     charLimit.value = data.char_limit
     status.value = data.status
     editable.value = data.editable
+    lockedReason.value = data.locked_reason
     studentName.value = data.student_name
     programName.value = data.program
     entryOrdinalLabel.value = data.entry_ordinal_label
@@ -115,11 +117,6 @@ const load = async () => {
       }
     })
 
-    // A submitted entry is final (one submission per date) — always land on
-    // the read-only document view, never the form.
-    if (data.status === 'submitted') {
-      isViewMode.value = true
-    }
   } catch (error) {
     if (isNotEnrolledError(error)) {
       notEnrolled.value = true
@@ -132,11 +129,11 @@ const load = async () => {
 }
 
 const save = async (nextStatus: 'draft' | 'submitted') => {
-  // Submission is final (the server rejects any later change for the date),
-  // so it gets the confirm-first treatment like other irreversible actions.
+  // Submitting still locks the entry once its week is bundled, so it keeps
+  // the confirm-first treatment even though it's no longer immediately final.
   if (
     nextStatus === 'submitted' &&
-    !confirmAction('Submit this journal entry? Once submitted, it can no longer be changed for this date.')
+    !confirmAction('Submit this journal entry? You can still edit it until this week is compiled into your Weekly Log.')
   ) {
     return
   }
@@ -178,9 +175,10 @@ const openDocumentView = () => {
   isViewMode.value = true
 }
 
-// The document view is directly editable until the entry is submitted
-// (and only within the OJT date range, same as the form fields).
-const paperEditable = computed(() => status.value !== 'submitted' && editable.value)
+// The document view is directly editable for as long as the server says
+// so — within the OJT date range AND before this week gets bundled into
+// the student's Weekly Log. Submission status no longer locks it.
+const paperEditable = computed(() => editable.value)
 
 const downloadPdf = () => {
   window.open(`/api/student/journal-entries/${entryDate.value}/pdf`, '_blank')
@@ -205,10 +203,16 @@ onMounted(load)
 
     <template v-else-if="isViewMode">
       <div
-        v-if="status === 'submitted'"
+        v-if="lockedReason === 'bundled'"
         class="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700"
       >
-        Submitted for this date — entries cannot be changed after submission.
+        This week has already been compiled into your Weekly Log — daily entries for this week can no longer be edited.
+      </div>
+      <div
+        v-else-if="status === 'submitted'"
+        class="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800"
+      >
+        Submitted — you can still edit this entry until your weekly log for this week is compiled.
       </div>
 
       <div class="flex flex-wrap items-center justify-end gap-3">
@@ -227,7 +231,7 @@ onMounted(load)
           Download PDF
         </button>
         <button
-          v-if="status !== 'submitted'"
+          v-if="editable"
           type="button"
           class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
           @click="backToEditor"
@@ -271,7 +275,8 @@ onMounted(load)
     <template v-else>
       <div class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
         Writing journal for <strong>{{ entryDate }}</strong>.
-        <span v-if="!editable"> This date can no longer be edited (future date or outside your OJT range).</span>
+        <span v-if="lockedReason === 'bundled'"> This week's entries have already been compiled into your Weekly Log and can no longer be edited.</span>
+        <span v-else-if="!editable"> This date can no longer be edited (future date or outside your OJT range).</span>
       </div>
 
     <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
