@@ -226,6 +226,7 @@ watch(
 )
 
 const activeRoster = computed(() => rosterRows.value.filter((row) => row.status === 'active'))
+const completedRoster = computed(() => rosterRows.value.filter((row) => row.status === 'completed'))
 const droppedRoster = computed(() => rosterRows.value.filter((row) => row.status === 'dropped'))
 const activeStudentIds = computed(() => activeRoster.value.map((row) => row.student.id))
 
@@ -352,6 +353,56 @@ const deleteIntern = async (row: BatchRosterRow) => {
     showToast('Record deleted.')
   } catch {
     rosterMessage.value = 'Unable to delete this record.'
+  }
+}
+
+const completeIntern = async (row: BatchRosterRow) => {
+  if (!rosterBatch.value) return
+  if (
+    !confirmAction(
+      `Mark ${row.student.name}'s OJT as COMPLETED? Their journal window freezes today: ` +
+        `they can still view and download everything, but new journal dates will be locked. You can reopen this later.`,
+    )
+  )
+    return
+
+  rosterMessage.value = ''
+  try {
+    await api.patch(`/api/coordinator/batches/${rosterBatch.value.id}/roster/${row.id}/complete`)
+    await loadRoster(rosterBatch.value.id)
+    await load()
+    showToast('Intern marked completed.')
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 422) {
+      rosterMessage.value = error.response.data.message ?? 'Unable to mark this intern completed.'
+    } else {
+      rosterMessage.value = 'Unable to mark this intern completed.'
+    }
+  }
+}
+
+const reopenIntern = async (row: BatchRosterRow) => {
+  if (!rosterBatch.value) return
+  if (
+    !confirmAction(
+      `Reopen ${row.student.name}'s completed OJT in "${rosterBatch.value.name}"? ` +
+        `They'll be active again and their journal window resumes rolling forward.`,
+    )
+  )
+    return
+
+  rosterMessage.value = ''
+  try {
+    await api.patch(`/api/coordinator/batches/${rosterBatch.value.id}/roster/${row.id}/reopen`)
+    await loadRoster(rosterBatch.value.id)
+    await load()
+    showToast('Intern reopened (active again).')
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 422) {
+      rosterMessage.value = error.response.data.message ?? 'Unable to reopen this record.'
+    } else {
+      rosterMessage.value = 'Unable to reopen this record.'
+    }
   }
 }
 
@@ -634,8 +685,45 @@ onMounted(load)
                     <td class="px-3 py-2 text-slate-600">{{ row.company?.name ?? '—' }}</td>
                     <td class="px-3 py-2 text-slate-600">{{ row.supervisor?.name ?? '—' }}</td>
                     <td class="px-3 py-2 text-right">
+                      <button type="button" class="mr-2 rounded-md border border-blue-600 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50" @click="completeIntern(row)">
+                        Mark Completed
+                      </button>
                       <button type="button" class="rounded-md border border-amber-500 px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-50" @click="removeIntern(row)">
                         Remove
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Completed interns (journal window frozen; can be reopened) -->
+          <div v-if="completedRoster.length">
+            <p class="mb-2 text-sm font-semibold text-slate-800">Completed ({{ completedRoster.length }})</p>
+            <div class="overflow-hidden rounded-md ring-1 ring-slate-200">
+              <table class="min-w-full divide-y divide-slate-200 text-sm">
+                <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th class="px-3 py-2 text-left">Student</th>
+                    <th class="px-3 py-2 text-left">Company</th>
+                    <th class="px-3 py-2 text-left">Status</th>
+                    <th class="px-3 py-2 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr v-for="row in completedRoster" :key="row.id">
+                    <td class="px-3 py-2">
+                      <p class="font-semibold text-slate-900">{{ row.student.name }}</p>
+                      <p class="font-mono text-xs text-slate-400">{{ row.student.student_id_number ?? '—' }}</p>
+                    </td>
+                    <td class="px-3 py-2 text-slate-600">{{ row.company?.name ?? '—' }}</td>
+                    <td class="px-3 py-2">
+                      <span class="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-200">Completed</span>
+                    </td>
+                    <td class="px-3 py-2 text-right">
+                      <button type="button" class="rounded-md border border-green-600 px-3 py-1 text-xs font-semibold text-green-700 hover:bg-green-50" @click="reopenIntern(row)">
+                        Reopen
                       </button>
                     </td>
                   </tr>

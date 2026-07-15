@@ -5,12 +5,17 @@ namespace App\Services;
 use App\Models\BatchStudent;
 
 /**
- * Shared placement logic so the two paths that enroll a student — the
- * coordinator's manual Enroll form (EnrollmentController::store) and accepting
- * a student's submitted info sheet (CoordinatorInfoSheetController::accept) —
- * behave identically: a previously-dropped row for the same student+batch is
- * reactivated (with refreshed company/supervisor/division) rather than
- * duplicated; otherwise a fresh active row is created.
+ * Shared placement logic for every path that enrolls a student — the
+ * coordinator's manual Enroll form (EnrollmentController::store), accepting
+ * a student's submitted info sheet (CoordinatorInfoSheetController::accept),
+ * and the batch roster's Add-Intern flow (BatchRosterController::add).
+ *
+ * Invariant: at most ONE batch_students row per (batch, student) pair —
+ * backed by a DB unique index. Any existing row for the exact pair
+ * (dropped, completed, or active) is reconciled in place: company /
+ * supervisor / division refreshed from the new submission and the status
+ * set back to active (the BatchStudent saving hook clears completed_at).
+ * Only when no row exists is a fresh active one created.
  */
 class EnrollmentService
 {
@@ -21,20 +26,19 @@ class EnrollmentService
         ?int $supervisorId,
         ?string $assignedDivision = null,
     ): BatchStudent {
-        $dropped = BatchStudent::where('batch_id', $batchId)
+        $existing = BatchStudent::where('batch_id', $batchId)
             ->where('student_id', $studentId)
-            ->where('status', 'dropped')
             ->first();
 
-        if ($dropped) {
-            $dropped->update([
+        if ($existing) {
+            $existing->update([
                 'company_id' => $companyId,
                 'supervisor_id' => $supervisorId,
                 'assigned_division' => $assignedDivision,
                 'status' => 'active',
             ]);
 
-            return $dropped;
+            return $existing;
         }
 
         return BatchStudent::create([

@@ -7,6 +7,7 @@ use App\Http\Requests\Coordinator\AddRosterStudentRequest;
 use App\Models\Batch;
 use App\Models\BatchStudent;
 use App\Models\User;
+use App\Services\EnrollmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -46,7 +47,7 @@ class BatchRosterController extends Controller
      *  - if already active in THIS batch, 422;
      *  - otherwise just enroll them active (moved=false).
      */
-    public function add(AddRosterStudentRequest $request, Batch $batch): JsonResponse
+    public function add(AddRosterStudentRequest $request, Batch $batch, EnrollmentService $enrollments): JsonResponse
     {
         $coordinator = $request->user();
         $this->authorizeBatch($coordinator, $batch);
@@ -84,14 +85,16 @@ class BatchRosterController extends Controller
             $moved = true;
         }
 
-        $enrollment = BatchStudent::create([
-            'batch_id' => $batch->id,
-            'student_id' => $student->id,
-            'company_id' => $request->integer('company_id'),
-            'supervisor_id' => $request->integer('supervisor_id'),
-            'assigned_division' => $request->input('assigned_division'),
-            'status' => 'active',
-        ]);
+        // Through the shared service so a prior dropped/completed row for
+        // this exact (batch, student) pair is reconciled in place, never
+        // duplicated (the DB unique index would reject a second row).
+        $enrollment = $enrollments->enrollOrReactivate(
+            $batch->id,
+            $student->id,
+            $request->integer('company_id'),
+            $request->integer('supervisor_id'),
+            $request->input('assigned_division'),
+        );
 
         return response()->json([
             'moved' => $moved,
@@ -151,6 +154,53 @@ class BatchRosterController extends Controller
         if ($activeElsewhere) {
             return response()->json([
                 'message' => "This student is already active in \"{$activeElsewhere->batch?->name}\". Use Add or Move on that batch instead of reactivating this dropped record.",
+            ], 422);
+        }
+
+        $batchStudent->update(['status' => 'active']);
+
+        return response()->json($batchStudent->fresh(['student:id,name,email,student_id_number', 'company:id,name', 'supervisor:id,name,email']));
+    }
+
+    /**
+     * Mark an active intern's OJT as completed. The BatchStudent saving
+     * hook stamps completed_at, which freezes the student's real-time
+     * journal window at the completion date: reads stay open, writes and
+     * dates after completion lock, and the weekly bundler skips them.
+     */
+    public function complete(Request $request, Batch $batch, BatchStudent $batchStudent): JsonResponse
+    {
+        $this->authorizeBatch($request->user(), $batch);
+        $this->assertRowInBatch($batch, $batchStudent);
+
+        abort_unless($batchStudent->status === 'active', 422, 'Only an active intern can be marked completed.');
+
+        $batchStudent->update(['status' => 'completed']);
+
+        return response()->json($batchStudent->fresh(['student:id,name,email,student_id_number', 'company:id,name', 'supervisor:id,name,email']));
+    }
+
+    /**
+     * Undo a completion: flip the row back to 'active' (the saving hook
+     * clears completed_at), reopening the student's journal window.
+     * Blocked if the student already has an active enrollment elsewhere —
+     * same one-active-enrollment constraint reactivate() enforces.
+     */
+    public function reopen(Request $request, Batch $batch, BatchStudent $batchStudent): JsonResponse
+    {
+        $this->authorizeBatch($request->user(), $batch);
+        $this->assertRowInBatch($batch, $batchStudent);
+
+        abort_unless($batchStudent->status === 'completed', 422, 'Only a completed record can be reopened.');
+
+        $activeElsewhere = BatchStudent::where('student_id', $batchStudent->student_id)
+            ->where('status', 'active')
+            ->with('batch:id,name')
+            ->first();
+
+        if ($activeElsewhere) {
+            return response()->json([
+                'message' => "This student is already active in \"{$activeElsewhere->batch?->name}\". Resolve that enrollment before reopening this completed record.",
             ], 422);
         }
 

@@ -13,6 +13,31 @@ class BatchStudent extends Model
     const CREATED_AT = 'enrolled_at';
     const UPDATED_AT = null;
 
+    protected function casts(): array
+    {
+        return [
+            'completed_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * completed_at mirrors status on every instance save: stamped when the
+     * row becomes 'completed' (and left alone if already stamped), cleared
+     * whenever the row is anything else. Every status change in the app goes
+     * through an instance save (update()/save()), so no caller needs to
+     * manage the timestamp itself.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (BatchStudent $enrollment) {
+            if ($enrollment->status === 'completed') {
+                $enrollment->completed_at ??= now();
+            } else {
+                $enrollment->completed_at = null;
+            }
+        });
+    }
+
     public function batch(): BelongsTo
     {
         return $this->belongsTo(Batch::class);

@@ -22,7 +22,7 @@ class WeeklyLogController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
-        $enrollment = $this->activeEnrollment($user->id);
+        $enrollment = $this->currentEnrollment($user->id);
 
         if (! $enrollment) {
             return response()->json(['message' => 'You are not currently enrolled in an active OJT batch.'], 422);
@@ -35,16 +35,37 @@ class WeeklyLogController extends Controller
             ->get()
             ->keyBy(fn (WeeklyLog $log) => $log->week_start->toDateString());
 
+        // The list starts at the Monday of the student's earliest actual
+        // work in this batch — first daily entry or earliest weekly log,
+        // whichever came first — not at the batch start, so a late starter
+        // doesn't see a run of empty weeks. No work at all => no cards yet.
+        $firstEntry = JournalEntry::where('student_id', $user->id)
+            ->where('batch_id', $enrollment->batch_id)
+            ->orderBy('entry_date')
+            ->first(['entry_date']);
+
+        $earliestStart = collect([
+            $firstEntry?->entry_date->toDateString(),
+            $existingLogs->keys()->sort()->first(),
+        ])->filter()->min();
+
+        if ($earliestStart === null) {
+            return response()->json(['weeks' => []]);
+        }
+
+        $listStart = Carbon::parse($earliestStart)->startOfWeek(Carbon::MONDAY);
+        $listEnd = $range['end']->copy()->endOfWeek(Carbon::SUNDAY);
+
         $entryCounts = JournalEntry::where('student_id', $user->id)
-            ->whereBetween('entry_date', [$range['start']->toDateString(), $range['end']->toDateString()])
+            ->whereDate('entry_date', '>=', $listStart->toDateString())
+            ->whereDate('entry_date', '<=', $listEnd->toDateString())
             ->get()
             ->groupBy(fn (JournalEntry $entry) => $entry->entry_date->copy()->startOfWeek(Carbon::MONDAY)->toDateString());
 
         $weeks = [];
-        $cursor = $range['start']->copy()->startOfWeek(Carbon::MONDAY);
-        $end = $range['end']->copy()->endOfWeek(Carbon::SUNDAY);
+        $cursor = $listStart->copy();
 
-        while ($cursor->lessThanOrEqualTo($end)) {
+        while ($cursor->lessThanOrEqualTo($listEnd)) {
             $weekStartKey = $cursor->toDateString();
             $log = $existingLogs->get($weekStartKey);
 
@@ -66,7 +87,7 @@ class WeeklyLogController extends Controller
     public function show(Request $request, string $weekStart): JsonResponse
     {
         $user = $request->user();
-        $enrollment = $this->activeEnrollment($user->id);
+        $enrollment = $this->currentEnrollment($user->id);
 
         if (! $enrollment) {
             return response()->json(['message' => 'You are not currently enrolled in an active OJT batch.'], 422);
@@ -100,7 +121,7 @@ class WeeklyLogController extends Controller
     public function pdf(Request $request, string $weekStart): Response
     {
         $user = $request->user();
-        $enrollment = $this->activeEnrollment($user->id);
+        $enrollment = $this->currentEnrollment($user->id);
 
         if (! $enrollment) {
             return response()->json(['message' => 'You are not currently enrolled in an active OJT batch.'], 422);
