@@ -102,17 +102,19 @@ class InfoSheetGateTest extends TestCase
         $this->getJson('/api/student/journal-entries')->assertOk();
     }
 
-    public function test_store_is_locked_once_approved(): void
+    public function test_an_approved_sheet_stays_editable_and_stays_approved(): void
     {
         [$student] = $this->studentWithSheet('approved');
         Sanctum::actingAs($student, ['*']);
 
-        $this->postJson('/api/student/info-sheet', [
+        $response = $this->postJson('/api/student/info-sheet', [
             'status' => 'draft',
-            'personal_info' => ['last_name' => 'Cruz', 'first_name' => 'Ana'],
+            'personal_info' => ['last_name' => 'Cruz', 'first_name' => 'Ana', 'contact_number' => '0918'],
             'academic_info' => [],
             'ojt_info' => [],
-        ])->assertStatus(422);
+        ]);
+
+        $response->assertOk()->assertJsonPath('submission_status', 'approved');
     }
 
     public function test_student_can_download_their_info_sheet_pdf(): void

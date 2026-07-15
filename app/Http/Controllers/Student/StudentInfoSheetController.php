@@ -96,16 +96,14 @@ class StudentInfoSheetController extends Controller
             ]);
         }
 
-        // Once approved the sheet is final — the student can no longer edit it.
-        if ($sheet->exists && $sheet->submission_status === 'approved') {
-            return response()->json([
-                'message' => 'Your information sheet has been approved and can no longer be edited.',
-            ], 422);
-        }
-
         $validated = $request->validated();
         $status = $validated['status'];
         unset($validated['status']);
+
+        // A sheet approved before this save is "enrolled" — Program & Year, and
+        // the assigned Company, drove the coordinator's Accept step and must stay
+        // fixed from here on; everything else on the sheet remains editable.
+        $wasApproved = $sheet->exists && $sheet->submission_status === 'approved';
 
         // ojt_info is `present` (may be empty) — guarantee the NOT-NULL column.
         $validated['ojt_info'] = $validated['ojt_info'] ?? [];
@@ -118,14 +116,29 @@ class StudentInfoSheetController extends Controller
             'program_course' => $batch?->program?->name,
             'department' => $batch?->program?->department?->name,
             'internship_coordinator' => $batch?->coordinator?->name,
+            // Year locks the same way once enrolled — re-derive from the existing
+            // sheet instead of trusting the incoming value.
+            'year_level' => $wasApproved
+                ? ($sheet->academic_info['year_level'] ?? null)
+                : ($validated['academic_info']['year_level'] ?? null),
         ];
+
+        if ($wasApproved) {
+            // Company assignment is locked post-enrollment (it drove the Accept
+            // step's batch_students placement) — everything else on ojt_info
+            // (address, signatory, supervisor, schedule, dates) stays editable.
+            $validated['ojt_info']['company_id'] = $sheet->ojt_info['company_id'] ?? null;
+            $validated['ojt_info']['host_company'] = $sheet->ojt_info['host_company'] ?? null;
+        }
 
         $sheet->fill([
             ...$validated,
-            'submission_status' => $status,
-            'submitted_at' => $status === 'submitted' ? now() : null,
-            // A fresh student action supersedes any prior rejection.
-            'rejection_reason' => null,
+            // Post-enrollment edits are profile maintenance, not a new gate
+            // submission — never move an approved sheet back to draft/submitted,
+            // or EnsureInfoSheetApproved would re-gate an already-enrolled student.
+            'submission_status' => $wasApproved ? 'approved' : $status,
+            'submitted_at' => $wasApproved ? $sheet->submitted_at : ($status === 'submitted' ? now() : null),
+            'rejection_reason' => $wasApproved ? $sheet->rejection_reason : null,
         ]);
         $sheet->save();
 

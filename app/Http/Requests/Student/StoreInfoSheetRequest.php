@@ -31,7 +31,7 @@ class StoreInfoSheetRequest extends FormRequest
 
             'academic_info' => ['present', 'array'],
             'academic_info.program_course' => ['nullable', 'string', 'max:255'],
-            'academic_info.year_level' => ['nullable', 'string', 'max:20'],
+            'academic_info.year_level' => ['nullable', 'in:1st Year,2nd Year,3rd Year,4th Year'],
             'academic_info.department' => ['nullable', 'string', 'max:150'],
             'academic_info.internship_coordinator' => ['nullable', 'string', 'max:150'],
             'academic_info.coordinator_contact_no' => ['nullable', 'string', 'max:30'],

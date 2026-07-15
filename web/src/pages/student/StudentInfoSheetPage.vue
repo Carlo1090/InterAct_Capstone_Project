@@ -50,9 +50,10 @@ const ojtInfo = reactive({
 const isApproved = computed(() => submissionStatus.value === 'approved')
 const isRejected = computed(() => submissionStatus.value === 'rejected')
 const isSubmitted = computed(() => submissionStatus.value === 'submitted')
-// Everything except the "Name of Company" dropdown is free text; the whole form
-// is read-only only once the coordinator has approved it.
-const readOnly = computed(() => isApproved.value)
+// Program, Year, and the assigned Company are locked once enrolled — the
+// coordinator's Accept step used them to place the student; everything
+// else on the sheet stays editable for profile upkeep.
+const systemLocked = computed(() => isApproved.value)
 const submitLabel = computed(() => (isRejected.value ? 'Resubmit' : 'Submit'))
 
 const onCompanyChange = () => {
@@ -94,7 +95,7 @@ const loadInfoSheet = async () => {
 }
 
 const save = async (status: 'draft' | 'submitted') => {
-  if (status === 'submitted') {
+  if (status === 'submitted' && !isApproved.value) {
     const confirmed = confirmAction(
       'Submit your Information Sheet for coordinator review? You can still edit it until they act on it.',
     )
@@ -134,7 +135,7 @@ onMounted(loadInfoSheet)
 
     <!-- Status banners -->
     <div v-if="isApproved" class="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-      Your Information Sheet has been <strong>approved</strong>. It is now read-only.
+      Your Information Sheet has been <strong>approved</strong>. Your Program, Year, and assigned Company are locked, but you can still update the rest of your details below.
     </div>
     <div v-else-if="isRejected" class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
       <p class="font-semibold">Your Information Sheet was returned for changes.</p>
@@ -167,19 +168,19 @@ onMounted(loadInfoSheet)
         <div class="mt-4 grid gap-4 md:grid-cols-2">
           <label class="block text-sm font-medium text-slate-700">
             Family Name
-            <input v-model="personalInfo.last_name" :readonly="readOnly" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
+            <input v-model="personalInfo.last_name" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
           </label>
           <label class="block text-sm font-medium text-slate-700">
             First Name
-            <input v-model="personalInfo.first_name" :readonly="readOnly" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
+            <input v-model="personalInfo.first_name" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
           </label>
           <label class="block text-sm font-medium text-slate-700">
             Middle Name
-            <input v-model="personalInfo.middle_name" :readonly="readOnly" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
+            <input v-model="personalInfo.middle_name" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
           </label>
           <label class="block text-sm font-medium text-slate-700">
             Contact No.
-            <input v-model="personalInfo.contact_number" :readonly="readOnly" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
+            <input v-model="personalInfo.contact_number" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
           </label>
           <div class="grid grid-cols-2 gap-2 md:col-span-2">
             <label class="block text-sm font-medium text-slate-700">
@@ -188,16 +189,26 @@ onMounted(loadInfoSheet)
             </label>
             <label class="block text-sm font-medium text-slate-700">
               Year
-              <input v-model="academicInfo.year_level" :readonly="readOnly" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
+              <select
+                v-model="academicInfo.year_level"
+                :disabled="systemLocked"
+                class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+              >
+                <option value="">Select Year</option>
+                <option value="1st Year">1st Year</option>
+                <option value="2nd Year">2nd Year</option>
+                <option value="3rd Year">3rd Year</option>
+                <option value="4th Year">4th Year</option>
+              </select>
             </label>
           </div>
           <label class="block text-sm font-medium text-slate-700">
             Parent's / Guardian's Name
-            <input v-model="personalInfo.parent_guardian_name" :readonly="readOnly" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
+            <input v-model="personalInfo.parent_guardian_name" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
           </label>
           <label class="block text-sm font-medium text-slate-700">
             Parent's / Guardian's Contact No.
-            <input v-model="personalInfo.parent_guardian_contact" :readonly="readOnly" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
+            <input v-model="personalInfo.parent_guardian_contact" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
           </label>
           <label class="block text-sm font-medium text-slate-700 md:col-span-2">
             Internship Coordinator
@@ -214,7 +225,7 @@ onMounted(loadInfoSheet)
             Name of Company
             <select
               v-model.number="ojtInfo.company_id"
-              :disabled="readOnly"
+              :disabled="systemLocked"
               class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
               @change="onCompanyChange"
             >
@@ -224,46 +235,56 @@ onMounted(loadInfoSheet)
           </label>
           <label class="block text-sm font-medium text-slate-700 md:col-span-2">
             Company Address
-            <input v-model="ojtInfo.company_address" :readonly="readOnly" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
+            <input v-model="ojtInfo.company_address" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
           </label>
           <label class="block text-sm font-medium text-slate-700">
             Complete Name of Official Company Signatory (for MOA)
-            <input v-model="ojtInfo.company_signatory_moa" :readonly="readOnly" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
+            <input v-model="ojtInfo.company_signatory_moa" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
           </label>
           <label class="block text-sm font-medium text-slate-700">
             Office Designation / Position
-            <input v-model="ojtInfo.office_designation" :readonly="readOnly" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
+            <input v-model="ojtInfo.office_designation" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
           </label>
           <label class="block text-sm font-medium text-slate-700">
             Name of Supervisor / Office Head
-            <input v-model="ojtInfo.supervisor_name" :readonly="readOnly" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
+            <input v-model="ojtInfo.supervisor_name" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
           </label>
           <label class="block text-sm font-medium text-slate-700">
             Contact Number
-            <input v-model="ojtInfo.supervisor_contact" :readonly="readOnly" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
+            <input v-model="ojtInfo.supervisor_contact" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
           </label>
           <label class="block text-sm font-medium text-slate-700">
             Intern's Duty Schedule
-            <input v-model="ojtInfo.intern_duty_schedule" :readonly="readOnly" placeholder="e.g. Mon–Fri, 8:00 AM – 5:00 PM" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
+            <input v-model="ojtInfo.intern_duty_schedule" placeholder="e.g. Mon–Fri, 8:00 AM – 5:00 PM" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
           </label>
           <label class="block text-sm font-medium text-slate-700">
             Area Assigned
-            <input v-model="ojtInfo.area_assigned" :readonly="readOnly" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
+            <input v-model="ojtInfo.area_assigned" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
           </label>
           <label class="block text-sm font-medium text-slate-700">
             Start of Internship Duty
-            <input v-model="ojtInfo.ojt_start_date" type="date" :readonly="readOnly" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
+            <input v-model="ojtInfo.ojt_start_date" type="date" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
           </label>
           <label class="block text-sm font-medium text-slate-700">
             Estimated Date to Finish Internship
-            <input v-model="ojtInfo.ojt_end_date" type="date" :readonly="readOnly" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
+            <input v-model="ojtInfo.ojt_end_date" type="date" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
           </label>
         </div>
       </div>
 
       <p v-if="errorMessage" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ errorMessage }}</p>
 
-      <div v-if="!readOnly" class="mt-6 flex justify-end gap-3">
+      <div v-if="isApproved" class="mt-6 flex justify-end">
+        <button
+          type="button"
+          class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          :disabled="isSaving"
+          @click="save('submitted')"
+        >
+          {{ isSaving ? 'Saving...' : 'Save Changes' }}
+        </button>
+      </div>
+      <div v-else class="mt-6 flex justify-end gap-3">
         <button
           type="button"
           class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
