@@ -23,10 +23,11 @@ php artisan db:seed
 php artisan serve
 ```
 
-Default seeded accounts (change these passwords before any real deployment):
-- `system@interntrack.local` — system/automation account, not for login
-- `admin@interntrack.local` / `password` — test admin login
-- `student@interntrack.local` / `password` — test student login
+Default seeded accounts (change these passwords before any real deployment) —
+log in by **username**, not email:
+- `system` — system/automation account, not for login
+- `mdcadmin` / `password` — test admin login
+- `mdcstudent` / `password` — test student login
 
 See `.env.example` for the `FRONTEND_URL` and `SANCTUM_STATEFUL_DOMAINS`
 settings — these need to match wherever `web/` is actually running.

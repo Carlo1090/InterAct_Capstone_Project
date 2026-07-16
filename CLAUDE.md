@@ -108,6 +108,7 @@ php artisan test
 php artisan test --filter=TestName   # single test
 php artisan test tests/Feature/Coordinator   # a whole role folder (tests/Feature splits into Admin/Auth/Console/Coordinator/Services/Student/Supervisor)
 composer install
+./vendor/bin/pint   # Laravel Pint code style fixer (dev dependency, no composer script wired up)
 
 # Or run backend + queue + logs + Vite together:
 composer run dev
@@ -115,7 +116,7 @@ composer run dev
 # Web SPA (run inside web/)
 npm install
 npm run dev
-npm run build
+npm run build   # web/package.json has no lint or test script configured — there is no frontend test runner yet
 
 # Mobile (run inside mobile/)
 npm install
