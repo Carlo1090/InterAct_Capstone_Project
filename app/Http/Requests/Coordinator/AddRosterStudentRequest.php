@@ -17,7 +17,6 @@ class AddRosterStudentRequest extends FormRequest
         return [
             'student_id' => ['required', 'integer', Rule::exists('users', 'id')->where('role', 'student')],
             'company_id' => ['required', 'integer', Rule::exists('companies', 'id')],
-            'supervisor_id' => ['required', 'integer', Rule::exists('users', 'id')->where('role', 'supervisor')],
             'assigned_division' => ['nullable', 'string', 'max:150'],
         ];
     }

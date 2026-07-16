@@ -87,25 +87,16 @@ const enrollForm = reactive({
   batch_id: null as number | null,
   student_id: null as number | null,
   company_id: null as number | null,
-  supervisor_id: null as number | null,
   assigned_division: '',
 })
 
-// Supervisor is always a Company Supervisor — the dropdown only lists
-// supervisors attached to the currently selected company.
-const enrollSupervisorOptions = computed(() =>
+// The supervisor is tied to the company, not a separate choice — this is
+// read-only display of whichever supervisor the selected company resolves
+// to (its one login account), matching what the backend will assign.
+const enrollResolvedSupervisor = computed(() =>
   enrollForm.company_id
-    ? enrollmentOptions.value.supervisors.filter((supervisor) => supervisor.company_ids.includes(enrollForm.company_id as number))
-    : [],
-)
-
-watch(
-  () => enrollForm.company_id,
-  () => {
-    if (!enrollSupervisorOptions.value.some((supervisor) => supervisor.id === enrollForm.supervisor_id)) {
-      enrollForm.supervisor_id = null
-    }
-  },
+    ? enrollmentOptions.value.supervisors.find((supervisor) => supervisor.company_ids.includes(enrollForm.company_id as number))
+    : undefined,
 )
 
 // --- Create Student Account (login only — SEPARATE from enrollment) ---------
@@ -213,7 +204,6 @@ const openEnrollModal = async () => {
   enrollForm.batch_id = null
   enrollForm.student_id = null
   enrollForm.company_id = null
-  enrollForm.supervisor_id = null
   enrollForm.assigned_division = ''
   modalErrors.value = {}
   modalMessage.value = ''
@@ -559,20 +549,13 @@ onMounted(() => {
             </select>
           </div>
           <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="enroll-supervisor">Supervisor</label>
-            <select
-              id="enroll-supervisor"
-              v-model.number="enrollForm.supervisor_id"
-              class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
-              :disabled="!enrollForm.company_id"
-            >
-              <option :value="null">Select Supervisor</option>
-              <option v-for="supervisor in enrollSupervisorOptions" :key="supervisor.id" :value="supervisor.id">
-                {{ supervisor.name }} ({{ supervisor.email }})
-              </option>
-            </select>
-            <p v-if="!enrollForm.company_id" class="mt-1 text-xs text-slate-500">Select a company first.</p>
-            <p v-else-if="enrollSupervisorOptions.length === 0" class="mt-1 text-xs text-amber-600">This company has no supervisors yet.</p>
+            <label class="mb-2 block text-sm font-medium text-slate-700">Supervisor</label>
+            <p class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              <template v-if="!enrollForm.company_id">Select a company first.</template>
+              <template v-else-if="enrollResolvedSupervisor">{{ enrollResolvedSupervisor.name }} ({{ enrollResolvedSupervisor.email }})</template>
+              <template v-else><span class="text-amber-600">This company has no supervisor account yet.</span></template>
+            </p>
+            <p class="mt-1 text-xs text-slate-500">Assigned automatically from the company — every supervisor is a Company Supervisor.</p>
           </div>
           <div>
             <label class="mb-2 block text-sm font-medium text-slate-700" for="enroll-division">Assigned Division (optional)</label>

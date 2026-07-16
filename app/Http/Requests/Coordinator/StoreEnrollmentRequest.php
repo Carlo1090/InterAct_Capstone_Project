@@ -25,7 +25,6 @@ class StoreEnrollmentRequest extends FormRequest
                 Rule::unique('batch_students', 'student_id')->where(fn ($query) => $query->where('status', 'active')),
             ],
             'company_id' => ['required', 'integer', Rule::exists('companies', 'id')],
-            'supervisor_id' => ['required', 'integer', Rule::exists('users', 'id')->where('role', 'supervisor')],
             'assigned_division' => ['nullable', 'string', 'max:150'],
         ];
     }

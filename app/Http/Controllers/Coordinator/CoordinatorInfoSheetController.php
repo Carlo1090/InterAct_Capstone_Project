@@ -113,11 +113,6 @@ class CoordinatorInfoSheetController extends Controller
         $company = $companyId ? Company::find($companyId) : null;
         abort_if($company === null, 422, 'The student has not selected a valid company on their sheet.');
 
-        // The company's one shared login ("company account") — required for
-        // batch_students.supervisor_id's NOT-NULL FK to users.
-        $loginSupervisorId = $company->loginSupervisor?->user_id;
-        abort_if($loginSupervisorId === null, 422, 'The chosen company has no supervisor account yet. Add one to the company before accepting.');
-
         // Find-or-create the named individual the student actually typed, so
         // it's durably recorded against this enrollment even though the
         // login used to review logs stays the company's shared account.
@@ -130,11 +125,12 @@ class CoordinatorInfoSheetController extends Controller
         // Always reconcile through the shared service: a re-accept after a
         // revised sheet updates the existing row's company/supervisor in
         // place (never a stale placement, never a second row for the pair).
+        // The login supervisor itself is derived from the company by the
+        // service, not chosen here — it's tied to the company, not a person.
         $enrollments->enrollOrReactivate(
             $sheet->batch_id,
             $student->id,
             $company->id,
-            (int) $loginSupervisorId,
             $sheet->ojt_info['area_assigned'] ?? null,
             $companySupervisorId,
         );

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { confirmAction, showToast } from '@/lib/toast'
@@ -204,25 +204,16 @@ const isAddingIntern = ref(false)
 const addForm = reactive({
   student_id: null as number | null,
   company_id: null as number | null,
-  supervisor_id: null as number | null,
   assigned_division: '',
 })
 
-// Supervisor is always a Company Supervisor — the dropdown only lists
-// supervisors attached to the currently selected company.
-const addSupervisorOptions = computed(() =>
+// The supervisor is tied to the company, not a separate choice — this is
+// read-only display of whichever supervisor the selected company resolves
+// to (its one login account), matching what the backend will assign.
+const addResolvedSupervisor = computed(() =>
   addForm.company_id
-    ? rosterOptions.value.supervisors.filter((supervisor) => supervisor.company_ids.includes(addForm.company_id as number))
-    : [],
-)
-
-watch(
-  () => addForm.company_id,
-  () => {
-    if (!addSupervisorOptions.value.some((supervisor) => supervisor.id === addForm.supervisor_id)) {
-      addForm.supervisor_id = null
-    }
-  },
+    ? rosterOptions.value.supervisors.find((supervisor) => supervisor.company_ids.includes(addForm.company_id as number))
+    : undefined,
 )
 
 const activeRoster = computed(() => rosterRows.value.filter((row) => row.status === 'active'))
@@ -258,7 +249,6 @@ const openRoster = async (batch: Batch) => {
   rosterRows.value = []
   addForm.student_id = null
   addForm.company_id = null
-  addForm.supervisor_id = null
   addForm.assigned_division = ''
   rosterMessage.value = ''
   isRosterOpen.value = true
@@ -303,13 +293,11 @@ const addIntern = async () => {
     const { data } = await api.post<{ moved: boolean }>(`/api/coordinator/batches/${rosterBatch.value.id}/roster`, {
       student_id: addForm.student_id,
       company_id: addForm.company_id,
-      supervisor_id: addForm.supervisor_id,
       assigned_division: addForm.assigned_division || null,
     })
 
     addForm.student_id = null
     addForm.company_id = null
-    addForm.supervisor_id = null
     addForm.assigned_division = ''
 
     await loadRoster(rosterBatch.value.id)
@@ -627,18 +615,13 @@ onMounted(load)
               </select>
             </div>
             <div>
-              <label class="mb-1 block text-xs font-medium text-slate-600" for="roster-supervisor">Supervisor</label>
-              <select
-                id="roster-supervisor"
-                v-model.number="addForm.supervisor_id"
-                class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
-                :disabled="!addForm.company_id"
-              >
-                <option :value="null">Select Supervisor</option>
-                <option v-for="supervisor in addSupervisorOptions" :key="supervisor.id" :value="supervisor.id">{{ supervisor.name }}</option>
-              </select>
-              <p v-if="!addForm.company_id" class="mt-1 text-xs text-slate-500">Select a company first.</p>
-              <p v-else-if="addSupervisorOptions.length === 0" class="mt-1 text-xs text-amber-600">This company has no supervisors yet.</p>
+              <label class="mb-1 block text-xs font-medium text-slate-600">Supervisor</label>
+              <p class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                <template v-if="!addForm.company_id">Select a company first.</template>
+                <template v-else-if="addResolvedSupervisor">{{ addResolvedSupervisor.name }}</template>
+                <template v-else><span class="text-amber-600">This company has no supervisor account yet.</span></template>
+              </p>
+              <p class="mt-1 text-xs text-slate-500">Assigned automatically from the company.</p>
             </div>
             <div>
               <label class="mb-1 block text-xs font-medium text-slate-600" for="roster-division">Assigned Division (optional)</label>
@@ -649,7 +632,7 @@ onMounted(load)
             <button
               type="button"
               class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-blue-300"
-              :disabled="isAddingIntern || !addForm.student_id || !addForm.company_id || !addForm.supervisor_id"
+              :disabled="isAddingIntern || !addForm.student_id || !addForm.company_id || !addResolvedSupervisor"
               @click="addIntern"
             >
               {{ isAddingIntern ? 'Adding...' : 'Add Intern' }}

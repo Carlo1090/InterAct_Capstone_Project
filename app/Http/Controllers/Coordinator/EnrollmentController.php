@@ -299,7 +299,6 @@ class EnrollmentController extends Controller
             $validated['batch_id'],
             $validated['student_id'],
             $validated['company_id'],
-            $validated['supervisor_id'],
             $validated['assigned_division'] ?? null,
         );
 
@@ -346,11 +345,18 @@ class EnrollmentController extends Controller
     {
         $validated = $request->validated();
 
-        // A manual company/supervisor edit bypasses EnrollmentService, so
-        // re-resolve company_supervisor_id here too or it would go stale.
-        if (array_key_exists('supervisor_id', $validated) || array_key_exists('company_id', $validated)) {
-            $validated['company_supervisor_id'] = CompanySupervisor::where('company_id', $validated['company_id'] ?? $batchStudent->company_id)
-                ->where('user_id', $validated['supervisor_id'] ?? $batchStudent->supervisor_id)
+        // The supervisor is tied to the company, never a manual pick — a
+        // company change re-derives supervisor_id from the new company's
+        // login supervisor (and company_supervisor_id along with it), the
+        // same rule EnrollmentService centralizes for every other path.
+        if (array_key_exists('company_id', $validated)) {
+            $company = Company::findOrFail($validated['company_id']);
+            $supervisorId = $company->loginSupervisor?->user_id;
+            abort_if($supervisorId === null, 422, 'This company has no supervisor account yet. Add one to the company before assigning it.');
+
+            $validated['supervisor_id'] = $supervisorId;
+            $validated['company_supervisor_id'] = CompanySupervisor::where('company_id', $company->id)
+                ->where('user_id', $supervisorId)
                 ->value('id');
         }
 

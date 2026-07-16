@@ -23,7 +23,6 @@ class UpdateEnrollmentRequest extends FormRequest
         return [
             'status' => ['sometimes', Rule::in(['active', 'completed', 'dropped'])],
             'company_id' => ['sometimes', 'integer', Rule::exists('companies', 'id')],
-            'supervisor_id' => ['sometimes', 'integer', Rule::exists('users', 'id')->where('role', 'supervisor')],
             'assigned_division' => ['sometimes', 'nullable', 'string', 'max:150'],
         ];
     }

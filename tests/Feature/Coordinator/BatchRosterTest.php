@@ -5,6 +5,7 @@ namespace Tests\Feature\Coordinator;
 use App\Models\Batch;
 use App\Models\BatchStudent;
 use App\Models\Company;
+use App\Models\CompanySupervisor;
 use App\Models\Department;
 use App\Models\Program;
 use App\Models\User;
@@ -67,19 +68,20 @@ class BatchRosterTest extends TestCase
         $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
         $company = $this->company();
         $supervisor = User::factory()->create(['role' => 'supervisor']);
+        CompanySupervisor::create(['company_id' => $company->id, 'user_id' => $supervisor->id]);
 
         Sanctum::actingAs($coordinator, ['*']);
 
         $response = $this->postJson("/api/coordinator/batches/{$batch->id}/roster", [
             'student_id' => $student->id,
             'company_id' => $company->id,
-            'supervisor_id' => $supervisor->id,
         ]);
 
         $response->assertCreated()->assertJsonPath('moved', false);
         $this->assertDatabaseHas('batch_students', [
             'batch_id' => $batch->id,
             'student_id' => $student->id,
+            'supervisor_id' => $supervisor->id,
             'status' => 'active',
         ]);
     }
@@ -93,6 +95,7 @@ class BatchRosterTest extends TestCase
         $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
         $company = $this->company();
         $supervisor = User::factory()->create(['role' => 'supervisor']);
+        CompanySupervisor::create(['company_id' => $company->id, 'user_id' => $supervisor->id]);
 
         $oldRow = BatchStudent::create([
             'batch_id' => $oldBatch->id,
@@ -107,7 +110,6 @@ class BatchRosterTest extends TestCase
         $response = $this->postJson("/api/coordinator/batches/{$newBatch->id}/roster", [
             'student_id' => $student->id,
             'company_id' => $company->id,
-            'supervisor_id' => $supervisor->id,
         ]);
 
         $response->assertCreated()->assertJsonPath('moved', true);
@@ -129,14 +131,12 @@ class BatchRosterTest extends TestCase
         $batch = $this->batchFor($bsa, $coordinator);
         $student = User::factory()->create(['role' => 'student', 'program_id' => $bsbaFm->id]);
         $company = $this->company();
-        $supervisor = User::factory()->create(['role' => 'supervisor']);
 
         Sanctum::actingAs($coordinator, ['*']);
 
         $response = $this->postJson("/api/coordinator/batches/{$batch->id}/roster", [
             'student_id' => $student->id,
             'company_id' => $company->id,
-            'supervisor_id' => $supervisor->id,
         ]);
 
         $response->assertStatus(422)->assertJsonValidationErrors(['student_id']);
@@ -455,7 +455,6 @@ class BatchRosterTest extends TestCase
         $coordinator = $this->coordinatorFor($inScope->department_id);
         $inBatch = $this->batchFor($inScope, $coordinator);
         $company = $this->company();
-        $supervisor = User::factory()->create(['role' => 'supervisor']);
 
         // Out-of-scope batch (different department).
         $outProgram = $this->program('CABM-H', 'BSTM');
@@ -472,7 +471,6 @@ class BatchRosterTest extends TestCase
         $this->postJson("/api/coordinator/batches/{$inBatch->id}/roster", [
             'student_id' => $outStudent->id,
             'company_id' => $company->id,
-            'supervisor_id' => $supervisor->id,
         ])->assertStatus(403);
     }
 }

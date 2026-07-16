@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BatchStudent;
+use App\Models\Company;
 use App\Models\CompanySupervisor;
 
 /**
@@ -17,6 +18,13 @@ use App\Models\CompanySupervisor;
  * supervisor / division refreshed from the new submission and the status
  * set back to active (the BatchStudent saving hook clears completed_at).
  * Only when no row exists is a fresh active one created.
+ *
+ * The supervisor is never a caller-supplied choice — it's tied to the
+ * company, not a specific person picked independently. Every caller only
+ * supplies a company_id; the company's one login supervisor
+ * (Company::loginSupervisor()) is resolved here, in one place, so the rule
+ * can't drift between the manual Enroll form, the batch roster's Add-Intern
+ * flow, and info-sheet Accept.
  */
 class EnrollmentService
 {
@@ -24,14 +32,16 @@ class EnrollmentService
         int $batchId,
         int $studentId,
         int $companyId,
-        ?int $supervisorId,
         ?string $assignedDivision = null,
         ?int $companySupervisorId = null,
     ): BatchStudent {
-        // Callers that only know the login user_id (not which specific
-        // company_supervisors row it is) get it resolved for free here, so
-        // the manual Enroll form and the batch-roster Add-Intern flow don't
-        // need to change at all.
+        $company = Company::findOrFail($companyId);
+        $supervisorId = $company->loginSupervisor?->user_id;
+        abort_if($supervisorId === null, 422, 'This company has no supervisor account yet. Add one to the company before enrolling a student.');
+
+        // Callers that only know the company (not which specific
+        // company_supervisors row is the named individual) get it resolved
+        // for free here.
         $companySupervisorId ??= CompanySupervisor::where('company_id', $companyId)
             ->where('user_id', $supervisorId)
             ->value('id');

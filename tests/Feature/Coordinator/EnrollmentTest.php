@@ -56,6 +56,7 @@ class EnrollmentTest extends TestCase
         $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
         $company = Company::create(['name' => 'TechPH Inc.', 'address' => 'Cebu City', 'is_active' => true]);
         $supervisor = User::factory()->create(['role' => 'supervisor']);
+        CompanySupervisor::create(['company_id' => $company->id, 'user_id' => $supervisor->id]);
 
         Sanctum::actingAs($coordinator, ['*']);
 
@@ -63,7 +64,6 @@ class EnrollmentTest extends TestCase
             'batch_id' => $batch->id,
             'student_id' => $student->id,
             'company_id' => $company->id,
-            'supervisor_id' => $supervisor->id,
             'assigned_division' => 'IT Department',
         ]);
 
@@ -71,6 +71,7 @@ class EnrollmentTest extends TestCase
         $this->assertDatabaseHas('batch_students', [
             'batch_id' => $batch->id,
             'student_id' => $student->id,
+            'supervisor_id' => $supervisor->id,
             'status' => 'active',
         ]);
 
@@ -87,7 +88,6 @@ class EnrollmentTest extends TestCase
         $batch = $this->batchFor($program, $owner);
         $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
         $company = Company::create(['name' => 'TechPH Inc.', 'address' => 'Cebu City', 'is_active' => true]);
-        $supervisor = User::factory()->create(['role' => 'supervisor']);
 
         Sanctum::actingAs($intruder, ['*']);
 
@@ -95,33 +95,10 @@ class EnrollmentTest extends TestCase
             'batch_id' => $batch->id,
             'student_id' => $student->id,
             'company_id' => $company->id,
-            'supervisor_id' => $supervisor->id,
         ]);
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['batch_id']);
-    }
-
-    public function test_non_supervisor_cannot_be_assigned_as_supervisor(): void
-    {
-        $program = $this->programFor('BSIT');
-        $coordinator = User::factory()->create(['role' => 'coordinator', 'program_id' => $program->id]);
-        $batch = $this->batchFor($program, $coordinator);
-        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
-        $company = Company::create(['name' => 'TechPH Inc.', 'address' => 'Cebu City', 'is_active' => true]);
-        $notASupervisor = User::factory()->create(['role' => 'student']);
-
-        Sanctum::actingAs($coordinator, ['*']);
-
-        $response = $this->postJson('/api/coordinator/enrollments', [
-            'batch_id' => $batch->id,
-            'student_id' => $student->id,
-            'company_id' => $company->id,
-            'supervisor_id' => $notASupervisor->id,
-        ]);
-
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors(['supervisor_id']);
     }
 
     public function test_duplicate_active_enrollment_is_rejected(): void
@@ -147,7 +124,6 @@ class EnrollmentTest extends TestCase
             'batch_id' => $batch->id,
             'student_id' => $student->id,
             'company_id' => $company->id,
-            'supervisor_id' => $supervisor->id,
         ]);
 
         $response->assertStatus(422);
@@ -205,6 +181,7 @@ class EnrollmentTest extends TestCase
         $newCompany = Company::create(['name' => 'New Co', 'address' => 'B', 'is_active' => true]);
         $oldSupervisor = User::factory()->create(['role' => 'supervisor']);
         $newSupervisor = User::factory()->create(['role' => 'supervisor']);
+        CompanySupervisor::create(['company_id' => $newCompany->id, 'user_id' => $newSupervisor->id]);
 
         $droppedRow = BatchStudent::create([
             'batch_id' => $batch->id,
@@ -221,7 +198,6 @@ class EnrollmentTest extends TestCase
             'batch_id' => $batch->id,
             'student_id' => $student->id,
             'company_id' => $newCompany->id,
-            'supervisor_id' => $newSupervisor->id,
             'assigned_division' => 'New Division',
         ]);
 

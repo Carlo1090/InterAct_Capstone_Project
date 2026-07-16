@@ -92,7 +92,6 @@ class BatchRosterController extends Controller
             $batch->id,
             $student->id,
             $request->integer('company_id'),
-            $request->integer('supervisor_id'),
             $request->input('assigned_division'),
         );
 
