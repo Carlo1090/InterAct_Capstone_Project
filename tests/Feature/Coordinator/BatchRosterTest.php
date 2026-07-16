@@ -189,7 +189,7 @@ class BatchRosterTest extends TestCase
         $this->assertDatabaseHas('batch_students', ['id' => $row->id]);
     }
 
-    public function test_delete_dropped_row_removes_it(): void
+    public function test_delete_dropped_but_unarchived_row_is_rejected(): void
     {
         $program = $this->program('CABM-B', 'BSA');
         $coordinator = $this->coordinatorFor($program->department_id);
@@ -208,8 +208,306 @@ class BatchRosterTest extends TestCase
 
         Sanctum::actingAs($coordinator, ['*']);
 
+        $this->deleteJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}")->assertStatus(422);
+        $this->assertDatabaseHas('batch_students', ['id' => $row->id]);
+    }
+
+    public function test_delete_archived_row_removes_it(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program->department_id);
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $row = BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'dropped',
+        ]);
+        $row->archived_at = now();
+        $row->save();
+
+        Sanctum::actingAs($coordinator, ['*']);
+
         $this->deleteJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}")->assertOk();
         $this->assertDatabaseMissing('batch_students', ['id' => $row->id]);
+    }
+
+    public function test_archive_dropped_row_stamps_archived_at(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program->department_id);
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $row = BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'dropped',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->patchJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}/archive")->assertOk();
+
+        $fresh = $row->fresh();
+        $this->assertNotNull($fresh->archived_at);
+        $this->assertSame('dropped', $fresh->status);
+    }
+
+    public function test_archive_completed_row_stamps_archived_at(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program->department_id);
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $row = BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'completed',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->patchJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}/archive")->assertOk();
+
+        $fresh = $row->fresh();
+        $this->assertNotNull($fresh->archived_at);
+        $this->assertSame('completed', $fresh->status);
+    }
+
+    public function test_archive_active_row_is_rejected(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program->department_id);
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $row = BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'active',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->patchJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}/archive")->assertStatus(422);
+        $this->assertNull($row->fresh()->archived_at);
+    }
+
+    public function test_archive_already_archived_row_is_rejected(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program->department_id);
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $row = BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'dropped',
+        ]);
+        $row->archived_at = now();
+        $row->save();
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->patchJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}/archive")->assertStatus(422);
+    }
+
+    public function test_restore_clears_archived_at_and_keeps_status(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program->department_id);
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $row = BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'dropped',
+        ]);
+        $row->archived_at = now();
+        $row->save();
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->patchJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}/restore")->assertOk();
+
+        $fresh = $row->fresh();
+        $this->assertNull($fresh->archived_at);
+        $this->assertSame('dropped', $fresh->status);
+    }
+
+    public function test_restore_non_archived_row_is_rejected(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program->department_id);
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $row = BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'dropped',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->patchJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}/restore")->assertStatus(422);
+    }
+
+    public function test_reactivate_archived_row_is_rejected(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program->department_id);
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $row = BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'dropped',
+        ]);
+        $row->archived_at = now();
+        $row->save();
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->patchJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}/reactivate")->assertStatus(422);
+
+        $fresh = $row->fresh();
+        $this->assertSame('dropped', $fresh->status);
+        $this->assertNotNull($fresh->archived_at);
+    }
+
+    public function test_reopen_archived_row_is_rejected(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program->department_id);
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $row = BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'completed',
+        ]);
+        $row->archived_at = now();
+        $row->save();
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->patchJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}/reopen")->assertStatus(422);
+
+        $fresh = $row->fresh();
+        $this->assertSame('completed', $fresh->status);
+        $this->assertNotNull($fresh->archived_at);
+    }
+
+    /**
+     * Regression: archive -> reactivate used to be reachable (reactivate only
+     * checked status, not archived_at), producing an active-but-archived row
+     * that destroy()'s archived_at-only guard would then let through — even
+     * though an active row must never be directly deletable.
+     */
+    public function test_reactivate_then_destroy_on_a_formerly_archived_row_stays_blocked(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program->department_id);
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $row = BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'dropped',
+        ]);
+        $row->archived_at = now();
+        $row->save();
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        // Reactivate is rejected while archived...
+        $this->patchJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}/reactivate")->assertStatus(422);
+
+        // ...restore, then reactivate succeeds and clears the archive...
+        $this->patchJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}/restore")->assertOk();
+        $this->patchJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}/reactivate")->assertOk();
+
+        $fresh = $row->fresh();
+        $this->assertSame('active', $fresh->status);
+        $this->assertNull($fresh->archived_at);
+
+        // ...and an active, non-archived row can never be deleted directly.
+        $this->deleteJson("/api/coordinator/batches/{$batch->id}/roster/{$row->id}")->assertStatus(422);
+        $this->assertDatabaseHas('batch_students', ['id' => $row->id]);
+    }
+
+    public function test_archive_out_of_scope_batch_is_forbidden(): void
+    {
+        $inScope = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($inScope->department_id);
+
+        $outProgram = $this->program('CABM-H', 'BSTM');
+        $outCoordinator = User::factory()->create(['role' => 'coordinator']);
+        $outBatch = $this->batchFor($outProgram, $outCoordinator);
+        $outStudent = User::factory()->create(['role' => 'student', 'program_id' => $outProgram->id]);
+        $company = $this->company();
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+
+        $row = BatchStudent::create([
+            'batch_id' => $outBatch->id,
+            'student_id' => $outStudent->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'dropped',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->patchJson("/api/coordinator/batches/{$outBatch->id}/roster/{$row->id}/archive")->assertStatus(403);
     }
 
     public function test_reactivate_flips_dropped_row_back_to_active(): void

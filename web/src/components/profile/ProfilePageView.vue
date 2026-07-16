@@ -204,7 +204,7 @@ onMounted(() => {
           <div class="flex gap-2">
             <button
               type="button"
-              class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 disabled:opacity-50"
+              class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
               :disabled="isUploadingPhoto"
               @click="triggerFileSelect"
             >
@@ -213,7 +213,7 @@ onMounted(() => {
             <button
               v-if="auth.user?.avatar_url"
               type="button"
-              class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 disabled:opacity-50"
+              class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
               :disabled="isUploadingPhoto"
               @click="removePhoto"
             >
@@ -261,7 +261,7 @@ onMounted(() => {
 
         <button
           type="submit"
-          class="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          class="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
           :disabled="isSavingProfile"
         >
           {{ isSavingProfile ? 'Saving...' : 'Save Profile' }}
@@ -311,7 +311,7 @@ onMounted(() => {
 
       <button
         type="submit"
-        class="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        class="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
         :disabled="isSavingPassword"
       >
         {{ isSavingPassword ? 'Saving...' : 'Update Password' }}

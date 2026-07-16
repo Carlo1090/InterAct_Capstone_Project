@@ -153,6 +153,7 @@ export type BatchStudentRecord = {
   status: BatchStudentStatus
   assigned_division: string | null
   enrolled_at: string
+  archived_at: string | null
   student: Pick<User, 'id' | 'name' | 'email'> & { student_id_number: string | null }
   batch: { id: number; name: string; program_id: number }
   company: EnrollmentOptionCompany
@@ -168,6 +169,7 @@ export type BatchRosterRow = {
   status: BatchStudentStatus
   assigned_division: string | null
   enrolled_at: string
+  archived_at: string | null
   student: { id: number; name: string; email: string; student_id_number: string | null }
   company: { id: number; name: string } | null
   supervisor: { id: number; name: string; email: string } | null
@@ -191,6 +193,11 @@ export type RosterResponse = {
 export type PaginatedResponse<T> = {
   data: T[]
   total?: number
+}
+
+export type LaravelValidationErrorBody = {
+  message: string
+  errors?: Record<string, string[]>
 }
 
 export type InfoSheetPersonalInfo = {
@@ -436,6 +443,11 @@ export type WeeklyBundlingResult = {
   week_end: string
   compiled: number
   skipped_submitted: number
+}
+
+export type ArchivePurgeResult = {
+  purged: number
+  cutoff: string
 }
 
 export type SystemLogRecord = {

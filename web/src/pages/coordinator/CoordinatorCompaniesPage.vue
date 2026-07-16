@@ -386,7 +386,7 @@ onMounted(async () => {
               />
               <button
                 type="button"
-                class="mt-2 rounded-md bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                class="mt-2 rounded-md bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
                 :disabled="!attachForm.user_id || hasLoginSupervisor"
                 @click="attachSupervisor"
               >
@@ -403,7 +403,7 @@ onMounted(async () => {
               <input v-model="createSupForm.position" type="text" placeholder="Position (optional)" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
               <button
                 type="button"
-                class="mt-2 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                class="mt-2 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
                 :disabled="hasLoginSupervisor"
                 @click="createSupervisor"
               >

@@ -115,19 +115,60 @@ class BatchRosterController extends Controller
     }
 
     /**
-     * Delete a roster row entirely — only allowed once it is 'dropped'. An
-     * active row must be dropped first (422).
+     * Delete a roster row entirely — only allowed once it has been archived.
+     * This fully subsumes the old "not active" guard, since archive() itself
+     * already refuses an active row.
      */
     public function destroy(Request $request, Batch $batch, BatchStudent $batchStudent): JsonResponse
     {
         $this->authorizeBatch($request->user(), $batch);
         $this->assertRowInBatch($batch, $batchStudent);
 
-        abort_if($batchStudent->status === 'active', 422, 'Drop this intern from the batch before deleting the record.');
+        abort_if($batchStudent->archived_at === null, 422, 'Archive this record before deleting it permanently.');
 
         $batchStudent->delete();
 
         return response()->json(['deleted' => true]);
+    }
+
+    /**
+     * Move a dropped or completed row into the archive — reversible via
+     * restore(), and permanently purged by BatchStudentPurgeService after
+     * 30 days if left archived. Not allowed on an active row. archived_at
+     * is deliberately excluded from the model's fillable list, so it's set
+     * via direct property assignment rather than update(), which would
+     * silently no-op.
+     */
+    public function archive(Request $request, Batch $batch, BatchStudent $batchStudent): JsonResponse
+    {
+        $this->authorizeBatch($request->user(), $batch);
+        $this->assertRowInBatch($batch, $batchStudent);
+
+        abort_if($batchStudent->status === 'active', 422, 'Drop or mark this intern completed before archiving the record.');
+        abort_if($batchStudent->archived_at !== null, 422, 'This record is already archived.');
+
+        $batchStudent->archived_at = now();
+        $batchStudent->save();
+
+        return response()->json($batchStudent->fresh(['student:id,name,email,student_id_number', 'company:id,name', 'supervisor:id,name,email']));
+    }
+
+    /**
+     * Undo an archive: clears archived_at, leaving status untouched — a
+     * restored row lands back in whichever of Dropped/Completed it came
+     * from, since archiving never changes status.
+     */
+    public function restore(Request $request, Batch $batch, BatchStudent $batchStudent): JsonResponse
+    {
+        $this->authorizeBatch($request->user(), $batch);
+        $this->assertRowInBatch($batch, $batchStudent);
+
+        abort_if($batchStudent->archived_at === null, 422, 'This record is not archived.');
+
+        $batchStudent->archived_at = null;
+        $batchStudent->save();
+
+        return response()->json($batchStudent->fresh(['student:id,name,email,student_id_number', 'company:id,name', 'supervisor:id,name,email']));
     }
 
     /**
@@ -144,6 +185,7 @@ class BatchRosterController extends Controller
         $this->assertRowInBatch($batch, $batchStudent);
 
         abort_unless($batchStudent->status === 'dropped', 422, 'Only a dropped record can be reactivated.');
+        abort_if($batchStudent->archived_at !== null, 422, 'Restore this record from the archive before reactivating it.');
 
         $activeElsewhere = BatchStudent::where('student_id', $batchStudent->student_id)
             ->where('status', 'active')
@@ -191,6 +233,7 @@ class BatchRosterController extends Controller
         $this->assertRowInBatch($batch, $batchStudent);
 
         abort_unless($batchStudent->status === 'completed', 422, 'Only a completed record can be reopened.');
+        abort_if($batchStudent->archived_at !== null, 422, 'Restore this record from the archive before reopening it.');
 
         $activeElsewhere = BatchStudent::where('student_id', $batchStudent->student_id)
             ->where('status', 'active')

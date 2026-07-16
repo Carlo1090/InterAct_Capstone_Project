@@ -256,7 +256,7 @@ onMounted(load)
             <div v-if="!showReturnForm" class="flex justify-end gap-3">
               <button
                 type="button"
-                class="rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-50"
+                class="rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 disabled:grayscale disabled:cursor-not-allowed"
                 :disabled="isSubmitting"
                 @click="showReturnForm = true"
               >
@@ -264,7 +264,7 @@ onMounted(load)
               </button>
               <button
                 type="button"
-                class="rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                class="rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
                 :disabled="isSubmitting"
                 @click="approve"
               >
@@ -289,7 +289,7 @@ onMounted(load)
                 </button>
                 <button
                   type="button"
-                  class="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  class="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
                   :disabled="isSubmitting"
                   @click="submitReturn"
                 >

@@ -1,3 +1,8 @@
+<script setup lang="ts">
+import LoadStatus from '@/components/LoadStatus.vue'
+import JournalPaperView from '@/components/journal/JournalPaperView.vue'
+</script>
+
 # InternTrack
 
 Internship Journal and Progress Monitoring System — Mater Dei College CAST

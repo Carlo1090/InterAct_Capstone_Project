@@ -14,7 +14,6 @@ const navItems = [
   { label: 'Student Info Sheets', to: '/coordinator/info-sheets', badge: '', icon: 'id-card' },
   { label: 'Annual SIPP Report', to: '/coordinator/annual-sipp', badge: '', icon: 'chart' },
   { label: 'HTE & Student Interns List', to: '/coordinator/hte', badge: '', icon: 'clipboard' },
-  { label: 'Profile', to: '/coordinator/profile', badge: '', icon: 'profile' },
 ]
 
 const auth = useAuthStore()
@@ -167,10 +166,14 @@ const logout = async () => {
             <p class="text-sm font-bold uppercase tracking-wide text-slate-700">{{ userName }}</p>
             <p class="text-xs text-slate-400">Coordinator &middot; {{ department }}</p>
           </div>
-          <div class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-600 text-sm font-bold text-white">
+          <RouterLink
+            to="/coordinator/profile"
+            title="Profile"
+            class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-600 text-sm font-bold text-white ring-offset-2 transition hover:ring-2 hover:ring-blue-600"
+          >
             <img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" alt="Profile photo" class="h-full w-full object-cover" />
             <span v-else>{{ initials }}</span>
-          </div>
+          </RouterLink>
         </div>
       </header>
 

@@ -2,8 +2,10 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
+import { categorizeError } from '@/lib/apiError'
 import { confirmAction, showToast } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
+import LoadStatus from '@/components/LoadStatus.vue'
 import type {
   Batch,
   BatchRosterResponse,
@@ -92,8 +94,8 @@ const load = async () => {
   try {
     const [batchesResponse] = await Promise.all([api.get<Batch[]>('/api/coordinator/batches'), loadTemplates()])
     batches.value = batchesResponse.data
-  } catch {
-    errorMessage.value = 'Unable to load batches.'
+  } catch (error) {
+    errorMessage.value = categorizeError(error, 'Unable to load batches.').message
   } finally {
     isLoading.value = false
   }
@@ -217,8 +219,9 @@ const addResolvedSupervisor = computed(() =>
 )
 
 const activeRoster = computed(() => rosterRows.value.filter((row) => row.status === 'active'))
-const completedRoster = computed(() => rosterRows.value.filter((row) => row.status === 'completed'))
-const droppedRoster = computed(() => rosterRows.value.filter((row) => row.status === 'dropped'))
+const completedRoster = computed(() => rosterRows.value.filter((row) => row.status === 'completed' && !row.archived_at))
+const droppedRoster = computed(() => rosterRows.value.filter((row) => row.status === 'dropped' && !row.archived_at))
+const archivedRoster = computed(() => rosterRows.value.filter((row) => row.archived_at))
 const activeStudentIds = computed(() => activeRoster.value.map((row) => row.student.id))
 
 // Students who may be added to THIS batch: same program, not already active here.
@@ -331,9 +334,50 @@ const removeIntern = async (row: BatchRosterRow) => {
   }
 }
 
-const deleteIntern = async (row: BatchRosterRow) => {
+const archiveIntern = async (row: BatchRosterRow) => {
   if (!rosterBatch.value) return
-  if (!confirmAction(`Permanently delete ${row.student.name}'s dropped record from this batch? This cannot be undone.`)) return
+  if (
+    !confirmAction(
+      `Archive ${row.student.name}'s record from this batch? It moves to Archived and can be restored anytime within 30 days, after which it is permanently deleted automatically.`,
+    )
+  )
+    return
+
+  rosterMessage.value = ''
+  try {
+    await api.patch(`/api/coordinator/batches/${rosterBatch.value.id}/roster/${row.id}/archive`)
+    await loadRoster(rosterBatch.value.id)
+    showToast('Record archived.')
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 422) {
+      rosterMessage.value = error.response.data.message ?? 'Unable to archive this record.'
+    } else {
+      rosterMessage.value = 'Unable to archive this record.'
+    }
+  }
+}
+
+const restoreIntern = async (row: BatchRosterRow) => {
+  if (!rosterBatch.value) return
+  if (!confirmAction(`Restore ${row.student.name}'s archived record?`)) return
+
+  rosterMessage.value = ''
+  try {
+    await api.patch(`/api/coordinator/batches/${rosterBatch.value.id}/roster/${row.id}/restore`)
+    await loadRoster(rosterBatch.value.id)
+    showToast('Record restored.')
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 422) {
+      rosterMessage.value = error.response.data.message ?? 'Unable to restore this record.'
+    } else {
+      rosterMessage.value = 'Unable to restore this record.'
+    }
+  }
+}
+
+const deleteForeverIntern = async (row: BatchRosterRow) => {
+  if (!rosterBatch.value) return
+  if (!confirmAction(`Permanently delete ${row.student.name}'s archived record from this batch? This cannot be undone.`)) return
 
   try {
     await api.delete(`/api/coordinator/batches/${rosterBatch.value.id}/roster/${row.id}`)
@@ -427,7 +471,7 @@ onMounted(load)
       </div>
       <button
         type="button"
-        class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
         :disabled="programs.length === 0"
         @click="openCreateModal"
       >
@@ -435,9 +479,8 @@ onMounted(load)
       </button>
     </div>
 
-    <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
-    <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
-    <p v-else-if="programs.length === 0" class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+    <LoadStatus :loading="isLoading" :error="errorMessage" :retry="load">
+    <p v-if="programs.length === 0" class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
       You are not currently assigned to a program, so there are no batches to manage yet.
     </p>
 
@@ -486,6 +529,7 @@ onMounted(load)
         </tbody>
       </table>
     </div>
+    </LoadStatus>
 
     <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
       <section class="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl">
@@ -705,8 +749,11 @@ onMounted(load)
                       <span class="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-200">Completed</span>
                     </td>
                     <td class="px-3 py-2 text-right">
-                      <button type="button" class="rounded-md border border-green-600 px-3 py-1 text-xs font-semibold text-green-700 hover:bg-green-50" @click="reopenIntern(row)">
+                      <button type="button" class="mr-2 rounded-md border border-green-600 px-3 py-1 text-xs font-semibold text-green-700 hover:bg-green-50" @click="reopenIntern(row)">
                         Reopen
+                      </button>
+                      <button type="button" class="rounded-md border border-red-500 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50" @click="archiveIntern(row)">
+                        Archive
                       </button>
                     </td>
                   </tr>
@@ -715,7 +762,7 @@ onMounted(load)
             </div>
           </div>
 
-          <!-- Dropped interns (can be deleted) -->
+          <!-- Dropped interns (can be archived) -->
           <div v-if="droppedRoster.length">
             <p class="mb-2 text-sm font-semibold text-slate-800">Dropped ({{ droppedRoster.length }})</p>
             <div class="overflow-hidden rounded-md ring-1 ring-slate-200">
@@ -735,8 +782,40 @@ onMounted(load)
                       <button type="button" class="mr-2 rounded-md border border-green-600 px-3 py-1 text-xs font-semibold text-green-700 hover:bg-green-50" @click="reactivateIntern(row)">
                         Reactivate
                       </button>
-                      <button type="button" class="rounded-md border border-red-500 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50" @click="deleteIntern(row)">
-                        Delete
+                      <button type="button" class="rounded-md border border-red-500 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50" @click="archiveIntern(row)">
+                        Archive
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Archived interns (reversible for 30 days, then auto-purged) -->
+          <div v-if="archivedRoster.length">
+            <p class="mb-2 text-sm font-semibold text-slate-800">Archived ({{ archivedRoster.length }})</p>
+            <div class="overflow-hidden rounded-md ring-1 ring-slate-200">
+              <table class="min-w-full divide-y divide-slate-200 text-sm">
+                <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th class="px-3 py-2 text-left">Student</th>
+                    <th class="px-3 py-2 text-left">Company</th>
+                    <th class="px-3 py-2 text-left">Status</th>
+                    <th class="px-3 py-2 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr v-for="row in archivedRoster" :key="row.id">
+                    <td class="px-3 py-2 text-slate-600">{{ row.student.name }}</td>
+                    <td class="px-3 py-2 text-slate-500">{{ row.company?.name ?? '—' }}</td>
+                    <td class="px-3 py-2 text-slate-500">{{ row.status === 'completed' ? 'Completed' : 'Dropped' }}</td>
+                    <td class="px-3 py-2 text-right">
+                      <button type="button" class="mr-2 rounded-md border border-green-600 px-3 py-1 text-xs font-semibold text-green-700 hover:bg-green-50" @click="restoreIntern(row)">
+                        Restore
+                      </button>
+                      <button type="button" class="rounded-md border border-red-500 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50" @click="deleteForeverIntern(row)">
+                        Delete Forever
                       </button>
                     </td>
                   </tr>

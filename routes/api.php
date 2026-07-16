@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AuditLogController;
 use App\Http\Controllers\Admin\BatchController;
+use App\Http\Controllers\Admin\BatchStudentPurgeController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\ProgramController;
 use App\Http\Controllers\Admin\StudentInfoSheetController as AdminStudentInfoSheetController;
@@ -88,6 +89,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])
         Route::get('audit-logs/export', [AuditLogController::class, 'export']);
 
         Route::post('weekly-bundling/run', [WeeklyBundlingController::class, 'run']);
+        Route::post('roster/purge-archived/run', [BatchStudentPurgeController::class, 'run']);
     });
 
 Route::middleware(['auth:sanctum', 'role:coordinator'])
@@ -128,6 +130,8 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::post('batches/{batch}/roster', [BatchRosterController::class, 'add']);
         Route::patch('batches/{batch}/roster/{batchStudent}/drop', [BatchRosterController::class, 'remove']);
         Route::patch('batches/{batch}/roster/{batchStudent}/reactivate', [BatchRosterController::class, 'reactivate']);
+        Route::patch('batches/{batch}/roster/{batchStudent}/archive', [BatchRosterController::class, 'archive']);
+        Route::patch('batches/{batch}/roster/{batchStudent}/restore', [BatchRosterController::class, 'restore']);
         Route::patch('batches/{batch}/roster/{batchStudent}/complete', [BatchRosterController::class, 'complete']);
         Route::patch('batches/{batch}/roster/{batchStudent}/reopen', [BatchRosterController::class, 'reopen']);
         Route::delete('batches/{batch}/roster/{batchStudent}', [BatchRosterController::class, 'destroy']);

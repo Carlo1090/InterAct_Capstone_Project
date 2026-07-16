@@ -295,7 +295,7 @@ onMounted(load)
       </div>
       <button
         type="button"
-        class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
         :disabled="programs.length === 0"
         @click="openCreateModal"
       >

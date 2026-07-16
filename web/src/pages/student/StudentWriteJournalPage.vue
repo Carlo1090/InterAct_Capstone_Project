@@ -241,7 +241,7 @@ onMounted(load)
         <button
           v-if="paperEditable"
           type="button"
-          class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+          class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
           :disabled="isSaving || isOverLimit || isSippOverLimit"
           @click="save('draft')"
         >
@@ -250,7 +250,7 @@ onMounted(load)
         <button
           v-if="paperEditable"
           type="button"
-          class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
           :disabled="isSaving || isOverLimit || isSippOverLimit"
           @click="save('submitted')"
         >
@@ -396,7 +396,7 @@ onMounted(load)
           </button>
           <button
             type="button"
-            class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+            class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
             :disabled="isSaving || !editable || isOverLimit || isSippOverLimit"
             @click="save('draft')"
           >
@@ -404,7 +404,7 @@ onMounted(load)
           </button>
           <button
             type="button"
-            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
             :disabled="isSaving || !editable || isOverLimit || isSippOverLimit"
             @click="save('submitted')"
           >

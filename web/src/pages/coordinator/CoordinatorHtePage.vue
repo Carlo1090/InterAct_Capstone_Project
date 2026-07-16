@@ -198,7 +198,7 @@ onMounted(loadIndex)
         <div class="flex flex-wrap gap-2">
           <button
             type="button"
-            class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+            class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
             :disabled="isSaving || isLoadingReport"
             @click="save('draft')"
           >
@@ -206,7 +206,7 @@ onMounted(loadIndex)
           </button>
           <button
             type="button"
-            class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
             :disabled="isSaving || isLoadingReport"
             @click="save('finalized')"
           >
@@ -214,7 +214,7 @@ onMounted(loadIndex)
           </button>
           <button
             type="button"
-            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
             :disabled="isDownloading || isLoadingReport"
             @click="downloadPdf"
           >

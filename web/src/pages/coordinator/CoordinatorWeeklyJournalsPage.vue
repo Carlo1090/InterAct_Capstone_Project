@@ -208,7 +208,7 @@ onMounted(load)
       <div v-if="lastPage > 1" class="flex items-center justify-between border-t border-slate-100 px-4 py-3">
         <button
           type="button"
-          class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50"
+          class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
           :disabled="page <= 1"
           @click="goToPage(page - 1)"
         >
@@ -217,7 +217,7 @@ onMounted(load)
         <span class="text-xs text-slate-500">Page {{ page }} of {{ lastPage }}</span>
         <button
           type="button"
-          class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50"
+          class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
           :disabled="page >= lastPage"
           @click="goToPage(page + 1)"
         >

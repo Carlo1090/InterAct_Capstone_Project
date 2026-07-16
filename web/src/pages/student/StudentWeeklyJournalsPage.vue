@@ -381,7 +381,7 @@ onMounted(() => {
             <div v-if="!week.activityLog" class="mt-3">
               <button
                 type="button"
-                class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
                 :disabled="activityLogLoading[week.week_start]"
                 @click="createActivityLog(week)"
               >
@@ -447,7 +447,7 @@ onMounted(() => {
               </div>
               <button
                 type="button"
-                class="mt-2 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 disabled:opacity-50"
+                class="mt-2 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
                 :disabled="entrySaving[week.activityLog.id]"
                 @click="addEntry(week.activityLog)"
               >
@@ -468,7 +468,7 @@ onMounted(() => {
             <button
               v-if="weekState(week) === 'draft' || weekState(week) === 'returned'"
               type="button"
-              class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+              class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
               :disabled="savingDetail[week.week_start]"
               @click="saveNarrative(week.week_start)"
             >
@@ -477,7 +477,7 @@ onMounted(() => {
             <button
               v-if="weekState(week) === 'draft' || weekState(week) === 'returned'"
               type="button"
-              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
               :disabled="submittingDetail[week.week_start] || !details[week.week_start].narrative?.trim()"
               @click="submitWeek(week)"
             >

@@ -10,7 +10,6 @@ const allNavItems = [
   { label: 'Write Daily Journal', to: '/student/write-journal', badge: '', icon: 'pencil' },
   { label: 'Weekly Journals', to: '/student/weekly-journals', badge: '', icon: 'stack' },
   { label: 'Student Info Sheet', to: '/student/info-sheet', badge: '', icon: 'id-card' },
-  { label: 'Profile', to: '/student/profile', badge: '', icon: 'profile' },
 ]
 
 const auth = useAuthStore()
@@ -20,13 +19,11 @@ const router = useRouter()
 const collapsed = ref(false)
 
 // Until their info sheet is approved, a student may only reach the info-sheet
-// page + their profile — so the rest of the nav is hidden while gated.
+// page — so the rest of the nav is hidden while gated. Profile stays reachable
+// via the header avatar regardless (the router guard and backend both already
+// allow it while gated).
 const isGated = computed(() => auth.user?.role === 'student' && auth.user?.student_gated === true)
-const navItems = computed(() =>
-  isGated.value
-    ? allNavItems.filter((item) => item.to === '/student/info-sheet' || item.to === '/student/profile')
-    : allNavItems,
-)
+const navItems = computed(() => (isGated.value ? allNavItems.filter((item) => item.to === '/student/info-sheet') : allNavItems))
 
 const pageTitle = computed(() => (typeof route.meta.title === 'string' ? route.meta.title : 'Dashboard'))
 const userName = computed(() => auth.user?.name ?? 'Student')
@@ -163,10 +160,14 @@ const logout = async () => {
             <p class="text-sm font-bold uppercase tracking-wide text-slate-700">{{ userName }}</p>
             <p class="text-xs text-slate-400">Student &middot; {{ department }}</p>
           </div>
-          <div class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-600 text-sm font-bold text-white">
+          <RouterLink
+            to="/student/profile"
+            title="Profile"
+            class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-600 text-sm font-bold text-white ring-offset-2 transition hover:ring-2 hover:ring-blue-600"
+          >
             <img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" alt="Profile photo" class="h-full w-full object-cover" />
             <span v-else>{{ initials }}</span>
-          </div>
+          </RouterLink>
         </div>
       </header>
 

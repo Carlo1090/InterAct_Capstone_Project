@@ -2,9 +2,11 @@
 import { onMounted, reactive, ref, watch } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
+import { categorizeError } from '@/lib/apiError'
 import { confirmAction, showToast } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
-import type { PaginatedResponse, SystemSettingsMap, User, WeeklyBundlingResult } from '@/types/api'
+import LoadStatus from '@/components/LoadStatus.vue'
+import type { ArchivePurgeResult, PaginatedResponse, SystemSettingsMap, User, WeeklyBundlingResult } from '@/types/api'
 
 const systemInfo = [
   ['System Version', 'v1.0.0 (Phase 2)'],
@@ -24,6 +26,7 @@ const generalForm = reactive<SystemSettingsMap>({
 const isLoadingSettings = ref(true)
 const isSavingSettings = ref(false)
 const settingsError = ref('')
+const saveError = ref('')
 const settingsSaved = ref(false)
 
 const loadSettings = async () => {
@@ -38,8 +41,8 @@ const loadSettings = async () => {
       institution_address: response.data.institution_address ?? '',
       system_email: response.data.system_email ?? '',
     })
-  } catch {
-    settingsError.value = 'Unable to load system settings.'
+  } catch (error) {
+    settingsError.value = categorizeError(error, 'Unable to load system settings.').message
   } finally {
     isLoadingSettings.value = false
   }
@@ -47,15 +50,14 @@ const loadSettings = async () => {
 
 const saveSettings = async () => {
   isSavingSettings.value = true
-  settingsError.value = ''
+  saveError.value = ''
   settingsSaved.value = false
 
   try {
     await api.put('/api/admin/system-settings', generalForm)
     settingsSaved.value = true
   } catch (error) {
-    const data = axios.isAxiosError(error) ? error.response?.data : null
-    settingsError.value = data?.message ?? 'Unable to save settings.'
+    saveError.value = categorizeError(error, 'Unable to save settings.').message
   } finally {
     isSavingSettings.value = false
   }
@@ -63,6 +65,7 @@ const saveSettings = async () => {
 
 const cancelSettings = () => {
   settingsSaved.value = false
+  saveError.value = ''
   loadSettings()
 }
 
@@ -148,6 +151,31 @@ const runWeeklyBundlingNow = async () => {
   }
 }
 
+// --- Archive Purge demo trigger -----------------------------------------
+const isRunningPurge = ref(false)
+const purgeError = ref('')
+const purgeResult = ref<ArchivePurgeResult | null>(null)
+
+const runPurgeNow = async () => {
+  if (!confirmAction('Run the archive purge now? This permanently deletes every batch roster record archived 30+ days ago. This cannot be undone.')) {
+    return
+  }
+
+  isRunningPurge.value = true
+  purgeError.value = ''
+
+  try {
+    const { data } = await api.post<ArchivePurgeResult>('/api/admin/roster/purge-archived/run')
+    purgeResult.value = data
+    showToast(`Archive purge complete: ${data.purged} record${data.purged === 1 ? '' : 's'} purged.`)
+  } catch (error) {
+    const data = axios.isAxiosError(error) ? error.response?.data : null
+    purgeError.value = data?.message ?? 'Unable to run the archive purge.'
+  } finally {
+    isRunningPurge.value = false
+  }
+}
+
 onMounted(loadSettings)
 </script>
 
@@ -158,8 +186,8 @@ onMounted(loadSettings)
       <div class="space-y-5">
         <div class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
           <h2 class="text-sm font-bold text-slate-900">General Settings</h2>
-          <p v-if="isLoadingSettings" class="mt-4 text-sm text-slate-500">Loading...</p>
-          <div v-else class="mt-5 space-y-4">
+          <LoadStatus class="mt-4" :loading="isLoadingSettings" :error="settingsError" :retry="loadSettings">
+          <div class="mt-1 space-y-4">
             <label class="block">
               <span class="text-xs font-bold text-slate-600">System Name</span>
               <input v-model="generalForm.system_name" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
@@ -177,6 +205,7 @@ onMounted(loadSettings)
               <input v-model="generalForm.system_email" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" type="email" />
             </label>
           </div>
+          </LoadStatus>
         </div>
 
         <div class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
@@ -202,7 +231,7 @@ onMounted(loadSettings)
               </div>
               <button
                 type="button"
-                class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 disabled:opacity-50"
+                class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
                 :disabled="issuingForId === student.id"
                 @click="issueTemporaryPassword(student)"
               >
@@ -271,7 +300,7 @@ onMounted(loadSettings)
 
           <button
             type="button"
-            class="mt-3 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
+            class="mt-3 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:grayscale disabled:cursor-not-allowed"
             :disabled="isRunningWeeklyBundling"
             @click="runWeeklyBundlingNow"
           >
@@ -290,6 +319,30 @@ onMounted(loadSettings)
         </div>
 
         <div class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <h2 class="text-sm font-bold text-slate-900">Archive Purge</h2>
+          <p class="mt-1 text-xs text-slate-500">
+            Permanently deletes batch roster records that coordinators archived 30+ days ago.
+            Runs automatically every night at 02:00 — use this to trigger it on demand.
+          </p>
+
+          <button
+            type="button"
+            class="mt-4 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:grayscale disabled:cursor-not-allowed"
+            :disabled="isRunningPurge"
+            @click="runPurgeNow"
+          >
+            {{ isRunningPurge ? 'Running...' : 'Run Purge Now' }}
+          </button>
+
+          <p v-if="purgeError" class="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ purgeError }}</p>
+
+          <div v-if="purgeResult" class="mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+            <p class="font-semibold">{{ purgeResult.purged }} record{{ purgeResult.purged === 1 ? '' : 's' }} purged.</p>
+            <p class="mt-1 text-xs">Cutoff: records archived before {{ purgeResult.cutoff }}.</p>
+          </div>
+        </div>
+
+        <div class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
           <h2 class="text-sm font-bold text-slate-900">System Information</h2>
           <div class="mt-4 divide-y divide-slate-100">
             <div v-for="[label, value] in systemInfo" :key="label" class="flex items-center justify-between py-2">
@@ -301,7 +354,7 @@ onMounted(loadSettings)
       </div>
     </div>
 
-    <p v-if="settingsError" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ settingsError }}</p>
+    <p v-if="saveError" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ saveError }}</p>
     <p v-if="settingsSaved" class="rounded-md bg-green-50 px-4 py-3 text-sm text-green-700">Settings saved.</p>
 
     <div class="flex justify-end gap-3">
@@ -310,7 +363,7 @@ onMounted(loadSettings)
       </button>
       <button
         type="button"
-        class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+        class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:grayscale disabled:cursor-not-allowed"
         :disabled="isSavingSettings"
         @click="saveSettings"
       >

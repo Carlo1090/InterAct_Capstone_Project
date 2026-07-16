@@ -255,7 +255,7 @@ onMounted(load)
         <div v-if="canActOnDetail" class="mt-6 flex justify-end gap-3 border-t border-slate-100 pt-4">
           <button
             type="button"
-            class="rounded-md border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-50"
+            class="rounded-md border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 disabled:grayscale disabled:cursor-not-allowed"
             :disabled="isActing"
             @click="reject"
           >
@@ -263,7 +263,7 @@ onMounted(load)
           </button>
           <button
             type="button"
-            class="rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            class="rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
             :disabled="isActing"
             @click="accept"
           >

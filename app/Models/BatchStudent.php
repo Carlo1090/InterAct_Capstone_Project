@@ -17,6 +17,7 @@ class BatchStudent extends Model
     {
         return [
             'completed_at' => 'datetime',
+            'archived_at' => 'datetime',
         ];
     }
 

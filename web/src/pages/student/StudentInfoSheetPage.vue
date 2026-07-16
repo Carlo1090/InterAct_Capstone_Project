@@ -277,7 +277,7 @@ onMounted(loadInfoSheet)
       <div v-if="isApproved" class="mt-6 flex justify-end">
         <button
           type="button"
-          class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
           :disabled="isSaving"
           @click="save('submitted')"
         >
@@ -287,7 +287,7 @@ onMounted(loadInfoSheet)
       <div v-else class="mt-6 flex justify-end gap-3">
         <button
           type="button"
-          class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+          class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
           :disabled="isSaving"
           @click="save('draft')"
         >
@@ -295,7 +295,7 @@ onMounted(loadInfoSheet)
         </button>
         <button
           type="button"
-          class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
           :disabled="isSaving"
           @click="save('submitted')"
         >

@@ -113,7 +113,7 @@ onMounted(() => {
       <input v-model="dateFilter" type="date" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" />
       <button
         type="button"
-        class="ml-auto rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+        class="ml-auto rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
         :disabled="isExporting"
         @click="exportLogs"
       >
