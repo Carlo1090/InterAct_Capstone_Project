@@ -115,12 +115,20 @@ class CabmbIntakeDemoSeeder extends Seeder
                     'department' => $batch->program?->department?->name,
                     'internship_coordinator' => $batch->coordinator?->name,
                 ],
+                // supervisor_name/office_designation are the named individual the
+                // student actually reports to on-site — deliberately a different
+                // person from the company's login account, so accepting this
+                // sheet demonstrates CompanySupervisor's login-vs-named split:
+                // batch_students.supervisor_id (login, reviews logs) ends up
+                // distinct from company_supervisor_id (this named individual).
                 'ojt_info' => $company ? [
                     'company_id' => $company->id,
                     'host_company' => $company->name,
                     'company_address' => $company->address,
                     'area_assigned' => 'Accounting',
                     'intern_duty_schedule' => 'Mon-Fri, 8:00 AM - 5:00 PM',
+                    'supervisor_name' => 'Mr. Ramon Delgado',
+                    'office_designation' => 'Accounting Team Lead',
                 ] : [],
                 'emergency_contact' => null,
             ]
