@@ -28,6 +28,7 @@ This is a **monorepo** with three parts:
    - Separate `programs`, `departments`, `student_profiles`, `journal_templates`, `system_settings` tables exist
    - `programs` has a composite unique constraint on `(department_id, cod e)` — departments are independent top-level units (e.g. CABM-B and CABM-H are two separate departments, not sub-units of one "CABM"); don't introduce a department→division→program hierarchy without confirming first
 4. **Out of scope — do not build:** geofence clock-in, rotating QR clock-in, photo capture on clock-in, exit interview report generation.
+5. **Record every change in CLAUDE.md as part of finishing the task, not as an afterthought.** Any new feature, schema change, bug fix worth remembering, or behavior change must get a corresponding bullet added (matching the existing section's style) or an existing stale statement corrected — before reporting the task complete, not after being asked. A change that isn't reflected here is invisible to the next session.
 
 
 ## Domain Facts
