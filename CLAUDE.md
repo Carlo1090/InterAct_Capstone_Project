@@ -1,5 +1,8 @@
 # CLAUDE.md
 
+## Github Repository
+https://github.com/Carlo1090/InterAct_Capstone_Project.git
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
@@ -25,7 +28,7 @@ This is a **monorepo** with three parts:
    - Separate `programs`, `departments`, `student_profiles`, `journal_templates`, `system_settings` tables exist
    - `programs` has a composite unique constraint on `(department_id, cod e)` — departments are independent top-level units (e.g. CABM-B and CABM-H are two separate departments, not sub-units of one "CABM"); don't introduce a department→division→program hierarchy without confirming first
 4. **Out of scope — do not build:** geofence clock-in, rotating QR clock-in, photo capture on clock-in, exit interview report generation.
-5. Work on a **feature branch**, never directly on `main`. Small, focused commits with clear messages.
+
 
 ## Domain Facts
 - 3 departments, 7 programs:
