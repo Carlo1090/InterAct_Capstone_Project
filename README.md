@@ -51,5 +51,9 @@ npx expo start
 
 ## Documentation
 
-- `docs/` — database schema, development roadmap, and setup guides
+- `CLAUDE.md` — the single source of truth for current architecture,
+  conventions, and domain rules; kept up to date as the project changes
+- `docs/PROJECT_HISTORY.md` — condensed historical log of earlier build phases
+- `docs/` also holds the database schema doc, development roadmap, and SIPP
+  report annex references
 - Database baseline: 20-table schema, v2.0 (see `docs/InternTrack_Database_Schema_v2.docx`)
