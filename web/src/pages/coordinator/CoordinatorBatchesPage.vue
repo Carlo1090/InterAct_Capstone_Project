@@ -320,143 +320,110 @@ const addIntern = async () => {
   }
 }
 
-const removeIntern = async (row: BatchRosterRow) => {
-  if (!rosterBatch.value) return
-  if (!confirmAction(`Remove ${row.student.name} from "${rosterBatch.value.name}"? Their record will be marked dropped (history is kept).`)) return
-
-  try {
-    await api.patch(`/api/coordinator/batches/${rosterBatch.value.id}/roster/${row.id}/drop`)
-    await loadRoster(rosterBatch.value.id)
-    await load()
-    showToast('Intern removed (dropped).')
-  } catch {
-    rosterMessage.value = 'Unable to remove this intern.'
-  }
+type RosterActionOptions = {
+  confirmMessage: string
+  request: () => Promise<unknown>
+  successMessage: string
+  errorFallback: string
+  reloadBatches?: boolean
+  refetchCandidates?: boolean
 }
 
-const archiveIntern = async (row: BatchRosterRow) => {
+/**
+ * Every roster row action (drop/archive/restore/delete/complete/reopen/
+ * reactivate) shares the same confirm -> call -> reload -> toast/catch
+ * shape; this is the one place that logic lives instead of being
+ * copy-pasted per action.
+ */
+const runRosterAction = async ({
+  confirmMessage,
+  request,
+  successMessage,
+  errorFallback,
+  reloadBatches,
+  refetchCandidates,
+}: RosterActionOptions) => {
   if (!rosterBatch.value) return
-  if (
-    !confirmAction(
-      `Archive ${row.student.name}'s record from this batch? It moves to Archived and can be restored anytime within 30 days, after which it is permanently deleted automatically.`,
-    )
-  )
-    return
+  if (!confirmAction(confirmMessage)) return
 
   rosterMessage.value = ''
   try {
-    await api.patch(`/api/coordinator/batches/${rosterBatch.value.id}/roster/${row.id}/archive`)
+    await request()
     await loadRoster(rosterBatch.value.id)
-    showToast('Record archived.')
-  } catch (error) {
-    if (axios.isAxiosError(error) && error.response?.status === 422) {
-      rosterMessage.value = error.response.data.message ?? 'Unable to archive this record.'
-    } else {
-      rosterMessage.value = 'Unable to archive this record.'
+    if (reloadBatches) await load()
+    if (refetchCandidates) {
+      rosterCandidates.value = (await api.get<CoordinatorInternUser[]>('/api/coordinator/users/interns')).data
     }
-  }
-}
-
-const restoreIntern = async (row: BatchRosterRow) => {
-  if (!rosterBatch.value) return
-  if (!confirmAction(`Restore ${row.student.name}'s archived record?`)) return
-
-  rosterMessage.value = ''
-  try {
-    await api.patch(`/api/coordinator/batches/${rosterBatch.value.id}/roster/${row.id}/restore`)
-    await loadRoster(rosterBatch.value.id)
-    showToast('Record restored.')
+    showToast(successMessage)
   } catch (error) {
-    if (axios.isAxiosError(error) && error.response?.status === 422) {
-      rosterMessage.value = error.response.data.message ?? 'Unable to restore this record.'
-    } else {
-      rosterMessage.value = 'Unable to restore this record.'
-    }
+    rosterMessage.value = categorizeError(error, errorFallback).message
   }
 }
 
-const deleteForeverIntern = async (row: BatchRosterRow) => {
-  if (!rosterBatch.value) return
-  if (!confirmAction(`Permanently delete ${row.student.name}'s archived record from this batch? This cannot be undone.`)) return
+const removeIntern = (row: BatchRosterRow) =>
+  runRosterAction({
+    confirmMessage: `Remove ${row.student.name} from "${rosterBatch.value?.name}"? Their record will be marked dropped (history is kept).`,
+    request: () => api.patch(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}/drop`),
+    successMessage: 'Intern removed (dropped).',
+    errorFallback: 'Unable to remove this intern.',
+    reloadBatches: true,
+  })
 
-  try {
-    await api.delete(`/api/coordinator/batches/${rosterBatch.value.id}/roster/${row.id}`)
-    await loadRoster(rosterBatch.value.id)
-    showToast('Record deleted.')
-  } catch {
-    rosterMessage.value = 'Unable to delete this record.'
-  }
-}
+const archiveIntern = (row: BatchRosterRow) =>
+  runRosterAction({
+    confirmMessage: `Archive ${row.student.name}'s record from this batch? It moves to Archived and can be restored anytime within 30 days, after which it is permanently deleted automatically.`,
+    request: () => api.patch(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}/archive`),
+    successMessage: 'Record archived.',
+    errorFallback: 'Unable to archive this record.',
+  })
 
-const completeIntern = async (row: BatchRosterRow) => {
-  if (!rosterBatch.value) return
-  if (
-    !confirmAction(
+const restoreIntern = (row: BatchRosterRow) =>
+  runRosterAction({
+    confirmMessage: `Restore ${row.student.name}'s archived record?`,
+    request: () => api.patch(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}/restore`),
+    successMessage: 'Record restored.',
+    errorFallback: 'Unable to restore this record.',
+  })
+
+const deleteForeverIntern = (row: BatchRosterRow) =>
+  runRosterAction({
+    confirmMessage: `Permanently delete ${row.student.name}'s archived record from this batch? This cannot be undone.`,
+    request: () => api.delete(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}`),
+    successMessage: 'Record deleted.',
+    errorFallback: 'Unable to delete this record.',
+  })
+
+const completeIntern = (row: BatchRosterRow) =>
+  runRosterAction({
+    confirmMessage:
       `Mark ${row.student.name}'s OJT as COMPLETED? Their journal window freezes today: ` +
-        `they can still view and download everything, but new journal dates will be locked. You can reopen this later.`,
-    )
-  )
-    return
+      `they can still view and download everything, but new journal dates will be locked. You can reopen this later.`,
+    request: () => api.patch(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}/complete`),
+    successMessage: 'Intern marked completed.',
+    errorFallback: 'Unable to mark this intern completed.',
+    reloadBatches: true,
+  })
 
-  rosterMessage.value = ''
-  try {
-    await api.patch(`/api/coordinator/batches/${rosterBatch.value.id}/roster/${row.id}/complete`)
-    await loadRoster(rosterBatch.value.id)
-    await load()
-    showToast('Intern marked completed.')
-  } catch (error) {
-    if (axios.isAxiosError(error) && error.response?.status === 422) {
-      rosterMessage.value = error.response.data.message ?? 'Unable to mark this intern completed.'
-    } else {
-      rosterMessage.value = 'Unable to mark this intern completed.'
-    }
-  }
-}
+const reopenIntern = (row: BatchRosterRow) =>
+  runRosterAction({
+    confirmMessage:
+      `Reopen ${row.student.name}'s completed OJT in "${rosterBatch.value?.name}"? ` +
+      `They'll be active again and their journal window resumes rolling forward.`,
+    request: () => api.patch(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}/reopen`),
+    successMessage: 'Intern reopened (active again).',
+    errorFallback: 'Unable to reopen this record.',
+    reloadBatches: true,
+  })
 
-const reopenIntern = async (row: BatchRosterRow) => {
-  if (!rosterBatch.value) return
-  if (
-    !confirmAction(
-      `Reopen ${row.student.name}'s completed OJT in "${rosterBatch.value.name}"? ` +
-        `They'll be active again and their journal window resumes rolling forward.`,
-    )
-  )
-    return
-
-  rosterMessage.value = ''
-  try {
-    await api.patch(`/api/coordinator/batches/${rosterBatch.value.id}/roster/${row.id}/reopen`)
-    await loadRoster(rosterBatch.value.id)
-    await load()
-    showToast('Intern reopened (active again).')
-  } catch (error) {
-    if (axios.isAxiosError(error) && error.response?.status === 422) {
-      rosterMessage.value = error.response.data.message ?? 'Unable to reopen this record.'
-    } else {
-      rosterMessage.value = 'Unable to reopen this record.'
-    }
-  }
-}
-
-const reactivateIntern = async (row: BatchRosterRow) => {
-  if (!rosterBatch.value) return
-  if (!confirmAction(`Reactivate ${row.student.name} in "${rosterBatch.value.name}"? They'll be marked active again with their previous company and supervisor.`)) return
-
-  rosterMessage.value = ''
-  try {
-    await api.patch(`/api/coordinator/batches/${rosterBatch.value.id}/roster/${row.id}/reactivate`)
-    await loadRoster(rosterBatch.value.id)
-    await load()
-    rosterCandidates.value = (await api.get<CoordinatorInternUser[]>('/api/coordinator/users/interns')).data
-    showToast('Intern reactivated.')
-  } catch (error) {
-    if (axios.isAxiosError(error) && error.response?.status === 422) {
-      rosterMessage.value = error.response.data.message ?? 'Unable to reactivate this intern.'
-    } else {
-      rosterMessage.value = 'Unable to reactivate this intern.'
-    }
-  }
-}
+const reactivateIntern = (row: BatchRosterRow) =>
+  runRosterAction({
+    confirmMessage: `Reactivate ${row.student.name} in "${rosterBatch.value?.name}"? They'll be marked active again with their previous company and supervisor.`,
+    request: () => api.patch(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}/reactivate`),
+    successMessage: 'Intern reactivated.',
+    errorFallback: 'Unable to reactivate this intern.',
+    reloadBatches: true,
+    refetchCandidates: true,
+  })
 
 onMounted(load)
 </script>

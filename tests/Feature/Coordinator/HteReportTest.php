@@ -240,6 +240,43 @@ class HteReportTest extends TestCase
         $this->assertNotNull($rows->firstWhere('id', $keep->id));
     }
 
+    /**
+     * Regression: a curated row used to disappear silently once its source
+     * batch_students record was gone (e.g. archived, then hard-deleted by
+     * BatchStudentPurgeService 30+ days later) — buildRows() only ever
+     * looked up saved overrides while iterating the live enrollment query,
+     * so a purged id's curation was never consulted. It must now render
+     * from its last-saved snapshot instead.
+     */
+    public function test_curated_row_survives_when_its_source_enrollment_is_purged(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator, '2026');
+        $enrollment = $this->enroll($batch, $this->companyNamed('TechPH Inc.'), 'Ana Cruz', 'female');
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson('/api/coordinator/hte/2026', [
+            'academic_year' => '2026',
+            'status' => 'finalized',
+            'rows' => [
+                ['id' => $enrollment->id, 'host_establishment' => 'TechPH Incorporated', 'student_name' => 'Cruz, Ana', 'program' => 'BSIT-4', 'gender' => 'Female', 'duration' => 'August 12, 2024 – October 18, 2024', 'included' => true],
+            ],
+        ])->assertOk();
+
+        // Simulate the enrollment being archived and then purged.
+        $enrollment->delete();
+
+        $rows = collect($this->getJson('/api/coordinator/hte/2026')->json('rows'));
+        $preserved = $rows->firstWhere('id', $enrollment->id);
+
+        $this->assertNotNull($preserved, 'A curated row must survive its source enrollment being purged.');
+        $this->assertSame('TechPH Incorporated', $preserved['host_establishment']);
+        $this->assertSame('Cruz, Ana', $preserved['student_name']);
+        $this->assertFalse($preserved['is_manual']);
+    }
+
     public function test_pdf_downloads_and_excludes_non_included_rows(): void
     {
         $bsit = $this->programFor('BSIT', 'CAST');

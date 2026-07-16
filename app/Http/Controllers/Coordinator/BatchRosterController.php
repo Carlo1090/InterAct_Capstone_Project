@@ -150,7 +150,10 @@ class BatchRosterController extends Controller
         $batchStudent->archived_at = now();
         $batchStudent->save();
 
-        return response()->json($batchStudent->fresh(['student:id,name,email,student_id_number', 'company:id,name', 'supervisor:id,name,email']));
+        // Cheap response, matching destroy() — the only caller (the roster
+        // modal) discards this and immediately re-fetches the whole roster
+        // via interns(), so eager-loading relations here would be wasted.
+        return response()->json(['archived' => true]);
     }
 
     /**
@@ -168,7 +171,7 @@ class BatchRosterController extends Controller
         $batchStudent->archived_at = null;
         $batchStudent->save();
 
-        return response()->json($batchStudent->fresh(['student:id,name,email,student_id_number', 'company:id,name', 'supervisor:id,name,email']));
+        return response()->json(['restored' => true]);
     }
 
     /**

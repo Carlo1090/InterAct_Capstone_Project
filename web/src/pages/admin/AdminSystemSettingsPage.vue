@@ -155,9 +155,10 @@ const runWeeklyBundlingNow = async () => {
 const isRunningPurge = ref(false)
 const purgeError = ref('')
 const purgeResult = ref<ArchivePurgeResult | null>(null)
+const purgeAsOf = ref('')
 
 const runPurgeNow = async () => {
-  if (!confirmAction('Run the archive purge now? This permanently deletes every batch roster record archived 30+ days ago. This cannot be undone.')) {
+  if (!confirmAction('Run the archive purge now? This permanently deletes every batch roster record archived 30+ days ago (unless purging it would re-gate a legacy student). This cannot be undone.')) {
     return
   }
 
@@ -165,12 +166,13 @@ const runPurgeNow = async () => {
   purgeError.value = ''
 
   try {
-    const { data } = await api.post<ArchivePurgeResult>('/api/admin/roster/purge-archived/run')
+    const { data } = await api.post<ArchivePurgeResult>('/api/admin/roster/purge-archived/run', {
+      now: purgeAsOf.value || undefined,
+    })
     purgeResult.value = data
-    showToast(`Archive purge complete: ${data.purged} record${data.purged === 1 ? '' : 's'} purged.`)
+    showToast(`Archive purge complete: ${data.purged} record${data.purged === 1 ? '' : 's'} purged, ${data.protected} protected.`)
   } catch (error) {
-    const data = axios.isAxiosError(error) ? error.response?.data : null
-    purgeError.value = data?.message ?? 'Unable to run the archive purge.'
+    purgeError.value = categorizeError(error, 'Unable to run the archive purge.').message
   } finally {
     isRunningPurge.value = false
   }
@@ -321,13 +323,21 @@ onMounted(loadSettings)
         <div class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
           <h2 class="text-sm font-bold text-slate-900">Archive Purge</h2>
           <p class="mt-1 text-xs text-slate-500">
-            Permanently deletes batch roster records that coordinators archived 30+ days ago.
-            Runs automatically every night at 02:00 — use this to trigger it on demand.
+            Permanently deletes batch roster records that coordinators archived 30+ days ago —
+            unless deleting one would re-gate an already-graduated legacy student with no info sheet on file, in
+            which case it's skipped and re-checked next run. Runs automatically every night at 02:00 — use this to
+            trigger it on demand.
           </p>
+
+          <label class="mt-4 block">
+            <span class="text-xs font-bold text-slate-600">As of (optional)</span>
+            <input v-model="purgeAsOf" type="date" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <p class="mt-1 text-xs text-slate-400">Treat this date as "now" for the 30-day cutoff. Leave blank to use the real current time.</p>
+          </label>
 
           <button
             type="button"
-            class="mt-4 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:grayscale disabled:cursor-not-allowed"
+            class="mt-3 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:grayscale disabled:cursor-not-allowed"
             :disabled="isRunningPurge"
             @click="runPurgeNow"
           >
@@ -337,7 +347,10 @@ onMounted(loadSettings)
           <p v-if="purgeError" class="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ purgeError }}</p>
 
           <div v-if="purgeResult" class="mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
-            <p class="font-semibold">{{ purgeResult.purged }} record{{ purgeResult.purged === 1 ? '' : 's' }} purged.</p>
+            <p class="font-semibold">
+              {{ purgeResult.purged }} record{{ purgeResult.purged === 1 ? '' : 's' }} purged ·
+              {{ purgeResult.protected }} protected
+            </p>
             <p class="mt-1 text-xs">Cutoff: records archived before {{ purgeResult.cutoff }}.</p>
           </div>
         </div>

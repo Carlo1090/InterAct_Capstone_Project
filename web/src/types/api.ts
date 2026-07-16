@@ -447,6 +447,7 @@ export type WeeklyBundlingResult = {
 
 export type ArchivePurgeResult = {
   purged: number
+  protected: number
   cutoff: string
 }
 

@@ -232,7 +232,29 @@ class HteReportController extends Controller
             'is_manual' => true,
         ]);
 
-        return $candidateRows->concat($manualRows)->values()->all();
+        // A saved row whose source batch_students record no longer exists
+        // (e.g. archived, then purged 30+ days later) would otherwise vanish
+        // silently, since it's only ever looked up while iterating the live
+        // $enrollments query above. Render it from its last-saved snapshot
+        // instead of dropping it — is_manual stays false so a future save
+        // keeps writing it back into report_data.rows under its original id,
+        // exactly like any other non-manual row.
+        $liveIds = $enrollments->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $orphanedRows = $savedRows
+            ->reject(fn ($saved, $id) => in_array((int) $id, $liveIds, true) || in_array((int) $id, $deletedIds, true))
+            ->map(fn ($saved, $id) => [
+                'id' => (int) $id,
+                'host_establishment' => (string) ($saved['host_establishment'] ?? ''),
+                'student_name' => (string) ($saved['student_name'] ?? ''),
+                'program' => (string) ($saved['program'] ?? ''),
+                'gender' => (string) ($saved['gender'] ?? ''),
+                'duration' => (string) ($saved['duration'] ?? ''),
+                'included' => (bool) ($saved['included'] ?? true),
+                'is_manual' => false,
+            ])
+            ->values();
+
+        return $candidateRows->concat($orphanedRows)->concat($manualRows)->values()->all();
     }
 
     /**

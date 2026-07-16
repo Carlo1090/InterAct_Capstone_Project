@@ -15,7 +15,10 @@ class PurgeArchivedBatchStudents extends Command
     {
         $result = $service->purgeExpiredArchives();
 
-        $this->info("Archive purge complete. Purged: {$result['purged']} row(s) archived before {$result['cutoff']}.");
+        $this->info(
+            "Archive purge complete. Purged: {$result['purged']} row(s) archived before {$result['cutoff']}. ".
+            "Protected (would re-gate a legacy student): {$result['protected']}."
+        );
 
         return self::SUCCESS;
     }

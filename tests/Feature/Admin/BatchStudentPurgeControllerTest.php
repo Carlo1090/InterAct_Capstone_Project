@@ -70,9 +70,27 @@ class BatchStudentPurgeControllerTest extends TestCase
         $response = $this->postJson('/api/admin/roster/purge-archived/run');
 
         $response->assertOk();
-        $response->assertJsonStructure(['purged', 'cutoff']);
+        $response->assertJsonStructure(['purged', 'protected', 'cutoff']);
         $response->assertJsonPath('purged', 1);
+        $response->assertJsonPath('protected', 0);
         $this->assertDatabaseMissing('batch_students', ['id' => $row->id]);
+    }
+
+    public function test_now_override_is_forwarded_to_the_service(): void
+    {
+        $row = $this->archivedRow(); // archived 31 days before the real "now"
+
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        // Only 31 days in the past for real, but well under 30 days old
+        // relative to an overridden "now" set to the archive date itself.
+        $response = $this->postJson('/api/admin/roster/purge-archived/run', [
+            'now' => now()->subDays(31)->toDateString(),
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('purged', 0);
+        $this->assertDatabaseHas('batch_students', ['id' => $row->id]);
     }
 
     public function test_non_admin_is_forbidden(): void
