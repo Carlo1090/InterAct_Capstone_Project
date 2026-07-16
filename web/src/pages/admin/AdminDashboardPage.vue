@@ -47,17 +47,29 @@ onMounted(loadStats)
     </p>
 
     <div v-else class="mt-6 grid gap-4 md:grid-cols-3">
-      <article class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-        <p class="text-sm font-medium text-slate-500">Total Users</p>
-        <p class="mt-3 text-3xl font-bold text-slate-950">{{ totalUsers }}</p>
+      <article class="overflow-hidden rounded-lg bg-white text-center shadow-sm ring-1 ring-slate-200">
+        <div class="h-1 bg-slate-200" />
+        <div class="px-5 py-6">
+          <p class="text-4xl font-extrabold text-slate-900">{{ totalUsers }}</p>
+          <div class="mx-auto my-3 h-px w-10 bg-slate-200" />
+          <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Total Users</p>
+        </div>
       </article>
-      <article class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-        <p class="text-sm font-medium text-slate-500">Total Batches</p>
-        <p class="mt-3 text-3xl font-bold text-slate-950">{{ totalBatches }}</p>
+      <article class="overflow-hidden rounded-lg bg-white text-center shadow-sm ring-1 ring-slate-200">
+        <div class="h-1 bg-slate-200" />
+        <div class="px-5 py-6">
+          <p class="text-4xl font-extrabold text-slate-900">{{ totalBatches }}</p>
+          <div class="mx-auto my-3 h-px w-10 bg-slate-200" />
+          <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Total Batches</p>
+        </div>
       </article>
-      <article class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-        <p class="text-sm font-medium text-slate-500">Total Programs</p>
-        <p class="mt-3 text-3xl font-bold text-slate-950">{{ totalPrograms }}</p>
+      <article class="overflow-hidden rounded-lg bg-white text-center shadow-sm ring-1 ring-slate-200">
+        <div class="h-1 bg-slate-200" />
+        <div class="px-5 py-6">
+          <p class="text-4xl font-extrabold text-slate-900">{{ totalPrograms }}</p>
+          <div class="mx-auto my-3 h-px w-10 bg-slate-200" />
+          <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Total Programs</p>
+        </div>
       </article>
     </div>
   </section>

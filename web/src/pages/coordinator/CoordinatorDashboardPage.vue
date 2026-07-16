@@ -28,12 +28,12 @@ const statCards = computed(() => [
   { label: 'Active Batches', value: stats.value.active_batches, sub: 'Running in your programs', tone: 'amber' },
 ])
 
-const statToneClass = (tone: string): string => {
+const statAccentClass = (tone: string): string => {
   const classes: Record<string, string> = {
-    blue: 'bg-blue-50 text-blue-700',
-    green: 'bg-green-50 text-green-700',
-    amber: 'bg-amber-50 text-amber-700',
-    red: 'bg-red-50 text-red-700',
+    blue: 'bg-blue-600',
+    green: 'bg-green-600',
+    amber: 'bg-amber-500',
+    red: 'bg-red-500',
   }
 
   return classes[tone] ?? classes.blue
@@ -69,19 +69,24 @@ onMounted(loadDashboard)
 
     <template v-else>
       <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <article v-for="card in statCards" :key="card.label" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <div class="mb-4 flex h-9 w-9 items-center justify-center rounded-md text-sm font-bold" :class="statToneClass(card.tone)">
-            {{ card.value }}
+        <article
+          v-for="card in statCards"
+          :key="card.label"
+          class="overflow-hidden rounded-lg bg-white text-center shadow-sm ring-1 ring-slate-200"
+        >
+          <div class="h-1" :class="statAccentClass(card.tone)" />
+          <div class="px-5 py-6">
+            <p class="text-4xl font-extrabold text-slate-900">{{ card.value }}</p>
+            <div class="mx-auto my-3 h-px w-10 bg-slate-200" />
+            <p class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ card.label }}</p>
+            <p class="mt-1 text-xs text-slate-400">{{ card.sub }}</p>
           </div>
-          <p class="text-xs font-bold uppercase tracking-wide text-slate-400">{{ card.label }}</p>
-          <p class="mt-1 text-3xl font-bold text-slate-950">{{ card.value }}</p>
-          <p class="mt-1 text-xs text-slate-500">{{ card.sub }}</p>
         </article>
       </div>
 
       <section class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
         <div class="flex items-center justify-between">
-          <h2 class="text-sm font-bold text-slate-900">Students Behind This Week</h2>
+          <h2 class="border-l-4 border-blue-600 pl-3 text-sm font-bold text-slate-900">Students Behind This Week</h2>
           <span class="rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700">{{ stats.students_behind }} flagged</span>
         </div>
 

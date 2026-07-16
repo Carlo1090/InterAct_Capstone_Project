@@ -28,6 +28,14 @@ export default defineConfig(({ mode }) => {
         '/login': {
           target: backendUrl,
           changeOrigin: true,
+          // '/login' is both the Sanctum POST endpoint AND the Vue Router
+          // page route. A hard navigation/refresh on the login page (GET)
+          // must fall through to the SPA (index.html) instead of hitting
+          // the backend, which only defines a POST route there and would
+          // 405 — only the actual POST submit should be proxied.
+          bypass: (req) => {
+            if (req.method === 'GET') return '/index.html'
+          },
         },
         '/logout': {
           target: backendUrl,
