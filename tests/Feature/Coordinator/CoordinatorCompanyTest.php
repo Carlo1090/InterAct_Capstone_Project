@@ -173,15 +173,72 @@ class CoordinatorCompanyTest extends TestCase
         $coordinator = $this->coordinatorFor($bsit);
         $company = Company::create(['name' => 'Fresh Co', 'address' => 'A', 'is_active' => true]);
         $supervisor = User::factory()->create(['role' => 'supervisor']);
-        CompanySupervisor::create(['company_id' => $company->id, 'user_id' => $supervisor->id, 'position' => 'X']);
+        $link = CompanySupervisor::create(['company_id' => $company->id, 'user_id' => $supervisor->id, 'position' => 'X']);
 
         Sanctum::actingAs($coordinator, ['*']);
 
-        $this->deleteJson("/api/coordinator/companies/{$company->id}/supervisors/{$supervisor->id}")->assertOk();
+        $this->deleteJson("/api/coordinator/companies/{$company->id}/supervisors/{$link->id}")->assertOk();
 
         $this->assertDatabaseMissing('company_supervisors', [
             'company_id' => $company->id,
             'user_id' => $supervisor->id,
         ]);
+    }
+
+    public function test_detach_supervisor_by_id_removes_a_named_only_entry(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $company = Company::create(['name' => 'Fresh Co', 'address' => 'A', 'is_active' => true]);
+        $namedOnly = CompanySupervisor::create(['company_id' => $company->id, 'name' => 'Juan Dela Cruz', 'position' => 'Office Head']);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->deleteJson("/api/coordinator/companies/{$company->id}/supervisors/{$namedOnly->id}")->assertOk();
+
+        $this->assertDatabaseMissing('company_supervisors', ['id' => $namedOnly->id]);
+    }
+
+    public function test_attach_supervisor_blocked_when_company_already_has_a_login(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $company = Company::create(['name' => 'Fresh Co', 'address' => 'A', 'is_active' => true]);
+        $existing = User::factory()->create(['role' => 'supervisor']);
+        CompanySupervisor::create(['company_id' => $company->id, 'user_id' => $existing->id, 'position' => 'X']);
+        $other = User::factory()->create(['role' => 'supervisor']);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson("/api/coordinator/companies/{$company->id}/supervisors", [
+            'user_id' => $other->id,
+            'position' => 'Team Lead',
+        ])->assertStatus(422);
+
+        // Re-attaching the SAME login user stays idempotent, not blocked.
+        $this->postJson("/api/coordinator/companies/{$company->id}/supervisors", [
+            'user_id' => $existing->id,
+            'position' => 'X',
+        ])->assertOk();
+    }
+
+    public function test_create_supervisor_blocked_when_company_already_has_a_login(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $company = Company::create(['name' => 'Fresh Co', 'address' => 'A', 'is_active' => true]);
+        $existing = User::factory()->create(['role' => 'supervisor']);
+        CompanySupervisor::create(['company_id' => $company->id, 'user_id' => $existing->id, 'position' => 'X']);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson("/api/coordinator/companies/{$company->id}/supervisors/new", [
+            'name' => 'Another Supervisor',
+            'email' => 'another@example.com',
+            'password' => 'password123',
+            'position' => 'Manager',
+        ])->assertStatus(422);
+
+        $this->assertDatabaseMissing('users', ['email' => 'another@example.com']);
     }
 }

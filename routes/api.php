@@ -95,7 +95,7 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::put('companies/{company}', [CoordinatorCompanyController::class, 'update']);
         Route::post('companies/{company}/supervisors', [CoordinatorCompanyController::class, 'attachSupervisor']);
         Route::post('companies/{company}/supervisors/new', [CoordinatorCompanyController::class, 'createSupervisor']);
-        Route::delete('companies/{company}/supervisors/{supervisor}', [CoordinatorCompanyController::class, 'detachSupervisor']);
+        Route::delete('companies/{company}/supervisors/{companySupervisor}', [CoordinatorCompanyController::class, 'detachSupervisor']);
 
         Route::get('info-sheets', [CoordinatorInfoSheetController::class, 'index']);
         Route::get('info-sheets/{student}', [CoordinatorInfoSheetController::class, 'show']);

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Supervisor;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Supervisor\Concerns\ScopesSupervisorWork;
 use App\Models\BatchStudent;
 use App\Models\WeeklyLog;
 use Illuminate\Http\JsonResponse;
@@ -11,15 +12,15 @@ use Illuminate\Support\Facades\DB;
 
 class SupervisorInternController extends Controller
 {
+    use ScopesSupervisorWork;
+
     /**
-     * Students enrolled with the authed supervisor (batch_students.supervisor_id),
-     * each with their program, company, batch, and weekly-log review counts.
+     * Students enrolled at companies the authed login represents, each with
+     * their program, company, batch, and weekly-log review counts.
      */
     public function index(Request $request): JsonResponse
     {
-        $supervisorId = $request->user()->id;
-
-        $enrollments = BatchStudent::where('supervisor_id', $supervisorId)
+        $enrollments = $this->supervisedEnrollments($request->user())
             ->with([
                 'student:id,name,student_id_number,program_id',
                 'student.program:id,code,name',

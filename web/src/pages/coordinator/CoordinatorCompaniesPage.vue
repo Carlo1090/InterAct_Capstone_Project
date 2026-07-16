@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { confirmAction, showToast } from '@/lib/toast'
@@ -188,18 +188,22 @@ const createSupervisor = async () => {
   }
 }
 
-const detachSupervisor = async (userId: number) => {
+const detachSupervisor = async (companySupervisorId: number) => {
   if (!editingId.value) return
   if (!confirmAction('Remove this supervisor from the company?')) return
 
   try {
-    const { data } = await api.delete<CoordinatorCompany>(`/api/coordinator/companies/${editingId.value}/supervisors/${userId}`)
+    const { data } = await api.delete<CoordinatorCompany>(`/api/coordinator/companies/${editingId.value}/supervisors/${companySupervisorId}`)
     applyCompanyToForm(data)
     showToast('Supervisor removed from company.')
   } catch {
     modalMessage.value = 'Unable to remove the supervisor.'
   }
 }
+
+// A company may have at most one login-bearing supervisor (the "company
+// account") — mirrors the guard enforced server-side in CoordinatorCompanyController.
+const hasLoginSupervisor = computed(() => (activeCompany.value?.supervisors ?? []).some((sup) => sup.is_login))
 
 onMounted(async () => {
   await Promise.all([loadCompanies(), loadSupervisorPool()])
@@ -342,10 +346,18 @@ onMounted(async () => {
             <p v-if="(activeCompany.supervisors?.length ?? 0) === 0" class="px-3 py-3 text-sm text-slate-400">No supervisors attached yet.</p>
             <div v-for="sup in activeCompany.supervisors ?? []" :key="sup.id" class="flex items-center justify-between gap-3 px-3 py-2">
               <div>
-                <p class="text-sm font-semibold text-slate-800">{{ sup.user?.name }}</p>
-                <p class="text-xs text-slate-500">{{ sup.user?.email }} · {{ sup.position || 'No position' }}</p>
+                <p class="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                  {{ sup.display_name }}
+                  <span
+                    class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+                    :class="sup.is_login ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'"
+                  >
+                    {{ sup.is_login ? 'Login' : 'Named only' }}
+                  </span>
+                </p>
+                <p class="text-xs text-slate-500">{{ sup.user?.email || 'No login account' }} · {{ sup.position || 'No position' }}</p>
               </div>
-              <button type="button" class="text-xs font-semibold text-red-600 hover:text-red-700" @click="detachSupervisor(sup.user_id)">Detach</button>
+              <button type="button" class="text-xs font-semibold text-red-600 hover:text-red-700" @click="detachSupervisor(sup.id)">Detach</button>
             </div>
           </div>
 
@@ -353,16 +365,31 @@ onMounted(async () => {
             <p v-for="(messages, field) in supErrors" :key="field">{{ field }}: {{ messages.join(' ') }}</p>
           </div>
 
+          <p v-if="hasLoginSupervisor" class="mt-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
+            This company already has a supervisor login — detach it first to attach or create a different one.
+          </p>
+
           <div class="mt-4 grid gap-4 md:grid-cols-2">
             <!-- Attach existing -->
             <div class="rounded-md border border-slate-200 p-3">
               <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Attach Existing Supervisor</p>
-              <select v-model.number="attachForm.user_id" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+              <select v-model.number="attachForm.user_id" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100">
                 <option :value="null">Select supervisor</option>
                 <option v-for="sup in supervisorPool" :key="sup.id" :value="sup.id">{{ sup.name }} ({{ sup.email }})</option>
               </select>
-              <input v-model="attachForm.position" type="text" placeholder="Position (optional)" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-              <button type="button" class="mt-2 rounded-md bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50" :disabled="!attachForm.user_id" @click="attachSupervisor">
+              <input
+                v-model="attachForm.position"
+                type="text"
+                placeholder="Position (optional)"
+                :disabled="hasLoginSupervisor"
+                class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+              />
+              <button
+                type="button"
+                class="mt-2 rounded-md bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                :disabled="!attachForm.user_id || hasLoginSupervisor"
+                @click="attachSupervisor"
+              >
                 Attach
               </button>
             </div>
@@ -370,11 +397,16 @@ onMounted(async () => {
             <!-- Create new -->
             <div class="rounded-md border border-slate-200 p-3">
               <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Create New Supervisor</p>
-              <input v-model="createSupForm.name" type="text" placeholder="Name" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-              <input v-model="createSupForm.email" type="email" placeholder="Email" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-              <input v-model="createSupForm.password" type="password" placeholder="Password (min 8)" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-              <input v-model="createSupForm.position" type="text" placeholder="Position (optional)" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-              <button type="button" class="mt-2 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white" @click="createSupervisor">
+              <input v-model="createSupForm.name" type="text" placeholder="Name" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
+              <input v-model="createSupForm.email" type="email" placeholder="Email" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
+              <input v-model="createSupForm.password" type="password" placeholder="Password (min 8)" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
+              <input v-model="createSupForm.position" type="text" placeholder="Position (optional)" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
+              <button
+                type="button"
+                class="mt-2 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                :disabled="hasLoginSupervisor"
+                @click="createSupervisor"
+              >
                 Create &amp; Attach
               </button>
             </div>

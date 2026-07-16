@@ -12,6 +12,7 @@ use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
+
 /**
  * Demo data for the STUDENT-driven intake → coordinator Accept flow (CABM-B,
  * under coordinator Balbero). Two NOT-yet-enrolled students, each with a

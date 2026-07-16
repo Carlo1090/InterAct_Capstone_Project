@@ -41,7 +41,11 @@ class CoordinatorCompanyController extends Controller
             ])
             ->with('supervisors.user:id,name,email')
             ->orderBy('name')
-            ->get();
+            ->get()
+            ->map(fn (Company $company) => [
+                ...$company->toArray(),
+                'supervisors' => $this->mapSupervisors($company->supervisors)->toArray(),
+            ]);
 
         return response()->json($companies);
     }
@@ -74,13 +78,19 @@ class CoordinatorCompanyController extends Controller
 
     /**
      * Attach an existing supervisor-role user to the company with a position.
+     * A company may have at most one login-bearing supervisor (the "company
+     * account") — re-attaching the same user stays idempotent, but attaching
+     * a different one while a login already exists is rejected.
      */
     public function attachSupervisor(AttachSupervisorRequest $request, Company $company): JsonResponse
     {
         $this->authorizeCompany($request->user(), $company);
 
+        $userId = $request->integer('user_id');
+        $this->guardSingleLogin($company, $userId);
+
         CompanySupervisor::firstOrCreate(
-            ['company_id' => $company->id, 'user_id' => $request->integer('user_id')],
+            ['company_id' => $company->id, 'user_id' => $userId],
             ['position' => $request->input('position')]
         );
 
@@ -89,11 +99,13 @@ class CoordinatorCompanyController extends Controller
 
     /**
      * Create a brand-new supervisor account (role forced to supervisor) and
-     * attach it to the company. Mirrors Admin\UserController::store.
+     * attach it to the company. Mirrors Admin\UserController::store. Same
+     * one-login-per-company guard as attachSupervisor.
      */
     public function createSupervisor(CreateSupervisorRequest $request, Company $company): JsonResponse
     {
         $this->authorizeCompany($request->user(), $company);
+        $this->guardSingleLogin($company);
 
         $supervisor = User::create([
             'name' => $request->input('name'),
@@ -112,15 +124,34 @@ class CoordinatorCompanyController extends Controller
         return response()->json($this->companyPayload($request->user(), $company), 201);
     }
 
-    public function detachSupervisor(Request $request, Company $company, User $supervisor): JsonResponse
+    /**
+     * Detach by company_supervisors id (not user id) — a name-only entry has
+     * no User to bind to.
+     */
+    public function detachSupervisor(Request $request, Company $company, CompanySupervisor $companySupervisor): JsonResponse
     {
         $this->authorizeCompany($request->user(), $company);
+        abort_unless((int) $companySupervisor->company_id === (int) $company->id, 404);
 
-        CompanySupervisor::where('company_id', $company->id)
-            ->where('user_id', $supervisor->id)
-            ->delete();
+        $companySupervisor->delete();
 
         return response()->json($this->companyPayload($request->user(), $company));
+    }
+
+    /**
+     * Reject attaching/creating a second login-bearing supervisor for a
+     * company that already has one, unless it's the exact same user
+     * (idempotent re-attach).
+     */
+    private function guardSingleLogin(Company $company, ?int $exceptUserId = null): void
+    {
+        $existingLogin = $company->loginSupervisor()->with('user:id,name')->first();
+
+        abort_if(
+            $existingLogin !== null && $existingLogin->user_id !== $exceptUserId,
+            422,
+            "This company already has a supervisor login (\"{$existingLogin?->user?->name}\"). Detach it before attaching or creating a different one."
+        );
     }
 
     /**
@@ -165,6 +196,30 @@ class CoordinatorCompanyController extends Controller
         ]);
         $company->load('supervisors.user:id,name,email');
 
-        return $company->toArray();
+        $payload = $company->toArray();
+        $payload['supervisors'] = $this->mapSupervisors($company->supervisors)->toArray();
+
+        return $payload;
+    }
+
+    /**
+     * Normalizes a login-bearing row (display name from user.name) and a
+     * name-only row (display name from its own name column) to the same
+     * shape, so the frontend doesn't need to special-case either.
+     *
+     * @param Collection<int, CompanySupervisor> $supervisors
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function mapSupervisors(Collection $supervisors): Collection
+    {
+        return $supervisors->map(fn (CompanySupervisor $s) => [
+            'id' => $s->id,
+            'user_id' => $s->user_id,
+            'name' => $s->name,
+            'position' => $s->position,
+            'display_name' => $s->name ?? $s->user?->name,
+            'is_login' => $s->user_id !== null,
+            'user' => $s->user ? $s->user->only(['id', 'name', 'email']) : null,
+        ])->values();
     }
 }

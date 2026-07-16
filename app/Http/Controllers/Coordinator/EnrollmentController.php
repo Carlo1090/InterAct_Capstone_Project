@@ -343,7 +343,17 @@ class EnrollmentController extends Controller
 
     public function update(UpdateEnrollmentRequest $request, BatchStudent $batchStudent): JsonResponse
     {
-        $batchStudent->update($request->validated());
+        $validated = $request->validated();
+
+        // A manual company/supervisor edit bypasses EnrollmentService, so
+        // re-resolve company_supervisor_id here too or it would go stale.
+        if (array_key_exists('supervisor_id', $validated) || array_key_exists('company_id', $validated)) {
+            $validated['company_supervisor_id'] = CompanySupervisor::where('company_id', $validated['company_id'] ?? $batchStudent->company_id)
+                ->where('user_id', $validated['supervisor_id'] ?? $batchStudent->supervisor_id)
+                ->value('id');
+        }
+
+        $batchStudent->update($validated);
 
         return response()->json($batchStudent->fresh(['batch.program', 'company', 'supervisor', 'student']));
     }

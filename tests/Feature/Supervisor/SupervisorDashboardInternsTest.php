@@ -5,6 +5,7 @@ namespace Tests\Feature\Supervisor;
 use App\Models\Batch;
 use App\Models\BatchStudent;
 use App\Models\Company;
+use App\Models\CompanySupervisor;
 use App\Models\Department;
 use App\Models\Program;
 use App\Models\User;
@@ -47,11 +48,20 @@ class SupervisorDashboardInternsTest extends TestCase
         ]);
     }
 
-    /** Enroll a fresh student under $supervisor in $batch, return the student. */
+    /**
+     * Enroll a fresh student at a fresh company under $supervisor in $batch,
+     * return the student. $supervisor is attached as that company's login
+     * (company_supervisors) so company-based scoping resolves correctly.
+     */
     private function intern(User $supervisor, Batch $batch, string $name = 'Intern'): User
     {
         $student = User::factory()->create(['role' => 'student', 'name' => $name, 'program_id' => $batch->program_id]);
         $company = Company::create(['name' => 'Co '.uniqid(), 'address' => 'A', 'is_active' => true]);
+        CompanySupervisor::create([
+            'company_id' => $company->id,
+            'user_id' => $supervisor->id,
+            'position' => 'Supervisor',
+        ]);
         BatchStudent::create([
             'batch_id' => $batch->id,
             'student_id' => $student->id,

@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['company_id', 'user_id', 'position'])]
+#[Fillable(['company_id', 'user_id', 'name', 'position'])]
 class CompanySupervisor extends Model
 {
     public $timestamps = false;

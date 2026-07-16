@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['batch_id', 'student_id', 'company_id', 'supervisor_id', 'assigned_division', 'status'])]
+#[Fillable(['batch_id', 'student_id', 'company_id', 'supervisor_id', 'company_supervisor_id', 'assigned_division', 'status'])]
 class BatchStudent extends Model
 {
     public $timestamps = false;
@@ -56,5 +56,10 @@ class BatchStudent extends Model
     public function supervisor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'supervisor_id');
+    }
+
+    public function companySupervisor(): BelongsTo
+    {
+        return $this->belongsTo(CompanySupervisor::class);
     }
 }

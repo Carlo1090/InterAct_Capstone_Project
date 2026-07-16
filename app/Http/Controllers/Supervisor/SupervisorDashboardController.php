@@ -21,7 +21,7 @@ class SupervisorDashboardController extends Controller
         $supervisor = $request->user();
         $studentIds = $this->supervisedStudentIds($supervisor);
 
-        $myInterns = BatchStudent::where('supervisor_id', $supervisor->id)
+        $myInterns = $this->supervisedEnrollments($supervisor)
             ->distinct('student_id')
             ->count('student_id');
 

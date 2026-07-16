@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BatchStudent;
+use App\Models\CompanySupervisor;
 
 /**
  * Shared placement logic for every path that enrolls a student — the
@@ -25,18 +26,30 @@ class EnrollmentService
         int $companyId,
         ?int $supervisorId,
         ?string $assignedDivision = null,
+        ?int $companySupervisorId = null,
     ): BatchStudent {
+        // Callers that only know the login user_id (not which specific
+        // company_supervisors row it is) get it resolved for free here, so
+        // the manual Enroll form and the batch-roster Add-Intern flow don't
+        // need to change at all.
+        $companySupervisorId ??= CompanySupervisor::where('company_id', $companyId)
+            ->where('user_id', $supervisorId)
+            ->value('id');
+
+        $attributes = [
+            'company_id' => $companyId,
+            'supervisor_id' => $supervisorId,
+            'company_supervisor_id' => $companySupervisorId,
+            'assigned_division' => $assignedDivision,
+            'status' => 'active',
+        ];
+
         $existing = BatchStudent::where('batch_id', $batchId)
             ->where('student_id', $studentId)
             ->first();
 
         if ($existing) {
-            $existing->update([
-                'company_id' => $companyId,
-                'supervisor_id' => $supervisorId,
-                'assigned_division' => $assignedDivision,
-                'status' => 'active',
-            ]);
+            $existing->update($attributes);
 
             return $existing;
         }
@@ -44,10 +57,7 @@ class EnrollmentService
         return BatchStudent::create([
             'batch_id' => $batchId,
             'student_id' => $studentId,
-            'company_id' => $companyId,
-            'supervisor_id' => $supervisorId,
-            'assigned_division' => $assignedDivision,
-            'status' => 'active',
+            ...$attributes,
         ]);
     }
 }

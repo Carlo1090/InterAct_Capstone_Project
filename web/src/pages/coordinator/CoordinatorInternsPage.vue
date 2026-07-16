@@ -155,9 +155,17 @@ const supervisorForm = reactive({
   password: '',
 })
 
+// A company may have at most one login-bearing supervisor (the "company
+// account") — mirrors the guard enforced server-side in CoordinatorCompanyController.
+const selectedCompanyHasLogin = computed(() => {
+  const company = scopedCompanies.value.find((c) => c.id === supervisorForm.company_id)
+  return (company?.supervisors ?? []).some((sup) => sup.is_login)
+})
+
 const canSubmitSupervisor = computed(
   () =>
     !!supervisorForm.company_id &&
+    !selectedCompanyHasLogin.value &&
     supervisorForm.name.trim() !== '' &&
     supervisorForm.email.trim() !== '' &&
     supervisorForm.password.length >= 8,
@@ -682,6 +690,9 @@ onMounted(() => {
               <option :value="null">Select Company</option>
               <option v-for="company in scopedCompanies" :key="company.id" :value="company.id">{{ company.name }}</option>
             </select>
+            <p v-if="selectedCompanyHasLogin" class="mt-1 text-xs text-slate-500">
+              This company already has a supervisor login — detach it on the Partner Companies page before creating a different one.
+            </p>
           </div>
           <div>
             <label class="mb-2 block text-sm font-medium text-slate-700" for="sup-position">Position (optional)</label>

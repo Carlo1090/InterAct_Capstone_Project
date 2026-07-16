@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Services\EnrollmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 class CoordinatorInfoSheetController extends Controller
@@ -111,12 +112,19 @@ class CoordinatorInfoSheetController extends Controller
         $company = $companyId ? Company::find($companyId) : null;
         abort_if($company === null, 422, 'The student has not selected a valid company on their sheet.');
 
-        // A supervisor is always a Company Supervisor — use the first one
-        // attached to the chosen company (orderBy id = attachment order, so
-        // a multi-supervisor company yields a stable pick, not an arbitrary
-        // one).
-        $supervisorId = CompanySupervisor::where('company_id', $company->id)->orderBy('id')->value('user_id');
-        abort_if($supervisorId === null, 422, 'The chosen company has no supervisor yet. Add one to the company before accepting.');
+        // The company's one shared login ("company account") — required for
+        // batch_students.supervisor_id's NOT-NULL FK to users.
+        $loginSupervisorId = $company->loginSupervisor?->user_id;
+        abort_if($loginSupervisorId === null, 422, 'The chosen company has no supervisor account yet. Add one to the company before accepting.');
+
+        // Find-or-create the named individual the student actually typed, so
+        // it's durably recorded against this enrollment even though the
+        // login used to review logs stays the company's shared account.
+        $companySupervisorId = $this->resolveNamedSupervisor(
+            $company,
+            $sheet->ojt_info['supervisor_name'] ?? null,
+            $sheet->ojt_info['office_designation'] ?? null,
+        )?->id;
 
         // Always reconcile through the shared service: a re-accept after a
         // revised sheet updates the existing row's company/supervisor in
@@ -125,8 +133,9 @@ class CoordinatorInfoSheetController extends Controller
             $sheet->batch_id,
             $student->id,
             $company->id,
-            (int) $supervisorId,
+            (int) $loginSupervisorId,
             $sheet->ojt_info['area_assigned'] ?? null,
+            $companySupervisorId,
         );
 
         $sheet->update(['submission_status' => 'approved', 'rejection_reason' => null]);
@@ -190,5 +199,30 @@ class CoordinatorInfoSheetController extends Controller
             ->exists();
 
         abort_unless($hasInScopeSheet || $enrolledInScope, 403, 'This student is not in your scope.');
+    }
+
+    /**
+     * Find-or-create the company_supervisors row matching the student-typed
+     * supervisor name, case-insensitively. Comparison happens in PHP (not
+     * SQL) against name ?? user.name to sidestep SQLite/MySQL collation
+     * differences. A blank typed name resolves to null (the enrollment then
+     * just carries the company's login supervisor with no named individual).
+     */
+    private function resolveNamedSupervisor(Company $company, ?string $typedName, ?string $position): ?CompanySupervisor
+    {
+        $typedName = trim((string) $typedName);
+        if ($typedName === '') {
+            return null;
+        }
+
+        $needle = Str::lower($typedName);
+        $existing = $company->supervisors()->with('user:id,name')->get()
+            ->first(fn (CompanySupervisor $row) => Str::lower(trim($row->name ?? $row->user?->name ?? '')) === $needle);
+
+        return $existing ?? CompanySupervisor::create([
+            'company_id' => $company->id,
+            'name' => $typedName,
+            'position' => $position,
+        ]);
     }
 }

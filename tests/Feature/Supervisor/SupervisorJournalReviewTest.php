@@ -5,6 +5,7 @@ namespace Tests\Feature\Supervisor;
 use App\Models\Batch;
 use App\Models\BatchStudent;
 use App\Models\Company;
+use App\Models\CompanySupervisor;
 use App\Models\Department;
 use App\Models\JournalEntry;
 use App\Models\Program;
@@ -49,6 +50,11 @@ class SupervisorJournalReviewTest extends TestCase
     {
         $student = User::factory()->create(['role' => 'student', 'program_id' => $batch->program_id]);
         $company = Company::create(['name' => 'Co '.uniqid(), 'address' => 'A', 'is_active' => true]);
+        CompanySupervisor::create([
+            'company_id' => $company->id,
+            'user_id' => $supervisor->id,
+            'position' => 'Supervisor',
+        ]);
         BatchStudent::create([
             'batch_id' => $batch->id,
             'student_id' => $student->id,

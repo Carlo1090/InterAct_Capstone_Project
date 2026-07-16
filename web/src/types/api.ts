@@ -606,8 +606,11 @@ export type CoordinatorWeeklyJournalDetail = {
 
 export type CompanySupervisorRecord = {
   id: number
-  user_id: number
+  user_id: number | null
+  name: string | null
   position: string | null
+  display_name: string
+  is_login: boolean
   user: { id: number; name: string; email: string } | null
 }
 

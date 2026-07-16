@@ -383,4 +383,84 @@ class CoordinatorInfoSheetTest extends TestCase
         $this->postJson("/api/coordinator/info-sheets/{$outStudent->id}/accept")->assertStatus(403);
         $this->assertDatabaseMissing('batch_students', ['student_id' => $outStudent->id]);
     }
+
+    public function test_accept_matches_typed_supervisor_name_case_insensitively(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        [$student, $company] = $this->submittedSheetStudent($batch);
+
+        $loginSupervisor = User::where('id', CompanySupervisor::where('company_id', $company->id)->value('user_id'))->first();
+        $loginLink = CompanySupervisor::where('company_id', $company->id)->where('user_id', $loginSupervisor->id)->first();
+
+        StudentInformationSheet::where('student_id', $student->id)->latest('id')->first()->update([
+            'ojt_info' => array_merge(
+                StudentInformationSheet::where('student_id', $student->id)->latest('id')->first()->ojt_info,
+                ['supervisor_name' => strtoupper($loginSupervisor->name)],
+            ),
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+        $this->postJson("/api/coordinator/info-sheets/{$student->id}/accept")->assertOk();
+
+        $this->assertDatabaseHas('batch_students', [
+            'student_id' => $student->id,
+            'supervisor_id' => $loginSupervisor->id,
+            'company_supervisor_id' => $loginLink->id,
+        ]);
+        // No extra name-only row was created for a name that already matched.
+        $this->assertSame(1, CompanySupervisor::where('company_id', $company->id)->count());
+    }
+
+    public function test_accept_creates_a_named_supervisor_when_no_match_exists(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        [$student, $company] = $this->submittedSheetStudent($batch);
+        $loginSupervisorId = CompanySupervisor::where('company_id', $company->id)->value('user_id');
+
+        $sheet = StudentInformationSheet::where('student_id', $student->id)->latest('id')->first();
+        $sheet->update([
+            'ojt_info' => array_merge($sheet->ojt_info, [
+                'supervisor_name' => 'Maria Santos',
+                'office_designation' => 'HR Manager',
+            ]),
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+        $this->postJson("/api/coordinator/info-sheets/{$student->id}/accept")->assertOk();
+
+        $named = CompanySupervisor::where('company_id', $company->id)->where('name', 'Maria Santos')->first();
+        $this->assertNotNull($named);
+        $this->assertNull($named->user_id);
+        $this->assertSame('HR Manager', $named->position);
+
+        // supervisor_id still pins to the company's shared login...
+        $this->assertDatabaseHas('batch_students', [
+            'student_id' => $student->id,
+            'supervisor_id' => $loginSupervisorId,
+            'company_supervisor_id' => $named->id,
+        ]);
+    }
+
+    public function test_accept_falls_back_to_login_supervisor_when_no_name_typed(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        [$student, $company] = $this->submittedSheetStudent($batch);
+        $loginLink = CompanySupervisor::where('company_id', $company->id)->first();
+
+        // submittedSheetStudent() never sets ojt_info.supervisor_name.
+        Sanctum::actingAs($coordinator, ['*']);
+        $this->postJson("/api/coordinator/info-sheets/{$student->id}/accept")->assertOk();
+
+        $this->assertDatabaseHas('batch_students', [
+            'student_id' => $student->id,
+            'supervisor_id' => $loginLink->user_id,
+            'company_supervisor_id' => $loginLink->id,
+        ]);
+    }
 }
