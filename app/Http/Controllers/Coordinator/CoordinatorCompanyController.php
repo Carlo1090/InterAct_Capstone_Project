@@ -94,6 +94,8 @@ class CoordinatorCompanyController extends Controller
             ['position' => $request->input('position')]
         );
 
+        $this->syncActiveEnrollmentSupervisors($company);
+
         return response()->json($this->companyPayload($request->user(), $company));
     }
 
@@ -121,6 +123,8 @@ class CoordinatorCompanyController extends Controller
             'position' => $request->input('position'),
         ]);
 
+        $this->syncActiveEnrollmentSupervisors($company);
+
         return response()->json($this->companyPayload($request->user(), $company), 201);
     }
 
@@ -136,6 +140,29 @@ class CoordinatorCompanyController extends Controller
         $companySupervisor->delete();
 
         return response()->json($this->companyPayload($request->user(), $company));
+    }
+
+    /**
+     * Re-point a company's ACTIVE enrollments at its current login supervisor
+     * whenever that login changes (attach/create), so batch_students.supervisor_id
+     * never goes stale after a company swaps its login account — the common
+     * "detach old login, attach new one" flow. Only active rows are touched:
+     * completed/dropped enrollments are historical and must keep whoever
+     * supervised them. company_supervisor_id (the named individual the student
+     * typed on their info sheet) is deliberately left alone — it's independent
+     * of who holds the login.
+     */
+    private function syncActiveEnrollmentSupervisors(Company $company): void
+    {
+        $loginUserId = $company->loginSupervisor()->value('user_id');
+
+        if ($loginUserId === null) {
+            return;
+        }
+
+        BatchStudent::where('company_id', $company->id)
+            ->where('status', 'active')
+            ->update(['supervisor_id' => $loginUserId]);
     }
 
     /**

@@ -241,4 +241,60 @@ class CoordinatorCompanyTest extends TestCase
 
         $this->assertDatabaseMissing('users', ['email' => 'another@example.com']);
     }
+
+    public function test_attaching_a_new_login_re_syncs_active_enrollments_but_leaves_history(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        $company = Company::create(['name' => 'Swap Co', 'address' => 'A', 'is_active' => true]);
+
+        $oldLogin = User::factory()->create(['role' => 'supervisor']);
+        $oldLink = CompanySupervisor::create(['company_id' => $company->id, 'user_id' => $oldLogin->id, 'position' => 'X']);
+        $namedIndividual = CompanySupervisor::create(['company_id' => $company->id, 'name' => 'Ms. On-Site Lead', 'position' => 'Team Lead']);
+
+        $activeStudent = User::factory()->create(['role' => 'student']);
+        $completedStudent = User::factory()->create(['role' => 'student']);
+
+        $activeRow = BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $activeStudent->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $oldLogin->id,
+            'company_supervisor_id' => $namedIndividual->id,
+            'status' => 'active',
+        ]);
+        $completedRow = BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $completedStudent->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $oldLogin->id,
+            'status' => 'completed',
+        ]);
+
+        // Replace the login: detach the old, attach a new one.
+        $newLogin = User::factory()->create(['role' => 'supervisor']);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->deleteJson("/api/coordinator/companies/{$company->id}/supervisors/{$oldLink->id}")->assertOk();
+        $this->postJson("/api/coordinator/companies/{$company->id}/supervisors", [
+            'user_id' => $newLogin->id,
+            'position' => 'Ops Lead',
+        ])->assertOk();
+
+        // Active enrollment re-pointed at the new login; the named individual
+        // (company_supervisor_id) is untouched.
+        $this->assertDatabaseHas('batch_students', [
+            'id' => $activeRow->id,
+            'supervisor_id' => $newLogin->id,
+            'company_supervisor_id' => $namedIndividual->id,
+        ]);
+
+        // Completed history keeps the supervisor who oversaw it.
+        $this->assertDatabaseHas('batch_students', [
+            'id' => $completedRow->id,
+            'supervisor_id' => $oldLogin->id,
+        ]);
+    }
 }

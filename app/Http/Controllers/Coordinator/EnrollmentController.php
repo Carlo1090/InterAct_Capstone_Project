@@ -45,12 +45,18 @@ class EnrollmentController extends Controller
     public function options(Request $request): JsonResponse
     {
         $companies = Company::where('is_active', true)->orderBy('name')->get(['id', 'name']);
-        $supervisors = User::where('role', 'supervisor')->where('is_active', true)
+        // NOT filtered by is_active: the enrollment forms only use this to show
+        // the company's resolved login supervisor read-only, and the backend
+        // (Company::loginSupervisor()) resolves that login regardless of active
+        // status. Filtering here would make the display show "no supervisor
+        // account yet" for a company whose login is merely deactivated, while
+        // the backend would still enroll against it — a frontend/backend split.
+        $supervisors = User::where('role', 'supervisor')
             ->orderBy('name')
             ->get(['id', 'name', 'email']);
 
-        // Each supervisor's company_ids let the frontend filter the Supervisor
-        // dropdown down to whichever company was picked (a supervisor is always
+        // Each supervisor's company_ids let the frontend resolve the login
+        // supervisor for whichever company was picked (a supervisor is always
         // a Company Supervisor via company_supervisors).
         $companyIdsBySupervisor = CompanySupervisor::whereIn('user_id', $supervisors->pluck('id'))
             ->get(['user_id', 'company_id'])
