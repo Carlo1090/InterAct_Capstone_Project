@@ -7,6 +7,7 @@ const navItems = [
   { label: 'Dashboard', to: '/supervisor/dashboard', badge: '', icon: 'dashboard' },
   { label: 'Journals', to: '/supervisor/journals', badge: '5', icon: 'journals' },
   { label: 'Interns', to: '/supervisor/interns', badge: '', icon: 'people' },
+  { label: 'Profile', to: '/supervisor/profile', badge: '', icon: 'profile' },
 ]
 
 const auth = useAuthStore()
@@ -74,6 +75,9 @@ const logout = async () => {
             <path v-if="item.icon === 'people'" d="M3.5 19c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
             <circle v-if="item.icon === 'people'" cx="16.5" cy="8.5" r="2.3" stroke="currentColor" stroke-width="1.4" />
             <path v-if="item.icon === 'people'" d="M15.2 14.7c2.3.3 3.9 1.7 4.4 4.3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+
+            <circle v-if="item.icon === 'profile'" cx="12" cy="8.5" r="3.5" stroke="currentColor" stroke-width="1.6" />
+            <path v-if="item.icon === 'profile'" d="M4.5 19.5c1-3.6 3.8-5.5 7.5-5.5s6.5 1.9 7.5 5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
           </svg>
           <span v-if="!collapsed" class="min-w-0 flex-1 truncate">{{ item.label }}</span>
           <span
@@ -127,8 +131,9 @@ const logout = async () => {
             <p class="text-sm font-bold uppercase tracking-wide text-slate-700">{{ userName }}</p>
             <p class="text-xs text-slate-400">Company Supervisor - TechPH Inc.</p>
           </div>
-          <div class="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
-            {{ initials }}
+          <div class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-600 text-sm font-bold text-white">
+            <img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" alt="Profile photo" class="h-full w-full object-cover" />
+            <span v-else>{{ initials }}</span>
           </div>
         </div>
       </header>

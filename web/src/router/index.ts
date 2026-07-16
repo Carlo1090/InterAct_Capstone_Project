@@ -77,6 +77,11 @@ const router = createRouter({
           component: () => import('@/pages/admin/AdminSystemSettingsPage.vue'),
           meta: { title: 'System Settings' },
         },
+        {
+          path: 'profile',
+          component: () => import('@/pages/admin/AdminProfilePage.vue'),
+          meta: { title: 'Profile' },
+        },
       ],
     },
     {
@@ -140,6 +145,11 @@ const router = createRouter({
           component: () => import('@/pages/coordinator/CoordinatorHtePage.vue'),
           meta: { title: 'HTE & Student Interns List' },
         },
+        {
+          path: 'profile',
+          component: () => import('@/pages/coordinator/CoordinatorProfilePage.vue'),
+          meta: { title: 'Profile' },
+        },
       ],
     },
     {
@@ -162,6 +172,11 @@ const router = createRouter({
           path: 'interns',
           component: () => import('@/pages/supervisor/SupervisorInternsPage.vue'),
           meta: { title: 'Interns' },
+        },
+        {
+          path: 'profile',
+          component: () => import('@/pages/supervisor/SupervisorProfilePage.vue'),
+          meta: { title: 'Profile' },
         },
       ],
     },
@@ -202,9 +217,9 @@ const router = createRouter({
           meta: { title: 'Student Info Sheet' },
         },
         {
-          path: 'change-password',
-          component: () => import('@/pages/student/StudentChangePasswordPage.vue'),
-          meta: { title: 'Change Password' },
+          path: 'profile',
+          component: () => import('@/pages/student/StudentProfilePage.vue'),
+          meta: { title: 'Profile' },
         },
       ],
     },
@@ -226,17 +241,23 @@ router.beforeEach(async (to) => {
     return '/login'
   }
 
-  if (auth.user?.must_change_password && to.path !== '/student/change-password') {
-    return '/student/change-password'
+  // A forced password change can be set on ANY role (e.g. an admin issuing a
+  // temporary password), so the redirect must target that user's own Profile
+  // page, not a hardcoded student path.
+  if (auth.user?.must_change_password) {
+    const profilePath = `/${auth.user.role}/profile`
+    if (to.path !== profilePath) {
+      return profilePath
+    }
   }
 
   // Info-sheet enrollment gate: a not-yet-approved student may only reach the
-  // info-sheet page (and change-password). Backend enforces this too.
+  // info-sheet page (and their own profile/password). Backend enforces this too.
   if (
     auth.user?.role === 'student' &&
     auth.user?.student_gated &&
     to.path !== '/student/info-sheet' &&
-    to.path !== '/student/change-password'
+    to.path !== '/student/profile'
   ) {
     return '/student/info-sheet'
   }

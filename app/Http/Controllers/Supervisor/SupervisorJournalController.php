@@ -7,6 +7,7 @@ use App\Http\Controllers\Supervisor\Concerns\ScopesSupervisorWork;
 use App\Http\Requests\Supervisor\ReturnWeeklyLogRequest;
 use App\Models\BatchStudent;
 use App\Models\JournalEntry;
+use App\Models\SystemLog;
 use App\Models\WeeklyLog;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
@@ -150,6 +151,9 @@ class SupervisorJournalController extends Controller
             'reviewed_at' => now(),
         ]);
 
+        $weeklyLog->loadMissing('student:id,name');
+        SystemLog::record('Weekly Journal Approved', "Approved {$weeklyLog->student?->name}'s week of {$weeklyLog->week_start->toDateString()}");
+
         return response()->json($weeklyLog->fresh());
     }
 
@@ -167,6 +171,9 @@ class SupervisorJournalController extends Controller
             'supervisor_id' => $request->user()->id,
             'reviewed_at' => now(),
         ]);
+
+        $weeklyLog->loadMissing('student:id,name');
+        SystemLog::record('Weekly Journal Returned', "Returned {$weeklyLog->student?->name}'s week of {$weeklyLog->week_start->toDateString()}");
 
         return response()->json($weeklyLog->fresh());
     }

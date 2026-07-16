@@ -19,9 +19,9 @@ use App\Http\Controllers\Coordinator\CoordinatorWeeklyJournalController;
 use App\Http\Controllers\Coordinator\EnrollmentController;
 use App\Http\Controllers\Coordinator\HteReportController;
 use App\Http\Controllers\Coordinator\JournalTemplateController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Student\JournalCalendarController;
 use App\Http\Controllers\Student\JournalEntryController;
-use App\Http\Controllers\Student\PasswordController;
 use App\Http\Controllers\Student\StudentInfoSheetController;
 use App\Http\Controllers\Student\WeeklyActivityLogController;
 use App\Http\Controllers\Student\WeeklyLogController;
@@ -41,6 +41,18 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 
     return response()->json($user);
 });
+
+// Self-service account settings shared by every role — profile fields,
+// password, avatar, and a personal activity history.
+Route::middleware('auth:sanctum')
+    ->prefix('profile')
+    ->group(function () {
+        Route::put('/', [ProfileController::class, 'update']);
+        Route::put('password', [ProfileController::class, 'updatePassword']);
+        Route::post('photo', [ProfileController::class, 'uploadPhoto']);
+        Route::delete('photo', [ProfileController::class, 'deletePhoto']);
+        Route::get('activity', [ProfileController::class, 'activity']);
+    });
 
 Route::middleware(['auth:sanctum', 'role:admin'])
     ->prefix('admin')
@@ -149,8 +161,6 @@ Route::middleware(['auth:sanctum', 'role:student'])
         Route::post('info-sheet', [StudentInfoSheetController::class, 'store']);
         Route::get('info-sheet/pdf', [StudentInfoSheetController::class, 'pdf']);
         Route::get('companies', [StudentInfoSheetController::class, 'companies']);
-
-        Route::put('password', [PasswordController::class, 'update']);
     });
 
 // Everything else a student does is gated behind an APPROVED info sheet.

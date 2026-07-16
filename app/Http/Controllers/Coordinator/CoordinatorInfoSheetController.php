@@ -10,6 +10,7 @@ use App\Models\Company;
 use App\Models\CompanySupervisor;
 use App\Models\Program;
 use App\Models\StudentInformationSheet;
+use App\Models\SystemLog;
 use App\Models\User;
 use App\Services\EnrollmentService;
 use Illuminate\Http\JsonResponse;
@@ -140,6 +141,8 @@ class CoordinatorInfoSheetController extends Controller
 
         $sheet->update(['submission_status' => 'approved', 'rejection_reason' => null]);
 
+        SystemLog::record('Info Sheet Accepted', "Enrolled {$student->name} at {$company->name}");
+
         return response()->json([
             'message' => 'Student enrolled.',
             'sheet' => $sheet->fresh(),
@@ -163,6 +166,8 @@ class CoordinatorInfoSheetController extends Controller
             'submission_status' => 'rejected',
             'rejection_reason' => $request->validated()['reason'],
         ]);
+
+        SystemLog::record('Info Sheet Rejected', "Rejected {$student->name}'s info sheet");
 
         return response()->json(['message' => 'Sheet returned to the student.', 'sheet' => $sheet->fresh()]);
     }

@@ -10,7 +10,7 @@ const allNavItems = [
   { label: 'Write Daily Journal', to: '/student/write-journal', badge: '', icon: 'pencil' },
   { label: 'Weekly Journals', to: '/student/weekly-journals', badge: '', icon: 'stack' },
   { label: 'Student Info Sheet', to: '/student/info-sheet', badge: '', icon: 'id-card' },
-  { label: 'Change Password', to: '/student/change-password', badge: '', icon: 'lock' },
+  { label: 'Profile', to: '/student/profile', badge: '', icon: 'profile' },
 ]
 
 const auth = useAuthStore()
@@ -20,11 +20,11 @@ const router = useRouter()
 const collapsed = ref(false)
 
 // Until their info sheet is approved, a student may only reach the info-sheet
-// page + change-password — so the rest of the nav is hidden while gated.
+// page + their profile — so the rest of the nav is hidden while gated.
 const isGated = computed(() => auth.user?.role === 'student' && auth.user?.student_gated === true)
 const navItems = computed(() =>
   isGated.value
-    ? allNavItems.filter((item) => item.to === '/student/info-sheet' || item.to === '/student/change-password')
+    ? allNavItems.filter((item) => item.to === '/student/info-sheet' || item.to === '/student/profile')
     : allNavItems,
 )
 
@@ -108,11 +108,8 @@ const logout = async () => {
             <circle v-if="item.icon === 'id-card'" cx="9" cy="11.5" r="2" stroke="currentColor" stroke-width="1.6" />
             <path v-if="item.icon === 'id-card'" d="M6.5 15.5c.6-1.4 1.8-2 2.5-2s1.9.6 2.5 2M14 10h4M14 13h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
 
-            <path
-              v-if="item.icon === 'lock'"
-              d="M12 2a4 4 0 0 0-4 4v3H7a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a4 4 0 0 0-4-4Zm0 2a2 2 0 0 1 2 2v3h-4V6a2 2 0 0 1 2-2Z"
-              fill="currentColor"
-            />
+            <circle v-if="item.icon === 'profile'" cx="12" cy="8.5" r="3.5" stroke="currentColor" stroke-width="1.6" />
+            <path v-if="item.icon === 'profile'" d="M4.5 19.5c1-3.6 3.8-5.5 7.5-5.5s6.5 1.9 7.5 5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
           </svg>
           <span v-if="!collapsed" class="min-w-0 flex-1 truncate">{{ item.label }}</span>
           <span
@@ -166,8 +163,9 @@ const logout = async () => {
             <p class="text-sm font-bold uppercase tracking-wide text-slate-700">{{ userName }}</p>
             <p class="text-xs text-slate-400">Student &middot; {{ department }}</p>
           </div>
-          <div class="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
-            {{ initials }}
+          <div class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-600 text-sm font-bold text-white">
+            <img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" alt="Profile photo" class="h-full w-full object-cover" />
+            <span v-else>{{ initials }}</span>
           </div>
         </div>
       </header>

@@ -61,7 +61,7 @@ class AuditLogControllerTest extends TestCase
         $student = User::factory()->create(['role' => 'student', 'name' => 'Password Student']);
         Sanctum::actingAs($student, ['*']);
 
-        $this->putJson('/api/student/password', [
+        $this->putJson('/api/profile/password', [
             'current_password' => 'password',
             'password' => 'a-new-password-123',
             'password_confirmation' => 'a-new-password-123',
@@ -83,7 +83,7 @@ class AuditLogControllerTest extends TestCase
 
         $student = User::factory()->create(['role' => 'student', 'name' => 'Filter Student']);
         Sanctum::actingAs($student, ['*']);
-        $this->putJson('/api/student/password', [
+        $this->putJson('/api/profile/password', [
             'current_password' => 'password',
             'password' => 'a-new-password-123',
             'password_confirmation' => 'a-new-password-123',

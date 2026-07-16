@@ -7,6 +7,7 @@ use App\Http\Controllers\Student\Concerns\ResolvesStudentEnrollment;
 use App\Http\Requests\Student\StoreJournalEntryRequest;
 use App\Models\BatchStudent;
 use App\Models\JournalEntry;
+use App\Models\SystemLog;
 use App\Models\User;
 use App\Models\WeeklyLog;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -116,6 +117,10 @@ class JournalEntryController extends Controller
                 'entry_date' => $entryDate->toDateString(),
                 ...$attributes,
             ]);
+        }
+
+        if ($validated['status'] === 'submitted') {
+            SystemLog::record('Daily Journal Submitted', "{$user->name} submitted their journal for {$entryDate->toDateString()}");
         }
 
         return response()->json($entry);

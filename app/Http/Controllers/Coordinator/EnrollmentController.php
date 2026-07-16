@@ -13,6 +13,7 @@ use App\Models\CompanySupervisor;
 use App\Models\Program;
 use App\Models\StudentInformationSheet;
 use App\Models\StudentProfile;
+use App\Models\SystemLog;
 use App\Models\User;
 use App\Services\EnrollmentService;
 use Illuminate\Http\JsonResponse;
@@ -302,10 +303,10 @@ class EnrollmentController extends Controller
             $validated['assigned_division'] ?? null,
         );
 
-        return response()->json(
-            $enrollment->fresh(['batch.program', 'company', 'supervisor', 'student']),
-            $wasReused ? 200 : 201
-        );
+        $fresh = $enrollment->fresh(['batch.program', 'company', 'supervisor', 'student']);
+        SystemLog::record('Student Enrolled', "Enrolled {$fresh->student?->name} into {$fresh->batch?->name}");
+
+        return response()->json($fresh, $wasReused ? 200 : 201);
     }
 
     public function roster(Request $request): JsonResponse

@@ -19,6 +19,7 @@ export type AuthUser = {
   email: string | null
   role: string
   must_change_password: boolean
+  avatar_url: string | null
   program?: Program | null
   // Students only: true until their info sheet is approved (enrollment gate).
   student_gated?: boolean

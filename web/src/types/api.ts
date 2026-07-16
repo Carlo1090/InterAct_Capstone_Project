@@ -47,12 +47,23 @@ export type DepartmentDetail = Department & {
 export type User = {
   id: number
   name: string
+  username?: string
   email: string
   role: 'student' | 'supervisor' | 'coordinator' | 'admin'
   is_active: boolean
   must_change_password: boolean
+  avatar_url?: string | null
   program?: Program | null
   departments_coordinated?: Department[]
+}
+
+export type ProfileActivityLog = {
+  id: number
+  logged_at: string
+  action: string
+  description: string | null
+  ip_address: string | null
+  user_id: number
 }
 
 export type Batch = {

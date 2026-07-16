@@ -14,6 +14,7 @@ const navItems = [
   { label: 'Student Info Sheets', to: '/coordinator/info-sheets', badge: '', icon: 'id-card' },
   { label: 'Annual SIPP Report', to: '/coordinator/annual-sipp', badge: '', icon: 'chart' },
   { label: 'HTE & Student Interns List', to: '/coordinator/hte', badge: '', icon: 'clipboard' },
+  { label: 'Profile', to: '/coordinator/profile', badge: '', icon: 'profile' },
 ]
 
 const auth = useAuthStore()
@@ -111,6 +112,9 @@ const logout = async () => {
             <rect v-if="item.icon === 'clipboard'" x="5.5" y="5" width="13" height="15" rx="1.5" stroke="currentColor" stroke-width="1.6" />
             <path v-if="item.icon === 'clipboard'" d="M9 5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1.2H9V5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
             <path v-if="item.icon === 'clipboard'" d="M8.5 11h7M8.5 14.5h7M8.5 18h4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+
+            <circle v-if="item.icon === 'profile'" cx="12" cy="8.5" r="3.5" stroke="currentColor" stroke-width="1.6" />
+            <path v-if="item.icon === 'profile'" d="M4.5 19.5c1-3.6 3.8-5.5 7.5-5.5s6.5 1.9 7.5 5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
           </svg>
           <span v-if="!collapsed" class="min-w-0 flex-1 truncate">{{ item.label }}</span>
           <span
@@ -163,8 +167,9 @@ const logout = async () => {
             <p class="text-sm font-bold uppercase tracking-wide text-slate-700">{{ userName }}</p>
             <p class="text-xs text-slate-400">Coordinator &middot; {{ department }}</p>
           </div>
-          <div class="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
-            {{ initials }}
+          <div class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-600 text-sm font-bold text-white">
+            <img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" alt="Profile photo" class="h-full w-full object-cover" />
+            <span v-else>{{ initials }}</span>
           </div>
         </div>
       </header>

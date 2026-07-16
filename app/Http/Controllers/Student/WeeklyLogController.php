@@ -7,6 +7,7 @@ use App\Http\Controllers\Student\Concerns\ResolvesStudentEnrollment;
 use App\Http\Requests\Student\StoreWeeklyLogRequest;
 use App\Models\BatchStudent;
 use App\Models\JournalEntry;
+use App\Models\SystemLog;
 use App\Models\User;
 use App\Models\WeeklyLog;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -275,6 +276,8 @@ class WeeklyLogController extends Controller
             'submitted_at' => now(),
             'status' => 'pending',
         ]);
+
+        SystemLog::record('Weekly Journal Submitted', "{$user->name} submitted their journal for week of {$start->toDateString()}");
 
         return response()->json($log->fresh());
     }
