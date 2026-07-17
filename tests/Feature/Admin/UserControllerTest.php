@@ -49,6 +49,29 @@ class UserControllerTest extends TestCase
         $this->assertFalse($names->contains('Student One'));
     }
 
+    /**
+     * This page manages day-to-day accounts; the single admin account
+     * never appears in it, with or without an explicit role filter.
+     */
+    public function test_index_never_returns_admin_accounts(): void
+    {
+        $admin = $this->admin();
+        Sanctum::actingAs($admin, ['*']);
+
+        User::factory()->create(['role' => 'student', 'name' => 'Student One']);
+        User::factory()->create(['role' => 'coordinator', 'name' => 'Coordinator One']);
+        User::factory()->create(['role' => 'supervisor', 'name' => 'Supervisor One']);
+
+        $response = $this->getJson('/api/admin/users');
+
+        $response->assertOk();
+        $roles = collect($response->json('data'))->pluck('role');
+        $this->assertFalse($roles->contains('admin'));
+        $this->assertTrue($roles->contains('student'));
+        $this->assertTrue($roles->contains('coordinator'));
+        $this->assertTrue($roles->contains('supervisor'));
+    }
+
     public function test_department_filter_only_returns_users_in_that_department(): void
     {
         Sanctum::actingAs($this->admin(), ['*']);

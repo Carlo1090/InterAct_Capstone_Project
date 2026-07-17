@@ -18,6 +18,9 @@ class UserController extends Controller
     {
         $users = User::query()
             ->with(['program.department', 'departmentsCoordinated'])
+            // This page manages the app's day-to-day accounts, not the (single)
+            // admin account itself — the admin never appears in this list.
+            ->where('role', '!=', 'admin')
             ->when($request->filled('role'), fn ($query) => $query->where('role', $request->string('role')))
             ->when($request->filled('program_id'), fn ($query) => $query->where('program_id', $request->integer('program_id')))
             ->when(
