@@ -23,8 +23,10 @@ const errorMessage = ref('')
 const modalError = ref('')
 
 const search = ref('')
-const roleFilter = ref('coordinator')
+const roleFilter = ref('')
 const departmentFilter = ref('')
+
+const viewingUser = ref<User | null>(null)
 
 let searchDebounce: ReturnType<typeof setTimeout> | undefined
 
@@ -109,16 +111,36 @@ const createUser = async () => {
   }
 }
 
-const deleteUser = async (user: User) => {
-  if (!confirmAction(`Delete ${user.name}? This deactivates their account.`)) return
+const deactivateUser = async (user: User) => {
+  if (!confirmAction(`Deactivate ${user.name}'s account? They won't be able to log in until reactivated.`)) return
 
   try {
     await api.patch(`/api/admin/users/${user.id}/deactivate`)
     await loadUsers()
     showToast(`${user.name}'s account deactivated.`)
   } catch {
-    errorMessage.value = 'Unable to delete user.'
+    errorMessage.value = 'Unable to deactivate user.'
   }
+}
+
+const reactivateUser = async (user: User) => {
+  if (!confirmAction(`Reactivate ${user.name}'s account?`)) return
+
+  try {
+    await api.patch(`/api/admin/users/${user.id}/activate`)
+    await loadUsers()
+    showToast(`${user.name}'s account reactivated.`)
+  } catch {
+    errorMessage.value = 'Unable to reactivate user.'
+  }
+}
+
+const openView = (user: User) => {
+  viewingUser.value = user
+}
+
+const closeView = () => {
+  viewingUser.value = null
 }
 
 onMounted(() => {
@@ -144,8 +166,10 @@ onMounted(() => {
     <div class="mt-6 flex flex-wrap gap-3">
       <input v-model="search" class="min-w-72 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Search by name..." />
       <select v-model="roleFilter" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
+        <option value="">All Users</option>
         <option value="student">Student</option>
         <option value="coordinator">Coordinator</option>
+        <option value="supervisor">Supervisor</option>
       </select>
       <select v-model="departmentFilter" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
         <option value="">All Departments</option>
@@ -192,14 +216,31 @@ onMounted(() => {
               </span>
             </td>
             <td class="px-4 py-3 text-sm">
-              <button
-                v-if="user.is_active"
-                type="button"
-                class="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition hover:bg-red-50"
-                @click="deleteUser(user)"
-              >
-                Delete
-              </button>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                  @click="openView(user)"
+                >
+                  View
+                </button>
+                <button
+                  v-if="user.is_active"
+                  type="button"
+                  class="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition hover:bg-red-50"
+                  @click="deactivateUser(user)"
+                >
+                  Deactivate
+                </button>
+                <button
+                  v-else
+                  type="button"
+                  class="rounded-md border border-green-200 px-3 py-1.5 text-sm font-medium text-green-700 transition hover:bg-green-50"
+                  @click="reactivateUser(user)"
+                >
+                  Reactivate
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -252,6 +293,75 @@ onMounted(() => {
             @click="createUser"
           >
             {{ isSaving ? 'Saving...' : 'Save' }}
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div v-if="viewingUser" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4">
+      <section class="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-semibold text-slate-950">Account Details</h3>
+          <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeView">
+            Close
+          </button>
+        </div>
+
+        <div class="mt-6 flex items-center gap-3">
+          <div class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-600 text-sm font-bold text-white">
+            <img v-if="viewingUser.avatar_url" :src="viewingUser.avatar_url" alt="Profile photo" class="h-full w-full object-cover" />
+            <span v-else>{{ viewingUser.name.slice(0, 2).toUpperCase() }}</span>
+          </div>
+          <div>
+            <p class="font-semibold text-slate-900">{{ viewingUser.name }}</p>
+            <span
+              class="rounded-full px-2 py-0.5 text-xs font-semibold"
+              :class="viewingUser.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'"
+            >
+              {{ viewingUser.is_active ? 'Active' : 'Inactive' }}
+            </span>
+          </div>
+        </div>
+
+        <dl class="mt-6 space-y-3 text-sm">
+          <div class="flex justify-between gap-4">
+            <dt class="font-medium text-slate-500">Username</dt>
+            <dd class="text-right text-slate-900">{{ viewingUser.username ?? '—' }}</dd>
+          </div>
+          <div class="flex justify-between gap-4">
+            <dt class="font-medium text-slate-500">Email</dt>
+            <dd class="text-right text-slate-900">{{ viewingUser.email || '—' }}</dd>
+          </div>
+          <div class="flex justify-between gap-4">
+            <dt class="font-medium text-slate-500">Role</dt>
+            <dd class="text-right capitalize text-slate-900">{{ viewingUser.role }}</dd>
+          </div>
+          <div v-if="viewingUser.program" class="flex justify-between gap-4">
+            <dt class="font-medium text-slate-500">Program</dt>
+            <dd class="text-right text-slate-900">{{ viewingUser.program.name }}</dd>
+          </div>
+          <div v-if="viewingUser.program?.department" class="flex justify-between gap-4">
+            <dt class="font-medium text-slate-500">Department</dt>
+            <dd class="text-right text-slate-900">{{ viewingUser.program.department.name }}</dd>
+          </div>
+          <div v-if="viewingUser.departments_coordinated?.length" class="flex justify-between gap-4">
+            <dt class="font-medium text-slate-500">Department</dt>
+            <dd class="text-right text-slate-900">{{ viewingUser.departments_coordinated[0].name }}</dd>
+          </div>
+          <div class="flex justify-between gap-4">
+            <dt class="font-medium text-slate-500">Must change password</dt>
+            <dd class="text-right text-slate-900">{{ viewingUser.must_change_password ? 'Yes' : 'No' }}</dd>
+          </div>
+        </dl>
+
+        <p class="mt-6 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
+          Passwords are hashed and cannot be viewed by anyone, including admins. Use "Issue Temporary Password" on
+          System Settings if this user needs to sign in again.
+        </p>
+
+        <div class="mt-6 flex justify-end">
+          <button type="button" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" @click="closeView">
+            Close
           </button>
         </div>
       </section>
