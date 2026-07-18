@@ -93,8 +93,8 @@ onBeforeUnmount(() => {
       </svg>
       <span
         v-if="unreadCount > 0"
-        class="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white"
-      />
+        class="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white"
+      >{{ unreadCount > 9 ? '9+' : unreadCount }}</span>
     </button>
 
     <div

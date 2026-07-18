@@ -148,7 +148,8 @@ class UserControllerTest extends TestCase
         Sanctum::actingAs($this->admin(), ['*']);
 
         $response = $this->postJson('/api/admin/users', [
-            'name' => 'New Coordinator',
+            'first_name' => 'New',
+            'last_name' => 'Coordinator',
             'email' => 'new.coordinator@example.test',
             'password' => 'a-strong-password',
             'role' => 'coordinator',
@@ -165,7 +166,9 @@ class UserControllerTest extends TestCase
         $department = Department::create(['code' => 'CAST', 'name' => 'College of Arts, Sciences and Technology', 'is_active' => true]);
 
         $response = $this->postJson('/api/admin/users', [
-            'name' => 'New Coordinator',
+            'first_name' => 'New',
+            'middle_name' => 'Q',
+            'last_name' => 'Coordinator',
             'email' => 'new.coordinator@example.test',
             'password' => 'a-strong-password',
             'role' => 'coordinator',
@@ -174,7 +177,27 @@ class UserControllerTest extends TestCase
 
         $response->assertCreated();
         $coordinator = User::where('email', 'new.coordinator@example.test')->firstOrFail();
+        $this->assertSame('New Q Coordinator', $coordinator->name);
         $this->assertTrue($coordinator->departmentsCoordinated()->where('departments.id', $department->id)->exists());
+    }
+
+    public function test_creating_a_user_without_a_middle_name_omits_it_from_the_stored_name(): void
+    {
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        $department = Department::create(['code' => 'CAST', 'name' => 'College of Arts, Sciences and Technology', 'is_active' => true]);
+
+        $this->postJson('/api/admin/users', [
+            'first_name' => 'New',
+            'last_name' => 'Coordinator',
+            'email' => 'no.middle@example.test',
+            'password' => 'a-strong-password',
+            'role' => 'coordinator',
+            'department_id' => $department->id,
+        ])->assertCreated();
+
+        $coordinator = User::where('email', 'no.middle@example.test')->firstOrFail();
+        $this->assertSame('New Coordinator', $coordinator->name);
     }
 
     public function test_two_different_coordinators_can_each_have_their_own_department(): void
@@ -185,7 +208,8 @@ class UserControllerTest extends TestCase
         User::factory()->create(['role' => 'coordinator'])->departmentsCoordinated()->attach($department->id);
 
         $response = $this->postJson('/api/admin/users', [
-            'name' => 'Another Coordinator',
+            'first_name' => 'Another',
+            'last_name' => 'Coordinator',
             'email' => 'another.coordinator@example.test',
             'password' => 'a-strong-password',
             'role' => 'coordinator',
@@ -200,7 +224,8 @@ class UserControllerTest extends TestCase
         Sanctum::actingAs($this->admin(), ['*']);
 
         $response = $this->postJson('/api/admin/users', [
-            'name' => 'Second Admin',
+            'first_name' => 'Second',
+            'last_name' => 'Admin',
             'email' => 'second.admin@example.test',
             'password' => 'a-strong-password',
             'role' => 'admin',

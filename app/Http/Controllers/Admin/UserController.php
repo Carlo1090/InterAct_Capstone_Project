@@ -43,7 +43,9 @@ class UserController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:150'],
+            'first_name' => ['required', 'string', 'max:100'],
+            'middle_name' => ['nullable', 'string', 'max:100'],
+            'last_name' => ['required', 'string', 'max:100'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8'],
             'role' => [
@@ -60,8 +62,17 @@ class UserController extends Controller
             'department_id' => ['required_if:role,coordinator', 'exists:departments,id'],
         ]);
 
+        // Collected as First/Middle/Family Name (matching the Student Information
+        // Sheet's field breakdown) but still stored as a single users.name column
+        // — everything else in the app (avatar initials, PDFs, logs) reads that
+        // one field, so no schema change here. filter() drops an empty middle name.
+        $name = collect([$validated['first_name'], $validated['middle_name'] ?? null, $validated['last_name']])
+            ->filter()
+            ->implode(' ');
+
         $user = User::create([
-            ...collect($validated)->except('department_id')->all(),
+            ...collect($validated)->except(['department_id', 'first_name', 'middle_name', 'last_name'])->all(),
+            'name' => $name,
             'password' => Hash::make($validated['password']),
             'is_active' => true,
         ]);

@@ -2,7 +2,8 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '@/lib/axios'
-import type { SupervisorInternRow } from '@/types/api'
+import InternDetailModal from '@/components/interns/InternDetailModal.vue'
+import type { InternDetail, SupervisorInternRow } from '@/types/api'
 
 const router = useRouter()
 
@@ -10,6 +11,31 @@ const interns = ref<SupervisorInternRow[]>([])
 const search = ref('')
 const isLoading = ref(true)
 const errorMessage = ref('')
+
+const isInternModalOpen = ref(false)
+const isLoadingIntern = ref(false)
+const internDetail = ref<InternDetail | null>(null)
+const internDetailError = ref('')
+
+const viewIntern = async (studentId: number) => {
+  isInternModalOpen.value = true
+  isLoadingIntern.value = true
+  internDetail.value = null
+  internDetailError.value = ''
+
+  try {
+    const { data } = await api.get<InternDetail>(`/api/supervisor/interns/${studentId}`)
+    internDetail.value = data
+  } catch {
+    internDetailError.value = 'Unable to load this student\'s details.'
+  } finally {
+    isLoadingIntern.value = false
+  }
+}
+
+const closeInternModal = () => {
+  isInternModalOpen.value = false
+}
 
 const load = async () => {
   isLoading.value = true
@@ -87,13 +113,26 @@ onMounted(load)
               </div>
             </td>
             <td class="px-4 py-3">
-              <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="reviewStudent">
-                Review Journals
-              </button>
+              <div class="flex gap-2">
+                <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="viewIntern(intern.student_id)">
+                  View
+                </button>
+                <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="reviewStudent">
+                  Review Journals
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
+
+    <InternDetailModal
+      v-if="isInternModalOpen"
+      :detail="internDetail"
+      :is-loading="isLoadingIntern"
+      :error-message="internDetailError"
+      @close="closeInternModal"
+    />
   </section>
 </template>

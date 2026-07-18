@@ -61,7 +61,9 @@ class CoordinatorCreateAccountTest extends TestCase
 
         $response = $this->postJson('/api/coordinator/accounts', [
             'role' => 'student',
-            'name' => 'New Student',
+            'first_name' => 'New',
+            'middle_name' => 'Q',
+            'last_name' => 'Student',
             'username' => 'new.student',
             'password' => 'password123',
             'program_id' => $bsit->id,
@@ -74,6 +76,7 @@ class CoordinatorCreateAccountTest extends TestCase
 
         $student = User::where('username', 'new.student')->first();
         $this->assertNotNull($student);
+        $this->assertSame('New Q Student', $student->name);
         $this->assertSame('student', $student->role);
         $this->assertNull($student->email);
         $this->assertTrue($student->is_active);
@@ -101,7 +104,8 @@ class CoordinatorCreateAccountTest extends TestCase
 
         $this->postJson('/api/coordinator/accounts', [
             'role' => 'student',
-            'name' => 'Mismatch',
+            'first_name' => 'Mismatch',
+            'last_name' => 'User',
             'username' => 'mismatch.user',
             'password' => 'password123',
             'program_id' => $bsit->id,
@@ -120,7 +124,8 @@ class CoordinatorCreateAccountTest extends TestCase
 
         $response = $this->postJson('/api/coordinator/accounts', [
             'role' => 'supervisor',
-            'name' => 'New Supervisor',
+            'first_name' => 'New',
+            'last_name' => 'Supervisor',
             'username' => 'new.supervisor',
             'password' => 'password123',
         ]);
@@ -144,7 +149,8 @@ class CoordinatorCreateAccountTest extends TestCase
         foreach (['coordinator', 'admin'] as $role) {
             $this->postJson('/api/coordinator/accounts', [
                 'role' => $role,
-                'name' => 'Nope',
+                'first_name' => 'Nope',
+                'last_name' => 'User',
                 'username' => "nope.{$role}",
                 'password' => 'password123',
             ])->assertStatus(422)->assertJsonValidationErrors('role');
@@ -169,7 +175,8 @@ class CoordinatorCreateAccountTest extends TestCase
 
         $this->postJson('/api/coordinator/accounts', [
             'role' => 'student',
-            'name' => 'Foreign Batch',
+            'first_name' => 'Foreign',
+            'last_name' => 'Batch',
             'username' => 'foreign.batch',
             'password' => 'password123',
             'program_id' => $otherProgram->id,
@@ -190,7 +197,8 @@ class CoordinatorCreateAccountTest extends TestCase
 
         $this->postJson('/api/coordinator/accounts', [
             'role' => 'student',
-            'name' => 'Dupe',
+            'first_name' => 'Dupe',
+            'last_name' => 'User',
             'username' => 'taken.name',
             'password' => 'password123',
             'program_id' => $bsit->id,

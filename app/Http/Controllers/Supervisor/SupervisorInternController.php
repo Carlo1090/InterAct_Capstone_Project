@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Supervisor;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Supervisor\Concerns\ScopesSupervisorWork;
 use App\Models\BatchStudent;
+use App\Models\User;
 use App\Models\WeeklyLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -64,5 +65,44 @@ class SupervisorInternController extends Controller
             ->values();
 
         return response()->json(['interns' => $interns]);
+    }
+
+    /**
+     * One of this supervisor's interns — full detail. Backs the "View" action
+     * on the My Interns page. 403 unless the student is enrolled at a company
+     * this login represents.
+     */
+    public function show(Request $request, User $student): JsonResponse
+    {
+        abort_unless($student->role === 'student', 404);
+
+        $supervisor = $request->user();
+        abort_unless(
+            $this->supervisedStudentIds($supervisor)->contains($student->id),
+            403,
+            'This student is not one of your interns.'
+        );
+
+        $student->load(['program', 'studentProfile']);
+
+        $enrollment = $this->supervisedEnrollments($supervisor)
+            ->where('student_id', $student->id)
+            ->with(['batch:id,name', 'company:id,name'])
+            ->first();
+
+        return response()->json([
+            'id' => $student->id,
+            'name' => $student->name,
+            'email' => $student->email,
+            'avatar_url' => $student->avatar_url,
+            'student_id_number' => $student->student_id_number,
+            'program' => $student->program,
+            'profile' => $student->studentProfile,
+            'enrollment' => $enrollment ? [
+                'status' => $enrollment->status,
+                'batch' => $enrollment->batch,
+                'company' => $enrollment->company,
+            ] : null,
+        ]);
     }
 }

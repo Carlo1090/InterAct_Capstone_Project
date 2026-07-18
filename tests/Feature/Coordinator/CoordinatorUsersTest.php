@@ -110,6 +110,55 @@ class CoordinatorUsersTest extends TestCase
         $this->getJson('/api/coordinator/users/interns?program_id='.$outScope->id)->assertStatus(403);
     }
 
+    public function test_show_intern_returns_profile_and_enrollment_for_an_in_scope_student(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program);
+        $company = Company::create(['name' => 'BQ Corp', 'address' => 'Bohol', 'is_active' => true]);
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+        $batch = $this->batchFor($program, $coordinator);
+
+        // User::factory()->create(['role' => 'student']) already auto-creates a
+        // student_profiles row via UserObserver — update it, don't create a second one.
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id, 'name' => 'Miguel Reyes']);
+        $student->studentProfile()->update([
+            'contact_number' => '0917-123-4567',
+            'sex' => 'male',
+            'year_level' => '4th Year',
+            'home_address' => 'Tagbilaran City',
+        ]);
+        BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'active',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->getJson("/api/coordinator/users/interns/{$student->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('name', 'Miguel Reyes');
+        $response->assertJsonPath('profile.contact_number', '0917-123-4567');
+        $response->assertJsonPath('profile.year_level', '4th Year');
+        $response->assertJsonPath('enrollment.batch.id', $batch->id);
+        $response->assertJsonPath('enrollment.company.id', $company->id);
+    }
+
+    public function test_show_intern_is_forbidden_for_an_out_of_scope_student(): void
+    {
+        $inScope = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($inScope);
+        $outScope = $this->program('CABM-H', 'BSTM');
+        $outsideStudent = User::factory()->create(['role' => 'student', 'program_id' => $outScope->id]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->getJson("/api/coordinator/users/interns/{$outsideStudent->id}")->assertStatus(403);
+    }
+
     public function test_supervisors_list_unions_and_dedupes_within_scope(): void
     {
         $inScope = $this->program('CABM-B', 'BSA');

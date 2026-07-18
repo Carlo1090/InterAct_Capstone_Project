@@ -3,6 +3,7 @@
 namespace Tests\Feature\Student;
 
 use App\Models\BatchStudent;
+use App\Models\Notification;
 use App\Models\StudentInformationSheet;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -77,6 +78,59 @@ class StudentInfoSheetTest extends TestCase
             'student_id' => $student->id,
             'submission_status' => 'submitted',
         ]);
+    }
+
+    public function test_submitting_an_info_sheet_notifies_the_batchs_coordinator(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+        $coordinator = BatchStudent::where('student_id', $student->id)->firstOrFail()->batch->coordinator;
+
+        $this->postJson('/api/student/info-sheet', [
+            'status' => 'submitted',
+            'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan'],
+            'academic_info' => [],
+            'ojt_info' => ['host_company' => 'TechPH Inc.'],
+        ])->assertOk();
+
+        $this->assertDatabaseHas('notifications', [
+            'user_id' => $coordinator->id,
+            'type' => 'in_app',
+            'is_read' => false,
+        ]);
+    }
+
+    public function test_saving_a_draft_does_not_notify_the_coordinator(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $this->postJson('/api/student/info-sheet', [
+            'status' => 'draft',
+            'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan'],
+            'academic_info' => [],
+            'ojt_info' => [],
+        ])->assertOk();
+
+        $this->assertDatabaseCount('notifications', 0);
+    }
+
+    public function test_resubmitting_an_already_submitted_sheet_does_not_duplicate_the_notification(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $payload = [
+            'status' => 'submitted',
+            'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan'],
+            'academic_info' => [],
+            'ojt_info' => ['host_company' => 'TechPH Inc.'],
+        ];
+
+        $this->postJson('/api/student/info-sheet', $payload)->assertOk();
+        $this->postJson('/api/student/info-sheet', $payload)->assertOk();
+
+        $this->assertDatabaseCount(Notification::class, 1);
     }
 
     public function test_enrolled_student_can_fetch_scaffolded_info_sheet(): void
@@ -172,6 +226,22 @@ class StudentInfoSheetTest extends TestCase
         $this->assertSame($originalCompanyId, $sheet->ojt_info['company_id']);
         $this->assertSame($originalHostCompany, $sheet->ojt_info['host_company']);
         $this->assertSame('approved', $sheet->submission_status);
+    }
+
+    public function test_editing_an_already_approved_sheet_does_not_notify_the_coordinator(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+        $this->approvedInfoSheetFor($student);
+
+        $this->postJson('/api/student/info-sheet', [
+            'status' => 'submitted',
+            'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan', 'contact_number' => '0918-333-3333'],
+            'academic_info' => [],
+            'ojt_info' => [],
+        ])->assertOk();
+
+        $this->assertDatabaseCount(Notification::class, 0);
     }
 
     public function test_an_approved_sheet_edit_does_not_re_gate_the_student(): void

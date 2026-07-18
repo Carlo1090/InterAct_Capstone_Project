@@ -140,6 +140,44 @@ class EnrollmentController extends Controller
     }
 
     /**
+     * One in-scope student's full detail — profile info, program, and current
+     * enrollment. Backs the Interns tab's "View" action.
+     */
+    public function showIntern(Request $request, User $student): JsonResponse
+    {
+        abort_unless($student->role === 'student', 404);
+        abort_unless(
+            $request->user()->coordinatorProgramIds()->contains($student->program_id),
+            403,
+            'That student is outside your assigned department(s).'
+        );
+
+        $student->load(['program.department', 'studentProfile']);
+
+        $enrollment = BatchStudent::where('student_id', $student->id)
+            ->where('status', 'active')
+            ->with(['batch:id,name', 'company:id,name', 'supervisor:id,name,email'])
+            ->first();
+
+        return response()->json([
+            'id' => $student->id,
+            'name' => $student->name,
+            'email' => $student->email,
+            'username' => $student->username,
+            'avatar_url' => $student->avatar_url,
+            'student_id_number' => $student->student_id_number,
+            'program' => $student->program,
+            'profile' => $student->studentProfile,
+            'enrollment' => $enrollment ? [
+                'status' => $enrollment->status,
+                'batch' => $enrollment->batch,
+                'company' => $enrollment->company,
+                'supervisor' => $enrollment->supervisor,
+            ] : null,
+        ]);
+    }
+
+    /**
      * Users → Supervisors tab: the union of (a) supervisors the coordinator
      * created and (b) supervisors attached to companies used by their students.
      * With no creator column on users, a coordinator-created supervisor is only
@@ -232,8 +270,14 @@ class EnrollmentController extends Controller
             abort_unless($intendedBatch !== null, 422, 'The selected batch does not belong to that program.');
         }
 
+        // Collected as First/Middle/Family Name (matching the Student Information
+        // Sheet's field breakdown) but still stored as a single users.name column.
+        $name = collect([$validated['first_name'], $validated['middle_name'] ?? null, $validated['last_name']])
+            ->filter()
+            ->implode(' ');
+
         $user = User::create([
-            'name' => $validated['name'],
+            'name' => $name,
             'username' => $validated['username'],
             'password' => Hash::make($validated['password']),
             'role' => $validated['role'],

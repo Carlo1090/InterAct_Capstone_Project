@@ -8,6 +8,7 @@ use App\Http\Controllers\Student\Concerns\ResolvesStudentEnrollment;
 use App\Http\Requests\Student\StoreInfoSheetRequest;
 use App\Models\Batch;
 use App\Models\Company;
+use App\Models\Notification;
 use App\Models\StudentInformationSheet;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -105,6 +106,10 @@ class StudentInfoSheetController extends Controller
         // fixed from here on; everything else on the sheet remains editable.
         $wasApproved = $sheet->exists && $sheet->submission_status === 'approved';
 
+        // Captured before fill()/save() overwrite it — used after saving to
+        // detect a genuine new-submission transition (see notification below).
+        $previousStatus = $sheet->submission_status;
+
         // ojt_info is `present` (may be empty) — guarantee the NOT-NULL column.
         $validated['ojt_info'] = $validated['ojt_info'] ?? [];
 
@@ -141,6 +146,21 @@ class StudentInfoSheetController extends Controller
             'rejection_reason' => $wasApproved ? $sheet->rejection_reason : null,
         ]);
         $sheet->save();
+
+        // Notify the batch's coordinator only on a genuine new-submission
+        // transition — not on every draft autosave, and not on a resave that
+        // was pinned back to 'approved' by the wasApproved branch above.
+        // previousStatus !== 'submitted' also blocks a duplicate notification
+        // if a submitted-but-not-yet-reviewed sheet gets resubmitted as-is.
+        if ($sheet->submission_status === 'submitted' && $previousStatus !== 'submitted' && $batch?->coordinator) {
+            Notification::create([
+                'user_id' => $batch->coordinator->id,
+                'title' => 'Student Information Sheet Submitted',
+                'message' => "{$user->name} submitted their Student Information Sheet for review.",
+                'type' => 'in_app',
+                'is_read' => false,
+            ]);
+        }
 
         return response()->json($sheet);
     }

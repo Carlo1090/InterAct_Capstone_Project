@@ -4,12 +4,14 @@ import axios from 'axios'
 import api from '@/lib/axios'
 import { showToast } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
+import InternDetailModal from '@/components/interns/InternDetailModal.vue'
 import type {
   CoordinatorCompany,
   CoordinatorInternUser,
   CoordinatorSupervisorUser,
   EnrollableStudent,
   EnrollmentOptions,
+  InternDetail,
 } from '@/types/api'
 
 type UsersTab = 'interns' | 'supervisors'
@@ -23,6 +25,32 @@ const errorMessage = ref('')
 
 const enrolledCount = computed(() => interns.value.filter((student) => student.enrolled).length)
 const notEnrolledCount = computed(() => interns.value.length - enrolledCount.value)
+
+// --- Intern detail modal (View action) ---------------------------------------
+const isInternModalOpen = ref(false)
+const isLoadingIntern = ref(false)
+const internDetail = ref<InternDetail | null>(null)
+const internDetailError = ref('')
+
+const viewIntern = async (studentId: number) => {
+  isInternModalOpen.value = true
+  isLoadingIntern.value = true
+  internDetail.value = null
+  internDetailError.value = ''
+
+  try {
+    const { data } = await api.get<InternDetail>(`/api/coordinator/users/interns/${studentId}`)
+    internDetail.value = data
+  } catch {
+    internDetailError.value = 'Unable to load this student\'s details.'
+  } finally {
+    isLoadingIntern.value = false
+  }
+}
+
+const closeInternModal = () => {
+  isInternModalOpen.value = false
+}
 
 // --- Interns tab: program filter ---------------------------------------------
 const programOptions = ref<{ id: number; name: string; code?: string }[]>([])
@@ -106,7 +134,9 @@ const accountErrors = ref<Record<string, string[]>>({})
 const accountMessage = ref('')
 
 const accountForm = reactive({
-  name: '',
+  first_name: '',
+  middle_name: '',
+  last_name: '',
   username: '',
   password: '',
   program_id: null as number | null,
@@ -241,7 +271,9 @@ const submitEnrollment = async () => {
 }
 
 const openAccountModal = async () => {
-  accountForm.name = ''
+  accountForm.first_name = ''
+  accountForm.middle_name = ''
+  accountForm.last_name = ''
   accountForm.username = ''
   accountForm.password = ''
   accountForm.program_id = null
@@ -265,16 +297,19 @@ const submitAccount = async () => {
   try {
     await api.post('/api/coordinator/accounts', {
       role: 'student',
-      name: accountForm.name,
+      first_name: accountForm.first_name,
+      middle_name: accountForm.middle_name,
+      last_name: accountForm.last_name,
       username: accountForm.username,
       password: accountForm.password,
       program_id: accountForm.program_id,
       batch_id: accountForm.batch_id,
       ...(accountForm.student_id_number ? { student_id_number: accountForm.student_id_number } : {}),
     })
+    const createdName = [accountForm.first_name, accountForm.last_name].filter(Boolean).join(' ')
     closeAccountModal()
     await loadInterns()
-    showToast(`Student account created for ${accountForm.name}.`)
+    showToast(`Student account created for ${createdName}.`)
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 422) {
       accountErrors.value = error.response.data.errors ?? {}
@@ -419,11 +454,12 @@ onMounted(() => {
               <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Batch</th>
               <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Company</th>
               <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Supervisor</th>
+              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
             <tr v-if="interns.length === 0">
-              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="6">No students match this filter.</td>
+              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="7">No students match this filter.</td>
             </tr>
             <tr v-for="student in interns" :key="student.id">
               <td class="px-4 py-3">
@@ -442,6 +478,11 @@ onMounted(() => {
               <td class="px-4 py-3 text-sm text-slate-500">{{ student.enrollment?.batch?.name ?? '—' }}</td>
               <td class="px-4 py-3 text-sm text-slate-500">{{ student.enrollment?.company?.name ?? '—' }}</td>
               <td class="px-4 py-3 text-sm text-slate-500">{{ student.enrollment?.supervisor?.name ?? '—' }}</td>
+              <td class="px-4 py-3">
+                <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="viewIntern(student.id)">
+                  View
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -594,9 +635,19 @@ onMounted(() => {
         </div>
 
         <div class="mt-5 space-y-4">
-          <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-name">Full Name</label>
-            <input id="acct-name" v-model="accountForm.name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          <div class="grid gap-4 md:grid-cols-3">
+            <div>
+              <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-first-name">First Name</label>
+              <input id="acct-first-name" v-model="accountForm.first_name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-middle-name">Middle Name (optional)</label>
+              <input id="acct-middle-name" v-model="accountForm.middle_name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-last-name">Family Name</label>
+              <input id="acct-last-name" v-model="accountForm.last_name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            </div>
           </div>
           <div>
             <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-username">Username</label>
@@ -713,5 +764,13 @@ onMounted(() => {
         </div>
       </section>
     </div>
+
+    <InternDetailModal
+      v-if="isInternModalOpen"
+      :detail="internDetail"
+      :is-loading="isLoadingIntern"
+      :error-message="internDetailError"
+      @close="closeInternModal"
+    />
   </section>
 </template>

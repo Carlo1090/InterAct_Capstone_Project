@@ -22,7 +22,8 @@ class AuditLogControllerTest extends TestCase
         Sanctum::actingAs($this->admin(), ['*']);
 
         $this->postJson('/api/admin/users', [
-            'name' => 'New Student',
+            'first_name' => 'New',
+            'last_name' => 'Student',
             'email' => 'new.student@example.test',
             'password' => 'a-strong-password',
             'role' => 'student',

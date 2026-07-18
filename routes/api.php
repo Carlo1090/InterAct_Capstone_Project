@@ -157,6 +157,7 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::delete('batches/{batch}/roster/{batchStudent}', [BatchRosterController::class, 'destroy']);
 
         Route::get('users/interns', [EnrollmentController::class, 'interns']);
+        Route::get('users/interns/{student}', [EnrollmentController::class, 'showIntern']);
         Route::get('users/supervisors', [EnrollmentController::class, 'supervisors']);
 
         Route::get('students/enrollable', [EnrollmentController::class, 'enrollableStudents']);
@@ -220,6 +221,7 @@ Route::middleware(['auth:sanctum', 'role:supervisor'])
     ->group(function () {
         Route::get('dashboard', [SupervisorDashboardController::class, 'index']);
         Route::get('interns', [SupervisorInternController::class, 'index']);
+        Route::get('interns/{student}', [SupervisorInternController::class, 'show']);
 
         Route::get('journals', [SupervisorJournalController::class, 'index']);
         Route::get('journals/{weeklyLog}', [SupervisorJournalController::class, 'show']);

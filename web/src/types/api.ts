@@ -677,6 +677,33 @@ export type SupervisorInternRow = {
   returned_count: number
 }
 
+// Shared by the Coordinator Interns page and the Supervisor My Interns page —
+// both hit their own scoped "show one intern" endpoint but return this same
+// shape, so one InternDetailModal.vue renders either.
+export type InternDetail = {
+  id: number
+  name: string
+  email: string | null
+  username?: string
+  avatar_url: string | null
+  student_id_number: string | null
+  program: { id: number; code?: string; name: string } | null
+  profile: {
+    middle_name: string | null
+    date_of_birth: string | null
+    sex: string | null
+    contact_number: string | null
+    home_address: string | null
+    year_level: string | null
+  } | null
+  enrollment: {
+    status?: BatchStudentStatus
+    batch: { id: number; name: string } | null
+    company: { id: number; name: string } | null
+    supervisor?: { id: number; name: string; email: string } | null
+  } | null
+}
+
 export type SupervisorReviewStatus = 'pending' | 'approved' | 'returned'
 
 export type SupervisorReviewedLog = {

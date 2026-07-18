@@ -7,7 +7,9 @@ import ToastHost from '@/components/ToastHost.vue'
 import type { Department, PaginatedResponse, User } from '@/types/api'
 
 type UserPayload = {
-  name: string
+  first_name: string
+  middle_name: string
+  last_name: string
   email: string
   password: string
   role: 'coordinator'
@@ -31,7 +33,9 @@ const viewingUser = ref<User | null>(null)
 let searchDebounce: ReturnType<typeof setTimeout> | undefined
 
 const emptyForm = (): UserPayload => ({
-  name: '',
+  first_name: '',
+  middle_name: '',
+  last_name: '',
   email: '',
   password: '',
   role: 'coordinator',
@@ -257,9 +261,19 @@ onMounted(() => {
         </div>
 
         <div class="mt-6 space-y-4">
-          <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="user-name">Full Name</label>
-            <input id="user-name" v-model="userForm.name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2" />
+          <div class="grid gap-4 md:grid-cols-3">
+            <div>
+              <label class="mb-2 block text-sm font-medium text-slate-700" for="user-first-name">First Name</label>
+              <input id="user-first-name" v-model="userForm.first_name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2" />
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-medium text-slate-700" for="user-middle-name">Middle Name (optional)</label>
+              <input id="user-middle-name" v-model="userForm.middle_name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2" />
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-medium text-slate-700" for="user-last-name">Family Name</label>
+              <input id="user-last-name" v-model="userForm.last_name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2" />
+            </div>
           </div>
           <div>
             <label class="mb-2 block text-sm font-medium text-slate-700" for="user-email">Email</label>

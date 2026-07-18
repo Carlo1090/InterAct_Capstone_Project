@@ -194,4 +194,42 @@ class SupervisorDashboardInternsTest extends TestCase
         $this->getJson('/api/supervisor/dashboard')->assertStatus(403);
         $this->getJson('/api/supervisor/interns')->assertStatus(403);
     }
+
+    public function test_show_intern_returns_profile_and_enrollment_for_own_intern(): void
+    {
+        $program = $this->program();
+        $batch = $this->batch($program);
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+        $student = $this->intern($supervisor, $batch, 'Detail Subject');
+
+        // User::factory()->create(['role' => 'student']) already auto-creates a
+        // student_profiles row via UserObserver — update it, don't create a second one.
+        $student->studentProfile()->update([
+            'contact_number' => '0917-555-1234',
+            'year_level' => '3rd Year',
+        ]);
+
+        Sanctum::actingAs($supervisor, ['*']);
+
+        $response = $this->getJson("/api/supervisor/interns/{$student->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('name', 'Detail Subject');
+        $response->assertJsonPath('profile.contact_number', '0917-555-1234');
+        $response->assertJsonPath('profile.year_level', '3rd Year');
+        $response->assertJsonPath('enrollment.batch.id', $batch->id);
+    }
+
+    public function test_show_intern_is_forbidden_for_someone_elses_intern(): void
+    {
+        $program = $this->program();
+        $batch = $this->batch($program);
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+        $otherSupervisor = User::factory()->create(['role' => 'supervisor']);
+        $otherStudent = $this->intern($otherSupervisor, $batch, 'Not Mine');
+
+        Sanctum::actingAs($supervisor, ['*']);
+
+        $this->getJson("/api/supervisor/interns/{$otherStudent->id}")->assertStatus(403);
+    }
 }
