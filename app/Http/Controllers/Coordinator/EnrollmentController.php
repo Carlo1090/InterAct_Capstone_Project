@@ -278,7 +278,7 @@ class EnrollmentController extends Controller
 
         $user = User::create([
             'name' => $name,
-            'username' => $validated['username'],
+            'username' => $validated['username'] ?? null,
             'password' => Hash::make($validated['password']),
             'role' => $validated['role'],
             'program_id' => $validated['role'] === 'student' ? ($validated['program_id'] ?? null) : null,

@@ -152,6 +152,14 @@ const accountBatchOptions = computed(() =>
     : [],
 )
 
+// Per-field error lookup so the Create Student Account form can show each
+// message under its own input instead of one flat list at the bottom.
+const ACCOUNT_FORM_FIELDS = ['first_name', 'middle_name', 'last_name', 'username', 'password', 'program_id', 'batch_id', 'student_id_number']
+const accountFieldError = (field: string) => accountErrors.value[field]?.[0] ?? ''
+const otherAccountErrors = computed(() =>
+  Object.entries(accountErrors.value).filter(([field]) => !ACCOUNT_FORM_FIELDS.includes(field)),
+)
+
 watch(
   () => accountForm.program_id,
   () => {
@@ -295,21 +303,21 @@ const submitAccount = async () => {
   accountMessage.value = ''
 
   try {
-    await api.post('/api/coordinator/accounts', {
+    const { data } = await api.post('/api/coordinator/accounts', {
       role: 'student',
       first_name: accountForm.first_name,
       middle_name: accountForm.middle_name,
       last_name: accountForm.last_name,
-      username: accountForm.username,
       password: accountForm.password,
       program_id: accountForm.program_id,
       batch_id: accountForm.batch_id,
+      ...(accountForm.username.trim() ? { username: accountForm.username.trim() } : {}),
       ...(accountForm.student_id_number ? { student_id_number: accountForm.student_id_number } : {}),
     })
     const createdName = [accountForm.first_name, accountForm.last_name].filter(Boolean).join(' ')
     closeAccountModal()
     await loadInterns()
-    showToast(`Student account created for ${createdName}.`)
+    showToast(`Student account created for ${createdName}. Username: ${data.username}`)
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 422) {
       accountErrors.value = error.response.data.errors ?? {}
@@ -625,78 +633,168 @@ onMounted(() => {
 
     <!-- Create Student Account modal — login only, separate from enrollment -->
     <div v-if="isAccountModalOpen" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
-      <section class="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
-        <div class="flex items-center justify-between">
+      <section class="w-full max-w-xl rounded-lg bg-white p-6 shadow-xl">
+        <div class="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
           <div>
             <h3 class="text-lg font-semibold text-slate-950">Create Student Account</h3>
             <p class="mt-0.5 text-xs text-slate-500">Creates a login with a pre-set program + intended batch. The student completes their Info Sheet, then you Accept it to enroll them.</p>
           </div>
-          <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeAccountModal">Cancel</button>
+          <button type="button" class="shrink-0 text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeAccountModal">Cancel</button>
         </div>
 
-        <div class="mt-5 space-y-4">
-          <div class="grid gap-4 md:grid-cols-3">
-            <div>
-              <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-first-name">First Name</label>
-              <input id="acct-first-name" v-model="accountForm.first_name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+        <div class="mt-5 space-y-6">
+          <!-- Section: Student's Name -->
+          <div>
+            <div class="flex items-center gap-2 text-slate-500">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
+                <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="currentColor" stroke-width="1.6" />
+                <path d="M4.5 20a7.5 7.5 0 0 1 15 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+              </svg>
+              <h4 class="text-xs font-semibold uppercase tracking-wide">Student's Name</h4>
             </div>
-            <div>
-              <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-middle-name">Middle Name (optional)</label>
-              <input id="acct-middle-name" v-model="accountForm.middle_name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <div class="mt-3 grid gap-4 md:grid-cols-3">
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-first-name">First Name</label>
+                <input
+                  id="acct-first-name"
+                  v-model="accountForm.first_name"
+                  type="text"
+                  class="w-full rounded-md border px-3 py-2 text-sm"
+                  :class="accountFieldError('first_name') ? 'border-red-400' : 'border-slate-300'"
+                />
+                <p v-if="accountFieldError('first_name')" class="mt-1 text-xs text-red-600">{{ accountFieldError('first_name') }}</p>
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-middle-name">Middle Name (optional)</label>
+                <input
+                  id="acct-middle-name"
+                  v-model="accountForm.middle_name"
+                  type="text"
+                  class="w-full rounded-md border px-3 py-2 text-sm"
+                  :class="accountFieldError('middle_name') ? 'border-red-400' : 'border-slate-300'"
+                />
+                <p v-if="accountFieldError('middle_name')" class="mt-1 text-xs text-red-600">{{ accountFieldError('middle_name') }}</p>
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-last-name">Family Name</label>
+                <input
+                  id="acct-last-name"
+                  v-model="accountForm.last_name"
+                  type="text"
+                  class="w-full rounded-md border px-3 py-2 text-sm"
+                  :class="accountFieldError('last_name') ? 'border-red-400' : 'border-slate-300'"
+                />
+                <p v-if="accountFieldError('last_name')" class="mt-1 text-xs text-red-600">{{ accountFieldError('last_name') }}</p>
+              </div>
             </div>
-            <div>
-              <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-last-name">Family Name</label>
-              <input id="acct-last-name" v-model="accountForm.last_name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+
+          <!-- Section: Login Credentials -->
+          <div class="border-t border-slate-200 pt-5">
+            <div class="flex items-center gap-2 text-slate-500">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
+                <circle cx="8" cy="15" r="3.2" stroke="currentColor" stroke-width="1.6" />
+                <path d="M10.3 12.7 18 5m0 0h-3.5M18 5v3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              <h4 class="text-xs font-semibold uppercase tracking-wide">Login Credentials</h4>
+            </div>
+            <div class="mt-3 space-y-4">
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-username">Username (optional)</label>
+                <input
+                  id="acct-username"
+                  v-model="accountForm.username"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="e.g. juan.delacruz — leave blank to auto-generate"
+                  class="w-full rounded-md border px-3 py-2 text-sm"
+                  :class="accountFieldError('username') ? 'border-red-400' : 'border-slate-300'"
+                />
+                <p v-if="accountFieldError('username')" class="mt-1 text-xs text-red-600">{{ accountFieldError('username') }}</p>
+                <p v-else class="mt-1 text-xs text-slate-500">The student signs in with this. No spaces — letters, numbers, dots, dashes and underscores only. Leave blank to auto-generate one from their name.</p>
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-password">Password (min 8)</label>
+                <input
+                  id="acct-password"
+                  v-model="accountForm.password"
+                  type="password"
+                  class="w-full rounded-md border px-3 py-2 text-sm"
+                  :class="accountFieldError('password') ? 'border-red-400' : 'border-slate-300'"
+                />
+                <p v-if="accountFieldError('password')" class="mt-1 text-xs text-red-600">{{ accountFieldError('password') }}</p>
+              </div>
             </div>
           </div>
-          <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-username">Username</label>
-            <input id="acct-username" v-model="accountForm.username" type="text" autocomplete="off" placeholder="e.g. 2021-IT-001" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-            <p class="mt-1 text-xs text-slate-500">The student signs in with this. Letters, numbers, dots, dashes and underscores.</p>
-          </div>
-          <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-password">Password (min 8)</label>
-            <input id="acct-password" v-model="accountForm.password" type="password" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-program">Program</label>
-            <select id="acct-program" v-model.number="accountForm.program_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
-              <option :value="null">Select Program</option>
-              <option v-for="program in enrollmentOptions.programs ?? []" :key="program.id" :value="program.id">
-                {{ program.code ?? program.name }}
-              </option>
-            </select>
-          </div>
-          <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-batch">Batch</label>
-            <select
-              id="acct-batch"
-              v-model.number="accountForm.batch_id"
-              class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
-              :disabled="!accountForm.program_id"
-            >
-              <option :value="null">Select Batch</option>
-              <option v-for="batch in accountBatchOptions" :key="batch.id" :value="batch.id">{{ batch.name }}</option>
-            </select>
-            <p v-if="!accountForm.program_id" class="mt-1 text-xs text-slate-500">Select a program first.</p>
-            <p v-else-if="accountBatchOptions.length === 0" class="mt-1 text-xs text-amber-600">You have no batches for this program yet.</p>
-          </div>
-          <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-sid">Student ID Number (optional)</label>
-            <input id="acct-sid" v-model="accountForm.student_id_number" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+
+          <!-- Section: Program Placement -->
+          <div class="border-t border-slate-200 pt-5">
+            <div class="flex items-center gap-2 text-slate-500">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
+                <path d="m12 4 9 4.5-9 4.5-9-4.5L12 4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+                <path d="M7 11v4c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5v-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              <h4 class="text-xs font-semibold uppercase tracking-wide">Program Placement</h4>
+            </div>
+            <div class="mt-3 space-y-4">
+              <div class="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-program">Program</label>
+                  <select
+                    id="acct-program"
+                    v-model.number="accountForm.program_id"
+                    class="w-full rounded-md border px-3 py-2 text-sm"
+                    :class="accountFieldError('program_id') ? 'border-red-400' : 'border-slate-300'"
+                  >
+                    <option :value="null">Select Program</option>
+                    <option v-for="program in enrollmentOptions.programs ?? []" :key="program.id" :value="program.id">
+                      {{ program.code ?? program.name }}
+                    </option>
+                  </select>
+                  <p v-if="accountFieldError('program_id')" class="mt-1 text-xs text-red-600">{{ accountFieldError('program_id') }}</p>
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-batch">Batch</label>
+                  <select
+                    id="acct-batch"
+                    v-model.number="accountForm.batch_id"
+                    class="w-full rounded-md border px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+                    :class="accountFieldError('batch_id') ? 'border-red-400' : 'border-slate-300'"
+                    :disabled="!accountForm.program_id"
+                  >
+                    <option :value="null">Select Batch</option>
+                    <option v-for="batch in accountBatchOptions" :key="batch.id" :value="batch.id">{{ batch.name }}</option>
+                  </select>
+                  <p v-if="accountFieldError('batch_id')" class="mt-1 text-xs text-red-600">{{ accountFieldError('batch_id') }}</p>
+                  <p v-else-if="!accountForm.program_id" class="mt-1 text-xs text-slate-500">Select a program first.</p>
+                  <p v-else-if="accountBatchOptions.length === 0" class="mt-1 text-xs text-amber-600">You have no batches for this program yet.</p>
+                </div>
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-sid">Student ID Number (optional)</label>
+                <input
+                  id="acct-sid"
+                  v-model="accountForm.student_id_number"
+                  type="text"
+                  class="w-full rounded-md border px-3 py-2 text-sm"
+                  :class="accountFieldError('student_id_number') ? 'border-red-400' : 'border-slate-300'"
+                />
+                <p v-if="accountFieldError('student_id_number')" class="mt-1 text-xs text-red-600">{{ accountFieldError('student_id_number') }}</p>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div v-if="Object.keys(accountErrors).length > 0" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
-          <p v-for="(messages, field) in accountErrors" :key="field">{{ field }}: {{ messages.join(' ') }}</p>
+        <div v-if="otherAccountErrors.length > 0" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+          <p v-for="[field, messages] in otherAccountErrors" :key="field">{{ field }}: {{ messages.join(' ') }}</p>
         </div>
         <p v-if="accountMessage" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ accountMessage }}</p>
 
-        <div class="mt-6 flex justify-end gap-3">
+        <div class="mt-6 flex justify-end gap-3 border-t border-slate-200 pt-4">
           <button type="button" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" @click="closeAccountModal">Cancel</button>
           <button
             type="button"
-            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-blue-300"
+            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
             :disabled="isCreatingAccount"
             @click="submitAccount"
           >

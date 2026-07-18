@@ -23,7 +23,7 @@ class CreateAccountRequest extends FormRequest
             'middle_name' => ['nullable', 'string', 'max:100'],
             'last_name' => ['required', 'string', 'max:100'],
             // Username is the login credential now — email is parked (not collected here).
-            'username' => ['required', 'string', 'min:3', 'max:50', 'regex:/^[A-Za-z0-9._-]+$/', 'unique:users,username'],
+            'username' => ['nullable', 'string', 'min:3', 'max:50', 'regex:/^[A-Za-z0-9._-]+$/', 'unique:users,username'],
             'password' => ['required', 'string', 'min:8'],
             // Coordinators may only create students or supervisors — never
             // another coordinator or an admin.

@@ -186,6 +186,30 @@ class CoordinatorCreateAccountTest extends TestCase
         $this->assertNull(User::where('username', 'foreign.batch')->first());
     }
 
+    public function test_username_is_auto_generated_from_name_when_omitted(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->postJson('/api/coordinator/accounts', [
+            'role' => 'student',
+            'first_name' => 'Auto',
+            'last_name' => 'Generated',
+            'password' => 'password123',
+            'program_id' => $bsit->id,
+            'batch_id' => $batch->id,
+        ]);
+
+        $response->assertCreated();
+        $student = User::where('name', 'Auto Generated')->first();
+        $this->assertNotNull($student);
+        $this->assertNotEmpty($student->username);
+        $this->assertSame($student->username, $response->json('username'));
+    }
+
     public function test_username_is_required_and_unique(): void
     {
         $bsit = $this->programFor('BSIT', 'CAST');
