@@ -60,6 +60,7 @@ class ProfileController extends Controller
         }
 
         $path = $request->file('photo')->store('avatars', 'public');
+        $this->reencodeImage(Storage::disk('public')->path($path));
         $user->update(['avatar_path' => $path]);
 
         SystemLog::record('Profile Photo Updated', "{$user->name} updated their profile photo");
@@ -93,5 +94,28 @@ class ProfileController extends Controller
             ->paginate(20);
 
         return response()->json($logs);
+    }
+
+    /**
+     * Re-encode an uploaded avatar in place so any non-image payload smuggled
+     * inside a technically-valid image container (a "polyglot" file) can't
+     * survive on disk — defense in depth beyond the mime/extension check
+     * UpdateProfilePhotoRequest already enforces.
+     */
+    private function reencodeImage(string $fullPath): void
+    {
+        $image = @imagecreatefromstring(file_get_contents($fullPath));
+
+        if ($image === false) {
+            return;
+        }
+
+        match (strtolower(pathinfo($fullPath, PATHINFO_EXTENSION))) {
+            'png' => imagepng($image, $fullPath),
+            'webp' => imagewebp($image, $fullPath),
+            default => imagejpeg($image, $fullPath, 90),
+        };
+
+        imagedestroy($image);
     }
 }

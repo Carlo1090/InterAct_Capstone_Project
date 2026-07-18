@@ -32,6 +32,13 @@ use App\Http\Controllers\Supervisor\SupervisorJournalController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
+// Reject malformed date-shaped route segments (e.g. "not-a-date") with a 404
+// at the router level, before they reach a controller's Carbon::parse() call
+// — which throws an uncaught exception (and a stack-trace-leaking 500 when
+// APP_DEBUG is on) for any non-date input.
+Route::pattern('date', '\d{4}-\d{2}-\d{2}');
+Route::pattern('weekStart', '\d{4}-\d{2}-\d{2}');
+
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     $user = $request->user()->load('program.department');
 
