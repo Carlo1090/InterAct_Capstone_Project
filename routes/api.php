@@ -20,6 +20,7 @@ use App\Http\Controllers\Coordinator\CoordinatorWeeklyJournalController;
 use App\Http\Controllers\Coordinator\EnrollmentController;
 use App\Http\Controllers\Coordinator\HteReportController;
 use App\Http\Controllers\Coordinator\JournalTemplateController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Student\JournalCalendarController;
 use App\Http\Controllers\Student\JournalEntryController;
@@ -60,6 +61,17 @@ Route::middleware('auth:sanctum')
         Route::post('photo', [ProfileController::class, 'uploadPhoto']);
         Route::delete('photo', [ProfileController::class, 'deletePhoto']);
         Route::get('activity', [ProfileController::class, 'activity']);
+    });
+
+// Notification center shared by every role — backs the header bell/red-dot
+// indicator. The notifications table already existed and is already written
+// to by SendMissingJournalEntryReminders; this is what reads it back.
+Route::middleware('auth:sanctum')
+    ->prefix('notifications')
+    ->group(function () {
+        Route::get('/', [NotificationController::class, 'index']);
+        Route::post('read-all', [NotificationController::class, 'markAllRead']);
+        Route::post('{notification}/read', [NotificationController::class, 'markRead']);
     });
 
 Route::middleware(['auth:sanctum', 'role:admin'])
@@ -116,6 +128,7 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::put('companies/{company}', [CoordinatorCompanyController::class, 'update']);
         Route::post('companies/{company}/supervisors', [CoordinatorCompanyController::class, 'attachSupervisor']);
         Route::post('companies/{company}/supervisors/new', [CoordinatorCompanyController::class, 'createSupervisor']);
+        Route::post('companies/{company}/representatives', [CoordinatorCompanyController::class, 'addRepresentative']);
         Route::delete('companies/{company}/supervisors/{companySupervisor}', [CoordinatorCompanyController::class, 'detachSupervisor']);
 
         Route::get('info-sheets', [CoordinatorInfoSheetController::class, 'index']);

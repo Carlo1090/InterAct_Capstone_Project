@@ -185,6 +185,100 @@ class CoordinatorCompanyTest extends TestCase
         ]);
     }
 
+    public function test_add_representative_creates_a_named_only_entry(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $company = Company::create(['name' => 'Fresh Co', 'address' => 'A', 'is_active' => true]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->postJson("/api/coordinator/companies/{$company->id}/representatives", [
+            'name' => 'Juan Dela Cruz',
+            'position' => 'HR Officer',
+        ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('company_supervisors', [
+            'company_id' => $company->id,
+            'user_id' => null,
+            'name' => 'Juan Dela Cruz',
+            'position' => 'HR Officer',
+        ]);
+    }
+
+    public function test_add_representative_requires_name_and_position(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $company = Company::create(['name' => 'Fresh Co', 'address' => 'A', 'is_active' => true]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson("/api/coordinator/companies/{$company->id}/representatives", [])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['name', 'position']);
+    }
+
+    public function test_add_representative_is_blocked_for_an_out_of_scope_company(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        $this->usedCompany($batch, 'InScope Co');
+
+        $bsba = $this->programFor('BSBA-FM', 'CABM-B');
+        $otherCoord = $this->coordinatorFor($bsba);
+        $otherBatch = $this->batchFor($bsba, $otherCoord);
+        $outScope = $this->usedCompany($otherBatch, 'OutScope Co');
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson("/api/coordinator/companies/{$outScope->id}/representatives", [
+            'name' => 'Someone',
+            'position' => 'Someone Else',
+        ])->assertStatus(403);
+    }
+
+    public function test_representative_can_be_removed_via_the_existing_detach_endpoint(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $company = Company::create(['name' => 'Fresh Co', 'address' => 'A', 'is_active' => true]);
+        $rep = CompanySupervisor::create(['company_id' => $company->id, 'name' => 'Rep One', 'position' => 'Clerk']);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->deleteJson("/api/coordinator/companies/{$company->id}/supervisors/{$rep->id}")->assertOk();
+        $this->assertDatabaseMissing('company_supervisors', ['id' => $rep->id]);
+    }
+
+    public function test_head_of_company_contact_fields_round_trip_through_store_and_update(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $created = $this->postJson('/api/coordinator/companies', [
+            'name' => 'Head Contact Co',
+            'address' => '123 Street',
+            'head_name' => 'Dr. Jane Santos',
+            'head_contact_number' => '09171234567',
+            'head_email' => 'jane.santos@example.com',
+        ])->assertCreated()->json();
+
+        $this->assertSame('09171234567', $created['head_contact_number']);
+        $this->assertSame('jane.santos@example.com', $created['head_email']);
+
+        $updated = $this->putJson("/api/coordinator/companies/{$created['id']}", [
+            'head_contact_number' => '09179876543',
+        ])->assertOk()->json();
+
+        $this->assertSame('09179876543', $updated['head_contact_number']);
+        $this->assertSame('jane.santos@example.com', $updated['head_email']);
+    }
+
     public function test_detach_supervisor_by_id_removes_a_named_only_entry(): void
     {
         $bsit = $this->programFor('BSIT', 'CAST');

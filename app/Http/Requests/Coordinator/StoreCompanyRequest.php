@@ -19,6 +19,8 @@ class StoreCompanyRequest extends FormRequest
             'location' => ['nullable', 'string', 'max:200'],
             'industry' => ['nullable', 'string', 'max:100'],
             'head_name' => ['nullable', 'string', 'max:150'],
+            'head_contact_number' => ['nullable', 'string', 'max:30'],
+            'head_email' => ['nullable', 'email', 'max:255'],
             'department_head' => ['nullable', 'string', 'max:150'],
             'contact_number' => ['nullable', 'string', 'max:30'],
             'description' => ['nullable', 'string', 'max:2000'],

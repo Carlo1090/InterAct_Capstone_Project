@@ -25,6 +25,8 @@ const blankForm = () => ({
   location: '',
   industry: '',
   head_name: '',
+  head_contact_number: '',
+  head_email: '',
   department_head: '',
   contact_number: '',
   description: '',
@@ -41,6 +43,13 @@ const activeCompany = ref<CoordinatorCompany | null>(null)
 const attachForm = reactive({ user_id: null as number | null, position: '' })
 const createSupForm = reactive({ name: '', email: '', password: '', position: '' })
 const supErrors = ref<Record<string, string[]>>({})
+
+// Representatives are purely informational (no login) — a separate concept
+// from the OJT Supervisor Login below, which drives weekly-log review.
+const repForm = reactive({ name: '', position: '' })
+const repErrors = ref<Record<string, string[]>>({})
+const representatives = computed(() => (activeCompany.value?.supervisors ?? []).filter((sup) => !sup.is_login))
+const loginSupervisor = computed(() => (activeCompany.value?.supervisors ?? []).find((sup) => sup.is_login) ?? null)
 
 const loadCompanies = async () => {
   isLoading.value = true
@@ -98,6 +107,8 @@ const applyCompanyToForm = (company: CoordinatorCompany) => {
   form.location = company.location ?? ''
   form.industry = company.industry ?? ''
   form.head_name = company.head_name ?? ''
+  form.head_contact_number = company.head_contact_number ?? ''
+  form.head_email = company.head_email ?? ''
   form.department_head = company.department_head ?? ''
   form.contact_number = company.contact_number ?? ''
   form.description = company.description ?? ''
@@ -110,6 +121,8 @@ const closeModal = () => {
   Object.assign(attachForm, { user_id: null, position: '' })
   Object.assign(createSupForm, { name: '', email: '', password: '', position: '' })
   supErrors.value = {}
+  Object.assign(repForm, { name: '', position: '' })
+  repErrors.value = {}
 }
 
 const saveCompany = async () => {
@@ -150,6 +163,24 @@ const saveCompany = async () => {
     }
   } finally {
     isSaving.value = false
+  }
+}
+
+const addRepresentative = async () => {
+  if (!editingId.value) return
+  repErrors.value = {}
+
+  try {
+    const { data } = await api.post<CoordinatorCompany>(`/api/coordinator/companies/${editingId.value}/representatives`, repForm)
+    applyCompanyToForm(data)
+    Object.assign(repForm, { name: '', position: '' })
+    showToast('Representative added.')
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 422) {
+      repErrors.value = error.response.data.errors ?? {}
+    } else {
+      modalMessage.value = 'Unable to add the representative.'
+    }
   }
 }
 
@@ -239,13 +270,14 @@ onMounted(async () => {
             <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Location</th>
             <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Industry</th>
             <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Active Interns</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Supervisors</th>
+            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Representatives</th>
+            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">OJT Supervisor</th>
             <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
           <tr v-if="companies.length === 0">
-            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="6">No companies in your scope yet.</td>
+            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="7">No companies in your scope yet.</td>
           </tr>
           <tr v-for="company in companies" :key="company.id">
             <td class="px-4 py-3">
@@ -255,7 +287,15 @@ onMounted(async () => {
             <td class="px-4 py-3 text-sm text-slate-500">{{ company.location || '—' }}</td>
             <td class="px-4 py-3 text-sm text-slate-500">{{ company.industry || '—' }}</td>
             <td class="px-4 py-3 font-mono text-sm font-bold text-slate-800">{{ company.active_interns_count ?? 0 }}</td>
-            <td class="px-4 py-3 text-sm text-slate-500">{{ company.supervisors?.length ?? 0 }}</td>
+            <td class="px-4 py-3 font-mono text-sm text-slate-500">{{ company.supervisors?.filter((sup) => !sup.is_login).length ?? 0 }}</td>
+            <td class="px-4 py-3 text-sm">
+              <span
+                class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+                :class="company.supervisors?.some((sup) => sup.is_login) ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'"
+              >
+                {{ company.supervisors?.some((sup) => sup.is_login) ? 'Yes' : 'None' }}
+              </span>
+            </td>
             <td class="px-4 py-3">
               <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="openEdit(company)">
                 Manage
@@ -292,14 +332,6 @@ onMounted(async () => {
             <input v-model="form.industry" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </label>
           <label class="block">
-            <span class="text-xs font-bold text-slate-600">Head of Company</span>
-            <input v-model="form.head_name" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </label>
-          <label class="block">
-            <span class="text-xs font-bold text-slate-600">Department Head</span>
-            <input v-model="form.department_head" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </label>
-          <label class="block">
             <span class="text-xs font-bold text-slate-600">Contact Number (optional)</span>
             <input v-model="form.contact_number" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </label>
@@ -311,6 +343,28 @@ onMounted(async () => {
             <span class="text-xs font-bold text-slate-600">Description (optional)</span>
             <textarea v-model="form.description" rows="2" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"></textarea>
           </label>
+        </div>
+
+        <div class="mt-5 rounded-md border border-slate-200 p-4">
+          <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Head of Company</p>
+          <div class="mt-3 grid gap-4 md:grid-cols-3">
+            <label class="block">
+              <span class="text-xs font-bold text-slate-600">Name</span>
+              <input v-model="form.head_name" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            </label>
+            <label class="block">
+              <span class="text-xs font-bold text-slate-600">Contact Number (optional)</span>
+              <input v-model="form.head_contact_number" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            </label>
+            <label class="block">
+              <span class="text-xs font-bold text-slate-600">Email (optional)</span>
+              <input v-model="form.head_email" type="email" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            </label>
+            <label class="block md:col-span-3">
+              <span class="text-xs font-bold text-slate-600">Department Head (optional)</span>
+              <input v-model="form.department_head" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            </label>
+          </div>
         </div>
 
         <div
@@ -338,26 +392,56 @@ onMounted(async () => {
           </button>
         </div>
 
-        <!-- Supervisors panel (edit mode only, after the company exists) -->
+        <!-- Representatives panel (edit mode only, after the company exists) -->
         <div v-if="editingId && activeCompany" class="mt-6 border-t border-slate-200 pt-5">
-          <h4 class="text-sm font-bold text-slate-900">Company Supervisors</h4>
+          <h4 class="text-sm font-bold text-slate-900">Company Representatives</h4>
+          <p class="mt-1 text-xs text-slate-400">Informational contacts at this company — no login, just a name and position to reach them by.</p>
 
           <div class="mt-3 divide-y divide-slate-100 rounded-md border border-slate-200">
-            <p v-if="(activeCompany.supervisors?.length ?? 0) === 0" class="px-3 py-3 text-sm text-slate-400">No supervisors attached yet.</p>
-            <div v-for="sup in activeCompany.supervisors ?? []" :key="sup.id" class="flex items-center justify-between gap-3 px-3 py-2">
+            <p v-if="representatives.length === 0" class="px-3 py-3 text-sm text-slate-400">No representatives added yet.</p>
+            <div v-for="rep in representatives" :key="rep.id" class="flex items-center justify-between gap-3 px-3 py-2">
               <div>
-                <p class="flex items-center gap-2 text-sm font-semibold text-slate-800">
-                  {{ sup.display_name }}
-                  <span
-                    class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
-                    :class="sup.is_login ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'"
-                  >
-                    {{ sup.is_login ? 'Login' : 'Named only' }}
-                  </span>
-                </p>
-                <p class="text-xs text-slate-500">{{ sup.user?.email || 'No login account' }} · {{ sup.position || 'No position' }}</p>
+                <p class="text-sm font-semibold text-slate-800">{{ rep.display_name }}</p>
+                <p class="text-xs text-slate-500">{{ rep.position || 'No position' }}</p>
               </div>
-              <button type="button" class="text-xs font-semibold text-red-600 hover:text-red-700" @click="detachSupervisor(sup.id)">Detach</button>
+              <button type="button" class="text-xs font-semibold text-red-600 hover:text-red-700" @click="detachSupervisor(rep.id)">Remove</button>
+            </div>
+          </div>
+
+          <div v-if="Object.keys(repErrors).length > 0" class="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+            <p v-for="(messages, field) in repErrors" :key="field">{{ field }}: {{ messages.join(' ') }}</p>
+          </div>
+
+          <div class="mt-4 rounded-md border border-slate-200 p-3">
+            <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Add Representative</p>
+            <div class="mt-2 grid gap-2 md:grid-cols-3">
+              <input v-model="repForm.name" type="text" placeholder="Representative name" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm md:col-span-1" />
+              <input v-model="repForm.position" type="text" placeholder="Position" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm md:col-span-1" />
+              <button
+                type="button"
+                class="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed md:col-span-1"
+                :disabled="!repForm.name || !repForm.position"
+                @click="addRepresentative"
+              >
+                + Add Representative
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- OJT Supervisor Login panel (edit mode only) -->
+        <div v-if="editingId && activeCompany" class="mt-6 border-t border-slate-200 pt-5">
+          <h4 class="text-sm font-bold text-slate-900">OJT Supervisor Login</h4>
+          <p class="mt-1 text-xs text-slate-400">The one account this company uses to sign in and review interns' weekly logs.</p>
+
+          <div class="mt-3 divide-y divide-slate-100 rounded-md border border-slate-200">
+            <p v-if="!loginSupervisor" class="px-3 py-3 text-sm text-slate-400">No supervisor login attached yet.</p>
+            <div v-if="loginSupervisor" class="flex items-center justify-between gap-3 px-3 py-2">
+              <div>
+                <p class="text-sm font-semibold text-slate-800">{{ loginSupervisor.display_name }}</p>
+                <p class="text-xs text-slate-500">{{ loginSupervisor.user?.email }} · {{ loginSupervisor.position || 'No position' }}</p>
+              </div>
+              <button type="button" class="text-xs font-semibold text-red-600 hover:text-red-700" @click="detachSupervisor(loginSupervisor.id)">Detach</button>
             </div>
           </div>
 
@@ -414,7 +498,7 @@ onMounted(async () => {
         </div>
 
         <p v-else-if="!editingId" class="mt-6 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
-          Save the company first to attach supervisors.
+          Save the company first to add representatives or a supervisor login.
         </p>
       </section>
     </div>

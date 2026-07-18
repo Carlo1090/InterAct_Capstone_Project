@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['name', 'address', 'location', 'industry', 'contact_number', 'head_name', 'department_head', 'description', 'is_active'])]
+#[Fillable(['name', 'address', 'location', 'industry', 'contact_number', 'head_name', 'head_contact_number', 'head_email', 'department_head', 'description', 'is_active'])]
 class Company extends Model
 {
     public $timestamps = false;

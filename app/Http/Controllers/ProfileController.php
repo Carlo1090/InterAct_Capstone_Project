@@ -6,10 +6,12 @@ use App\Http\Requests\Profile\UpdatePasswordRequest;
 use App\Http\Requests\Profile\UpdateProfilePhotoRequest;
 use App\Http\Requests\Profile\UpdateProfileRequest;
 use App\Models\SystemLog;
+use App\Services\AvatarProcessingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -51,17 +53,20 @@ class ProfileController extends Controller
         return response()->json(['message' => 'Password updated.']);
     }
 
-    public function uploadPhoto(UpdateProfilePhotoRequest $request): JsonResponse
+    public function uploadPhoto(UpdateProfilePhotoRequest $request, AvatarProcessingService $avatars): JsonResponse
     {
         $user = $request->user();
 
-        if ($user->avatar_path) {
-            Storage::disk('public')->delete($user->avatar_path);
-        }
+        $webp = $avatars->toAvatarWebp($request->file('photo')->get());
+        $path = 'avatars/'.Str::random(40).'.webp';
+        Storage::disk('public')->put($path, $webp);
 
-        $path = $request->file('photo')->store('avatars', 'public');
-        $this->reencodeImage(Storage::disk('public')->path($path));
+        $previousPath = $user->avatar_path;
         $user->update(['avatar_path' => $path]);
+
+        if ($previousPath) {
+            Storage::disk('public')->delete($previousPath);
+        }
 
         SystemLog::record('Profile Photo Updated', "{$user->name} updated their profile photo");
 
@@ -94,28 +99,5 @@ class ProfileController extends Controller
             ->paginate(20);
 
         return response()->json($logs);
-    }
-
-    /**
-     * Re-encode an uploaded avatar in place so any non-image payload smuggled
-     * inside a technically-valid image container (a "polyglot" file) can't
-     * survive on disk — defense in depth beyond the mime/extension check
-     * UpdateProfilePhotoRequest already enforces.
-     */
-    private function reencodeImage(string $fullPath): void
-    {
-        $image = @imagecreatefromstring(file_get_contents($fullPath));
-
-        if ($image === false) {
-            return;
-        }
-
-        match (strtolower(pathinfo($fullPath, PATHINFO_EXTENSION))) {
-            'png' => imagepng($image, $fullPath),
-            'webp' => imagewebp($image, $fullPath),
-            default => imagejpeg($image, $fullPath, 90),
-        };
-
-        imagedestroy($image);
     }
 }

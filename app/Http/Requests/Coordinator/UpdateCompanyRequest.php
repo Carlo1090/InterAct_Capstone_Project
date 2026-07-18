@@ -19,6 +19,8 @@ class UpdateCompanyRequest extends FormRequest
             'location' => ['sometimes', 'nullable', 'string', 'max:200'],
             'industry' => ['sometimes', 'nullable', 'string', 'max:100'],
             'head_name' => ['sometimes', 'nullable', 'string', 'max:150'],
+            'head_contact_number' => ['sometimes', 'nullable', 'string', 'max:30'],
+            'head_email' => ['sometimes', 'nullable', 'email', 'max:255'],
             'department_head' => ['sometimes', 'nullable', 'string', 'max:150'],
             'contact_number' => ['sometimes', 'nullable', 'string', 'max:30'],
             'description' => ['sometimes', 'nullable', 'string', 'max:2000'],

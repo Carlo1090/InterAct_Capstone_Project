@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Coordinator;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Coordinator\AddCompanyRepresentativeRequest;
 use App\Http\Requests\Coordinator\AttachSupervisorRequest;
 use App\Http\Requests\Coordinator\CreateSupervisorRequest;
 use App\Http\Requests\Coordinator\StoreCompanyRequest;
@@ -124,6 +125,28 @@ class CoordinatorCompanyController extends Controller
         ]);
 
         $this->syncActiveEnrollmentSupervisors($company);
+
+        return response()->json($this->companyPayload($request->user(), $company), 201);
+    }
+
+    /**
+     * Add a purely informational company representative — a named-only
+     * company_supervisors row (no user_id, so no login/role). Distinct from
+     * attachSupervisor()/createSupervisor(), which always create a
+     * login-bearing "company account" row used for OJT weekly-log review.
+     * Representatives carry no such capability; they're just a record of who
+     * to contact at the company.
+     */
+    public function addRepresentative(AddCompanyRepresentativeRequest $request, Company $company): JsonResponse
+    {
+        $this->authorizeCompany($request->user(), $company);
+
+        CompanySupervisor::create([
+            'company_id' => $company->id,
+            'user_id' => null,
+            'name' => $request->input('name'),
+            'position' => $request->input('position'),
+        ]);
 
         return response()->json($this->companyPayload($request->user(), $company), 201);
     }

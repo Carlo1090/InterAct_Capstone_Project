@@ -66,6 +66,16 @@ export type ProfileActivityLog = {
   user_id: number
 }
 
+export type AppNotification = {
+  id: number
+  user_id: number
+  title: string
+  message: string | null
+  type: string | null
+  is_read: boolean
+  sent_at: string
+}
+
 export type Batch = {
   id: number
   name: string
@@ -375,31 +385,6 @@ export type WeeklyActivityLogRecord = {
   entries?: WeeklyActivityEntryRecord[]
 }
 
-export type CompanySupervisorRecord = {
-  id: number
-  position: string
-  user: User
-}
-
-export type Company = {
-  id: number
-  name: string
-  address: string
-  location: string | null
-  industry: string | null
-  contact_number: string | null
-  head_name: string | null
-  department_head: string | null
-  is_active: boolean
-  active_interns_count: number
-  total_interns_count: number
-}
-
-export type CompanyDetail = Company & {
-  supervisors: CompanySupervisorRecord[]
-  departments: Department[]
-}
-
 export type InfoSheetStatus = 'draft' | 'submitted' | 'approved' | 'rejected'
 
 export type InfoSheet = {
@@ -645,6 +630,8 @@ export type CoordinatorCompany = {
   location: string | null
   industry: string | null
   head_name: string | null
+  head_contact_number: string | null
+  head_email: string | null
   department_head: string | null
   contact_number: string | null
   description: string | null

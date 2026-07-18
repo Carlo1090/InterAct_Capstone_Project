@@ -4,6 +4,7 @@ import axios from 'axios'
 import api from '@/lib/axios'
 import { useAuthStore } from '@/stores/auth'
 import { showToast } from '@/lib/toast'
+import AvatarCropperModal from '@/components/profile/AvatarCropperModal.vue'
 import type { ProfileActivityLog } from '@/types/api'
 
 type Tab = 'profile' | 'password' | 'activity'
@@ -52,22 +53,56 @@ const saveProfile = async () => {
 }
 
 // Avatar
+const MAX_PHOTO_BYTES = 2 * 1024 * 1024
+const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+
 const fileInput = ref<HTMLInputElement | null>(null)
 const isUploadingPhoto = ref(false)
 const photoError = ref('')
+const croppingFile = ref<File | null>(null)
 
 const triggerFileSelect = () => fileInput.value?.click()
 
-const onPhotoSelected = async (event: Event) => {
+const resetFileInput = () => {
+  if (fileInput.value) fileInput.value.value = ''
+}
+
+const onPhotoSelected = (event: Event) => {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
 
+  photoError.value = ''
+
+  if (!ALLOWED_PHOTO_TYPES.includes(file.type)) {
+    photoError.value = 'Invalid file type. Please choose a JPG, PNG, or WEBP image.'
+    resetFileInput()
+    return
+  }
+
+  if (file.size > MAX_PHOTO_BYTES) {
+    photoError.value = 'File too large. Please choose an image under 2MB.'
+    resetFileInput()
+    return
+  }
+
+  // Opens the crop modal for a live preview + adjustment; the actual upload
+  // only fires once the user confirms the crop (onCropConfirmed below).
+  croppingFile.value = file
+}
+
+const onCropCancelled = () => {
+  croppingFile.value = null
+  resetFileInput()
+}
+
+const onCropConfirmed = async (blob: Blob) => {
+  croppingFile.value = null
   isUploadingPhoto.value = true
   photoError.value = ''
 
   const formData = new FormData()
-  formData.append('photo', file)
+  formData.append('photo', blob, 'avatar.png')
 
   try {
     await api.post('/api/profile/photo', formData)
@@ -77,7 +112,7 @@ const onPhotoSelected = async (event: Event) => {
     photoError.value = errorMessageFrom(error, 'Unable to upload photo. Use a JPG, PNG, or WEBP under 2MB.')
   } finally {
     isUploadingPhoto.value = false
-    input.value = ''
+    resetFileInput()
   }
 }
 
@@ -204,10 +239,20 @@ onMounted(() => {
           <div class="flex gap-2">
             <button
               type="button"
-              class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
+              class="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
               :disabled="isUploadingPhoto"
               @click="triggerFileSelect"
             >
+              <svg
+                v-if="isUploadingPhoto"
+                class="h-4 w-4 animate-spin text-slate-400"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+              >
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
               {{ isUploadingPhoto ? 'Uploading...' : 'Change Photo' }}
             </button>
             <button
@@ -341,5 +386,12 @@ onMounted(() => {
         </tbody>
       </table>
     </div>
+
+    <AvatarCropperModal
+      v-if="croppingFile"
+      :image-file="croppingFile"
+      @cancel="onCropCancelled"
+      @cropped="onCropConfirmed"
+    />
   </section>
 </template>

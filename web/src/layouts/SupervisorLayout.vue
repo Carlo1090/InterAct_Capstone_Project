@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import NotificationBell from '@/components/notifications/NotificationBell.vue'
 
 const navItems = [
   { label: 'Dashboard', to: '/supervisor/dashboard', badge: '', icon: 'dashboard' },
@@ -130,6 +131,7 @@ const logout = async () => {
             <p class="text-sm font-bold uppercase tracking-wide text-slate-700">{{ userName }}</p>
             <p class="text-xs text-slate-400">Company Supervisor - TechPH Inc.</p>
           </div>
+          <NotificationBell />
           <RouterLink
             to="/supervisor/profile"
             title="Profile"

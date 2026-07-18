@@ -119,14 +119,23 @@ class ProfileControllerTest extends TestCase
         Sanctum::actingAs($user, ['*']);
 
         $response = $this->post('/api/profile/photo', [
-            'photo' => UploadedFile::fake()->image('avatar.jpg'),
+            'photo' => UploadedFile::fake()->image('avatar.jpg', 800, 600),
         ]);
 
         $response->assertOk();
         $user->refresh();
         $this->assertNotNull($user->avatar_path);
+        $this->assertStringEndsWith('.webp', $user->avatar_path);
         Storage::disk('public')->assertExists($user->avatar_path);
         $this->assertNotNull($response->json('avatar_url'));
+
+        // Standardized to a 250x250 WebP square regardless of the uploaded
+        // photo's original dimensions/format.
+        $stored = Storage::disk('public')->get($user->avatar_path);
+        $info = getimagesizefromstring($stored);
+        $this->assertSame(250, $info[0]);
+        $this->assertSame(250, $info[1]);
+        $this->assertSame(IMAGETYPE_WEBP, $info[2]);
 
         $deleteResponse = $this->delete('/api/profile/photo');
         $deleteResponse->assertOk();
@@ -146,6 +155,25 @@ class ProfileControllerTest extends TestCase
 
         $response = $this->post('/api/profile/photo', [
             'photo' => UploadedFile::fake()->create('resume.pdf', 100),
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['photo']);
+    }
+
+    public function test_profile_photo_upload_rejects_garbage_bytes_disguised_as_an_image(): void
+    {
+        Storage::fake('public');
+
+        $user = User::factory()->create(['role' => 'student']);
+        Sanctum::actingAs($user, ['*']);
+
+        // A spoofed extension + declared MIME type, but the actual file
+        // content is not a genuine image — this is exactly what the mimes
+        // rule alone can miss on a fake upload, and what the magic-byte
+        // check in AvatarProcessingService::sniffType() is meant to catch.
+        $response = $this->post('/api/profile/photo', [
+            'photo' => UploadedFile::fake()->create('malicious.jpg', 50, 'image/jpeg'),
         ]);
 
         $response->assertStatus(422);
