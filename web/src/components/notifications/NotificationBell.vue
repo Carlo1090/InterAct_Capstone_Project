@@ -48,6 +48,22 @@ const openDropdown = async () => {
   }
 }
 
+const isClearing = ref(false)
+
+const clearAll = async () => {
+  if (notifications.value.length === 0 || isClearing.value) return
+  isClearing.value = true
+  try {
+    await api.delete('/api/notifications')
+    notifications.value = []
+    unreadCount.value = 0
+  } catch {
+    // Non-fatal; the list just stays as it was.
+  } finally {
+    isClearing.value = false
+  }
+}
+
 const toggleDropdown = () => {
   if (isOpen.value) {
     isOpen.value = false
@@ -101,8 +117,17 @@ onBeforeUnmount(() => {
       v-if="isOpen"
       class="absolute right-0 z-20 mt-2 w-80 rounded-lg bg-white shadow-xl ring-1 ring-slate-200"
     >
-      <div class="border-b border-slate-100 px-4 py-3">
+      <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
         <p class="text-sm font-bold text-slate-900">Notifications</p>
+        <button
+          v-if="notifications.length > 0"
+          type="button"
+          class="text-xs font-semibold text-slate-500 transition hover:text-red-600 disabled:grayscale disabled:cursor-not-allowed"
+          :disabled="isClearing"
+          @click="clearAll"
+        >
+          {{ isClearing ? 'Clearing…' : 'Clear all' }}
+        </button>
       </div>
 
       <div class="max-h-96 overflow-y-auto">

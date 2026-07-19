@@ -72,6 +72,57 @@ class CoordinatorInfoSheetTest extends TestCase
         return $student;
     }
 
+    public function test_pending_count_reports_in_scope_submitted_sheets_only(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+
+        $inScope = $this->enrolledStudent($batch, 'Ana Cruz');
+        StudentInformationSheet::create([
+            'student_id' => $inScope->id,
+            'batch_id' => $batch->id,
+            'personal_info' => ['first_name' => 'Ana'],
+            'academic_info' => [],
+            'ojt_info' => [],
+            'submission_status' => 'submitted',
+            'submitted_at' => now(),
+        ]);
+
+        // A draft in scope must NOT count.
+        $draftStudent = $this->enrolledStudent($batch, 'Cara Diaz');
+        StudentInformationSheet::create([
+            'student_id' => $draftStudent->id,
+            'batch_id' => $batch->id,
+            'personal_info' => [],
+            'academic_info' => [],
+            'ojt_info' => [],
+            'submission_status' => 'draft',
+        ]);
+
+        // A submitted sheet in another department must NOT count.
+        $bsba = $this->programFor('BSBA-FM', 'CABM-B');
+        $otherCoord = $this->coordinatorFor($bsba);
+        $otherBatch = $this->batchFor($bsba, $otherCoord);
+        $outStudent = $this->enrolledStudent($otherBatch, 'Ben Reyes');
+        StudentInformationSheet::create([
+            'student_id' => $outStudent->id,
+            'batch_id' => $otherBatch->id,
+            'personal_info' => [],
+            'academic_info' => [],
+            'ojt_info' => [],
+            'submission_status' => 'submitted',
+            'submitted_at' => now(),
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->getJson('/api/coordinator/info-sheets/pending-count');
+        $response->assertOk();
+        $this->assertSame(1, $response->json('count'));
+        $this->assertNotNull($response->json('latest_submitted_at'));
+    }
+
     public function test_index_lists_only_in_scope_students(): void
     {
         $bsit = $this->programFor('BSIT', 'CAST');

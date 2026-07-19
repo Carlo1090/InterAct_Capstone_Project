@@ -9,7 +9,7 @@ import type { CoordinatorInfoSheetDetail, CoordinatorInfoSheetRow, InfoSheetStat
 const students = ref<CoordinatorInfoSheetRow[]>([])
 const programs = ref<{ id: number; name: string; code?: string }[]>([])
 const search = ref('')
-const statusFilter = ref<InfoSheetStatus | ''>('submitted')
+const statusFilter = ref<InfoSheetStatus | ''>('')
 const programFilter = ref<number | null>(null)
 const isLoading = ref(true)
 const errorMessage = ref('')
@@ -30,7 +30,7 @@ const statusClass = (status: string | null): string => {
 const statusLabel = (status: string | null): string => {
   if (status === 'submitted') return 'Submitted'
   if (status === 'approved') return 'Approved'
-  if (status === 'rejected') return 'Rejected'
+  if (status === 'rejected') return 'Returned'
   if (status === 'draft') return 'Draft'
   return 'Not Started'
 }
@@ -163,11 +163,11 @@ onMounted(load)
         @keyup.enter="load"
       />
       <select v-model="statusFilter" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" @change="load">
+        <option value="">All statuses</option>
         <option value="submitted">Submitted</option>
         <option value="approved">Approved</option>
-        <option value="rejected">Rejected</option>
+        <option value="rejected">Returned</option>
         <option value="draft">Draft</option>
-        <option value="">All statuses</option>
       </select>
       <select v-model.number="programFilter" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" @change="load">
         <option :value="null">All programs</option>

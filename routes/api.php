@@ -71,6 +71,7 @@ Route::middleware('auth:sanctum')
     ->group(function () {
         Route::get('/', [NotificationController::class, 'index']);
         Route::post('read-all', [NotificationController::class, 'markAllRead']);
+        Route::delete('/', [NotificationController::class, 'clearAll']);
         Route::post('{notification}/read', [NotificationController::class, 'markRead']);
     });
 
@@ -132,6 +133,8 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::delete('companies/{company}/supervisors/{companySupervisor}', [CoordinatorCompanyController::class, 'detachSupervisor']);
 
         Route::get('info-sheets', [CoordinatorInfoSheetController::class, 'index']);
+        // Must precede the {student} route or "pending-count" binds as a student.
+        Route::get('info-sheets/pending-count', [CoordinatorInfoSheetController::class, 'pendingCount']);
         Route::get('info-sheets/{student}', [CoordinatorInfoSheetController::class, 'show']);
         Route::get('info-sheets/{student}/pdf', [CoordinatorInfoSheetController::class, 'pdf']);
         Route::post('info-sheets/{student}/accept', [CoordinatorInfoSheetController::class, 'accept']);

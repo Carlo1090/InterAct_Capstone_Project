@@ -36,6 +36,17 @@ class NotificationController extends Controller
         return response()->json(['message' => 'All notifications marked as read.']);
     }
 
+    /**
+     * Clear (delete) all of the authenticated user's notifications — the bell's
+     * "Clear all" action. Own notifications only (scoped by the relation).
+     */
+    public function clearAll(Request $request): JsonResponse
+    {
+        $request->user()->notifications()->delete();
+
+        return response()->json(['message' => 'Notifications cleared.']);
+    }
+
     public function markRead(Request $request, Notification $notification): JsonResponse
     {
         abort_unless($notification->user_id === $request->user()->id, 403);

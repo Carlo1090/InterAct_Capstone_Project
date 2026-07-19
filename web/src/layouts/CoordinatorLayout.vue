@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import api from '@/lib/axios'
 import NotificationBell from '@/components/notifications/NotificationBell.vue'
+
+const INFO_SHEETS_ROUTE = '/coordinator/info-sheets'
+const INFO_SHEETS_SEEN_KEY = 'coordinator:infoSheetsSeenAt'
+const POLL_INTERVAL_MS = 60_000
 
 const navItems = [
   { label: 'Department Dashboard', to: '/coordinator/dashboard', badge: '', icon: 'dashboard' },
   { label: 'Users', to: '/coordinator/users', badge: '', icon: 'people' },
-  { label: 'Daily Journal Activities', to: '/coordinator/journal-activities', badge: '4', icon: 'calendar' },
+  { label: 'Daily Journal Activities', to: '/coordinator/journal-activities', badge: '', icon: 'calendar' },
   { label: 'Weekly Journals', to: '/coordinator/weekly-journals', badge: '', icon: 'stack' },
   { label: 'Journal Templates', to: '/coordinator/journal-templates', badge: '', icon: 'journals' },
   { label: 'Batches', to: '/coordinator/batches', badge: '', icon: 'briefcase' },
@@ -42,6 +47,57 @@ const logout = async () => {
     router.push('/login')
   }
 }
+
+// --- "New info-sheet submissions" sidebar dot ------------------------------
+// Shows a dot on the Student Info Sheets nav item when a submission has arrived
+// since the coordinator last opened that page. Visiting the page stamps "seen"
+// in localStorage so the dot clears once they've looked.
+const showInfoSheetDot = ref(false)
+let pollTimer: ReturnType<typeof setInterval> | undefined
+
+const markInfoSheetsSeen = () => {
+  localStorage.setItem(INFO_SHEETS_SEEN_KEY, new Date().toISOString())
+  showInfoSheetDot.value = false
+}
+
+const refreshInfoSheetDot = async () => {
+  // On the page itself there is nothing to flag — keep it clear.
+  if (route.path === INFO_SHEETS_ROUTE) {
+    showInfoSheetDot.value = false
+    return
+  }
+  try {
+    const { data } = await api.get<{ count: number; latest_submitted_at: string | null }>(
+      '/api/coordinator/info-sheets/pending-count',
+    )
+    if (!data.latest_submitted_at || data.count === 0) {
+      showInfoSheetDot.value = false
+      return
+    }
+    const seenAt = localStorage.getItem(INFO_SHEETS_SEEN_KEY)
+    showInfoSheetDot.value = !seenAt || new Date(data.latest_submitted_at) > new Date(seenAt)
+  } catch {
+    // Non-fatal; leave the dot at its last state.
+  }
+}
+
+// Clear + stamp the moment the coordinator lands on the Info Sheets page.
+watch(
+  () => route.path,
+  (path) => {
+    if (path === INFO_SHEETS_ROUTE) markInfoSheetsSeen()
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  refreshInfoSheetDot()
+  pollTimer = setInterval(refreshInfoSheetDot, POLL_INTERVAL_MS)
+})
+
+onBeforeUnmount(() => {
+  if (pollTimer) clearInterval(pollTimer)
+})
 </script>
 
 <template>
@@ -121,6 +177,12 @@ const logout = async () => {
             v-if="item.badge && !collapsed"
             class="rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white"
           >{{ item.badge }}</span>
+          <span
+            v-if="item.to === INFO_SHEETS_ROUTE && showInfoSheetDot"
+            class="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500 ring-2 ring-white/40"
+            :class="collapsed && 'absolute right-2 top-2'"
+            title="New submissions"
+          />
         </RouterLink>
       </nav>
 

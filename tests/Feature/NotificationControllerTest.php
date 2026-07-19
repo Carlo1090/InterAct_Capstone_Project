@@ -71,4 +71,20 @@ class NotificationControllerTest extends TestCase
         $this->postJson("/api/notifications/{$mine->id}/read")->assertOk();
         $this->assertTrue($mine->fresh()->is_read);
     }
+
+    public function test_clear_all_deletes_only_the_authenticated_users_own_notifications(): void
+    {
+        $user = User::factory()->create(['role' => 'student']);
+        $otherUser = User::factory()->create(['role' => 'student']);
+
+        $mine = Notification::create(['user_id' => $user->id, 'title' => 'Mine', 'message' => 'A', 'type' => 'email', 'is_read' => false]);
+        $theirs = Notification::create(['user_id' => $otherUser->id, 'title' => 'Theirs', 'message' => 'B', 'type' => 'email', 'is_read' => false]);
+
+        Sanctum::actingAs($user, ['*']);
+
+        $this->deleteJson('/api/notifications')->assertOk();
+
+        $this->assertDatabaseMissing('notifications', ['id' => $mine->id]);
+        $this->assertDatabaseHas('notifications', ['id' => $theirs->id]);
+    }
 }

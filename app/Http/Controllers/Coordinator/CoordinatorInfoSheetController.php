@@ -13,6 +13,7 @@ use App\Models\StudentInformationSheet;
 use App\Models\SystemLog;
 use App\Models\User;
 use App\Services\EnrollmentService;
+use Illuminate\Support\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -75,6 +76,27 @@ class CoordinatorInfoSheetController extends Controller
             'programs' => Program::whereIn('id', $coordinator->coordinatorProgramIds())
                 ->orderBy('name')
                 ->get(['id', 'name', 'code']),
+        ]);
+    }
+
+    /**
+     * Lightweight signal for the sidebar "new submissions" dot: how many
+     * in-scope sheets are awaiting review (submitted) and the newest submit
+     * time. The frontend compares latest_submitted_at against a per-coordinator
+     * "last visited" stamp so the dot clears once they open the page.
+     */
+    public function pendingCount(Request $request): JsonResponse
+    {
+        $programIds = $request->user()->coordinatorProgramIds();
+
+        $query = StudentInformationSheet::whereHas('batch', fn ($q) => $q->whereIn('program_id', $programIds))
+            ->where('submission_status', 'submitted');
+
+        $latest = (clone $query)->max('submitted_at');
+
+        return response()->json([
+            'count' => $query->count(),
+            'latest_submitted_at' => $latest ? Carbon::parse($latest)->toIso8601String() : null,
         ]);
     }
 
