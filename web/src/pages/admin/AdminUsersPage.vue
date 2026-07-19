@@ -116,7 +116,7 @@ const createUser = async () => {
 }
 
 const deactivateUser = async (user: User) => {
-  if (!confirmAction(`Deactivate ${user.name}'s account? They won't be able to log in until reactivated.`)) return
+  if (!(await confirmAction(`Deactivate ${user.name}'s account? They won't be able to log in until reactivated.`))) return
 
   try {
     await api.patch(`/api/admin/users/${user.id}/deactivate`)
@@ -128,7 +128,7 @@ const deactivateUser = async (user: User) => {
 }
 
 const reactivateUser = async (user: User) => {
-  if (!confirmAction(`Reactivate ${user.name}'s account?`)) return
+  if (!(await confirmAction(`Reactivate ${user.name}'s account?`))) return
 
   try {
     await api.patch(`/api/admin/users/${user.id}/activate`)

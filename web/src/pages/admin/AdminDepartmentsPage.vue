@@ -104,7 +104,7 @@ const assignCoordinator = async () => {
 
 const removeCoordinator = async (coordinatorId: number, coordinatorName: string) => {
   if (!viewedDepartment.value) return
-  if (!confirmAction(`Remove ${coordinatorName} as coordinator of "${viewedDepartment.value.name}"?`)) return
+  if (!(await confirmAction(`Remove ${coordinatorName} as coordinator of "${viewedDepartment.value.name}"?`))) return
 
   removingCoordinatorId.value = coordinatorId
   coordinatorError.value = ''

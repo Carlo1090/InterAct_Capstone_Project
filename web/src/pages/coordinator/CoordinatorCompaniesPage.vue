@@ -129,7 +129,7 @@ const saveCompany = async () => {
   // Deactivating a company is a critical action — confirm with the truthful
   // consequence before it goes out. Reactivating needs no confirm.
   if (editingId.value && originalIsActive.value && !form.is_active) {
-    const confirmed = confirmAction(
+    const confirmed = await confirmAction(
       `Mark "${form.name}" as Inactive? It will no longer be selectable when enrolling students or adding interns to a batch. ` +
         'Existing enrollments at this company are unaffected. You can reactivate it later.',
     )
@@ -221,7 +221,7 @@ const createSupervisor = async () => {
 
 const detachSupervisor = async (companySupervisorId: number) => {
   if (!editingId.value) return
-  if (!confirmAction('Remove this supervisor from the company?')) return
+  if (!(await confirmAction('Remove this supervisor from the company?'))) return
 
   try {
     const { data } = await api.delete<CoordinatorCompany>(`/api/coordinator/companies/${editingId.value}/supervisors/${companySupervisorId}`)

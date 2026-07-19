@@ -100,8 +100,8 @@ const onYearChange = async () => {
   await loadReport()
 }
 
-const deleteRow = (row: AnnualSippRow) => {
-  if (!confirmAction('Remove this row from the report? It will be excluded when you save.')) return
+const deleteRow = async (row: AnnualSippRow) => {
+  if (!(await confirmAction('Remove this row from the report? It will be excluded when you save.'))) return
   rows.value = rows.value.filter((candidate) => candidate.id !== row.id)
   if (!deletedIds.value.includes(row.id)) {
     deletedIds.value.push(row.id)

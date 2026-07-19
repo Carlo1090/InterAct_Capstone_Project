@@ -133,7 +133,7 @@ const save = async (nextStatus: 'draft' | 'submitted') => {
   // the confirm-first treatment even though it's no longer immediately final.
   if (
     nextStatus === 'submitted' &&
-    !confirmAction('Submit this journal entry? You can still edit it until this week is compiled into your Weekly Log.')
+    !(await confirmAction('Submit this journal entry? You can still edit it until this week is compiled into your Weekly Log.'))
   ) {
     return
   }

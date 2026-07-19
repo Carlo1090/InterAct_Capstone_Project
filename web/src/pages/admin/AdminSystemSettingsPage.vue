@@ -104,7 +104,7 @@ watch(studentSearch, () => {
 })
 
 const issueTemporaryPassword = async (student: User) => {
-  if (!confirmAction(`Issue a temporary password for ${student.name}? Their current password will stop working immediately.`)) {
+  if (!(await confirmAction(`Issue a temporary password for ${student.name}? Their current password will stop working immediately.`))) {
     return
   }
 
@@ -130,7 +130,7 @@ const weeklyBundlingResult = ref<WeeklyBundlingResult | null>(null)
 
 const runWeeklyBundlingNow = async () => {
   const weekLabel = weeklyBundlingWeekStart.value || 'the most recently completed Mon–Fri week'
-  if (!confirmAction(`Run Weekly Bundling now for ${weekLabel}? This compiles Daily Accomplishment entries into each active student's Weekly Log narrative (drafts only — already-submitted logs are left untouched).`)) {
+  if (!(await confirmAction(`Run Weekly Bundling now for ${weekLabel}? This compiles Daily Accomplishment entries into each active student's Weekly Log narrative (drafts only — already-submitted logs are left untouched).`))) {
     return
   }
 
@@ -158,7 +158,7 @@ const purgeResult = ref<ArchivePurgeResult | null>(null)
 const purgeAsOf = ref('')
 
 const runPurgeNow = async () => {
-  if (!confirmAction('Run the archive purge now? This permanently deletes every batch roster record archived 30+ days ago (unless purging it would re-gate a legacy student). This cannot be undone.')) {
+  if (!(await confirmAction('Run the archive purge now? This permanently deletes every batch roster record archived 30+ days ago (unless purging it would re-gate a legacy student). This cannot be undone.'))) {
     return
   }
 

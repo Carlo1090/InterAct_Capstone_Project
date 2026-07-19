@@ -106,7 +106,7 @@ const submitWeek = async (week: WeeklyLogSummary) => {
     ? 'Resubmit this weekly narrative to your supervisor for review?'
     : 'Submit this weekly narrative to your supervisor for review? You will not be able to edit it until it is returned.'
 
-  if (!confirmAction(confirmMessage)) return
+  if (!(await confirmAction(confirmMessage))) return
 
   submittingDetail[week.week_start] = true
   saveMessage[week.week_start] = ''
@@ -209,7 +209,7 @@ const addEntry = async (log: WeeklyActivityLogRecord) => {
 }
 
 const removeEntry = async (log: WeeklyActivityLogRecord, entryId: number) => {
-  if (!confirmAction('Remove this entry from your Weekly Activity Log? This cannot be undone.')) return
+  if (!(await confirmAction('Remove this entry from your Weekly Activity Log? This cannot be undone.'))) return
 
   try {
     await api.delete(`/api/student/weekly-activity-logs/${log.id}/entries/${entryId}`)

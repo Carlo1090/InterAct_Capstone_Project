@@ -108,7 +108,7 @@ const submitReturn = async () => {
     reviewError.value = 'Please explain what the student needs to fix.'
     return
   }
-  if (!confirmAction('Return this weekly journal to the student for revision?')) return
+  if (!(await confirmAction('Return this weekly journal to the student for revision?'))) return
 
   isSubmitting.value = true
   try {

@@ -89,8 +89,8 @@ const addManualRow = () => {
   })
 }
 
-const deleteRow = (row: HteRow) => {
-  if (!confirmAction('Remove this row from the list? It will be excluded when you save.')) return
+const deleteRow = async (row: HteRow) => {
+  if (!(await confirmAction('Remove this row from the list? It will be excluded when you save.'))) return
   if (!row.is_manual && typeof row.id === 'number' && !deletedIds.value.includes(row.id)) {
     deletedIds.value.push(row.id)
   }

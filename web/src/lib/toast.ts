@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { reactive, ref } from 'vue'
 
 export type ToastType = 'success' | 'error'
 
@@ -97,10 +97,144 @@ export function resumeToast(id: number): void {
   arm(id, entry.remaining)
 }
 
+// --- In-app confirm / prompt dialog ----------------------------------------
+// Replaces the native window.confirm/prompt ("Localhost says…") popups with a
+// styled modal rendered by ConfirmHost.vue (mounted once, app-wide). The public
+// API stays promise-based so callers just `await confirmAction(...)`.
+
+export type ConfirmTone = 'default' | 'danger'
+
+export type ConfirmOptions = {
+  title?: string
+  message: string
+  confirmLabel?: string
+  cancelLabel?: string
+  tone?: ConfirmTone
+}
+
+export type PromptOptions = {
+  title?: string
+  message: string
+  confirmLabel?: string
+  cancelLabel?: string
+  placeholder?: string
+  initialValue?: string
+  /** When true, an empty/whitespace value is rejected with `requiredError`. */
+  required?: boolean
+  requiredError?: string
+}
+
+type DialogMode = 'confirm' | 'prompt'
+
+type DialogState = {
+  open: boolean
+  mode: DialogMode
+  title: string
+  message: string
+  confirmLabel: string
+  cancelLabel: string
+  tone: ConfirmTone
+  placeholder: string
+  inputValue: string
+  required: boolean
+  requiredError: string
+  inputError: string
+  resolver: ((value: boolean | string | null) => void) | null
+}
+
+const dialog = reactive<DialogState>({
+  open: false,
+  mode: 'confirm',
+  title: '',
+  message: '',
+  confirmLabel: 'Confirm',
+  cancelLabel: 'Cancel',
+  tone: 'default',
+  placeholder: '',
+  inputValue: '',
+  required: false,
+  requiredError: 'This field is required.',
+  inputError: '',
+  resolver: null,
+})
+
+/** Reactive dialog state consumed by ConfirmHost.vue. */
+export function useConfirmDialog(): DialogState {
+  return dialog
+}
+
+function settle(value: boolean | string | null): void {
+  const resolver = dialog.resolver
+  dialog.open = false
+  dialog.resolver = null
+  dialog.inputError = ''
+  resolver?.(value)
+}
+
 /**
  * Ask the user to confirm a crucial/destructive action BEFORE it runs.
- * Returns true when confirmed. Centralized so every caller is consistent.
+ * Resolves true when confirmed, false otherwise. Pass a string for a plain
+ * confirmation, or options for a title / custom labels / danger tone.
  */
-export function confirmAction(message: string): boolean {
-  return window.confirm(message)
+export function confirmAction(input: string | ConfirmOptions): Promise<boolean> {
+  const opts: ConfirmOptions = typeof input === 'string' ? { message: input } : input
+
+  return new Promise<boolean>((resolve) => {
+    // If a dialog is somehow already open, cancel it first.
+    if (dialog.resolver) settle(false)
+
+    dialog.mode = 'confirm'
+    dialog.title = opts.title ?? 'Please confirm'
+    dialog.message = opts.message
+    dialog.confirmLabel = opts.confirmLabel ?? 'Confirm'
+    dialog.cancelLabel = opts.cancelLabel ?? 'Cancel'
+    dialog.tone = opts.tone ?? 'default'
+    dialog.open = true
+    dialog.resolver = (value) => resolve(value === true)
+  })
+}
+
+/**
+ * Ask the user for a short text value (replaces window.prompt). Resolves with
+ * the entered string, or null if cancelled.
+ */
+export function promptAction(input: string | PromptOptions): Promise<string | null> {
+  const opts: PromptOptions = typeof input === 'string' ? { message: input } : input
+
+  return new Promise<string | null>((resolve) => {
+    if (dialog.resolver) settle(false)
+
+    dialog.mode = 'prompt'
+    dialog.title = opts.title ?? 'Please provide a reason'
+    dialog.message = opts.message
+    dialog.confirmLabel = opts.confirmLabel ?? 'Submit'
+    dialog.cancelLabel = opts.cancelLabel ?? 'Cancel'
+    dialog.tone = 'default'
+    dialog.placeholder = opts.placeholder ?? ''
+    dialog.inputValue = opts.initialValue ?? ''
+    dialog.required = opts.required ?? false
+    dialog.requiredError = opts.requiredError ?? 'This field is required.'
+    dialog.inputError = ''
+    dialog.open = true
+    dialog.resolver = (value) => resolve(typeof value === 'string' ? value : null)
+  })
+}
+
+/** Called by ConfirmHost.vue when the user confirms/submits the dialog. */
+export function acceptDialog(): void {
+  if (dialog.mode === 'prompt') {
+    const value = dialog.inputValue.trim()
+    if (dialog.required && value === '') {
+      dialog.inputError = dialog.requiredError
+      return
+    }
+    settle(value)
+    return
+  }
+  settle(true)
+}
+
+/** Called by ConfirmHost.vue when the user cancels/dismisses the dialog. */
+export function cancelDialog(): void {
+  settle(dialog.mode === 'prompt' ? null : false)
 }

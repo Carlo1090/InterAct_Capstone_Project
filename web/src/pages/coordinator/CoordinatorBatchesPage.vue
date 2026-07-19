@@ -145,7 +145,7 @@ const save = async () => {
   // Deactivating a batch is a critical action — confirm with the truthful
   // consequence before it goes out. Reactivating needs no confirm.
   if (editingBatchId.value && originalIsActive.value && !form.is_active) {
-    const confirmed = confirmAction(
+    const confirmed = await confirmAction(
       `Mark "${form.name}" as Inactive? Interns in this batch will stop receiving daily journal reminder emails. ` +
         'Enrollment, journal writing, and reports keep working as normal. You can reactivate it later.',
     )
@@ -281,7 +281,7 @@ const addIntern = async () => {
 
   // Enrolled elsewhere -> this is a MOVE. Confirm first (guards a wrong-batch pick).
   if (candidate?.enrolled && candidate.enrollment && candidate.enrollment.batch.id !== rosterBatch.value.id) {
-    const confirmed = confirmAction(
+    const confirmed = await confirmAction(
       `${candidate.name} is currently enrolled in "${candidate.enrollment.batch.name}". ` +
         `Adding them to "${rosterBatch.value.name}" will MOVE them: their "${candidate.enrollment.batch.name}" ` +
         `enrollment will be marked dropped and a new active one created here. ` +
@@ -344,7 +344,7 @@ const runRosterAction = async ({
   refetchCandidates,
 }: RosterActionOptions) => {
   if (!rosterBatch.value) return
-  if (!confirmAction(confirmMessage)) return
+  if (!(await confirmAction(confirmMessage))) return
 
   rosterMessage.value = ''
   try {

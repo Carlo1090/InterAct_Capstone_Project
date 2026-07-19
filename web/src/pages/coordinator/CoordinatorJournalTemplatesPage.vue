@@ -268,7 +268,7 @@ const toggleActive = async (template: JournalTemplateRecord) => {
   errorMessage.value = ''
 
   // Deactivating is the crucial action — confirm first.
-  if (template.is_active && !confirmAction(`Turn off "${template.name}" for use in batches?`)) return
+  if (template.is_active && !(await confirmAction(`Turn off "${template.name}" for use in batches?`))) return
 
   try {
     await api.patch(`/api/coordinator/journal-templates/${template.id}/toggle-active`)

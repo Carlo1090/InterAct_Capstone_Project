@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
-import { confirmAction, showToast } from '@/lib/toast'
+import { confirmAction, promptAction, showToast } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
 import type { CoordinatorInfoSheetDetail, CoordinatorInfoSheetRow, InfoSheetStatus } from '@/types/api'
 
@@ -89,7 +89,7 @@ const downloadPdf = () => {
 const accept = async () => {
   const student = detail.value?.student
   if (!student) return
-  if (!confirmAction(`Accept ${student.name}'s information sheet? This enrolls them into their batch.`)) return
+  if (!(await confirmAction(`Accept ${student.name}'s information sheet? This enrolls them into their batch.`))) return
 
   isActing.value = true
   try {
@@ -108,12 +108,15 @@ const accept = async () => {
 const reject = async () => {
   const student = detail.value?.student
   if (!student) return
-  const reason = window.prompt('Reason for returning this sheet to the student (they will see this):')
+  const reason = await promptAction({
+    title: 'Return for changes',
+    message: `Tell ${student.name} what needs fixing. They'll see this reason and can edit and resubmit.`,
+    placeholder: 'Reason for returning this sheet…',
+    confirmLabel: 'Return Sheet',
+    required: true,
+    requiredError: 'A reason is required to return the sheet.',
+  })
   if (reason === null) return
-  if (reason.trim() === '') {
-    showToast('A reason is required to return the sheet.', 'error')
-    return
-  }
 
   isActing.value = true
   try {
