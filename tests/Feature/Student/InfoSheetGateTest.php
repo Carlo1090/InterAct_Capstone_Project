@@ -55,6 +55,47 @@ class InfoSheetGateTest extends TestCase
         return [$student, $batch, $sheet];
     }
 
+    public function test_dropped_student_is_flagged_paused_not_gated(): void
+    {
+        // Enroll (approved sheet + active row), then drop the enrollment.
+        [$student, $batch, $sheet] = $this->studentWithSheet('approved');
+        $company = Company::create(['name' => 'Drop Co', 'address' => 'Tagbilaran', 'is_active' => true]);
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+        \App\Models\BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'dropped',
+        ]);
+
+        Sanctum::actingAs($student, ['*']);
+
+        $response = $this->getJson('/api/user')->assertOk();
+        // Past intake (approved sheet) so NOT gated, but paused (dropped).
+        $response->assertJsonPath('student_gated', false);
+        $response->assertJsonPath('student_paused', true);
+    }
+
+    public function test_actively_enrolled_student_is_neither_gated_nor_paused(): void
+    {
+        $student = $this->enrolledStudent();
+        StudentInformationSheet::create([
+            'student_id' => $student->id,
+            'batch_id' => \App\Models\BatchStudent::where('student_id', $student->id)->value('batch_id'),
+            'submission_status' => 'approved',
+            'personal_info' => [],
+            'academic_info' => [],
+            'ojt_info' => [],
+        ]);
+
+        Sanctum::actingAs($student, ['*']);
+
+        $response = $this->getJson('/api/user')->assertOk();
+        $response->assertJsonPath('student_gated', false);
+        $response->assertJsonPath('student_paused', false);
+    }
+
     public function test_gated_student_cannot_reach_other_student_endpoints(): void
     {
         [$student] = $this->studentWithSheet('draft');

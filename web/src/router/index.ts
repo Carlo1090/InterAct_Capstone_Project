@@ -217,6 +217,11 @@ const router = createRouter({
           meta: { title: 'Student Info Sheet' },
         },
         {
+          path: 'paused',
+          component: () => import('@/pages/student/StudentPausedPage.vue'),
+          meta: { title: 'Enrollment Inactive' },
+        },
+        {
           path: 'profile',
           component: () => import('@/pages/student/StudentProfilePage.vue'),
           meta: { title: 'Profile' },
@@ -260,6 +265,20 @@ router.beforeEach(async (to) => {
     to.path !== '/student/profile'
   ) {
     return '/student/info-sheet'
+  }
+
+  // Dropped-from-batch state: a student past intake but with no active/completed
+  // enrollment sees the calm "enrollment inactive" page instead of the journal
+  // pages, which would otherwise error (no current enrollment to resolve).
+  if (
+    auth.user?.role === 'student' &&
+    !auth.user?.student_gated &&
+    auth.user?.student_paused &&
+    to.path !== '/student/paused' &&
+    to.path !== '/student/info-sheet' &&
+    to.path !== '/student/profile'
+  ) {
+    return '/student/paused'
   }
 
   document.title = `${pageTitle(to)} | InternTrack`

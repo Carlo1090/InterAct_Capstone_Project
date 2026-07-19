@@ -46,6 +46,9 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     // Drives the frontend info-sheet gate for students (backend enforces it too).
     if ($user->isStudent()) {
         $user->setAttribute('student_gated', $user->isInfoSheetGated());
+        // Cleared intake but no active/completed enrollment (dropped) — the SPA
+        // shows a calm "enrollment inactive" state instead of erroring pages.
+        $user->setAttribute('student_paused', $user->isEnrollmentPaused());
     }
 
     return response()->json($user);

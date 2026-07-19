@@ -24,7 +24,15 @@ const collapsed = ref(false)
 // via the header avatar regardless (the router guard and backend both already
 // allow it while gated).
 const isGated = computed(() => auth.user?.role === 'student' && auth.user?.student_gated === true)
-const navItems = computed(() => (isGated.value ? allNavItems.filter((item) => item.to === '/student/info-sheet') : allNavItems))
+// Dropped from their batch: keep only the Info Sheet link reachable (their
+// journal pages have no active enrollment to load). The header avatar still
+// reaches Profile. The router guard bounces everything else to /student/paused.
+const isPaused = computed(
+  () => auth.user?.role === 'student' && auth.user?.student_gated !== true && auth.user?.student_paused === true,
+)
+const navItems = computed(() =>
+  isGated.value || isPaused.value ? allNavItems.filter((item) => item.to === '/student/info-sheet') : allNavItems,
+)
 
 const pageTitle = computed(() => (typeof route.meta.title === 'string' ? route.meta.title : 'Dashboard'))
 const userName = computed(() => auth.user?.name ?? 'Student')
@@ -148,7 +156,7 @@ const logout = async () => {
         <div class="flex items-center gap-4">
           <h1 class="text-lg font-bold text-slate-950">{{ pageTitle }}</h1>
           <RouterLink
-            v-if="!isGated && route.path !== '/student/write-journal'"
+            v-if="!isGated && !isPaused && route.path !== '/student/write-journal'"
             to="/student/write-journal"
             class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
           >

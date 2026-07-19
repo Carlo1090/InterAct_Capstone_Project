@@ -164,6 +164,30 @@ class User extends Authenticatable
         return ! BatchStudent::where('student_id', $this->id)->whereIn('status', ['active', 'completed'])->exists();
     }
 
+    /**
+     * A student who cleared intake (has an approved information sheet) but whose
+     * enrollment is no longer active or completed — i.e. a coordinator dropped
+     * them from their batch. Their write endpoints already 422 and their read
+     * endpoints have no current enrollment to resolve, so the frontend shows a
+     * calm "enrollment inactive" state instead of erroring pages. Distinct from
+     * isInfoSheetGated(): a paused student is past intake, not still in it.
+     */
+    public function isEnrollmentPaused(): bool
+    {
+        if ($this->role !== 'student') {
+            return false;
+        }
+
+        // Still in intake (no approved sheet) — that's the gate's job, not this.
+        if ($this->isInfoSheetGated()) {
+            return false;
+        }
+
+        return ! BatchStudent::where('student_id', $this->id)
+            ->whereIn('status', ['active', 'completed'])
+            ->exists();
+    }
+
     public function studentProfile(): HasOne
     {
         return $this->hasOne(StudentProfile::class);

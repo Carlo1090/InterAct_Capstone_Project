@@ -23,6 +23,9 @@ export type AuthUser = {
   program?: Program | null
   // Students only: true until their info sheet is approved (enrollment gate).
   student_gated?: boolean
+  // Students only: true when they cleared intake but were dropped from their
+  // batch (no active/completed enrollment) — the "enrollment inactive" state.
+  student_paused?: boolean
 }
 
 type AuthState = {
