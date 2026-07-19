@@ -35,7 +35,7 @@ class StudentInfoSheetTest extends TestCase
             ],
             'academic_info' => [
                 'program_course' => $enrollment->batch->program->name,
-                'year_level' => '3rd Year',
+                'year_level' => '3rd-year',
                 'department' => $enrollment->batch->program->department->name,
                 'internship_coordinator' => $enrollment->batch->coordinator->name,
             ],
@@ -182,7 +182,7 @@ class StudentInfoSheetTest extends TestCase
 
         $valid = $this->postJson('/api/student/info-sheet', [
             ...$basePayload,
-            'academic_info' => ['year_level' => '3rd Year'],
+            'academic_info' => ['year_level' => '3rd-year'],
         ]);
         $valid->assertOk();
     }
@@ -207,7 +207,7 @@ class StudentInfoSheetTest extends TestCase
                 'contact_number' => '0918-111-1111',
             ],
             'academic_info' => [
-                'year_level' => '1st Year',
+                'year_level' => '1st-year',
             ],
             'ojt_info' => [
                 'company_id' => null,
@@ -219,7 +219,7 @@ class StudentInfoSheetTest extends TestCase
 
         $sheet->refresh();
         $this->assertSame('0918-111-1111', $sheet->personal_info['contact_number']);
-        $this->assertSame('3rd Year', $sheet->academic_info['year_level']);
+        $this->assertSame('3rd-year', $sheet->academic_info['year_level']);
         $this->assertSame($originalProgram, $sheet->academic_info['program_course']);
         $this->assertSame($originalDepartment, $sheet->academic_info['department']);
         $this->assertSame($originalCoordinator, $sheet->academic_info['internship_coordinator']);

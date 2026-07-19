@@ -111,7 +111,7 @@ class CabmbIntakeDemoSeeder extends Seeder
                 ],
                 'academic_info' => [
                     'program_course' => $batch->program?->name,
-                    'year_level' => '4th Year',
+                    'year_level' => '4th-year',
                     'department' => $batch->program?->department?->name,
                     'internship_coordinator' => $batch->coordinator?->name,
                 ],

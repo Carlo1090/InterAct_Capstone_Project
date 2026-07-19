@@ -84,7 +84,7 @@ class InfoSheetGateTest extends TestCase
         $this->postJson('/api/student/info-sheet', [
             'status' => 'submitted',
             'personal_info' => ['last_name' => 'Cruz', 'first_name' => 'Ana', 'contact_number' => '0917'],
-            'academic_info' => ['year_level' => '4th Year'],
+            'academic_info' => ['year_level' => '4th-year'],
             'ojt_info' => ['company_id' => $company->id, 'host_company' => $company->name],
         ])->assertOk()->assertJsonPath('submission_status', 'submitted');
 

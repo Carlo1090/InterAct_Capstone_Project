@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import axios from 'axios'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import api from '@/lib/axios'
+import { categorizeError } from '@/lib/apiError'
 import { confirmAction, showToast } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -12,6 +12,10 @@ const auth = useAuthStore()
 const isLoading = ref(true)
 const isSaving = ref(false)
 const errorMessage = ref('')
+// Keyed by the dotted field path (e.g. 'personal_info.first_name'); drives the
+// red ring + "field required" hint next to each offending input.
+const fieldErrors = ref<Record<string, boolean>>({})
+const hasFieldError = (key: string): boolean => fieldErrors.value[key] === true
 const submissionStatus = ref<InfoSheetStatus | null>(null)
 const rejectionReason = ref<string | null>(null)
 const companies = ref<StudentCompanyOption[]>([])
@@ -94,16 +98,51 @@ const loadInfoSheet = async () => {
   }
 }
 
+// The fields the student must fill before a submission (a draft can be saved
+// with anything). Kept in form order so the first missing one is the one we
+// scroll to.
+const REQUIRED_FIELDS: { key: string; get: () => string }[] = [
+  { key: 'personal_info.last_name', get: () => personalInfo.last_name },
+  { key: 'personal_info.first_name', get: () => personalInfo.first_name },
+  { key: 'academic_info.year_level', get: () => academicInfo.year_level },
+  { key: 'ojt_info.company_id', get: () => (ojtInfo.company_id ? String(ojtInfo.company_id) : '') },
+]
+
+const scrollToFirstError = () => {
+  nextTick(() => {
+    const el = document.querySelector<HTMLElement>('[data-invalid="true"]')
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el?.focus()
+  })
+}
+
 const save = async (status: 'draft' | 'submitted') => {
-  if (status === 'submitted' && !isApproved.value) {
-    const confirmed = confirmAction(
-      'Submit your Information Sheet for coordinator review? You can still edit it until they act on it.',
-    )
-    if (!confirmed) return
+  errorMessage.value = ''
+  fieldErrors.value = {}
+
+  if (status === 'submitted') {
+    // Client-side required-field check with a generic, field-directing message
+    // (no raw "personal info.first name" server strings shown to the student).
+    const missing: Record<string, boolean> = {}
+    for (const field of REQUIRED_FIELDS) {
+      if (!field.get()?.trim()) missing[field.key] = true
+    }
+    if (Object.keys(missing).length > 0) {
+      fieldErrors.value = missing
+      errorMessage.value = 'Please complete the required fields highlighted below.'
+      scrollToFirstError()
+      return
+    }
+
+    if (!isApproved.value) {
+      const confirmed = await confirmAction(
+        'Submit your Information Sheet for coordinator review? You can still edit it until they act on it.',
+      )
+      if (!confirmed) return
+    }
   }
 
   isSaving.value = true
-  errorMessage.value = ''
 
   try {
     const { data } = await api.post<InfoSheet>('/api/student/info-sheet', {
@@ -119,8 +158,14 @@ const save = async (status: 'draft' | 'submitted') => {
     // so nav/guard state stays in sync (still gated until approved).
     await auth.fetchUser().catch(() => {})
   } catch (error) {
-    const data = axios.isAxiosError(error) ? error.response?.data : null
-    errorMessage.value = data?.message ?? 'Unable to save. Please check the fields and try again.'
+    const categorized = categorizeError(error, 'Unable to save. Please check the fields and try again.')
+    if (categorized.kind === 'validation' && categorized.fieldErrors) {
+      fieldErrors.value = Object.fromEntries(Object.keys(categorized.fieldErrors).map((key) => [key, true]))
+      errorMessage.value = 'Please complete the required fields highlighted below.'
+      scrollToFirstError()
+    } else {
+      errorMessage.value = categorized.message
+    }
   } finally {
     isSaving.value = false
   }
@@ -167,12 +212,24 @@ onMounted(loadInfoSheet)
         <h2 class="text-xs font-bold uppercase tracking-wide text-blue-700">Student Trainee Information</h2>
         <div class="mt-4 grid gap-4 md:grid-cols-2">
           <label class="block text-sm font-medium text-slate-700">
-            Family Name
-            <input v-model="personalInfo.last_name" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
+            Family Name <span class="text-red-500">*</span>
+            <input
+              v-model="personalInfo.last_name"
+              :data-invalid="hasFieldError('personal_info.last_name')"
+              class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100"
+              :class="hasFieldError('personal_info.last_name') && 'border-red-400 ring-1 ring-red-300'"
+            />
+            <span v-if="hasFieldError('personal_info.last_name')" class="mt-1 block text-xs font-normal text-red-600">This field is required.</span>
           </label>
           <label class="block text-sm font-medium text-slate-700">
-            First Name
-            <input v-model="personalInfo.first_name" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
+            First Name <span class="text-red-500">*</span>
+            <input
+              v-model="personalInfo.first_name"
+              :data-invalid="hasFieldError('personal_info.first_name')"
+              class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100"
+              :class="hasFieldError('personal_info.first_name') && 'border-red-400 ring-1 ring-red-300'"
+            />
+            <span v-if="hasFieldError('personal_info.first_name')" class="mt-1 block text-xs font-normal text-red-600">This field is required.</span>
           </label>
           <label class="block text-sm font-medium text-slate-700">
             Middle Name
@@ -188,17 +245,19 @@ onMounted(loadInfoSheet)
               <input :value="academicInfo.program_course" readonly class="mt-2 w-full rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-sm" />
             </label>
             <label class="block text-sm font-medium text-slate-700">
-              Year
+              Year <span class="text-red-500">*</span>
               <select
                 v-model="academicInfo.year_level"
                 :disabled="systemLocked"
+                :data-invalid="hasFieldError('academic_info.year_level')"
                 class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                :class="hasFieldError('academic_info.year_level') && 'border-red-400 ring-1 ring-red-300'"
               >
                 <option value="">Select Year</option>
-                <option value="1st Year">1st Year</option>
-                <option value="2nd Year">2nd Year</option>
-                <option value="3rd Year">3rd Year</option>
-                <option value="4th Year">4th Year</option>
+                <option value="1st-year">1st-year</option>
+                <option value="2nd-year">2nd-year</option>
+                <option value="3rd-year">3rd-year</option>
+                <option value="4th-year">4th-year</option>
               </select>
             </label>
           </div>
@@ -222,16 +281,19 @@ onMounted(loadInfoSheet)
         <h2 class="text-xs font-bold uppercase tracking-wide text-blue-700">Internship Company Information</h2>
         <div class="mt-4 grid gap-4 md:grid-cols-2">
           <label class="block text-sm font-medium text-slate-700 md:col-span-2">
-            Name of Company
+            Name of Company <span class="text-red-500">*</span>
             <select
               v-model.number="ojtInfo.company_id"
               :disabled="systemLocked"
+              :data-invalid="hasFieldError('ojt_info.company_id')"
               class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+              :class="hasFieldError('ojt_info.company_id') && 'border-red-400 ring-1 ring-red-300'"
               @change="onCompanyChange"
             >
               <option :value="null">Select Company</option>
               <option v-for="company in companies" :key="company.id" :value="company.id">{{ company.name }}</option>
             </select>
+            <span v-if="hasFieldError('ojt_info.company_id')" class="mt-1 block text-xs font-normal text-red-600">Please select a company.</span>
           </label>
           <label class="block text-sm font-medium text-slate-700 md:col-span-2">
             Company Address

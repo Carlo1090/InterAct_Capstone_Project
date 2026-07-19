@@ -31,7 +31,7 @@ class StoreInfoSheetRequest extends FormRequest
 
             'academic_info' => ['present', 'array'],
             'academic_info.program_course' => ['nullable', 'string', 'max:255'],
-            'academic_info.year_level' => ['nullable', 'in:1st Year,2nd Year,3rd Year,4th Year'],
+            'academic_info.year_level' => ['nullable', 'in:1st-year,2nd-year,3rd-year,4th-year'],
             'academic_info.department' => ['nullable', 'string', 'max:150'],
             'academic_info.internship_coordinator' => ['nullable', 'string', 'max:150'],
             'academic_info.coordinator_contact_no' => ['nullable', 'string', 'max:30'],
@@ -54,6 +54,38 @@ class StoreInfoSheetRequest extends FormRequest
             'ojt_info.ojt_end_date' => ['nullable', 'date', 'after_or_equal:ojt_info.ojt_start_date'],
 
             'emergency_contact' => ['nullable', 'array'],
+        ];
+    }
+
+    /**
+     * Friendly field names so a validation message reads "The Family Name field
+     * is required." instead of the raw dotted key "The personal info.last name
+     * field is required." (The frontend also shows a generic banner + inline
+     * field highlighting, but these keep any server-surfaced message readable.)
+     */
+    public function attributes(): array
+    {
+        return [
+            'personal_info.last_name' => 'Family Name',
+            'personal_info.first_name' => 'First Name',
+            'personal_info.middle_name' => 'Middle Name',
+            'personal_info.parent_guardian_name' => "Parent's / Guardian's Name",
+            'personal_info.parent_guardian_contact' => "Parent's / Guardian's Contact No.",
+            'personal_info.contact_number' => 'Contact No.',
+            'personal_info.email' => 'Email',
+            'personal_info.student_id_number' => 'Student ID Number',
+            'academic_info.year_level' => 'Year',
+            'ojt_info.company_id' => 'Name of Company',
+            'ojt_info.host_company' => 'Name of Company',
+            'ojt_info.company_address' => 'Company Address',
+            'ojt_info.company_signatory_moa' => 'Company Signatory (MOA)',
+            'ojt_info.office_designation' => 'Office Designation / Position',
+            'ojt_info.supervisor_name' => 'Name of Supervisor / Office Head',
+            'ojt_info.supervisor_contact' => 'Supervisor Contact Number',
+            'ojt_info.area_assigned' => 'Area Assigned',
+            'ojt_info.intern_duty_schedule' => "Intern's Duty Schedule",
+            'ojt_info.ojt_start_date' => 'Start of Internship Duty',
+            'ojt_info.ojt_end_date' => 'Estimated Date to Finish Internship',
         ];
     }
 }

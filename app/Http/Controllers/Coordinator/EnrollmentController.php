@@ -287,12 +287,20 @@ class EnrollmentController extends Controller
         ]);
 
         if ($user->isStudent()) {
-            StudentProfile::firstOrCreate(
+            // The UserObserver already auto-created the profile on user create,
+            // so set middle_name explicitly (firstOrCreate would no-op on the
+            // existing row and never persist it).
+            $profile = StudentProfile::firstOrCreate(
                 ['user_id' => $user->id],
                 ['student_id_number' => $user->student_id_number],
             );
+            $profile->update(['middle_name' => $validated['middle_name'] ?? null]);
 
-            $this->scaffoldIntendedSheet($user, $intendedBatch);
+            $this->scaffoldIntendedSheet($user, $intendedBatch, [
+                'first_name' => $validated['first_name'],
+                'middle_name' => $validated['middle_name'] ?? null,
+                'last_name' => $validated['last_name'],
+            ]);
         }
 
         return response()->json($user->only(['id', 'name', 'username', 'role', 'is_active']), 201);
@@ -305,18 +313,21 @@ class EnrollmentController extends Controller
      * batch so the student's gated info-sheet form opens partly populated; the
      * student supplies the rest and chooses their company from the dropdown.
      */
-    private function scaffoldIntendedSheet(User $student, Batch $batch): void
+    private function scaffoldIntendedSheet(User $student, Batch $batch, array $name): void
     {
         $batch->loadMissing(['program.department', 'coordinator']);
-        [$firstName, $lastName] = array_pad(explode(' ', trim($student->name), 2), 2, '');
 
         StudentInformationSheet::create([
             'student_id' => $student->id,
             'batch_id' => $batch->id,
             'submission_status' => 'draft',
             'personal_info' => [
-                'last_name' => $lastName,
-                'first_name' => $firstName,
+                // Stored from the discrete First/Middle/Family fields the
+                // coordinator typed — never re-split from the joined users.name
+                // (which would fold the middle name into the family name).
+                'last_name' => $name['last_name'],
+                'first_name' => $name['first_name'],
+                'middle_name' => $name['middle_name'] ?? null,
                 'student_id_number' => $student->student_id_number,
             ],
             'academic_info' => [

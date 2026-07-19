@@ -89,6 +89,16 @@ class CoordinatorCreateAccountTest extends TestCase
             'submission_status' => 'draft',
         ]);
 
+        // ...with the name split into the SAME parts the coordinator typed —
+        // the middle name must NOT bleed into the family name (regression: the
+        // scaffold used to re-split the joined users.name and produce
+        // last_name = "Q Student").
+        $sheet = \App\Models\StudentInformationSheet::where('student_id', $student->id)->first();
+        $this->assertSame('Student', $sheet->personal_info['last_name']);
+        $this->assertSame('New', $sheet->personal_info['first_name']);
+        $this->assertSame('Q', $sheet->personal_info['middle_name']);
+        $this->assertSame('Q', $student->studentProfile->middle_name);
+
         // ...but NOT yet enrolled — no batch_students row exists.
         $this->assertDatabaseMissing('batch_students', ['student_id' => $student->id]);
     }
