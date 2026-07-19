@@ -10,7 +10,10 @@ use App\Models\Batch;
 use App\Models\BatchStudent;
 use App\Models\Company;
 use App\Models\CompanySupervisor;
+use App\Models\JournalEntry;
 use App\Models\Program;
+use App\Models\WeeklyActivityLog;
+use App\Models\WeeklyLog;
 use App\Models\StudentInformationSheet;
 use App\Models\StudentProfile;
 use App\Models\SystemLog;
@@ -175,6 +178,43 @@ class EnrollmentController extends Controller
                 'supervisor' => $enrollment->supervisor,
             ] : null,
         ]);
+    }
+
+    /**
+     * PERMANENTLY delete an in-scope student account. This is a guarded
+     * hard-delete: it is refused (422) for any account that carries OJT
+     * history (journal entries, weekly logs, or weekly activity logs), since
+     * deleting the user cascades those records away — the soft-delete
+     * (deactivate) path exists precisely to preserve them. Only truly empty
+     * accounts (mistakenly created, never used) can be erased here.
+     */
+    public function destroyAccount(Request $request, User $student): JsonResponse
+    {
+        abort_unless($student->role === 'student', 404);
+        abort_unless(
+            $request->user()->coordinatorProgramIds()->contains($student->program_id),
+            403,
+            'That student is outside your assigned department(s).'
+        );
+
+        $hasHistory = JournalEntry::where('student_id', $student->id)->exists()
+            || WeeklyLog::where('student_id', $student->id)->exists()
+            || WeeklyActivityLog::where('student_id', $student->id)->exists();
+
+        abort_if(
+            $hasHistory,
+            422,
+            'This student has journal or weekly-log records, so their account cannot be permanently deleted. Remove them from their batch to keep their history intact.'
+        );
+
+        $name = $student->name;
+        // Cascades clear the empty scaffolding (profile, draft info sheet,
+        // dropped/inactive enrollment rows) with no OJT history to lose.
+        $student->delete();
+
+        SystemLog::record('Account Deleted', "Permanently deleted student account {$name}");
+
+        return response()->json(['deleted' => true]);
     }
 
     /**

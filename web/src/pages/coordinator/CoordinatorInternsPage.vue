@@ -3,8 +3,10 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { showToast } from '@/lib/toast'
+import { categorizeError } from '@/lib/apiError'
 import ToastHost from '@/components/ToastHost.vue'
 import InternDetailModal from '@/components/interns/InternDetailModal.vue'
+import DangerCountdownModal from '@/components/ui/DangerCountdownModal.vue'
 import type {
   CoordinatorCompany,
   CoordinatorInternUser,
@@ -50,6 +52,42 @@ const viewIntern = async (studentId: number) => {
 
 const closeInternModal = () => {
   isInternModalOpen.value = false
+}
+
+// --- Permanent account delete (guarded hard-delete + countdown confirm) ------
+const deleteTarget = ref<CoordinatorInternUser | null>(null)
+const isDeleting = ref(false)
+
+const deleteMessage = computed(() =>
+  deleteTarget.value
+    ? `You are about to PERMANENTLY delete the account of ${deleteTarget.value.name}. This erases their login and profile and cannot be undone.\n\nOnly accounts with no journal or weekly-log history can be deleted — if they have records, remove them from their batch instead.`
+    : '',
+)
+
+const askDeleteAccount = (student: CoordinatorInternUser) => {
+  deleteTarget.value = student
+}
+
+const cancelDeleteAccount = () => {
+  if (isDeleting.value) return
+  deleteTarget.value = null
+}
+
+const confirmDeleteAccount = async () => {
+  const student = deleteTarget.value
+  if (!student) return
+  isDeleting.value = true
+  try {
+    await api.delete(`/api/coordinator/users/interns/${student.id}`)
+    deleteTarget.value = null
+    await loadInterns()
+    showToast(`${student.name}'s account was permanently deleted.`)
+  } catch (error) {
+    const { message } = categorizeError(error, 'Unable to delete this account.')
+    showToast(message, 'error')
+  } finally {
+    isDeleting.value = false
+  }
 }
 
 // --- Interns tab: program filter ---------------------------------------------
@@ -487,9 +525,18 @@ onMounted(() => {
               <td class="px-4 py-3 text-sm text-slate-500">{{ student.enrollment?.company?.name ?? '—' }}</td>
               <td class="px-4 py-3 text-sm text-slate-500">{{ student.enrollment?.supervisor?.name ?? '—' }}</td>
               <td class="px-4 py-3">
-                <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="viewIntern(student.id)">
-                  View
-                </button>
+                <div class="flex gap-2">
+                  <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="viewIntern(student.id)">
+                    View
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:bg-red-50"
+                    @click="askDeleteAccount(student)"
+                  >
+                    Delete
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -869,6 +916,17 @@ onMounted(() => {
       :is-loading="isLoadingIntern"
       :error-message="internDetailError"
       @close="closeInternModal"
+    />
+
+    <DangerCountdownModal
+      :open="deleteTarget !== null"
+      title="Permanently delete account"
+      :message="deleteMessage"
+      confirm-label="Delete permanently"
+      :hold-seconds="7"
+      :busy="isDeleting"
+      @confirm="confirmDeleteAccount"
+      @cancel="cancelDeleteAccount"
     />
   </section>
 </template>

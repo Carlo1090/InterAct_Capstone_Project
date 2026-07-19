@@ -164,6 +164,7 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
 
         Route::get('users/interns', [EnrollmentController::class, 'interns']);
         Route::get('users/interns/{student}', [EnrollmentController::class, 'showIntern']);
+        Route::delete('users/interns/{student}', [EnrollmentController::class, 'destroyAccount']);
         Route::get('users/supervisors', [EnrollmentController::class, 'supervisors']);
 
         Route::get('students/enrollable', [EnrollmentController::class, 'enrollableStudents']);

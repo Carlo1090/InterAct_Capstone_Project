@@ -4,6 +4,7 @@ namespace Tests\Feature\Coordinator;
 
 use App\Models\Batch;
 use App\Models\Department;
+use App\Models\JournalEntry;
 use App\Models\Program;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -218,6 +219,61 @@ class CoordinatorCreateAccountTest extends TestCase
         $this->assertNotNull($student);
         $this->assertNotEmpty($student->username);
         $this->assertSame($student->username, $response->json('username'));
+    }
+
+    public function test_coordinator_permanently_deletes_an_empty_student_account(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $bsit->id]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->deleteJson("/api/coordinator/users/interns/{$student->id}")
+            ->assertOk()
+            ->assertJson(['deleted' => true]);
+
+        $this->assertDatabaseMissing('users', ['id' => $student->id]);
+        $this->assertDatabaseMissing('student_profiles', ['user_id' => $student->id]);
+    }
+
+    public function test_coordinator_cannot_delete_a_student_with_journal_history(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $bsit->id]);
+
+        JournalEntry::create([
+            'student_id' => $student->id,
+            'batch_id' => $batch->id,
+            'entry_date' => now()->toDateString(),
+            'content' => ['daily_accomplishment' => 'Worked on tickets.'],
+            'status' => 'submitted',
+            'submitted_at' => now(),
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->deleteJson("/api/coordinator/users/interns/{$student->id}")->assertStatus(422);
+
+        // Account (and its history) survive.
+        $this->assertDatabaseHas('users', ['id' => $student->id]);
+        $this->assertDatabaseHas('journal_entries', ['student_id' => $student->id]);
+    }
+
+    public function test_coordinator_cannot_delete_an_out_of_scope_student(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+
+        $otherProgram = $this->programFor('BSBA-FM', 'CABM-B');
+        $outStudent = User::factory()->create(['role' => 'student', 'program_id' => $otherProgram->id]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->deleteJson("/api/coordinator/users/interns/{$outStudent->id}")->assertStatus(403);
+        $this->assertDatabaseHas('users', ['id' => $outStudent->id]);
     }
 
     public function test_username_is_required_and_unique(): void
