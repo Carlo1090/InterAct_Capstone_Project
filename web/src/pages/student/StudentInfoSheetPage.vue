@@ -104,6 +104,7 @@ const loadInfoSheet = async () => {
 const REQUIRED_FIELDS: { key: string; get: () => string }[] = [
   { key: 'personal_info.last_name', get: () => personalInfo.last_name },
   { key: 'personal_info.first_name', get: () => personalInfo.first_name },
+  { key: 'personal_info.parent_guardian_name', get: () => personalInfo.parent_guardian_name },
   { key: 'academic_info.year_level', get: () => academicInfo.year_level },
   { key: 'ojt_info.company_id', get: () => (ojtInfo.company_id ? String(ojtInfo.company_id) : '') },
 ]
@@ -262,8 +263,14 @@ onMounted(loadInfoSheet)
             </label>
           </div>
           <label class="block text-sm font-medium text-slate-700">
-            Parent's / Guardian's Name
-            <input v-model="personalInfo.parent_guardian_name" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
+            Parent's / Guardian's Name <span class="text-red-500">*</span>
+            <input
+              v-model="personalInfo.parent_guardian_name"
+              :data-invalid="hasFieldError('personal_info.parent_guardian_name')"
+              class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100"
+              :class="hasFieldError('personal_info.parent_guardian_name') && 'border-red-400 ring-1 ring-red-300'"
+            />
+            <span v-if="hasFieldError('personal_info.parent_guardian_name')" class="mt-1 block text-xs font-normal text-red-600">This field is required.</span>
           </label>
           <label class="block text-sm font-medium text-slate-700">
             Parent's / Guardian's Contact No.

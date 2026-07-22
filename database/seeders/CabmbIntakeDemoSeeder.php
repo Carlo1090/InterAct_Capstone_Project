@@ -12,7 +12,6 @@ use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
-
 /**
  * Demo data for the STUDENT-driven intake → coordinator Accept flow (CABM-B,
  * under coordinator Balbero). Two NOT-yet-enrolled students, each with a
@@ -106,8 +105,15 @@ class CabmbIntakeDemoSeeder extends Seeder
                 'personal_info' => [
                     'last_name' => $lastName,
                     'first_name' => $firstName,
+                    'middle_name' => 'Lagumbay',
                     'contact_number' => '0917-000-0000',
                     'student_id_number' => $sid,
+                    // Required on submit — mdcintake2's sheet is seeded as
+                    // 'submitted', so it must carry one. mdcintake's draft
+                    // gets it too, so walking the demo only needs a company
+                    // choice before it can be submitted.
+                    'parent_guardian_name' => 'Nenita '.$lastName,
+                    'parent_guardian_contact' => '0918-707-2255',
                 ],
                 'academic_info' => [
                     'program_course' => $batch->program?->name,

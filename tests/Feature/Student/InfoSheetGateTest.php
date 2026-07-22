@@ -3,6 +3,7 @@
 namespace Tests\Feature\Student;
 
 use App\Models\Batch;
+use App\Models\BatchStudent;
 use App\Models\Company;
 use App\Models\Department;
 use App\Models\Program;
@@ -15,8 +16,8 @@ use Tests\TestCase;
 
 class InfoSheetGateTest extends TestCase
 {
-    use RefreshDatabase;
     use EnrollsStudentInBatch;
+    use RefreshDatabase;
 
     /**
      * @return array{0: User, 1: Batch, 2: StudentInformationSheet}
@@ -46,7 +47,7 @@ class InfoSheetGateTest extends TestCase
             'student_id' => $student->id,
             'batch_id' => $batch->id,
             'submission_status' => $status,
-            'personal_info' => ['last_name' => 'Cruz', 'first_name' => 'Ana'],
+            'personal_info' => ['last_name' => 'Cruz', 'first_name' => 'Ana', 'parent_guardian_name' => 'Rosa Cruz'],
             'academic_info' => [],
             'ojt_info' => [],
             'emergency_contact' => null,
@@ -61,7 +62,7 @@ class InfoSheetGateTest extends TestCase
         [$student, $batch, $sheet] = $this->studentWithSheet('approved');
         $company = Company::create(['name' => 'Drop Co', 'address' => 'Tagbilaran', 'is_active' => true]);
         $supervisor = User::factory()->create(['role' => 'supervisor']);
-        \App\Models\BatchStudent::create([
+        BatchStudent::create([
             'batch_id' => $batch->id,
             'student_id' => $student->id,
             'company_id' => $company->id,
@@ -82,7 +83,7 @@ class InfoSheetGateTest extends TestCase
         $student = $this->enrolledStudent();
         StudentInformationSheet::create([
             'student_id' => $student->id,
-            'batch_id' => \App\Models\BatchStudent::where('student_id', $student->id)->value('batch_id'),
+            'batch_id' => BatchStudent::where('student_id', $student->id)->value('batch_id'),
             'submission_status' => 'approved',
             'personal_info' => [],
             'academic_info' => [],
@@ -124,7 +125,7 @@ class InfoSheetGateTest extends TestCase
 
         $this->postJson('/api/student/info-sheet', [
             'status' => 'submitted',
-            'personal_info' => ['last_name' => 'Cruz', 'first_name' => 'Ana', 'contact_number' => '0917'],
+            'personal_info' => ['last_name' => 'Cruz', 'first_name' => 'Ana', 'parent_guardian_name' => 'Rosa Cruz', 'contact_number' => '0917'],
             'academic_info' => ['year_level' => '4th-year'],
             'ojt_info' => ['company_id' => $company->id, 'host_company' => $company->name],
         ])->assertOk()->assertJsonPath('submission_status', 'submitted');
@@ -150,7 +151,7 @@ class InfoSheetGateTest extends TestCase
 
         $response = $this->postJson('/api/student/info-sheet', [
             'status' => 'draft',
-            'personal_info' => ['last_name' => 'Cruz', 'first_name' => 'Ana', 'contact_number' => '0918'],
+            'personal_info' => ['last_name' => 'Cruz', 'first_name' => 'Ana', 'parent_guardian_name' => 'Rosa Cruz', 'contact_number' => '0918'],
             'academic_info' => [],
             'ojt_info' => [],
         ]);
@@ -177,7 +178,7 @@ class InfoSheetGateTest extends TestCase
 
         $response = $this->postJson('/api/student/info-sheet', [
             'status' => 'submitted',
-            'personal_info' => ['last_name' => 'Cruz', 'first_name' => 'Ana'],
+            'personal_info' => ['last_name' => 'Cruz', 'first_name' => 'Ana', 'parent_guardian_name' => 'Rosa Cruz'],
             'academic_info' => [],
             'ojt_info' => ['company_address' => 'Now provided'],
         ]);

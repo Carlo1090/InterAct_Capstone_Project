@@ -13,8 +13,8 @@ use Tests\TestCase;
 
 class StudentInfoSheetTest extends TestCase
 {
-    use RefreshDatabase;
     use EnrollsStudentInBatch;
+    use RefreshDatabase;
 
     /**
      * An already-approved (enrolled) sheet, seeded with known values for the
@@ -31,6 +31,7 @@ class StudentInfoSheetTest extends TestCase
             'personal_info' => [
                 'last_name' => 'Dela Cruz',
                 'first_name' => 'Juan',
+                'parent_guardian_name' => 'Pedro Dela Cruz',
                 'contact_number' => '0917-000-0000',
             ],
             'academic_info' => [
@@ -59,6 +60,7 @@ class StudentInfoSheetTest extends TestCase
             'personal_info' => [
                 'last_name' => 'Dela Cruz',
                 'first_name' => 'Juan',
+                'parent_guardian_name' => 'Pedro Dela Cruz',
             ],
             'academic_info' => [
                 'program_course' => 'BS Information Technology',
@@ -88,7 +90,7 @@ class StudentInfoSheetTest extends TestCase
 
         $this->postJson('/api/student/info-sheet', [
             'status' => 'submitted',
-            'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan'],
+            'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan', 'parent_guardian_name' => 'Pedro Dela Cruz'],
             'academic_info' => [],
             'ojt_info' => ['host_company' => 'TechPH Inc.'],
         ])->assertOk();
@@ -107,7 +109,7 @@ class StudentInfoSheetTest extends TestCase
 
         $this->postJson('/api/student/info-sheet', [
             'status' => 'draft',
-            'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan'],
+            'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan', 'parent_guardian_name' => 'Pedro Dela Cruz'],
             'academic_info' => [],
             'ojt_info' => [],
         ])->assertOk();
@@ -122,7 +124,7 @@ class StudentInfoSheetTest extends TestCase
 
         $payload = [
             'status' => 'submitted',
-            'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan'],
+            'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan', 'parent_guardian_name' => 'Pedro Dela Cruz'],
             'academic_info' => [],
             'ojt_info' => ['host_company' => 'TechPH Inc.'],
         ];
@@ -169,7 +171,7 @@ class StudentInfoSheetTest extends TestCase
 
         $basePayload = [
             'status' => 'draft',
-            'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan'],
+            'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan', 'parent_guardian_name' => 'Pedro Dela Cruz'],
             'ojt_info' => [],
         ];
 
@@ -185,6 +187,37 @@ class StudentInfoSheetTest extends TestCase
             'academic_info' => ['year_level' => '3rd-year'],
         ]);
         $valid->assertOk();
+    }
+
+    /**
+     * The GROUP information sheet has a dedicated Parent's/Guardian's Name
+     * column that the coordinator cannot fill in on the student's behalf, so
+     * the name is required to SUBMIT — but a half-finished draft still saves.
+     * The contact number stays optional.
+     */
+    public function test_parent_guardian_name_is_required_to_submit_but_not_to_draft(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $payload = [
+            'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan'],
+            'academic_info' => [],
+            'ojt_info' => [],
+        ];
+
+        $this->postJson('/api/student/info-sheet', [...$payload, 'status' => 'draft'])->assertOk();
+
+        $this->postJson('/api/student/info-sheet', [...$payload, 'status' => 'submitted'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['personal_info.parent_guardian_name']);
+
+        // The contact number is NOT required alongside it.
+        $this->postJson('/api/student/info-sheet', [
+            ...$payload,
+            'status' => 'submitted',
+            'personal_info' => [...$payload['personal_info'], 'parent_guardian_name' => 'Pedro Dela Cruz'],
+        ])->assertOk();
     }
 
     public function test_an_approved_sheet_can_still_update_non_locked_fields(): void
@@ -204,6 +237,7 @@ class StudentInfoSheetTest extends TestCase
             'personal_info' => [
                 'last_name' => 'Dela Cruz',
                 'first_name' => 'Juan',
+                'parent_guardian_name' => 'Pedro Dela Cruz',
                 'contact_number' => '0918-111-1111',
             ],
             'academic_info' => [
@@ -236,7 +270,7 @@ class StudentInfoSheetTest extends TestCase
 
         $this->postJson('/api/student/info-sheet', [
             'status' => 'submitted',
-            'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan', 'contact_number' => '0918-333-3333'],
+            'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan', 'parent_guardian_name' => 'Pedro Dela Cruz', 'contact_number' => '0918-333-3333'],
             'academic_info' => [],
             'ojt_info' => [],
         ])->assertOk();
@@ -255,6 +289,7 @@ class StudentInfoSheetTest extends TestCase
             'personal_info' => [
                 'last_name' => 'Dela Cruz',
                 'first_name' => 'Juan',
+                'parent_guardian_name' => 'Pedro Dela Cruz',
                 'contact_number' => '0918-222-2222',
             ],
             'academic_info' => [],

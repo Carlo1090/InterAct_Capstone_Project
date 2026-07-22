@@ -157,8 +157,9 @@ class GroupInfoSheetTest extends TestCase
 
         $response->assertJsonPath('rows.0.last_name', 'Dela Cruz')
             ->assertJsonPath('rows.0.first_name', 'Juan')
-            // Middle INITIAL, from the sheet's middle_name.
-            ->assertJsonPath('rows.0.middle_initial', 'S.')
+            // Middle INITIAL: the middle name's first letter, capitalized,
+            // with no trailing period.
+            ->assertJsonPath('rows.0.middle_initial', 'S')
             // Program CODE + prettified year, not the sheet's full program name
             // concatenated with the raw "4th-year" the individual PDF prints.
             ->assertJsonPath('rows.0.program_year', 'BSIT 4th Year')
@@ -387,6 +388,123 @@ class GroupInfoSheetTest extends TestCase
             'group-student-information-sheet-bohol-quality-corporation-2026-2027.pdf',
             (string) $response->headers->get('content-disposition')
         );
+    }
+
+    /**
+     * The middle initial is always a single capital letter, whatever case or
+     * leading punctuation the student typed their middle name in.
+     */
+    public function test_middle_initial_is_a_single_capital_letter(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator, '2026-2027');
+        $company = $this->companyNamed('Bohol Quality Corporation');
+        $enrollment = $this->enroll($batch, $company, 'Juan Dela Cruz');
+
+        $sheet = StudentInformationSheet::where('student_id', $enrollment->student_id)->firstOrFail();
+        // Clear the profile so only the sheet's own middle name is in play.
+        $enrollment->student->studentProfile->update(['middle_name' => null]);
+
+        Sanctum::actingAs($coordinator);
+
+        foreach (['bautista' => 'B', ' de la Cruz' => 'D', 'ñuñez' => 'Ñ', '' => ''] as $middle => $expected) {
+            $sheet->update(['personal_info' => [
+                ...$sheet->personal_info,
+                'middle_name' => $middle,
+            ]]);
+
+            $this->getJson("/api/coordinator/group-info-sheets/{$company->id}/2026-2027")
+                ->assertOk()
+                ->assertJsonPath('rows.0.middle_initial', $expected);
+        }
+
+        // With the sheet's middle name still blank, the student profile is the
+        // fallback — the sheet is preferred, not the only source.
+        $enrollment->student->studentProfile->update(['middle_name' => 'Reyes']);
+
+        $this->getJson("/api/coordinator/group-info-sheets/{$company->id}/2026-2027")
+            ->assertOk()
+            ->assertJsonPath('rows.0.middle_initial', 'R');
+    }
+
+    /**
+     * A blank saved cell must NOT freeze out what the student later types on
+     * their own information sheet — only a real coordinator edit overrides.
+     */
+    public function test_an_empty_saved_override_never_masks_the_students_own_sheet(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator, '2026-2027');
+        $company = $this->companyNamed('Bohol Quality Corporation');
+        $enrollment = $this->enroll($batch, $company, 'Juan Dela Cruz');
+
+        $sheet = StudentInformationSheet::where('student_id', $enrollment->student_id)->firstOrFail();
+
+        // The student had not filled in their guardian yet, and the
+        // coordinator saved the group sheet in that state.
+        $sheet->update(['personal_info' => [
+            ...$sheet->personal_info,
+            'parent_guardian_name' => '',
+            'parent_guardian_contact' => '',
+        ]]);
+
+        Sanctum::actingAs($coordinator);
+
+        $this->postJson("/api/coordinator/group-info-sheets/{$company->id}/2026-2027", [
+            'status' => 'draft',
+            'company' => [],
+            'rows' => [[
+                'id' => $enrollment->id,
+                'last_name' => 'Dela Cruz',
+                'first_name' => 'Juan',
+                'parent_guardian_name' => '',
+                'parent_guardian_contact' => '',
+                'included' => true,
+            ]],
+            'deleted_ids' => [],
+        ])->assertOk();
+
+        // The student then fills their guardian in on their own sheet.
+        $sheet->update(['personal_info' => [
+            ...$sheet->personal_info,
+            'parent_guardian_name' => 'Pedro Dela Cruz',
+            'parent_guardian_contact' => '09181234567',
+        ]]);
+
+        $this->getJson("/api/coordinator/group-info-sheets/{$company->id}/2026-2027")
+            ->assertOk()
+            ->assertJsonPath('rows.0.parent_guardian_name', 'Pedro Dela Cruz')
+            ->assertJsonPath('rows.0.parent_guardian_contact', '09181234567');
+    }
+
+    public function test_a_non_empty_override_still_wins_over_the_students_sheet(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator, '2026-2027');
+        $company = $this->companyNamed('Bohol Quality Corporation');
+        $enrollment = $this->enroll($batch, $company, 'Juan Dela Cruz');
+
+        Sanctum::actingAs($coordinator);
+
+        $this->postJson("/api/coordinator/group-info-sheets/{$company->id}/2026-2027", [
+            'status' => 'draft',
+            'company' => [],
+            'rows' => [[
+                'id' => $enrollment->id,
+                'parent_guardian_name' => 'Corrected Guardian',
+                'included' => true,
+            ]],
+            'deleted_ids' => [],
+        ])->assertOk();
+
+        $this->getJson("/api/coordinator/group-info-sheets/{$company->id}/2026-2027")
+            ->assertOk()
+            ->assertJsonPath('rows.0.parent_guardian_name', 'Corrected Guardian')
+            // Untouched cells keep tracking the student's sheet.
+            ->assertJsonPath('rows.0.first_name', 'Juan');
     }
 
     public function test_a_non_coordinator_cannot_reach_the_sheet(): void

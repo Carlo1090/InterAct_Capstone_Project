@@ -72,6 +72,9 @@ class CoordinatorPagesDemoSeeder extends Seeder
                 'name' => 'Maria Santos',
                 'student_id_number' => '2021-IT-002',
                 'sex' => 'female',
+                'middle_name' => 'Delgado',
+                'parent' => 'Corazon Santos',
+                'parent_contact' => '0917-884-1120',
                 'company' => $techph,
                 'supervisor' => $primarySupervisor,
                 // A missing daily journal this week => "student behind".
@@ -82,6 +85,9 @@ class CoordinatorPagesDemoSeeder extends Seeder
                 'name' => 'Jose Ramirez',
                 'student_id_number' => '2021-IT-003',
                 'sex' => 'male',
+                'middle_name' => 'Alcantara',
+                'parent' => 'Fernando Ramirez',
+                'parent_contact' => '0926-337-9081',
                 'company' => $princeRetail,
                 'supervisor' => $secondarySupervisor,
                 'week_status' => 'overdue',
@@ -140,9 +146,16 @@ class CoordinatorPagesDemoSeeder extends Seeder
                     'personal_info' => [
                         'last_name' => 'Santos',
                         'first_name' => $data['name'],
+                        'middle_name' => $data['middle_name'],
                         'sex' => $data['sex'],
                         'email' => $student->email,
                         'student_id_number' => $data['student_id_number'],
+                        // The GROUP information sheet has dedicated
+                        // Parent's/Guardian's columns, and the name is now
+                        // required on submit — a seeded 'submitted' sheet
+                        // without one would contradict that rule.
+                        'parent_guardian_name' => $data['parent'],
+                        'parent_guardian_contact' => $data['parent_contact'],
                     ],
                     'academic_info' => [
                         'program_course' => $program->name,

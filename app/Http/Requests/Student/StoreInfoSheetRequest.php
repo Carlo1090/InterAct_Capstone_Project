@@ -20,7 +20,13 @@ class StoreInfoSheetRequest extends FormRequest
             'personal_info.last_name' => ['required', 'string', 'max:100'],
             'personal_info.first_name' => ['required', 'string', 'max:100'],
             'personal_info.middle_name' => ['nullable', 'string', 'max:100'],
-            'personal_info.parent_guardian_name' => ['nullable', 'string', 'max:150'],
+            // Required only on SUBMIT, so a half-finished draft still saves.
+            // The official GROUP information sheet has a dedicated
+            // Parent's/Guardian's Name column, and a blank there is a
+            // compliance gap the coordinator cannot fill in for them. The
+            // contact number stays optional — a student may genuinely have
+            // none to give.
+            'personal_info.parent_guardian_name' => ['required_if:status,submitted', 'nullable', 'string', 'max:150'],
             'personal_info.parent_guardian_contact' => ['nullable', 'string', 'max:30'],
             'personal_info.date_of_birth' => ['nullable', 'date'],
             'personal_info.sex' => ['nullable', 'in:male,female'],

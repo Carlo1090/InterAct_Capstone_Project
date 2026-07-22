@@ -89,6 +89,10 @@ class StudentDemoEnrollmentSeeder extends Seeder
                     'contact_number' => $profile?->contact_number,
                     'email' => $student->email,
                     'student_id_number' => $student->student_id_number,
+                    // Required on submit (the GROUP information sheet has a
+                    // dedicated Parent's/Guardian's Name column).
+                    'parent_guardian_name' => 'Ramon Dela Cruz',
+                    'parent_guardian_contact' => '0917-332-6674',
                 ],
                 'academic_info' => [
                     'program_course' => $program->name,

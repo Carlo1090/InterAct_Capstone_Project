@@ -256,7 +256,17 @@ class GroupInfoSheetController extends Controller
 
                 if ($saved) {
                     foreach (self::rowFields() as $field) {
-                        $row[$field] = (string) ($saved[$field] ?? $row[$field]);
+                        // Only a NON-EMPTY saved edit overrides the student's own
+                        // information sheet. An empty override is treated as "no
+                        // edit", not as "blank this cell" — otherwise saving the
+                        // sheet once while a student had not yet filled in, say,
+                        // their guardian's name would freeze that blank forever
+                        // and permanently mask what they typed later.
+                        $override = trim((string) ($saved[$field] ?? ''));
+
+                        if ($override !== '') {
+                            $row[$field] = $override;
+                        }
                     }
                     $row['included'] = (bool) ($saved['included'] ?? true);
                 }
@@ -359,13 +369,17 @@ class GroupInfoSheetController extends Controller
 
         [$fallbackFirst, $fallbackLast] = $this->splitName($enrollment->student?->name);
 
-        $middle = trim((string) ($personal['middle_name'] ?? $profile?->middle_name ?? ''));
+        // Prefer whatever the student actually typed on their own sheet; the
+        // profile is only a fallback for a student who has no sheet yet.
+        $middle = trim((string) ($personal['middle_name'] ?? '')) ?: trim((string) ($profile?->middle_name ?? ''));
 
         return [
             'id' => (int) $enrollment->id,
             'last_name' => trim((string) ($personal['last_name'] ?? '')) ?: $fallbackLast,
             'first_name' => trim((string) ($personal['first_name'] ?? '')) ?: $fallbackFirst,
-            'middle_initial' => $middle === '' ? '' : mb_strtoupper(mb_substr($middle, 0, 1)).'.',
+            // MI = the middle name's first letter, capitalized. No trailing
+            // period — the form's column is literally headed "MI".
+            'middle_initial' => $this->middleInitial($middle),
             'program_year' => $this->formatProgramYear($enrollment, $academic, $profile?->year_level),
             'contact_number' => trim((string) ($personal['contact_number'] ?? $profile?->contact_number ?? '')),
             'parent_guardian_name' => trim((string) ($personal['parent_guardian_name'] ?? '')),
@@ -394,6 +408,24 @@ class GroupInfoSheetController extends Controller
         $year = $year === '' ? '' : ucwords(str_replace('-', ' ', $year));
 
         return trim($code.' '.$year);
+    }
+
+    /**
+     * The capitalized first letter of a middle name ("Bautista" -> "B").
+     *
+     * mb_* throughout so a non-ASCII first character survives intact rather
+     * than being sliced mid-byte, and any leading punctuation/whitespace is
+     * skipped so a stored " de la Cruz" still yields "D" and not a space.
+     */
+    private function middleInitial(?string $middleName): string
+    {
+        $middle = trim((string) $middleName);
+
+        if ($middle === '' || ! preg_match('/\p{L}/u', $middle, $matches)) {
+            return '';
+        }
+
+        return mb_strtoupper($matches[0]);
     }
 
     /**
