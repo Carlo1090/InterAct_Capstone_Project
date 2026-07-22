@@ -84,7 +84,7 @@
            page. nowrap keeps one line per intern, as on the paper form. */
         table.roster td {
             font-size: 8pt; height: 12.1pt; line-height: 12.1pt;
-            vertical-align: middle; padding: 0 1pt;
+            vertical-align: middle; padding: 0 2pt;
             white-space: nowrap; overflow: hidden;
         }
         /* Left-aligned, not centred or right-aligned: "1" and "10" both begin at
@@ -164,18 +164,19 @@
             <td style="width: 95.9pt"></td>
             <td style="width: 95.8pt"></td>
         </tr>
+        {{-- One header row, eight full-height cells: the reference sets
+             "Parent's/Guardian's Name" and "Parent's/Guardian's Contact no."
+             as two independent two-line headers, NOT a merged parent header
+             with a Name / Contact no. sub-row. --}}
         <tr>
-            <th rowspan="2"></th>
-            <th rowspan="2">Family Name</th>
-            <th rowspan="2">First Name</th>
-            <th rowspan="2">MI</th>
-            <th rowspan="2">Program<br>&amp; Year</th>
-            <th rowspan="2">Contact<br>no.</th>
-            <th colspan="2">Parent's/Guardian's</th>
-        </tr>
-        <tr>
-            <th>Name</th>
-            <th>Contact no.</th>
+            <th></th>
+            <th>Family Name</th>
+            <th>First Name</th>
+            <th>MI</th>
+            <th>Program<br>&amp; Year</th>
+            <th>Contact<br>no.</th>
+            <th>Parent's/Guardian's<br>Name</th>
+            <th>Parent's/Guardian's<br>Contact no.</th>
         </tr>
         @foreach ($rows as $index => $row)
             <tr>
