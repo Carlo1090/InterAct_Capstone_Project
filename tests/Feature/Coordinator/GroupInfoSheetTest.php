@@ -177,9 +177,9 @@ class GroupInfoSheetTest extends TestCase
             ->assertJsonPath('company.ojt_start_date', '2026-08-12')
             ->assertJsonPath('company.ojt_end_date', '2026-10-18');
 
-        // Header line defaults to the coordinator's own department, NOT the
-        // reference form's hardcoded CABM text.
-        $response->assertJsonPath('department_line', 'CAST Department');
+        // Header line starts as the reference form's own wording, and stays
+        // coordinator-editable per sheet.
+        $response->assertJsonPath('department_line', 'College of Accountancy, Business and Management');
     }
 
     public function test_roster_includes_completed_but_never_dropped_or_archived_interns(): void

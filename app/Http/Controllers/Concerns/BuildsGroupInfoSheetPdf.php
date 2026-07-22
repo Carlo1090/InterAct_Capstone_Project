@@ -29,19 +29,36 @@ trait BuildsGroupInfoSheetPdf
         array $rows,
         array $companyBlock,
     ): Response {
-        // dompdf renders base64 data URIs reliably; fall back to a labeled
-        // placeholder box (handled in the blade) if the logo file is absent.
-        $logoPath = public_path('images/mdc-logo.png');
-        $logo = is_file($logoPath)
-            ? 'data:image/png;base64,'.base64_encode((string) file_get_contents($logoPath))
-            : null;
-
+        // No logo is loaded here, unlike BuildsInfoSheetPdf: the client
+        // reference for the GROUP sheet contains no image, and its absence is
+        // what lets a full 12-intern roster share one page with the company
+        // block and the sketch box.
+        //
+        // US Letter, matching the reference's 612x792pt MediaBox — the blade's
+        // measurements are in those points, and dompdf would otherwise default
+        // to A4 (595x842) and shift every column.
         $pdf = Pdf::loadView('pdf.info-sheet-group', [
-            'logo' => $logo,
             'departmentLine' => $departmentLine,
             'rows' => $rows,
             'company' => $companyBlock,
-        ]);
+        ])->setPaper('letter', 'portrait');
+
+        // The reference's "Page N of M" footer, at its measured position
+        // (x 490.75, baseline 51.62 from the foot = 740.4 from the head).
+        // Stamped through the canvas rather than CSS because dompdf only knows
+        // the page total after laying the whole document out — counter(pages)
+        // in CSS renders as 0. download() below reuses this render rather than
+        // repeating it, so the stamp survives.
+        $pdf->render();
+        $dompdf = $pdf->getDomPDF();
+        $dompdf->getCanvas()->page_text(
+            490.75,
+            740.4,
+            'Page {PAGE_NUM} of {PAGE_COUNT}',
+            $dompdf->getFontMetrics()->getFont('Helvetica'),
+            11,
+            [0, 0, 0],
+        );
 
         $slug = Str::slug($company->name) ?: 'company';
 

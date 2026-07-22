@@ -42,6 +42,12 @@ class GroupInfoSheetController extends Controller
     private const ROSTERED_STATUSES = ['active', 'completed'];
 
     /**
+     * The document's header line, as printed on the client reference form.
+     * Coordinator-editable per sheet — this is only the starting value.
+     */
+    private const DEFAULT_DEPARTMENT_LINE = 'College of Accountancy, Business and Management';
+
+    /**
      * Academic years in scope + the companies that actually host in-scope
      * interns in each. A company with no roster would render an empty sheet,
      * so it is never offered.
@@ -94,7 +100,7 @@ class GroupInfoSheetController extends Controller
         $sheet = $this->findSheet($coordinator, $company, $academicYear);
 
         return response()->json(
-            $this->sheetPayload($coordinator, $company, $academicYear, $enrollments, $sheet)
+            $this->sheetPayload($company, $academicYear, $enrollments, $sheet)
         );
     }
 
@@ -111,7 +117,7 @@ class GroupInfoSheetController extends Controller
 
         $sheetData = [
             'header' => [
-                'department_line' => $validated['department_line'] ?? $this->defaultDepartmentLine($coordinator),
+                'department_line' => $validated['department_line'] ?? self::DEFAULT_DEPARTMENT_LINE,
             ],
             'company' => $validated['company'] ?? [],
             'rows' => $validated['rows'] ?? [],
@@ -132,7 +138,7 @@ class GroupInfoSheetController extends Controller
         );
 
         return response()->json(
-            $this->sheetPayload($coordinator, $company, $academicYear, $enrollments, $sheet)
+            $this->sheetPayload($company, $academicYear, $enrollments, $sheet)
         );
     }
 
@@ -154,7 +160,7 @@ class GroupInfoSheetController extends Controller
         return $this->renderGroupInfoSheetPdf(
             $company,
             $academicYear,
-            $this->departmentLine($coordinator, $sheet),
+            $this->departmentLine($sheet),
             $rows,
             $this->companyBlock($company, $enrollments, $sheet),
         );
@@ -165,7 +171,6 @@ class GroupInfoSheetController extends Controller
      * @return array<string, mixed>
      */
     private function sheetPayload(
-        User $coordinator,
         Company $company,
         string $academicYear,
         EloquentCollection $enrollments,
@@ -176,7 +181,7 @@ class GroupInfoSheetController extends Controller
             'company_id' => (int) $company->id,
             'company_name' => (string) $company->name,
             'status' => $sheet?->status ?? 'draft',
-            'department_line' => $this->departmentLine($coordinator, $sheet),
+            'department_line' => $this->departmentLine($sheet),
             'company' => $this->companyBlock($company, $enrollments, $sheet),
             'rows' => $this->buildRows($enrollments, $sheet),
         ];
@@ -490,19 +495,13 @@ class GroupInfoSheetController extends Controller
     }
 
     /**
-     * The editable header line. Defaults to the coordinator's own department
-     * rather than the reference form's hardcoded CABM text, which is simply
-     * wrong for a CAST or CABM-H coordinator.
+     * The editable header line: whatever the coordinator saved, else the
+     * reference form's own wording as the starting value.
      */
-    private function departmentLine(User $coordinator, ?GroupInfoSheet $sheet): string
+    private function departmentLine(?GroupInfoSheet $sheet): string
     {
         $saved = trim((string) ($sheet?->sheet_data['header']['department_line'] ?? ''));
 
-        return $saved !== '' ? $saved : $this->defaultDepartmentLine($coordinator);
-    }
-
-    private function defaultDepartmentLine(User $coordinator): string
-    {
-        return (string) ($coordinator->departmentsCoordinated()->first()?->name ?? '');
+        return $saved !== '' ? $saved : self::DEFAULT_DEPARTMENT_LINE;
     }
 }
