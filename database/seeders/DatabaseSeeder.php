@@ -56,5 +56,6 @@ class DatabaseSeeder extends Seeder
         $this->call(CabmbUsersDemoSeeder::class);
         $this->call(CabmbWeeklyDemoSeeder::class);
         $this->call(CabmbIntakeDemoSeeder::class);
+        $this->call(GroupInfoSheetDemoSeeder::class);
     }
 }

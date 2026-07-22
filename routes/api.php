@@ -18,6 +18,7 @@ use App\Http\Controllers\Coordinator\CoordinatorInfoSheetController;
 use App\Http\Controllers\Coordinator\CoordinatorJournalActivityController;
 use App\Http\Controllers\Coordinator\CoordinatorWeeklyJournalController;
 use App\Http\Controllers\Coordinator\EnrollmentController;
+use App\Http\Controllers\Coordinator\GroupInfoSheetController;
 use App\Http\Controllers\Coordinator\HteReportController;
 use App\Http\Controllers\Coordinator\JournalTemplateController;
 use App\Http\Controllers\NotificationController;
@@ -142,6 +143,13 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::get('info-sheets/{student}/pdf', [CoordinatorInfoSheetController::class, 'pdf']);
         Route::post('info-sheets/{student}/accept', [CoordinatorInfoSheetController::class, 'accept']);
         Route::post('info-sheets/{student}/reject', [CoordinatorInfoSheetController::class, 'reject']);
+
+        // GROUP Student Information Sheet — one document per company per AY.
+        Route::get('group-info-sheets', [GroupInfoSheetController::class, 'index']);
+        // Must precede the {academicYear} route or "pdf" binds as the year.
+        Route::get('group-info-sheets/{company}/{academicYear}/pdf', [GroupInfoSheetController::class, 'pdf']);
+        Route::get('group-info-sheets/{company}/{academicYear}', [GroupInfoSheetController::class, 'show']);
+        Route::post('group-info-sheets/{company}/{academicYear}', [GroupInfoSheetController::class, 'save']);
 
         Route::get('journal-templates', [JournalTemplateController::class, 'index']);
         Route::post('journal-templates', [JournalTemplateController::class, 'store']);

@@ -18,6 +18,7 @@ const navItems = [
   { label: 'Batches', to: '/coordinator/batches', badge: '', icon: 'briefcase' },
   { label: 'Partner Companies', to: '/coordinator/companies', badge: '', icon: 'building' },
   { label: 'Student Info Sheets', to: '/coordinator/info-sheets', badge: '', icon: 'id-card' },
+  { label: 'Group Info Sheets', to: '/coordinator/group-info-sheets', badge: '', icon: 'id-card' },
   { label: 'Annual SIPP Report', to: '/coordinator/annual-sipp', badge: '', icon: 'chart' },
   { label: 'HTE & Student Interns List', to: '/coordinator/hte', badge: '', icon: 'clipboard' },
 ]

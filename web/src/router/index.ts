@@ -136,6 +136,11 @@ const router = createRouter({
           meta: { title: 'Student Info Sheets' },
         },
         {
+          path: 'group-info-sheets',
+          component: () => import('@/pages/coordinator/CoordinatorGroupInfoSheetsPage.vue'),
+          meta: { title: 'Group Info Sheets' },
+        },
+        {
           path: 'annual-sipp',
           component: () => import('@/pages/coordinator/CoordinatorAnnualSippPage.vue'),
           meta: { title: 'Annual SIPP Report' },

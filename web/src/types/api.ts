@@ -519,6 +519,55 @@ export type HteReport = {
   meta: HteMeta
 }
 
+/** GROUP Student Information Sheet — one document per company per academic year. */
+export type GroupInfoSheetRow = {
+  id: number | string
+  last_name: string
+  first_name: string
+  middle_initial: string
+  program_year: string
+  contact_number: string
+  parent_guardian_name: string
+  parent_guardian_contact: string
+  included: boolean
+  is_manual: boolean
+}
+
+/** The coordinator-typed Internship Company Information block. */
+export type GroupInfoSheetCompany = {
+  host_company: string
+  company_address: string
+  company_signatory_moa: string
+  office_designation: string
+  supervisor_name: string
+  supervisor_contact: string
+  intern_duty_schedule: string
+  area_assigned: string
+  ojt_start_date: string
+  ojt_end_date: string
+}
+
+export type GroupInfoSheetCompanyOption = {
+  id: number
+  name: string
+  academic_years: string[]
+}
+
+export type GroupInfoSheetIndex = {
+  academic_years: string[]
+  companies: GroupInfoSheetCompanyOption[]
+}
+
+export type GroupInfoSheet = {
+  academic_year: string
+  company_id: number
+  company_name: string
+  status: 'draft' | 'finalized'
+  department_line: string
+  company: GroupInfoSheetCompany
+  rows: GroupInfoSheetRow[]
+}
+
 export type CoordinatorDashboardStats = {
   active_interns: number
   journals_submitted_this_week: number
