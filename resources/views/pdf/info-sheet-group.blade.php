@@ -51,7 +51,11 @@
         .bar.company-bar { width: 553pt; margin-top: 20.6pt; }
 
         table { border-collapse: collapse; }
-        td, th { border: 0.4pt solid #000; padding: 0 3pt; }
+        td, th { padding: 0 3pt; }
+        /* Only the roster is a bordered grid. The company block below is a
+           borderless fill-in form whose answer cells carry a bottom rule and
+           nothing else — exactly as on the paper form. */
+        table.roster td, table.roster th { border: 0.4pt solid #000; }
 
         /* dompdf resolves fixed-layout column widths from the FIRST row only,
            and ignores both <colgroup> and any width on a cell that carries a
@@ -83,18 +87,26 @@
             vertical-align: middle; padding: 0 1pt;
             white-space: nowrap; overflow: hidden;
         }
-        table.roster td.num { font-weight: normal; font-size: 10pt; text-align: center; }
+        /* Left-aligned, not centred or right-aligned: "1" and "10" both begin at
+           x=56.02 on the reference, which only holds for left alignment. */
+        table.roster td.num { font-weight: normal; font-size: 10pt; text-align: left; }
         table.roster td.mi { text-align: center; }
         /* The bar spans the table's full width as its first row. */
         table.roster td.bar, table.company td.bar { border-color: #1F3864; }
 
-        /* ---- Band 2: coordinator-typed company block ---- */
+        /* ---- Band 2: coordinator-typed company block ----
+           A labelled fill-in form, NOT a bordered table: the reference draws
+           only a 0.4pt rule under each answer cell (measured at y 427.30 /
+           406.10 / 384.90 / 353.30 / 332.10 / 310.88), with no vertical rules
+           anywhere and no rule under either label column. --- */
         table.company { width: 553pt; }
-        table.company td { font-size: 9pt; vertical-align: middle; }
+        table.company td { font-size: 9pt; vertical-align: bottom; border: none; }
         table.company td.label { font-weight: bold; }
         /* The signatory label is set 1pt smaller in the reference so it fits. */
         table.company td.label.tight { font-size: 8pt; }
-        /* Row heights measured off the reference's horizontal border runs. */
+        /* The blank answer line the coordinator's value sits on. */
+        table.company td.ans { border-bottom: 0.4pt solid #000; }
+        /* Row heights measured off the reference's rule spacing. */
         table.company tr.r21 td { height: 21.2pt; }
         table.company tr.r32 td { height: 31.6pt; }
 
@@ -103,8 +115,10 @@
             font-size: 10pt; font-weight: normal;
             margin: 20.9pt 0 0 42.6pt;
         }
+        /* The one element the reference strokes rather than fills: a 1pt NAVY
+           rule (0.122 0.216 0.388 RG), not a black hairline like the roster. */
         .sketch-box {
-            border: 0.4pt solid #000; width: 518.4pt; height: 189.65pt;
+            border: 1pt solid #1F3864; width: 518.4pt; height: 189.65pt;
             margin: 9.5pt 0 0 24.1pt;
         }
 
@@ -192,35 +206,37 @@
         </tr>
         <tr class="r21">
             <td class="label">Name of Company</td>
-            <td colspan="3">{{ $company['host_company'] ?? '' }}</td>
+            <td class="ans" colspan="3">{{ $company['host_company'] ?? '' }}</td>
         </tr>
         <tr class="r21">
             <td class="label">Company Address</td>
-            <td colspan="3">{{ $company['company_address'] ?? '' }}</td>
+            <td class="ans" colspan="3">{{ $company['company_address'] ?? '' }}</td>
         </tr>
+        {{-- Signatory and Office Designation share a row on the reference,
+             each with its own rule; the right-hand LABEL cell has none. --}}
         <tr class="r21">
             <td class="label tight">Complete Name of Official<br>Company Signatory (for MOA)</td>
-            <td>{{ $company['company_signatory_moa'] ?? '' }}</td>
+            <td class="ans">{{ $company['company_signatory_moa'] ?? '' }}</td>
             <td class="label">Office Designation/<br>Position</td>
-            <td>{{ $company['office_designation'] ?? '' }}</td>
+            <td class="ans">{{ $company['office_designation'] ?? '' }}</td>
         </tr>
         <tr class="r32">
             <td class="label">Name of Supervisor/<br>Office Head</td>
-            <td>{{ $company['supervisor_name'] ?? '' }}</td>
+            <td class="ans">{{ $company['supervisor_name'] ?? '' }}</td>
             <td class="label">Contact Number</td>
-            <td>{{ $company['supervisor_contact'] ?? '' }}</td>
+            <td class="ans">{{ $company['supervisor_contact'] ?? '' }}</td>
         </tr>
         <tr class="r21">
             <td class="label">Intern's Duty Schedule</td>
-            <td>{{ $company['intern_duty_schedule'] ?? '' }}</td>
+            <td class="ans">{{ $company['intern_duty_schedule'] ?? '' }}</td>
             <td class="label">Start of Internship Duty:</td>
-            <td>{{ $fmtDate($company['ojt_start_date'] ?? null) }}</td>
+            <td class="ans">{{ $fmtDate($company['ojt_start_date'] ?? null) }}</td>
         </tr>
         <tr class="r21">
             <td class="label">Area Assigned</td>
-            <td>{{ $company['area_assigned'] ?? '' }}</td>
+            <td class="ans">{{ $company['area_assigned'] ?? '' }}</td>
             <td class="label">Estimated date to<br>finish internship:</td>
-            <td>{{ $fmtDate($company['ojt_end_date'] ?? null) }}</td>
+            <td class="ans">{{ $fmtDate($company['ojt_end_date'] ?? null) }}</td>
         </tr>
     </table>
 
