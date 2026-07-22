@@ -57,9 +57,9 @@ class ProfileController extends Controller
     {
         $user = $request->user();
 
-        $webp = $avatars->toAvatarWebp($request->file('photo')->get());
-        $path = 'avatars/'.Str::random(40).'.webp';
-        Storage::disk('public')->put($path, $webp);
+        $avatar = $avatars->toAvatarImage($request->file('photo')->get());
+        $path = 'avatars/'.Str::random(40).'.'.$avatar['extension'];
+        Storage::disk('public')->put($path, $avatar['binary']);
 
         $previousPath = $user->avatar_path;
         $user->update(['avatar_path' => $path]);

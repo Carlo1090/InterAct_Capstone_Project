@@ -5,10 +5,15 @@ namespace App\Services;
 /**
  * Turns an arbitrary uploaded image into a standardized profile-photo asset:
  * a genuine-image check via magic bytes (not just extension/declared MIME),
- * then a center-square crop + resize to 250x250 + WebP re-encode. Re-encoding
+ * then a center-square crop + resize to 250x250 + re-encode. Re-encoding
  * through a fresh GD truecolor canvas never carries EXIF forward, so the
  * output is metadata-stripped as a side effect of the resize step — no
  * separate EXIF-scrubbing call is needed.
+ *
+ * Prefers WebP, but falls back to PNG when the running PHP's GD build has
+ * no libwebp support (imagewebp() undefined) — some minimal/stripped GD
+ * builds (e.g. slim Docker images, some Windows PHP distributions) omit it
+ * entirely, and there is no ini setting that adds it back at runtime.
  */
 class AvatarProcessingService
 {
@@ -36,10 +41,13 @@ class AvatarProcessingService
 
     /**
      * Decodes, center-crops to a square, resizes to 250x250, and re-encodes
-     * as WebP. Throws if the bytes can't be decoded as an image at all —
-     * callers should have already validated via sniffType() first.
+     * as WebP (or PNG, see class docblock). Throws if the bytes can't be
+     * decoded as an image at all — callers should have already validated via
+     * sniffType() first.
+     *
+     * @return array{binary: string, extension: string}
      */
-    public function toAvatarWebp(string $binary): string
+    public function toAvatarImage(string $binary): array
     {
         $source = imagecreatefromstring($binary);
 
@@ -75,11 +83,19 @@ class AvatarProcessingService
         imagedestroy($source);
 
         ob_start();
-        imagewebp($dest, null, self::WEBP_QUALITY);
-        $webp = ob_get_clean();
+
+        if (function_exists('imagewebp')) {
+            imagewebp($dest, null, self::WEBP_QUALITY);
+            $extension = 'webp';
+        } else {
+            imagepng($dest);
+            $extension = 'png';
+        }
+
+        $encoded = ob_get_clean();
 
         imagedestroy($dest);
 
-        return $webp;
+        return ['binary' => $encoded, 'extension' => $extension];
     }
 }

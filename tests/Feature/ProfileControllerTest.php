@@ -119,23 +119,33 @@ class ProfileControllerTest extends TestCase
         Sanctum::actingAs($user, ['*']);
 
         $response = $this->post('/api/profile/photo', [
-            'photo' => UploadedFile::fake()->image('avatar.jpg', 800, 600),
+            // .png (not .jpg) so Laravel's own fake-image generator
+            // (Illuminate\Http\Testing\FileFactory) doesn't require
+            // imagejpeg() itself, independent of the app's own webp/png
+            // fallback below.
+            'photo' => UploadedFile::fake()->image('avatar.png', 800, 600),
         ]);
 
         $response->assertOk();
         $user->refresh();
         $this->assertNotNull($user->avatar_path);
-        $this->assertStringEndsWith('.webp', $user->avatar_path);
+
+        // Standardized to a 250x250 square regardless of the uploaded photo's
+        // original dimensions/format. Output format depends on the runtime
+        // GD build: WebP when supported, PNG as the fallback otherwise (see
+        // AvatarProcessingService::toAvatarImage()).
+        $expectedExtension = function_exists('imagewebp') ? 'webp' : 'png';
+        $expectedImageType = function_exists('imagewebp') ? IMAGETYPE_WEBP : IMAGETYPE_PNG;
+
+        $this->assertStringEndsWith(".{$expectedExtension}", $user->avatar_path);
         Storage::disk('public')->assertExists($user->avatar_path);
         $this->assertNotNull($response->json('avatar_url'));
 
-        // Standardized to a 250x250 WebP square regardless of the uploaded
-        // photo's original dimensions/format.
         $stored = Storage::disk('public')->get($user->avatar_path);
         $info = getimagesizefromstring($stored);
         $this->assertSame(250, $info[0]);
         $this->assertSame(250, $info[1]);
-        $this->assertSame(IMAGETYPE_WEBP, $info[2]);
+        $this->assertSame($expectedImageType, $info[2]);
 
         $deleteResponse = $this->delete('/api/profile/photo');
         $deleteResponse->assertOk();
