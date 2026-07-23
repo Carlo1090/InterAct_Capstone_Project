@@ -19,6 +19,12 @@ return Application::configure(basePath: dirname(__DIR__))
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
         ]);
 
+        // EnsureFrontendRequestsAreStateful runs first (prepended above) so
+        // the session is already resolved by the time this appended
+        // throttle checks $request->user() in the 'api' limiter defined in
+        // AppServiceProvider::boot().
+        $middleware->throttleApi();
+
         $middleware->alias([
             'role' => EnsureRole::class,
             'infosheet.approved' => EnsureInfoSheetApproved::class,
