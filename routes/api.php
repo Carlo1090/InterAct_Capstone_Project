@@ -25,6 +25,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Student\JournalCalendarController;
 use App\Http\Controllers\Student\JournalEntryController;
+use App\Http\Controllers\Student\StudentDashboardController;
 use App\Http\Controllers\Student\StudentInfoSheetController;
 use App\Http\Controllers\Student\WeeklyActivityLogController;
 use App\Http\Controllers\Student\WeeklyLogController;
@@ -207,6 +208,8 @@ Route::middleware(['auth:sanctum', 'role:student'])
 Route::middleware(['auth:sanctum', 'role:student', 'infosheet.approved'])
     ->prefix('student')
     ->group(function () {
+        Route::get('dashboard', [StudentDashboardController::class, 'index']);
+
         Route::get('journal-entries', [JournalEntryController::class, 'index']);
         Route::get('journal-entries/{date}', [JournalEntryController::class, 'show']);
         Route::get('journal-entries/{date}/pdf', [JournalEntryController::class, 'pdf']);

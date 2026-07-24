@@ -73,8 +73,8 @@ class WeeklyLogController extends Controller
             $weeks[] = [
                 'week_start' => $weekStartKey,
                 'week_end' => $cursor->copy()->addDays(6)->toDateString(),
-                'status' => $log->status ?? null,
-                'supervisor_comment' => $log->supervisor_comment ?? null,
+                'status' => $log?->status,
+                'supervisor_comment' => $log?->supervisor_comment,
                 'submitted_at' => $log?->submitted_at?->toIso8601String(),
                 'entries_count' => $entryCounts->get($weekStartKey)?->count() ?? 0,
             ];
@@ -110,10 +110,10 @@ class WeeklyLogController extends Controller
         return response()->json([
             'week_start' => $start->toDateString(),
             'week_end' => $end->toDateString(),
-            'status' => $log->status ?? null,
-            'supervisor_comment' => $log->supervisor_comment ?? null,
-            'submitted_at' => $log->submitted_at?->toIso8601String() ?? null,
-            'narrative' => $log->narrative ?? '',
+            'status' => $log?->status,
+            'supervisor_comment' => $log?->supervisor_comment,
+            'submitted_at' => $log?->submitted_at?->toIso8601String(),
+            'narrative' => $log?->narrative ?? '',
             'sipp_notes' => $this->sippNotesByDay($dailyEntries, $enrollment->batch->journalTemplate?->sections ?? []),
             'daily_entries' => $dailyEntries,
         ]);
@@ -136,7 +136,7 @@ class WeeklyLogController extends Controller
             ->first();
 
         $pdf = Pdf::loadView('pdf.weekly-log', [
-            'narrative' => $log->narrative ?? '',
+            'narrative' => $log?->narrative ?? '',
             'weekNumber' => $this->weekNumber($user->id, $start),
             'header' => $this->buildHeader($user, $enrollment),
         ]);

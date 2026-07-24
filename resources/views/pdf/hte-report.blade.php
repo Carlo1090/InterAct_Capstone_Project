@@ -26,6 +26,7 @@
             word-break: break-word;
         }
         table.hte th { font-weight: bold; text-align: center; }
+        table.hte td.col-hte { vertical-align: middle; }
         .col-hte { width: 28%; }
         .col-name { width: 24%; }
         .col-program { width: 12%; text-align: center; }
@@ -67,7 +68,9 @@
         <tbody>
             @forelse ($rows as $row)
                 <tr>
-                    <td class="col-hte">{{ $row['host_establishment'] }}</td>
+                    @if ($row['show_host_establishment'] ?? true)
+                        <td class="col-hte" rowspan="{{ $row['host_establishment_rowspan'] ?? 1 }}">{{ $row['host_establishment'] }}</td>
+                    @endif
                     <td class="col-name">{{ $row['student_name'] }}</td>
                     <td class="col-program">{{ $row['program'] }}</td>
                     <td class="col-gender">{{ $row['gender'] }}</td>

@@ -282,4 +282,69 @@ class WeeklyLogTest extends TestCase
         $this->assertNotNull($log->submitted_at);
         $this->assertTrue($log->submitted_at->greaterThan($firstSubmittedAt));
     }
+
+    /**
+     * Regression: viewing a week that has daily journal entries but no
+     * WeeklyLog row yet (the normal state before the first "Save Narrative")
+     * used to 500 — `$log->submitted_at?->toIso8601String() ?? null` still
+     * reads the `submitted_at` property directly off a null `$log` before
+     * the nullsafe operator ever applies, and PHP's `??` only suppresses
+     * that warning for a bare property/array access, not a chained
+     * method-call expression. Caught while manually verifying the new
+     * weekly-narrative character counter in a browser.
+     */
+    public function test_viewing_a_week_with_no_weekly_log_row_yet_does_not_error(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $weekStart = Carbon::now()->startOfWeek(Carbon::MONDAY);
+
+        JournalEntry::create([
+            'student_id' => $student->id,
+            'batch_id' => $student->batchEnrollment->batch_id,
+            'entry_date' => $weekStart->toDateString(),
+            'content' => ['task_performed' => 'Day one, no weekly narrative saved yet.'],
+            'status' => 'submitted',
+            'submitted_at' => now(),
+        ]);
+
+        $response = $this->getJson('/api/student/weekly-logs/'.$weekStart->toDateString());
+
+        $response->assertOk();
+        $response->assertJsonPath('status', null);
+        $response->assertJsonPath('submitted_at', null);
+        $response->assertJsonPath('narrative', '');
+    }
+
+    public function test_narrative_over_the_fixed_char_limit_is_rejected(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $weekStart = Carbon::now()->startOfWeek(Carbon::MONDAY);
+
+        $response = $this->postJson('/api/student/weekly-logs', [
+            'week_start' => $weekStart->toDateString(),
+            'narrative' => str_repeat('a', 5001),
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('narrative');
+    }
+
+    public function test_narrative_at_the_fixed_char_limit_is_accepted(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $weekStart = Carbon::now()->startOfWeek(Carbon::MONDAY);
+
+        $response = $this->postJson('/api/student/weekly-logs', [
+            'week_start' => $weekStart->toDateString(),
+            'narrative' => str_repeat('a', 5000),
+        ]);
+
+        $response->assertOk();
+    }
 }

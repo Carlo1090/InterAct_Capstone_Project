@@ -12,6 +12,16 @@ import type { WeeklyActivityEntryRecord, WeeklyActivityLogRecord, WeeklyLogDetai
 
 const auth = useAuthStore()
 
+/**
+ * Fixed, non-configurable cap on the weekly narrative — separate from (and
+ * larger than) the daily journal's fixed 1500-char limit, since this is a
+ * compiled/edited summary of a full Mon-Fri week. Mirrors StoreWeeklyLogRequest::CHAR_LIMIT.
+ */
+const WEEKLY_NARRATIVE_CHAR_LIMIT = 5000
+
+const narrativeLength = (weekStart: string): number => details[weekStart]?.narrative?.length ?? 0
+const isNarrativeOverLimit = (weekStart: string): boolean => narrativeLength(weekStart) > WEEKLY_NARRATIVE_CHAR_LIMIT
+
 const weeks = ref<WeeklyLogSummary[]>([])
 const isLoading = ref(true)
 const errorMessage = ref('')
@@ -333,8 +343,12 @@ onMounted(() => {
               Weekly Narrative
               <textarea
                 v-model="details[week.week_start].narrative"
-                class="mt-2 min-h-32 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                class="mt-2 min-h-32 w-full rounded-md border px-3 py-2 text-sm"
+                :class="isNarrativeOverLimit(week.week_start) ? 'border-red-400' : 'border-slate-300'"
               />
+              <p class="mt-1 text-right text-xs" :class="isNarrativeOverLimit(week.week_start) ? 'font-semibold text-red-600' : 'text-slate-400'">
+                {{ narrativeLength(week.week_start) }} / {{ WEEKLY_NARRATIVE_CHAR_LIMIT }}
+              </p>
             </label>
           </div>
 
@@ -469,7 +483,7 @@ onMounted(() => {
               v-if="weekState(week) === 'draft' || weekState(week) === 'returned'"
               type="button"
               class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
-              :disabled="savingDetail[week.week_start]"
+              :disabled="savingDetail[week.week_start] || isNarrativeOverLimit(week.week_start)"
               @click="saveNarrative(week.week_start)"
             >
               {{ savingDetail[week.week_start] ? 'Saving...' : 'Save Narrative' }}
@@ -478,7 +492,7 @@ onMounted(() => {
               v-if="weekState(week) === 'draft' || weekState(week) === 'returned'"
               type="button"
               class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
-              :disabled="submittingDetail[week.week_start] || !details[week.week_start].narrative?.trim()"
+              :disabled="submittingDetail[week.week_start] || !details[week.week_start].narrative?.trim() || isNarrativeOverLimit(week.week_start)"
               @click="submitWeek(week)"
             >
               {{ submittingDetail[week.week_start] ? 'Submitting...' : (weekState(week) === 'returned' ? 'Resubmit' : 'Submit') }}

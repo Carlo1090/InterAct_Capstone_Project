@@ -6,6 +6,7 @@ import { categorizeError } from '@/lib/apiError'
 import { confirmAction, showToast } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
 import LoadStatus from '@/components/LoadStatus.vue'
+import ValidationErrorList from '@/components/ui/ValidationErrorList.vue'
 import type {
   Batch,
   BatchRosterResponse,
@@ -68,6 +69,11 @@ const emptyForm = (): BatchForm => ({
 })
 
 const form = reactive<BatchForm>(emptyForm())
+
+// End date must be strictly after start date (mirrors StoreBatchRequest's
+// `after:start_date` rule) — checked client-side so the mistake is caught
+// before a round trip, not just surfaced as a raw server error afterward.
+const endDateInvalid = computed(() => Boolean(form.start_date && form.end_date && form.end_date <= form.start_date))
 
 // Templates are many-programs-per-template now — filter on membership, not a
 // single program_id (which no longer exists on the template).
@@ -542,7 +548,15 @@ onMounted(load)
           </div>
           <div>
             <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-end">End Date</label>
-            <input id="batch-end" v-model="form.end_date" type="date" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <input
+              id="batch-end"
+              v-model="form.end_date"
+              type="date"
+              :min="form.start_date || undefined"
+              class="w-full rounded-md border px-3 py-2 text-sm"
+              :class="endDateInvalid ? 'border-red-400' : 'border-slate-300'"
+            />
+            <p v-if="endDateInvalid" class="mt-1 text-xs text-red-600">End date must be after the start date.</p>
           </div>
           <div>
             <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-hours">Required Hours</label>
@@ -570,9 +584,7 @@ onMounted(load)
           keep working as normal.
         </div>
 
-        <div v-if="Object.keys(modalErrors).length > 0" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
-          <p v-for="(messages, field) in modalErrors" :key="field">{{ field }}: {{ messages.join(' ') }}</p>
-        </div>
+        <ValidationErrorList :errors="modalErrors" class="mt-4" />
         <p v-if="modalMessage" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ modalMessage }}</p>
 
         <div class="mt-6 flex justify-end gap-3">
@@ -581,9 +593,9 @@ onMounted(load)
           </button>
           <button
             type="button"
-            class="rounded-md px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-400"
+            class="rounded-md px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed disabled:bg-slate-400"
             :class="editingBatchId && originalIsActive && !form.is_active ? 'bg-red-600' : 'bg-slate-950'"
-            :disabled="isSaving"
+            :disabled="isSaving || endDateInvalid"
             @click="save"
           >
             {{ isSaving ? 'Saving...' : editingBatchId && originalIsActive && !form.is_active ? 'Deactivate & Save' : 'Save' }}

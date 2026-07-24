@@ -55,6 +55,7 @@ class DatabaseSeeder extends Seeder
         $this->call(SupervisorReviewDemoSeeder::class);
         $this->call(CabmbUsersDemoSeeder::class);
         $this->call(CabmbWeeklyDemoSeeder::class);
+        $this->call(SippBsaDemoSeeder::class);
         $this->call(CabmbIntakeDemoSeeder::class);
         $this->call(GroupInfoSheetDemoSeeder::class);
     }

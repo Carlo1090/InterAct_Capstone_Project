@@ -117,11 +117,46 @@ class HteReportController extends Controller
 
         $pdf = Pdf::loadView('pdf.hte-report', [
             'academicYear' => $academicYear,
-            'rows' => $rows,
+            'rows' => $this->withHostEstablishmentSpans($rows),
             'meta' => $this->reportMeta($report),
         ])->setPaper('a4', 'landscape');
 
         return $pdf->download("hte-student-interns-list-{$academicYear}.pdf");
+    }
+
+    /**
+     * Decorate consecutive rows sharing the same Host Establishment with a
+     * rowspan on the first row of each run, so the printed list reads as one
+     * merged cell per company (matching the official document's look)
+     * instead of repeating the name on every student's row. Rows are already
+     * ordered company-then-student by buildRows(), so a "run" is simply a
+     * streak of adjacent equal values — no re-sorting here.
+     *
+     * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function withHostEstablishmentSpans($rows): array
+    {
+        $decorated = [];
+        $groupStartIndex = null;
+
+        foreach ($rows->values() as $index => $row) {
+            $sameAsPrevious = $groupStartIndex !== null
+                && $decorated[$groupStartIndex]['host_establishment'] === $row['host_establishment'];
+
+            if ($sameAsPrevious) {
+                $decorated[$groupStartIndex]['host_establishment_rowspan']++;
+                $row['show_host_establishment'] = false;
+            } else {
+                $groupStartIndex = $index;
+                $row['host_establishment_rowspan'] = 1;
+                $row['show_host_establishment'] = true;
+            }
+
+            $decorated[$index] = $row;
+        }
+
+        return $decorated;
     }
 
     /**

@@ -28,15 +28,25 @@ trait ValidatesJournalTemplate
     ];
 
     /**
-     * Silently enforce the fixed Daily Accomplishment section before rules
-     * validate: strip any coordinator-submitted entry under that key (an
-     * attempt to alter it) and prepend the canonical definition. Runs before
+     * The daily journal's character limit is fixed, not coordinator-authored
+     * — every template is silently pinned to this value on save, the same way
+     * FIXED_SECTION is pinned, regardless of whatever the client submits.
+     */
+    public const FIXED_CHAR_LIMIT = 1500;
+
+    /**
+     * Silently enforce the fixed Daily Accomplishment section and character
+     * limit before rules validate: strip any coordinator-submitted entry
+     * under the fixed key (an attempt to alter it) and prepend the canonical
+     * definition, and overwrite char_limit with the fixed value. Runs before
      * rules() so "at least one section must be required" and per-element
      * checks always see the fixed section already in place — omitting or
-     * tampering with it never fails the request.
+     * tampering with either never fails the request.
      */
     protected function prepareForValidation(): void
     {
+        $this->merge(['char_limit' => self::FIXED_CHAR_LIMIT]);
+
         $sections = $this->input('sections');
 
         if (! is_array($sections)) {

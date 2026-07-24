@@ -4,6 +4,7 @@ import axios from 'axios'
 import api from '@/lib/axios'
 import { showToast, confirmAction } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
+import ValidationErrorList from '@/components/ui/ValidationErrorList.vue'
 import type { JournalTemplateProgramOption, JournalTemplateRecord, JournalTemplateSection } from '@/types/api'
 
 /**
@@ -34,10 +35,15 @@ const SIPP_DEFAULT_PROMPTS: Record<SippKey, string> = {
   recommendations: 'Any recommendations going forward?',
 }
 
+/**
+ * The daily journal's character limit is fixed (server-enforced), not
+ * coordinator-authored — mirrors ValidatesJournalTemplate::FIXED_CHAR_LIMIT.
+ */
+const FIXED_CHAR_LIMIT = 1500
+
 type TemplateForm = {
   program_ids: number[]
   name: string
-  char_limit: number
   is_active: boolean
 }
 
@@ -58,7 +64,6 @@ const lastSavedNotice = ref('')
 const form = reactive<TemplateForm>({
   program_ids: [],
   name: '',
-  char_limit: 1500,
   is_active: true,
 })
 
@@ -111,7 +116,6 @@ const load = async () => {
 const resetForm = () => {
   form.program_ids = []
   form.name = ''
-  form.char_limit = 1500
   form.is_active = true
   customSections.value = []
   sippEnabled.value = false
@@ -132,7 +136,6 @@ const openEditModal = (template: JournalTemplateRecord) => {
   editingTemplateId.value = template.id
   form.program_ids = template.programs.map((program) => program.id)
   form.name = template.name
-  form.char_limit = template.char_limit
   form.is_active = template.is_active
 
   const existingSipp = template.sections.filter((section) => section.sipp)
@@ -217,7 +220,6 @@ const performSave = async () => {
   const payload = {
     program_ids: form.program_ids,
     name: form.name,
-    char_limit: form.char_limit,
     is_active: form.is_active,
     sections: allSections.value,
   }
@@ -317,20 +319,18 @@ onMounted(load)
             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Name</th>
             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Programs</th>
             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Sections</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Character Limit</th>
             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
             <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-200">
           <tr v-if="templates.length === 0">
-            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="6">No journal templates yet.</td>
+            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="5">No journal templates yet.</td>
           </tr>
           <tr v-for="template in templates" :key="template.id">
             <td class="px-4 py-3 text-sm font-medium text-slate-900">{{ template.name }}</td>
             <td class="px-4 py-3 text-sm text-slate-700">{{ programNames(template) }}</td>
             <td class="px-4 py-3 text-sm text-slate-700">{{ template.sections.length }}</td>
-            <td class="px-4 py-3 font-mono text-sm text-slate-700">{{ template.char_limit }}</td>
             <td class="px-4 py-3 text-sm">
               <span
                 class="rounded-full px-3 py-1 text-xs font-bold"
@@ -389,12 +389,8 @@ onMounted(load)
                   </label>
                 </div>
               </div>
-              <div>
-                <label class="mb-2 block text-sm font-medium text-slate-700" for="template-char-limit">Character Limit</label>
-                <input id="template-char-limit" v-model.number="form.char_limit" type="number" min="100" max="10000" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-              </div>
-              <div>
-                <label class="mt-7 flex items-center gap-2 text-sm font-medium text-slate-700">
+              <div class="md:col-span-2">
+                <label class="flex items-center gap-2 text-sm font-medium text-slate-700">
                   <input v-model="form.is_active" type="checkbox" />
                   Available for use in batches
                 </label>
@@ -480,9 +476,7 @@ onMounted(load)
               </ul>
             </div>
 
-            <div v-if="Object.keys(modalErrors).length > 0" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
-              <p v-for="(messages, field) in modalErrors" :key="field">{{ field }}: {{ messages.join(' ') }}</p>
-            </div>
+            <ValidationErrorList :errors="modalErrors" class="mt-4" />
             <p v-if="modalMessage" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ modalMessage }}</p>
           </div>
 
@@ -522,7 +516,7 @@ onMounted(load)
               </div>
             </div>
 
-            <p class="mt-4 text-xs font-semibold text-slate-500">Character limit: {{ form.char_limit }}</p>
+            <p class="mt-4 text-xs font-semibold text-slate-500">Character limit: {{ FIXED_CHAR_LIMIT }} (fixed, applies to every daily journal entry)</p>
           </aside>
         </div>
 

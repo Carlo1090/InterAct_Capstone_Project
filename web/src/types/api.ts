@@ -799,3 +799,36 @@ export type SupervisorJournalDetail = {
   reviewable: boolean
   daily_entries: { entry_date: string; status: JournalEntryStatus; content: Record<string, string> }[]
 }
+
+export type StudentDashboardStats = {
+  entries_submitted_total: number
+  weekly_logs_approved: number
+  weekly_logs_pending: number
+  missing_this_week: number
+}
+
+export type StudentDashboardActivity = {
+  text: string
+  time: string | null
+  tone: 'green' | 'amber' | 'blue' | 'slate'
+}
+
+export type StudentDashboardInternship = {
+  host_company: string | null
+  supervisor: string | null
+  coordinator: string | null
+  department: string | null
+  program: string | null
+  start_date: string | null
+}
+
+export type StudentDashboard = {
+  stats: StudentDashboardStats
+  progress: {
+    weekly_reports_approved_percent: number
+    ojt_duration_percent: number
+  }
+  recent_activity: StudentDashboardActivity[]
+  internship: StudentDashboardInternship
+  week: { start: string; end: string }
+}

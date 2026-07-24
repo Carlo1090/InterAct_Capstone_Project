@@ -120,6 +120,31 @@ class JournalTemplateTest extends TestCase
         ]);
     }
 
+    /**
+     * The daily journal's character limit is fixed, not coordinator-authored
+     * — whatever the client submits is silently overridden to the fixed
+     * value, the same way the fixed Daily Accomplishment section is.
+     */
+    public function test_char_limit_is_always_forced_to_the_fixed_value_regardless_of_submitted_value(): void
+    {
+        $program = $this->programFor('BSIT');
+        $coordinator = $this->coordinatorWithBatch($program);
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->postJson('/api/coordinator/journal-templates', [
+            'program_ids' => [$program->id],
+            'name' => 'Custom Limit Attempt',
+            'char_limit' => 9999,
+            'sections' => $this->validSections(),
+        ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('journal_templates', [
+            'name' => 'Custom Limit Attempt',
+            'char_limit' => 1500,
+        ]);
+    }
+
     public function test_coordinator_lists_only_own_program_templates(): void
     {
         $programA = $this->programFor('BSIT');
