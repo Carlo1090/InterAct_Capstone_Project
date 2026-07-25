@@ -294,8 +294,8 @@ export type JournalEntryDetail = {
   locked_reason?: 'range' | 'not_active' | 'bundled' | null
   student_name: string
   program: string | null
-  entry_ordinal: number
-  entry_ordinal_label: string
+  // Weekday name of the entry date, e.g. "Sunday" (rendered "Sunday (MM-DD-YYYY)").
+  day_label: string
 }
 
 export type JournalEntrySummary = {

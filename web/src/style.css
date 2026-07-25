@@ -4,11 +4,38 @@ body {
   margin: 0;
 }
 
+/*
+ * Always reserve the vertical scrollbar's gutter so the page width stays
+ * constant when content height changes (e.g. switching Edit ↔ Preview on the
+ * Write Daily Journal page). Without this, the scrollbar appears/disappears
+ * between a tall and a short view, shifting the whole page — including the
+ * sticky header — sideways. Mobile browsers use overlay scrollbars, so this
+ * only affects (and only needs to affect) desktop.
+ */
+html {
+  scrollbar-gutter: stable;
+}
+
 @layer base {
   input:focus-visible,
   select:focus-visible,
   textarea:focus-visible {
     outline: 2px solid var(--color-blue-700, #1d4ed8);
     outline-offset: 1px;
+  }
+
+  /*
+   * App-wide button polish so the UI feels less static: a pointer cursor on
+   * every enabled button, and a short transition so any hover/active state
+   * (background, border, colour, shadow) animates smoothly instead of
+   * snapping. Per-button hover colours still live on the buttons themselves.
+   */
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button {
+    transition-property: color, background-color, border-color, box-shadow, opacity, filter;
+    transition-duration: 150ms;
   }
 }

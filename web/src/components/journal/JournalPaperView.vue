@@ -3,10 +3,10 @@ import { computed } from 'vue'
 import type { JournalTemplateSection } from '@/types/api'
 
 // Mirrors pdf/daily-journal-entry.blade.php 1:1: uppercase name left /
-// program right, "Nth Day (MM-DD-YYYY)" label, unlabeled Daily
+// program right, "Sunday (MM-DD-YYYY)" weekday label, unlabeled Daily
 // Accomplishment paragraphs, then bold inline labels for filled optional
-// sections. entryOrdinalLabel comes from show()'s entry_ordinal_label so
-// the ordinal-word logic lives server-side only.
+// sections. dayLabel comes from show()'s day_label (the entry date's
+// weekday name), computed server-side.
 //
 // With `editable`, each text region becomes an auto-growing textarea
 // styled as the paragraph it replaces, writing into the SAME `content`
@@ -17,7 +17,7 @@ const props = defineProps<{
   content: Record<string, string>
   studentName: string
   programName: string | null
-  entryOrdinalLabel: string
+  dayLabel: string
   editable?: boolean
 }>()
 
@@ -75,7 +75,7 @@ const vAutoGrow = {
       <span class="text-right">{{ programName }}</span>
     </header>
 
-    <p class="mt-8">{{ entryOrdinalLabel }} ({{ formattedDate }})</p>
+    <p class="mt-8">{{ dayLabel }} ({{ formattedDate }})</p>
 
     <template v-if="editable">
       <textarea

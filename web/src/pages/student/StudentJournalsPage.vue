@@ -36,10 +36,22 @@ const load = async () => {
 }
 
 const viewEntry = (date: string) => {
-  router.push({ path: '/student/write-journal', query: { date, view: '1' } })
+  // Pass the bare YYYY-MM-DD — the write page forwards it to an API route
+  // constrained to \d{4}-\d{2}-\d{2}, which a full ISO timestamp would fail.
+  router.push({ path: '/student/write-journal', query: { date: date.slice(0, 10), view: '1' } })
 }
 
-const dayName = (date: string) => new Date(date).toLocaleDateString(undefined, { weekday: 'long' })
+// entry_date arrives as a full ISO timestamp (e.g. 2026-07-25T00:00:00.000000Z).
+// Parse only the calendar day so a timezone offset can never shift it, then
+// present a clean human-readable date instead of the raw machine string.
+const toLocalDate = (raw: string): Date => {
+  const [year, month, day] = raw.slice(0, 10).split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+const formatEntryDate = (raw: string): string =>
+  toLocalDate(raw).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+const dayName = (raw: string): string =>
+  toLocalDate(raw).toLocaleDateString(undefined, { weekday: 'long' })
 
 watch(statusFilter, load)
 onMounted(load)
@@ -79,7 +91,7 @@ onMounted(load)
             <td colspan="5" class="px-4 py-6 text-center text-sm text-slate-500">No journal entries found.</td>
           </tr>
           <tr v-for="journal in journals" :key="journal.id">
-            <td class="px-4 py-3 text-sm font-mono text-slate-700">{{ journal.entry_date }}</td>
+            <td class="px-4 py-3 text-sm text-slate-700">{{ formatEntryDate(journal.entry_date) }}</td>
             <td class="px-4 py-3 text-sm text-slate-500">{{ dayName(journal.entry_date) }}</td>
             <td class="px-4 py-3 text-sm font-mono text-slate-700">{{ journal.word_count }}</td>
             <td class="px-4 py-3 text-sm">
@@ -93,7 +105,7 @@ onMounted(load)
             <td class="px-4 py-3 text-sm">
               <button
                 type="button"
-                class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700"
+                class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
                 @click="viewEntry(journal.entry_date)"
               >
                 View

@@ -1,7 +1,7 @@
 {{--
     Plain typed-document daily journal, matching the client's reference
     (Daily_Journal_ref.jpg): uppercase student name left / program right on
-    one line, an "Nth Day (MM-DD-YYYY)" label, then flowing narrative
+    one line, a weekday label "Sunday (MM-DD-YYYY)", then flowing narrative
     paragraphs. Standalone on purpose — pdf/layout.blade.php's doc-title/
     meta-table/status chrome is exactly what this document must not have.
 --}}

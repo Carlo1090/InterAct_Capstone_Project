@@ -22,6 +22,14 @@ const WEEKLY_NARRATIVE_CHAR_LIMIT = 5000
 const narrativeLength = (weekStart: string): number => details[weekStart]?.narrative?.length ?? 0
 const isNarrativeOverLimit = (weekStart: string): boolean => narrativeLength(weekStart) > WEEKLY_NARRATIVE_CHAR_LIMIT
 
+// Daily-entry dates arrive as full ISO timestamps (2026-07-24T00:00:00.000000Z);
+// show a clean human-readable date instead. Parse only the calendar day so a
+// timezone offset never shifts it (matches StudentJournalsPage).
+const formatDate = (raw: string): string => {
+  const [year, month, day] = raw.slice(0, 10).split('-').map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
 const weeks = ref<WeeklyLogSummary[]>([])
 const isLoading = ref(true)
 const errorMessage = ref('')
@@ -316,7 +324,7 @@ onMounted(() => {
                   <td colspan="3" class="py-3 text-sm text-slate-400">No daily entries this week.</td>
                 </tr>
                 <tr v-for="entry in details[week.week_start].daily_entries" :key="entry.entry_date">
-                  <td class="py-3 font-mono text-sm text-slate-600">{{ entry.entry_date }}</td>
+                  <td class="py-3 text-sm text-slate-600">{{ formatDate(entry.entry_date) }}</td>
                   <td class="py-3 text-sm capitalize text-slate-600">{{ entry.status }}</td>
                   <td class="py-3 text-sm text-slate-800">{{ Object.values(entry.content)[0] ?? '' }}</td>
                 </tr>
@@ -329,7 +337,7 @@ onMounted(() => {
                  supervisor's preview render; draft/returned keep the editable
                  textarea (editing/submit mechanics untouched). -->
             <template v-if="weekState(week) === 'submitted' || weekState(week) === 'approved'">
-              <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500">Weekly Narrative</h3>
+              <h3 class="text-sm font-bold text-slate-900">Weekly Narrative</h3>
               <div class="mt-2 rounded-md bg-slate-100 p-4 sm:p-6">
                 <WeeklyJournalPaperView
                   :narrative="details[week.week_start].narrative ?? ''"
@@ -339,39 +347,25 @@ onMounted(() => {
                 />
               </div>
             </template>
-            <label v-else class="block text-sm font-medium text-slate-700">
-              Weekly Narrative
+            <div v-else>
+              <div class="flex items-center justify-between gap-3">
+                <h3 class="text-sm font-bold text-slate-900">Weekly Narrative</h3>
+                <span
+                  class="font-mono text-xs"
+                  :class="isNarrativeOverLimit(week.week_start) ? 'font-semibold text-red-600' : 'text-slate-400'"
+                >
+                  {{ narrativeLength(week.week_start) }} / {{ WEEKLY_NARRATIVE_CHAR_LIMIT }}
+                </span>
+              </div>
+              <p class="mt-1 text-xs text-slate-400">
+                Summarize your week. This is what your supervisor reviews — write it in full sentences.
+              </p>
               <textarea
                 v-model="details[week.week_start].narrative"
-                class="mt-2 min-h-32 w-full rounded-md border px-3 py-2 text-sm"
+                rows="14"
+                class="mt-2 min-h-72 w-full rounded-md border px-4 py-3 text-sm leading-6 text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 :class="isNarrativeOverLimit(week.week_start) ? 'border-red-400' : 'border-slate-300'"
               />
-              <p class="mt-1 text-right text-xs" :class="isNarrativeOverLimit(week.week_start) ? 'font-semibold text-red-600' : 'text-slate-400'">
-                {{ narrativeLength(week.week_start) }} / {{ WEEKLY_NARRATIVE_CHAR_LIMIT }}
-              </p>
-            </label>
-          </div>
-
-          <div class="mt-4 rounded-md border border-slate-200 bg-slate-50 p-4">
-            <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500">SIPP Notes (Read-Only)</h3>
-            <p class="mt-1 text-xs text-slate-400">
-              Compiled from this week's daily journal entries. Captured in the daily journal, not the weekly narrative.
-            </p>
-
-            <p v-if="details[week.week_start].sipp_notes.length === 0" class="mt-3 text-sm text-slate-400">
-              No SIPP notes recorded this week.
-            </p>
-
-            <div v-else class="mt-3 space-y-3">
-              <div v-for="day in details[week.week_start].sipp_notes" :key="day.entry_date" class="rounded-md border border-slate-200 bg-white p-3">
-                <p class="text-xs font-mono font-semibold text-slate-500">{{ day.entry_date }}</p>
-                <div class="mt-2 space-y-2">
-                  <div v-for="field in day.fields" :key="field.key">
-                    <p class="text-xs font-bold uppercase tracking-wide text-slate-400">{{ field.label }}</p>
-                    <p class="mt-1 text-sm text-slate-700">{{ field.text }}</p>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -385,7 +379,7 @@ onMounted(() => {
               <button
                 v-if="week.activityLog"
                 type="button"
-                class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700"
+                class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
                 @click="downloadPdf(week.activityLog.id)"
               >
                 Download PDF
@@ -395,7 +389,7 @@ onMounted(() => {
             <div v-if="!week.activityLog" class="mt-3">
               <button
                 type="button"
-                class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
+                class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:grayscale disabled:cursor-not-allowed"
                 :disabled="activityLogLoading[week.week_start]"
                 @click="createActivityLog(week)"
               >
@@ -424,7 +418,7 @@ onMounted(() => {
                     <td class="py-2 text-sm text-slate-500">{{ entry.documents_records }}</td>
                     <td class="py-2 text-sm text-slate-500">{{ entry.objectives }}</td>
                     <td class="py-2 text-right">
-                      <button type="button" class="text-xs font-semibold text-red-600" @click="removeEntry(week.activityLog, entry.id)">
+                      <button type="button" class="text-xs font-semibold text-red-600 transition hover:text-red-800" @click="removeEntry(week.activityLog, entry.id)">
                         Remove
                       </button>
                     </td>
@@ -461,7 +455,7 @@ onMounted(() => {
               </div>
               <button
                 type="button"
-                class="mt-2 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
+                class="mt-2 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:grayscale disabled:cursor-not-allowed"
                 :disabled="entrySaving[week.activityLog.id]"
                 @click="addEntry(week.activityLog)"
               >
@@ -474,7 +468,7 @@ onMounted(() => {
             <span v-if="saveMessage[week.week_start]" class="text-sm text-slate-500">{{ saveMessage[week.week_start] }}</span>
             <button
               type="button"
-              class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+              class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
               @click="downloadWeeklyLogPdf(week.week_start)"
             >
               Download PDF
@@ -482,7 +476,7 @@ onMounted(() => {
             <button
               v-if="weekState(week) === 'draft' || weekState(week) === 'returned'"
               type="button"
-              class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
+              class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:grayscale disabled:cursor-not-allowed"
               :disabled="savingDetail[week.week_start] || isNarrativeOverLimit(week.week_start)"
               @click="saveNarrative(week.week_start)"
             >
@@ -491,7 +485,7 @@ onMounted(() => {
             <button
               v-if="weekState(week) === 'draft' || weekState(week) === 'returned'"
               type="button"
-              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
+              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:grayscale disabled:cursor-not-allowed"
               :disabled="submittingDetail[week.week_start] || !details[week.week_start].narrative?.trim() || isNarrativeOverLimit(week.week_start)"
               @click="submitWeek(week)"
             >

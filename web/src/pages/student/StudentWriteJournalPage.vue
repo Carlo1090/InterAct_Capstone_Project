@@ -26,7 +26,7 @@ const sections = ref<JournalTemplateSection[]>([])
 const charLimit = ref(1500)
 const studentName = ref('')
 const programName = ref<string | null>(null)
-const entryOrdinalLabel = ref('')
+const dayLabel = ref('')
 const content = reactive<Record<string, string>>({})
 const enabledSections = reactive<Record<string, boolean>>({})
 
@@ -105,7 +105,7 @@ const load = async () => {
     lockedReason.value = data.locked_reason
     studentName.value = data.student_name
     programName.value = data.program
-    entryOrdinalLabel.value = data.entry_ordinal_label
+    dayLabel.value = data.day_label
 
     Object.keys(content).forEach((key) => delete content[key])
     Object.keys(enabledSections).forEach((key) => delete enabledSections[key])
@@ -211,7 +211,7 @@ onMounted(load)
       <!-- Header: compact date + Edit/Preview segmented switch -->
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-2">
-          <span v-if="entryOrdinalLabel" class="text-sm font-bold text-slate-900">{{ entryOrdinalLabel }}</span>
+          <span v-if="dayLabel" class="text-sm font-bold text-slate-900">{{ dayLabel }}</span>
           <input
             type="date"
             :value="entryDate"
@@ -372,7 +372,7 @@ onMounted(load)
             :content="content"
             :student-name="studentName"
             :program-name="programName"
-            :entry-ordinal-label="entryOrdinalLabel"
+            :day-label="dayLabel"
             :editable="false"
           />
         </div>
@@ -399,7 +399,7 @@ onMounted(load)
         <button
           v-if="isViewMode"
           type="button"
-          class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+          class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
           @click="downloadPdf"
         >
           Download PDF
@@ -408,7 +408,7 @@ onMounted(load)
         <template v-if="editable">
           <button
             type="button"
-            class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
+            class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:grayscale disabled:cursor-not-allowed"
             :disabled="cannotSave"
             @click="save('draft')"
           >
@@ -418,7 +418,7 @@ onMounted(load)
           <button
             v-if="!isViewMode"
             type="button"
-            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
+            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:grayscale disabled:cursor-not-allowed"
             :disabled="isSaving || isOverLimit || isSippOverLimit"
             @click="setMode('preview')"
           >
@@ -427,7 +427,7 @@ onMounted(load)
           <button
             v-else
             type="button"
-            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
+            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:grayscale disabled:cursor-not-allowed"
             :disabled="cannotSave"
             @click="save('submitted')"
           >
