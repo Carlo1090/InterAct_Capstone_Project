@@ -36,8 +36,10 @@ const emit = defineEmits<{
       {{ status === 'finalized' ? 'Finalized' : 'Draft' }}
     </span>
 
-    <!-- Edit / Preview segmented switch -->
-    <div class="ml-auto inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-sm font-semibold">
+    <!-- Edit / Preview segmented switch — anchored right after the status pill so
+         its position never shifts between modes (the actions come and go on the
+         right without moving this control). -->
+    <div class="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-sm font-semibold">
       <button
         type="button"
         class="rounded-md px-4 py-1.5 transition"
@@ -56,9 +58,9 @@ const emit = defineEmits<{
       </button>
     </div>
 
-    <!-- Actions -->
-    <div class="flex flex-wrap items-center gap-2">
-      <!-- Save Draft — available in both modes -->
+    <!-- Actions — Preview only, pinned to the far right so the switch stays put.
+         Edit mode intentionally shows no action buttons. -->
+    <div v-if="mode === 'preview'" class="ml-auto flex flex-wrap items-center gap-2">
       <button
         type="button"
         class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:grayscale disabled:cursor-not-allowed"
@@ -72,48 +74,30 @@ const emit = defineEmits<{
         {{ saving ? 'Saving…' : 'Save Draft' }}
       </button>
 
-      <!-- Edit mode: nudge the coordinator to review before finalizing -->
       <button
-        v-if="mode === 'edit'"
         type="button"
-        class="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:grayscale disabled:cursor-not-allowed"
-        :disabled="disabled"
-        @click="emit('update:mode', 'preview')"
+        class="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 disabled:grayscale disabled:cursor-not-allowed"
+        :disabled="downloading || disabled"
+        @click="emit('download')"
       >
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
-          <path d="M2.4 12a1 1 0 010-.64C3.7 7.7 7.5 5 12 5s8.3 2.7 9.6 6.36a1 1 0 010 .64C20.3 16.3 16.5 19 12 19s-8.3-2.7-9.6-7z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
-          <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.6" />
+          <path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
-        Review in Preview
+        {{ downloading ? 'Preparing…' : 'Download PDF' }}
       </button>
 
-      <!-- Preview mode: the review-gated actions -->
-      <template v-else>
-        <button
-          type="button"
-          class="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 disabled:grayscale disabled:cursor-not-allowed"
-          :disabled="downloading || disabled"
-          @click="emit('download')"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
-            <path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-          {{ downloading ? 'Preparing…' : 'Download PDF' }}
-        </button>
-
-        <button
-          type="button"
-          class="inline-flex items-center gap-1.5 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:grayscale disabled:cursor-not-allowed"
-          :disabled="saving || disabled"
-          @click="emit('finalize')"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
-            <path d="M9 12.75l2 2 4-4.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
-            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6" />
-          </svg>
-          Finalize
-        </button>
-      </template>
+      <button
+        type="button"
+        class="inline-flex items-center gap-1.5 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:grayscale disabled:cursor-not-allowed"
+        :disabled="saving || disabled"
+        @click="emit('finalize')"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
+          <path d="M9 12.75l2 2 4-4.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+          <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6" />
+        </svg>
+        Finalize
+      </button>
     </div>
   </div>
 </template>
