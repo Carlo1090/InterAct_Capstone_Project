@@ -4,6 +4,8 @@ import axios from 'axios'
 import api from '@/lib/axios'
 import { showToast, confirmAction } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
+import ReportEditorBar from '@/components/coordinator/ReportEditorBar.vue'
+import HtePaperView from '@/components/coordinator/HtePaperView.vue'
 import type { HteIndex, HteMeta, HteReport, HteRow } from '@/types/api'
 
 const academicYears = ref<string[]>([])
@@ -18,6 +20,7 @@ const meta = ref<HteMeta>({
   signatory_certified_title: '',
 })
 const status = ref<'draft' | 'finalized'>('draft')
+const mode = ref<'edit' | 'preview'>('edit')
 
 const isLoadingIndex = ref(true)
 const isLoadingReport = ref(false)
@@ -54,6 +57,7 @@ const loadReport = async () => {
   isLoadingReport.value = true
   errorMessage.value = ''
   statusMessage.value = ''
+  mode.value = 'edit'
 
   try {
     const { data } = await api.get<HteReport>(`/api/coordinator/hte/${academicYear.value}`)
@@ -180,8 +184,8 @@ onMounted(loadIndex)
     <p v-if="isLoadingIndex" class="text-sm text-slate-500">Loading...</p>
 
     <template v-else>
-      <!-- Controls -->
-      <div class="flex flex-wrap items-end justify-between gap-4 rounded-lg bg-white p-4 shadow-sm ring-1 ring-slate-200">
+      <!-- Filter -->
+      <div class="flex flex-wrap items-end gap-4 rounded-lg bg-white p-4 shadow-sm ring-1 ring-slate-200">
         <label class="block">
           <span class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Academic Year</span>
           <select
@@ -194,55 +198,38 @@ onMounted(loadIndex)
             <option v-for="year in academicYears" :key="year" :value="year">{{ year }}</option>
           </select>
         </label>
-
-        <div class="flex flex-wrap gap-2">
-          <button
-            type="button"
-            class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
-            :disabled="isSaving || isLoadingReport"
-            @click="save('draft')"
-          >
-            Save Draft
-          </button>
-          <button
-            type="button"
-            class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
-            :disabled="isSaving || isLoadingReport"
-            @click="save('finalized')"
-          >
-            Finalize
-          </button>
-          <button
-            type="button"
-            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
-            :disabled="isDownloading || isLoadingReport"
-            @click="downloadPdf"
-          >
-            {{ isDownloading ? 'Preparing...' : 'Download PDF' }}
-          </button>
-        </div>
       </div>
+
+      <!-- Edit ⇄ Preview + actions -->
+      <ReportEditorBar
+        :mode="mode"
+        :status="status"
+        :saving="isSaving"
+        :downloading="isDownloading"
+        :disabled="isLoadingReport"
+        @update:mode="mode = $event"
+        @save="save('draft')"
+        @finalize="save('finalized')"
+        @download="downloadPdf"
+      />
 
       <p v-if="errorMessage" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ errorMessage }}</p>
       <p v-if="statusMessage" class="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{{ statusMessage }}</p>
 
       <p v-if="isLoadingReport" class="text-sm text-slate-500">Loading list...</p>
 
+      <!-- PREVIEW — read-only document -->
+      <div v-else-if="mode === 'preview'" class="rounded-lg bg-slate-100 p-4 sm:p-6">
+        <HtePaperView :rows="rows" :meta="meta" :academic-year="academicYear" />
+      </div>
+
       <template v-else>
         <!-- Curation table -->
         <section class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <div class="flex items-center justify-between gap-3">
-            <h3 class="text-sm font-bold text-slate-900">
-              Host Training Establishments &amp; Interns
-              <span class="ml-1 text-xs font-normal text-slate-400">({{ rows.length }} {{ rows.length === 1 ? 'row' : 'rows' }})</span>
-            </h3>
-            <span
-              class="rounded-full px-3 py-1 text-xs font-bold"
-              :class="status === 'finalized' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'"
-            >
-              {{ status === 'finalized' ? 'Finalized' : 'Draft' }}
-            </span>
-          </div>
+          <h3 class="text-sm font-bold text-slate-900">
+            Host Training Establishments &amp; Interns
+            <span class="ml-1 text-xs font-normal text-slate-400">({{ rows.length }} {{ rows.length === 1 ? 'row' : 'rows' }})</span>
+          </h3>
 
           <p v-if="rows.length === 0" class="mt-4 text-sm text-slate-400">
             No enrolled interns were found for this academic year. Use “Add Row” to enter one manually.

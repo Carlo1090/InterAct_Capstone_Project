@@ -5,6 +5,8 @@ import { categorizeError } from '@/lib/apiError'
 import { showToast, confirmAction } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
 import LoadStatus from '@/components/LoadStatus.vue'
+import ReportEditorBar from '@/components/coordinator/ReportEditorBar.vue'
+import GroupInfoSheetPaperView from '@/components/coordinator/GroupInfoSheetPaperView.vue'
 import type {
   GroupInfoSheet,
   GroupInfoSheetCompany,
@@ -22,6 +24,7 @@ const rows = ref<GroupInfoSheetRow[]>([])
 const deletedIds = ref<number[]>([])
 const departmentLine = ref('')
 const status = ref<'draft' | 'finalized'>('draft')
+const mode = ref<'edit' | 'preview'>('edit')
 
 const emptyCompany = (): GroupInfoSheetCompany => ({
   host_company: '',
@@ -82,6 +85,7 @@ const loadSheet = async () => {
 
   isLoadingSheet.value = true
   errorMessage.value = ''
+  mode.value = 'edit'
 
   try {
     const { data } = await api.get<GroupInfoSheet>(
@@ -217,63 +221,48 @@ onMounted(loadIndex)
     </div>
 
     <LoadStatus :loading="isLoadingIndex" :error="indexError" :retry="loadIndex">
-      <!-- Controls -->
-      <div class="flex flex-wrap items-end justify-between gap-4 rounded-lg bg-white p-4 shadow-sm ring-1 ring-slate-200">
-        <div class="flex flex-wrap items-end gap-4">
-          <label class="block">
-            <span class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Academic Year</span>
-            <select
-              v-model="academicYear"
-              class="w-48 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
-              :disabled="academicYears.length === 0"
-              @change="onYearChange"
-            >
-              <option v-if="academicYears.length === 0" value="">No batches yet</option>
-              <option v-for="year in academicYears" :key="year" :value="year">{{ year }}</option>
-            </select>
-          </label>
+      <!-- Filters -->
+      <div class="flex flex-wrap items-end gap-4 rounded-lg bg-white p-4 shadow-sm ring-1 ring-slate-200">
+        <label class="block">
+          <span class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Academic Year</span>
+          <select
+            v-model="academicYear"
+            class="w-48 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
+            :disabled="academicYears.length === 0"
+            @change="onYearChange"
+          >
+            <option v-if="academicYears.length === 0" value="">No batches yet</option>
+            <option v-for="year in academicYears" :key="year" :value="year">{{ year }}</option>
+          </select>
+        </label>
 
-          <label class="block">
-            <span class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Company</span>
-            <select
-              v-model="companyId"
-              class="w-72 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
-              :disabled="companiesForYear.length === 0"
-              @change="loadSheet"
-            >
-              <option v-if="companiesForYear.length === 0" :value="null">No companies with interns</option>
-              <option v-for="option in companiesForYear" :key="option.id" :value="option.id">{{ option.name }}</option>
-            </select>
-          </label>
-        </div>
-
-        <div class="flex flex-wrap gap-2">
-          <button
-            type="button"
-            class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
-            :disabled="isSaving || isLoadingSheet || !companyId"
-            @click="save('draft')"
+        <label class="block">
+          <span class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Company</span>
+          <select
+            v-model="companyId"
+            class="w-72 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
+            :disabled="companiesForYear.length === 0"
+            @change="loadSheet"
           >
-            Save Draft
-          </button>
-          <button
-            type="button"
-            class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
-            :disabled="isSaving || isLoadingSheet || !companyId"
-            @click="save('finalized')"
-          >
-            Finalize
-          </button>
-          <button
-            type="button"
-            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
-            :disabled="isDownloading || isLoadingSheet || !companyId"
-            @click="downloadPdf"
-          >
-            {{ isDownloading ? 'Preparing...' : 'Download PDF' }}
-          </button>
-        </div>
+            <option v-if="companiesForYear.length === 0" :value="null">No companies with interns</option>
+            <option v-for="option in companiesForYear" :key="option.id" :value="option.id">{{ option.name }}</option>
+          </select>
+        </label>
       </div>
+
+      <!-- Edit ⇄ Preview + actions -->
+      <ReportEditorBar
+        v-if="companyId"
+        :mode="mode"
+        :status="status"
+        :saving="isSaving"
+        :downloading="isDownloading"
+        :disabled="isLoadingSheet || !companyId"
+        @update:mode="mode = $event"
+        @save="save('draft')"
+        @finalize="save('finalized')"
+        @download="downloadPdf"
+      />
 
       <p v-if="errorMessage" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ errorMessage }}</p>
 
@@ -282,6 +271,11 @@ onMounted(loadIndex)
       </p>
 
       <p v-else-if="isLoadingSheet" class="text-sm text-slate-500">Loading sheet...</p>
+
+      <!-- PREVIEW — read-only document -->
+      <div v-else-if="mode === 'preview'" class="rounded-lg bg-slate-100 p-4 sm:p-6">
+        <GroupInfoSheetPaperView :department-line="departmentLine" :company="company" :rows="rows" />
+      </div>
 
       <template v-else>
         <!-- Document header line -->
@@ -301,20 +295,12 @@ onMounted(loadIndex)
 
         <!-- Roster -->
         <section class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <div class="flex items-center justify-between gap-3">
-            <h3 class="text-sm font-bold text-slate-900">
-              Student Trainee Information
-              <span class="ml-1 text-xs font-normal text-slate-400">
-                ({{ includedCount }} of {{ rows.length }} included)
-              </span>
-            </h3>
-            <span
-              class="rounded-full px-3 py-1 text-xs font-bold"
-              :class="status === 'finalized' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'"
-            >
-              {{ status === 'finalized' ? 'Finalized' : 'Draft' }}
+          <h3 class="text-sm font-bold text-slate-900">
+            Student Trainee Information
+            <span class="ml-1 text-xs font-normal text-slate-400">
+              ({{ includedCount }} of {{ rows.length }} included)
             </span>
-          </div>
+          </h3>
 
           <p v-if="rows.length === 0" class="mt-4 text-sm text-slate-400">
             No interns are placed at this company for this academic year. Use “Add Intern” to enter one manually.
