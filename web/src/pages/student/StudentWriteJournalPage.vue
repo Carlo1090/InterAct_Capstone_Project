@@ -29,6 +29,9 @@ const programName = ref<string | null>(null)
 const entryOrdinalLabel = ref('')
 const content = reactive<Record<string, string>>({})
 const enabledSections = reactive<Record<string, boolean>>({})
+
+// The Edit ⇄ Preview segmented switch. Preview renders the read-only paper —
+// the mandatory review step before an entry can finally be submitted.
 const isViewMode = ref(false)
 
 const sippCharLimit = 300
@@ -36,6 +39,20 @@ const sippEnabled = ref(false)
 
 const nonSippSections = computed(() => sections.value.filter((section) => !section.sipp))
 const sippSections = computed(() => sections.value.filter((section) => section.sipp))
+
+// Writing blocks currently on the page: every required section, plus any
+// optional section the student has added via the "Add to this entry" chips.
+const visibleNonSipp = computed(() =>
+  nonSippSections.value.filter((section) => section.required || enabledSections[section.key]),
+)
+
+// Optional sections not yet added — offered as add-chips OUTSIDE the writing
+// surface, so no checkbox ever sits where the student is typing.
+const addableSections = computed(() =>
+  nonSippSections.value.filter((section) => !section.required && !enabledSections[section.key]),
+)
+const canAddSipp = computed(() => sippSections.value.length > 0 && !sippEnabled.value)
+const hasAddable = computed(() => addableSections.value.length > 0 || canAddSipp.value)
 
 const charCount = computed(() =>
   Object.values(content).reduce((total, value) => total + value.length, 0),
@@ -49,30 +66,28 @@ const isSippOverLimit = computed(() =>
   sippSections.value.some((section) => sippLength(section.key) > sippCharLimit),
 )
 
-const toggleSection = (section: JournalTemplateSection, checked: boolean) => {
-  enabledSections[section.key] = checked
+const cannotSave = computed(() => isSaving.value || !editable.value || isOverLimit.value || isSippOverLimit.value)
 
-  if (checked) {
-    if (!(section.key in content)) {
-      content[section.key] = ''
-    }
-  } else {
-    delete content[section.key]
-  }
+const addSection = (section: JournalTemplateSection) => {
+  enabledSections[section.key] = true
+  if (!(section.key in content)) content[section.key] = ''
 }
 
-const toggleSipp = (checked: boolean) => {
-  sippEnabled.value = checked
+const removeSection = (section: JournalTemplateSection) => {
+  enabledSections[section.key] = false
+  delete content[section.key]
+}
 
+const addSipp = () => {
+  sippEnabled.value = true
   sippSections.value.forEach((section) => {
-    if (checked) {
-      if (!(section.key in content)) {
-        content[section.key] = ''
-      }
-    } else {
-      delete content[section.key]
-    }
+    if (!(section.key in content)) content[section.key] = ''
   })
+}
+
+const removeSipp = () => {
+  sippEnabled.value = false
+  sippSections.value.forEach((section) => delete content[section.key])
 }
 
 const load = async () => {
@@ -80,7 +95,6 @@ const load = async () => {
   errorMessage.value = ''
   statusMessage.value = ''
   notEnrolled.value = false
-  isViewMode.value = route.query.view === '1'
 
   try {
     const { data } = await api.get<JournalEntryDetail>(`/api/student/journal-entries/${entryDate.value}`)
@@ -117,6 +131,9 @@ const load = async () => {
       }
     })
 
+    // A locked entry (bundled / out of range) or an explicit ?view=1 opens
+    // straight to the read-only paper; an editable entry lands in the editor.
+    isViewMode.value = route.query.view === '1' || !data.editable
   } catch (error) {
     if (isNotEnrolledError(error)) {
       notEnrolled.value = true
@@ -152,9 +169,9 @@ const save = async (nextStatus: 'draft' | 'submitted') => {
     status.value = data.status
     statusMessage.value = nextStatus === 'submitted' ? 'Entry submitted.' : 'Draft saved.'
 
-    if (nextStatus === 'submitted') {
-      isViewMode.value = true
-    }
+    // A submitted entry stays on the paper (the review surface it was sent
+    // from); a saved draft returns the student to the editor to keep writing.
+    isViewMode.value = nextStatus === 'submitted'
   } catch (error) {
     if (isNotEnrolledError(error)) {
       notEnrolled.value = true
@@ -167,29 +184,18 @@ const save = async (nextStatus: 'draft' | 'submitted') => {
   }
 }
 
-const backToEditor = () => {
-  isViewMode.value = false
+const setMode = (mode: 'edit' | 'preview') => {
+  statusMessage.value = ''
+  isViewMode.value = mode === 'preview'
 }
-
-const openDocumentView = () => {
-  isViewMode.value = true
-}
-
-// The document view is directly editable for as long as the server says
-// so — within the OJT date range AND before this week gets bundled into
-// the student's Weekly Log. Submission status no longer locks it.
-const paperEditable = computed(() => editable.value)
 
 const downloadPdf = () => {
   window.open(`/api/student/journal-entries/${entryDate.value}/pdf`, '_blank')
 }
 
-const goToDate = (date: string) => {
-  router.push({ path: '/student/write-journal', query: { date } })
-}
-
 const onDateChange = (event: Event) => {
-  goToDate((event.target as HTMLInputElement).value)
+  const date = (event.target as HTMLInputElement).value
+  if (date) router.push({ path: '/student/write-journal', query: { date } })
 }
 
 watch(entryDate, load)
@@ -197,151 +203,119 @@ onMounted(load)
 </script>
 
 <template>
-  <section class="space-y-5">
+  <section class="mx-auto max-w-3xl space-y-4 pb-24 md:pb-4">
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
     <NotEnrolledNotice v-else-if="notEnrolled" />
 
-    <template v-else-if="isViewMode">
+    <template v-else>
+      <!-- Header: compact date + Edit/Preview segmented switch -->
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <span v-if="entryOrdinalLabel" class="text-sm font-bold text-slate-900">{{ entryOrdinalLabel }}</span>
+          <input
+            type="date"
+            :value="entryDate"
+            aria-label="Entry date"
+            class="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-sm text-slate-600 focus:border-blue-500"
+            @change="onDateChange"
+          />
+        </div>
+
+        <div class="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-sm font-semibold">
+          <button
+            type="button"
+            class="rounded-md px-4 py-1.5 transition"
+            :class="!isViewMode ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'"
+            @click="setMode('edit')"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            class="rounded-md px-4 py-1.5 transition"
+            :class="isViewMode ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'"
+            @click="setMode('preview')"
+          >
+            Preview
+          </button>
+        </div>
+      </div>
+
+      <!-- Lock / editability notices (kept thin) -->
       <div
         v-if="lockedReason === 'bundled'"
-        class="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700"
+        class="rounded-md border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700"
       >
         This week has already been compiled into your Weekly Log — daily entries for this week can no longer be edited.
       </div>
       <div
+        v-else-if="!editable"
+        class="rounded-md border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700"
+      >
+        This date can no longer be edited (future date or outside your OJT range).
+      </div>
+      <div
         v-else-if="status === 'submitted'"
-        class="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800"
+        class="rounded-md border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-800"
       >
         Submitted — you can still edit this entry until your weekly log for this week is compiled.
       </div>
 
-      <div class="flex flex-wrap items-center justify-end gap-3">
-        <span
-          v-if="paperEditable"
-          class="mr-auto font-mono text-xs"
-          :class="isOverLimit ? 'font-semibold text-red-600' : 'text-slate-400'"
-        >
-          {{ charCount }} / {{ charLimit }}
-        </span>
-        <button
-          type="button"
-          class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
-          @click="downloadPdf"
-        >
-          Download PDF
-        </button>
-        <button
-          v-if="editable"
-          type="button"
-          class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
-          @click="backToEditor"
-        >
-          Edit in Form
-        </button>
-        <button
-          v-if="paperEditable"
-          type="button"
-          class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
-          :disabled="isSaving || isOverLimit || isSippOverLimit"
-          @click="save('draft')"
-        >
-          Save Draft
-        </button>
-        <button
-          v-if="paperEditable"
-          type="button"
-          class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
-          :disabled="isSaving || isOverLimit || isSippOverLimit"
-          @click="save('submitted')"
-        >
-          Submit Entry
-        </button>
-      </div>
+      <!-- EDIT MODE — clean writing surface, no checkboxes inline -->
+      <template v-if="!isViewMode">
+        <p v-if="sections.length === 0" class="rounded-lg bg-white p-5 text-sm text-slate-500 shadow-sm ring-1 ring-slate-200">
+          No journal template sections are configured for your batch yet.
+        </p>
 
-      <p v-if="errorMessage" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ errorMessage }}</p>
-      <p v-if="statusMessage" class="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{{ statusMessage }}</p>
-
-      <JournalPaperView
-        :entry-date="entryDate"
-        :sections="sections"
-        :content="content"
-        :student-name="studentName"
-        :program-name="programName"
-        :entry-ordinal-label="entryOrdinalLabel"
-        :editable="paperEditable"
-      />
-    </template>
-
-    <template v-else>
-      <div class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-        Writing journal for <strong>{{ entryDate }}</strong>.
-        <span v-if="lockedReason === 'bundled'"> This week's entries have already been compiled into your Weekly Log and can no longer be edited.</span>
-        <span v-else-if="!editable"> This date can no longer be edited (future date or outside your OJT range).</span>
-      </div>
-
-    <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <div class="space-y-5">
-        <section class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <h2 class="text-sm font-bold text-slate-900">Entry Details</h2>
-          <label class="mt-4 block text-sm font-medium text-slate-700">
-            Date
-            <input
-              type="date"
-              :value="entryDate"
-              class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              @change="onDateChange"
-            />
-          </label>
-        </section>
-
-        <section v-for="section in nonSippSections" :key="section.key" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <div class="flex items-center justify-between gap-3">
+        <article
+          v-for="section in visibleNonSipp"
+          :key="section.key"
+          class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-slate-200 sm:p-5"
+        >
+          <div class="flex items-start justify-between gap-3">
             <div>
               <h2 class="text-sm font-bold text-slate-900">
                 {{ section.label }}
                 <span v-if="section.required" class="text-red-500">*</span>
               </h2>
-              <p class="mt-1 text-xs text-slate-400">{{ section.prompt }}</p>
+              <p v-if="section.prompt" class="mt-1 text-xs text-slate-400">{{ section.prompt }}</p>
             </div>
-            <label v-if="!section.required" class="flex shrink-0 items-center gap-2 text-xs font-semibold text-slate-600">
-              <input
-                type="checkbox"
-                :checked="!!enabledSections[section.key]"
-                :disabled="!editable"
-                @change="toggleSection(section, ($event.target as HTMLInputElement).checked)"
-              />
-              Include
-            </label>
+            <button
+              v-if="!section.required && editable"
+              type="button"
+              class="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+              @click="removeSection(section)"
+            >
+              Remove
+            </button>
           </div>
 
           <textarea
-            v-if="section.required || enabledSections[section.key]"
             v-model="content[section.key]"
             :disabled="!editable"
-            class="mt-3 min-h-40 w-full rounded-md border border-slate-300 px-4 py-3 text-sm leading-6 text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+            rows="6"
+            class="mt-3 w-full rounded-md border border-slate-200 px-4 py-3 text-sm leading-6 text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
           />
-        </section>
+        </article>
 
-        <section v-if="sippSections.length > 0" class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <div class="flex items-center justify-between gap-3">
+        <!-- SIPP block — its own card once added, with per-field counters -->
+        <article v-if="sippEnabled" class="rounded-lg bg-white p-4 shadow-sm ring-1 ring-slate-200 sm:p-5">
+          <div class="flex items-start justify-between gap-3">
             <div>
-              <h2 class="text-sm font-bold text-slate-900">
-                SIPP Report (Annex C)
-              </h2>
+              <h2 class="text-sm font-bold text-slate-900">SIPP Report (Annex C)</h2>
               <p class="mt-1 text-xs text-slate-400">Issues, solutions, and recommendations for your SIPP compliance report.</p>
             </div>
-            <label class="flex shrink-0 items-center gap-2 text-xs font-semibold text-slate-600">
-              <input
-                type="checkbox"
-                :checked="sippEnabled"
-                :disabled="!editable"
-                @change="toggleSipp(($event.target as HTMLInputElement).checked)"
-              />
-              SIPP Report
-            </label>
+            <button
+              v-if="editable"
+              type="button"
+              class="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+              @click="removeSipp"
+            >
+              Remove
+            </button>
           </div>
 
-          <div v-if="sippEnabled" class="mt-4 space-y-4">
+          <div class="mt-4 space-y-4">
             <div v-for="section in sippSections" :key="section.key">
               <div class="flex items-center justify-between gap-3">
                 <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ section.label }}</h3>
@@ -352,67 +326,115 @@ onMounted(load)
                   {{ sippLength(section.key) }} / {{ sippCharLimit }}
                 </span>
               </div>
-              <p class="mt-1 text-xs text-slate-400">{{ section.prompt }}</p>
+              <p v-if="section.prompt" class="mt-1 text-xs text-slate-400">{{ section.prompt }}</p>
               <textarea
                 v-model="content[section.key]"
                 :disabled="!editable"
                 :maxlength="sippCharLimit"
-                class="mt-2 min-h-24 w-full rounded-md border border-slate-300 px-4 py-3 text-sm leading-6 text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+                rows="3"
+                class="mt-2 w-full rounded-md border border-slate-200 px-4 py-3 text-sm leading-6 text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
               />
             </div>
           </div>
-        </section>
+        </article>
 
-        <p v-if="sections.length === 0" class="text-sm text-slate-500">
-          No journal template sections are configured for your batch yet.
-        </p>
-      </div>
-
-      <aside class="space-y-5">
-        <section class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <h2 class="text-sm font-bold text-slate-900">Entry Summary</h2>
-          <div class="mt-4 divide-y divide-slate-100 text-sm">
-            <div class="flex justify-between py-2">
-              <span class="text-slate-500">Character Count</span>
-              <span class="font-mono font-semibold" :class="isOverLimit ? 'text-red-600' : ''">{{ charCount }} / {{ charLimit }}</span>
-            </div>
-            <div class="flex justify-between py-2"><span class="text-slate-500">Status</span><span class="font-semibold capitalize">{{ status }}</span></div>
+        <!-- Add-chips — the section chooser, deliberately OUTSIDE the writing cards -->
+        <div v-if="editable && hasAddable" class="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4">
+          <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Add to this entry</p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button
+              v-for="section in addableSections"
+              :key="section.key"
+              type="button"
+              class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-blue-400 hover:text-blue-700"
+              @click="addSection(section)"
+            >
+              + {{ section.label }}
+            </button>
+            <button
+              v-if="canAddSipp"
+              type="button"
+              class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-blue-400 hover:text-blue-700"
+              @click="addSipp"
+            >
+              + SIPP Report (Annex C)
+            </button>
           </div>
-          <p v-if="isOverLimit" class="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
-            This entry exceeds the {{ charLimit }}-character limit. Trim it down before saving.
-          </p>
-        </section>
+        </div>
+      </template>
 
-        <p v-if="errorMessage" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ errorMessage }}</p>
-        <p v-if="statusMessage" class="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{{ statusMessage }}</p>
+      <!-- PREVIEW MODE — read-only paper, the review gate before submitting -->
+      <template v-else>
+        <div class="rounded-lg bg-slate-100 p-4 sm:p-6">
+          <JournalPaperView
+            :entry-date="entryDate"
+            :sections="sections"
+            :content="content"
+            :student-name="studentName"
+            :program-name="programName"
+            :entry-ordinal-label="entryOrdinalLabel"
+            :editable="false"
+          />
+        </div>
+      </template>
 
-        <div class="flex justify-end gap-3">
-          <button
-            type="button"
-            class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
-            @click="openDocumentView"
-          >
-            Document View
-          </button>
+      <p v-if="errorMessage" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ errorMessage }}</p>
+      <p v-if="statusMessage" class="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{{ statusMessage }}</p>
+      <p v-if="isOverLimit" class="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+        This entry exceeds the {{ charLimit }}-character limit. Trim it down before saving.
+      </p>
+
+      <!-- Action bar — sticky at the bottom on mobile, inline on desktop -->
+      <div
+        class="sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center gap-3 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur md:static md:mx-0 md:border-0 md:bg-transparent md:px-0 md:py-0"
+      >
+        <span
+          v-if="editable"
+          class="mr-auto font-mono text-xs"
+          :class="isOverLimit ? 'font-semibold text-red-600' : 'text-slate-400'"
+        >
+          {{ charCount }} / {{ charLimit }}
+        </span>
+
+        <button
+          v-if="isViewMode"
+          type="button"
+          class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+          @click="downloadPdf"
+        >
+          Download PDF
+        </button>
+
+        <template v-if="editable">
           <button
             type="button"
             class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
-            :disabled="isSaving || !editable || isOverLimit || isSippOverLimit"
+            :disabled="cannotSave"
             @click="save('draft')"
           >
             Save Draft
           </button>
+
           <button
+            v-if="!isViewMode"
             type="button"
             class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
-            :disabled="isSaving || !editable || isOverLimit || isSippOverLimit"
+            :disabled="isSaving || isOverLimit || isSippOverLimit"
+            @click="setMode('preview')"
+          >
+            Review &amp; Submit
+          </button>
+          <button
+            v-else
+            type="button"
+            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
+            :disabled="cannotSave"
             @click="save('submitted')"
           >
             Submit Entry
           </button>
-        </div>
-      </aside>
-    </div>
+        </template>
+      </div>
     </template>
   </section>
 </template>

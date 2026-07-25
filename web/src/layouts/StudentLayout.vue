@@ -17,7 +17,10 @@ const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 
+// Desktop-only rail collapse (the circular chevron). On phones the sidebar is
+// instead an off-canvas drawer driven by `mobileOpen`.
 const collapsed = ref(false)
+const mobileOpen = ref(false)
 
 // Until their info sheet is approved, a student may only reach the info-sheet
 // page — so the rest of the nav is hidden while gated. Profile stays reachable
@@ -59,9 +62,19 @@ const logout = async () => {
   <div class="min-h-screen bg-slate-100 text-slate-800">
     <div class="fixed inset-x-0 top-0 z-30 h-1.5 bg-slate-900" />
 
+    <!-- Mobile drawer backdrop -->
+    <div
+      v-if="mobileOpen"
+      class="fixed inset-0 z-30 bg-black/40 md:hidden"
+      @click="mobileOpen = false"
+    />
+
     <aside
-      class="fixed inset-y-0 left-0 z-20 flex flex-col overflow-visible bg-linear-to-b from-blue-600 to-indigo-700 text-white transition-all duration-200"
-      :class="collapsed ? 'w-20' : 'w-64'"
+      class="fixed inset-y-0 left-0 z-40 flex w-64 flex-col overflow-visible bg-linear-to-b from-blue-600 to-indigo-700 text-white transition-transform duration-200 md:z-20 md:translate-x-0 md:transition-all"
+      :class="[
+        collapsed ? 'md:w-20' : 'md:w-64',
+        mobileOpen ? 'translate-x-0' : '-translate-x-full',
+      ]"
     >
       <div class="flex items-center gap-3 px-5 py-5" :class="collapsed && 'justify-center px-0'">
         <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white shadow">
@@ -78,8 +91,9 @@ const logout = async () => {
           :key="item.to"
           :to="item.to"
           class="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-blue-100 transition hover:bg-white/10 hover:text-white"
-          :class="collapsed && 'justify-center px-0'"
+          :class="collapsed && 'md:justify-center md:px-0'"
           active-class="bg-white/15 text-white"
+          @click="mobileOpen = false"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5 shrink-0">
             <rect v-if="item.icon === 'dashboard'" x="3.5" y="3.5" width="7" height="7" rx="1.5" fill="currentColor" />
@@ -141,7 +155,7 @@ const logout = async () => {
 
       <button
         type="button"
-        class="absolute -right-3.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-indigo-700 text-white shadow-md ring-2 ring-white transition hover:bg-indigo-800"
+        class="absolute -right-3.5 top-1/2 hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-indigo-700 text-white shadow-md ring-2 ring-white transition hover:bg-indigo-800 md:flex"
         :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
         @click="collapsed = !collapsed"
       >
@@ -151,14 +165,24 @@ const logout = async () => {
       </button>
     </aside>
 
-    <div class="min-h-screen transition-all duration-200" :class="collapsed ? 'ml-20' : 'ml-64'">
-      <header class="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-8">
-        <div class="flex items-center gap-4">
-          <h1 class="text-lg font-bold text-slate-950">{{ pageTitle }}</h1>
+    <div class="min-h-screen transition-all duration-200 md:ml-64" :class="collapsed ? 'md:ml-20' : 'md:ml-64'">
+      <header class="sticky top-0 z-10 flex h-16 items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 md:px-8">
+        <div class="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            class="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 md:hidden"
+            aria-label="Open menu"
+            @click="mobileOpen = true"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-6 w-6">
+              <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            </svg>
+          </button>
+          <h1 class="truncate text-base font-bold text-slate-950 md:text-lg">{{ pageTitle }}</h1>
           <RouterLink
             v-if="!isGated && !isPaused && route.path !== '/student/write-journal'"
             to="/student/write-journal"
-            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+            class="hidden shrink-0 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 sm:inline-block"
           >
             + Write Today's Journal
           </RouterLink>
@@ -181,7 +205,7 @@ const logout = async () => {
         </div>
       </header>
 
-      <main class="p-8">
+      <main class="p-4 md:p-8">
         <RouterView />
       </main>
     </div>
