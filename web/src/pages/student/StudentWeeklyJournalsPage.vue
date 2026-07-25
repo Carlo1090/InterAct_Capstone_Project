@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import NotEnrolledNotice from '@/components/student/NotEnrolledNotice.vue'
@@ -8,7 +8,7 @@ import WeeklyJournalPaperView from '@/components/journal/WeeklyJournalPaperView.
 import { confirmAction, showToast } from '@/lib/toast'
 import { isNotEnrolledError } from '@/lib/enrollment'
 import { useAuthStore } from '@/stores/auth'
-import type { WeeklyActivityEntryRecord, WeeklyActivityLogRecord, WeeklyLogDetail, WeeklyLogSummary } from '@/types/api'
+import type { WeeklyLogDetail, WeeklyLogSummary } from '@/types/api'
 
 const auth = useAuthStore()
 
@@ -41,6 +41,11 @@ const savingDetail = reactive<Record<string, boolean>>({})
 const submittingDetail = reactive<Record<string, boolean>>({})
 const saveMessage = reactive<Record<string, string>>({})
 
+// Per-week Edit ⇄ Preview toggle for editable (draft/returned) weeks — mirrors
+// the Write Daily Journal page: Preview renders the read-only paper document,
+// while Save/Submit stay reachable so the student can submit straight from it.
+const previewMode = reactive<Record<string, boolean>>({})
+
 /**
  * weekly_logs.status defaults to 'pending' at the DB level even for a
  * never-submitted draft, so 'pending' alone can't tell "still drafting"
@@ -52,6 +57,13 @@ const weekState = (week: WeeklyLogSummary): WeekState => {
   if (week.status === 'approved') return 'approved'
   if (week.status === 'returned') return 'returned'
   return week.submitted_at ? 'submitted' : 'draft'
+}
+
+// Draft or returned weeks are editable (the student can still write + submit);
+// submitted/approved weeks are read-only and always show the paper document.
+const isEditable = (week: WeeklyLogSummary): boolean => {
+  const state = weekState(week)
+  return state === 'draft' || state === 'returned'
 }
 
 const loadWeeks = async () => {
@@ -132,6 +144,7 @@ const submitWeek = async (week: WeeklyLogSummary) => {
   try {
     await api.post(`/api/student/weekly-logs/${week.week_start}/submit`)
     delete details[week.week_start]
+    previewMode[week.week_start] = false
     await Promise.all([loadWeeks(), loadDetail(week.week_start)])
     showToast(isResubmit ? 'Weekly log resubmitted for review.' : 'Weekly log submitted for review.')
   } catch (error) {
@@ -140,106 +153,6 @@ const submitWeek = async (week: WeeklyLogSummary) => {
   } finally {
     submittingDetail[week.week_start] = false
   }
-}
-
-const activityLogs = ref<WeeklyActivityLogRecord[]>([])
-const activityLogLoading = reactive<Record<string, boolean>>({})
-const entrySaving = reactive<Record<number, boolean>>({})
-const newEntryForms = reactive<Record<number, {
-  inclusive_date_start: string
-  inclusive_date_end: string
-  activities: string
-  documents_records: string
-  objectives: string
-  supervisor_name: string
-  supervisor_position: string
-}>>({})
-
-const loadActivityLogs = async () => {
-  try {
-    const { data } = await api.get<WeeklyActivityLogRecord[]>('/api/student/weekly-activity-logs')
-    activityLogs.value = data
-  } catch {
-    // Section falls back to "create" state if this fails; not critical to page load.
-  }
-}
-
-const weeksWithActivityLog = computed(() =>
-  weeks.value.map((week) => ({
-    ...week,
-    activityLog: activityLogs.value.find((log) => log.week_start === week.week_start) ?? null,
-  })),
-)
-
-const createActivityLog = async (week: WeeklyLogSummary) => {
-  activityLogLoading[week.week_start] = true
-
-  try {
-    const { data } = await api.post<WeeklyActivityLogRecord>('/api/student/weekly-activity-logs', {
-      week_start: week.week_start,
-      week_end: week.week_end,
-    })
-    activityLogs.value.push({ ...data, entries: [] })
-  } catch {
-    saveMessage[week.week_start] = 'Unable to create weekly activity log.'
-  } finally {
-    activityLogLoading[week.week_start] = false
-  }
-}
-
-const ensureEntryForm = (logId: number) => {
-  if (!newEntryForms[logId]) {
-    newEntryForms[logId] = {
-      inclusive_date_start: '',
-      inclusive_date_end: '',
-      activities: '',
-      documents_records: '',
-      objectives: '',
-      supervisor_name: '',
-      supervisor_position: '',
-    }
-  }
-
-  return newEntryForms[logId]
-}
-
-const addEntry = async (log: WeeklyActivityLogRecord) => {
-  const form = ensureEntryForm(log.id)
-  entrySaving[log.id] = true
-
-  try {
-    const { data } = await api.post<WeeklyActivityEntryRecord>(`/api/student/weekly-activity-logs/${log.id}/entries`, form)
-    log.entries = [...(log.entries ?? []), data]
-    newEntryForms[log.id] = {
-      inclusive_date_start: '',
-      inclusive_date_end: '',
-      activities: '',
-      documents_records: '',
-      objectives: '',
-      supervisor_name: '',
-      supervisor_position: '',
-    }
-  } catch {
-    // Keep the form values in place so the student can fix and retry.
-  } finally {
-    entrySaving[log.id] = false
-  }
-}
-
-const removeEntry = async (log: WeeklyActivityLogRecord, entryId: number) => {
-  if (!(await confirmAction('Remove this entry from your Weekly Activity Log? This cannot be undone.'))) return
-
-  try {
-    await api.delete(`/api/student/weekly-activity-logs/${log.id}/entries/${entryId}`)
-    log.entries = (log.entries ?? []).filter((entry) => entry.id !== entryId)
-    showToast('Entry removed.')
-  } catch {
-    showToast('Unable to remove this entry.', 'error')
-  }
-}
-
-const downloadPdf = (logId: number) => {
-  window.open(`/api/student/weekly-activity-logs/${logId}/pdf`, '_blank')
 }
 
 const statusLabel = (week: WeeklyLogSummary): string => {
@@ -258,10 +171,7 @@ const statusClass = (week: WeeklyLogSummary): string => {
   return 'bg-slate-100 text-slate-600'
 }
 
-onMounted(() => {
-  loadWeeks()
-  loadActivityLogs()
-})
+onMounted(loadWeeks)
 </script>
 
 <template>
@@ -277,14 +187,14 @@ onMounted(() => {
     <p v-else-if="weeks.length === 0" class="text-sm text-slate-500">No weeks found in your OJT range yet.</p>
 
     <details
-      v-for="week in weeksWithActivityLog"
+      v-for="week in weeks"
       :key="week.week_start"
       class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200"
       @toggle="loadDetail(week.week_start)"
     >
       <summary class="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 transition hover:bg-slate-50">
         <div>
-          <h2 class="text-sm font-bold text-slate-900">{{ week.week_start }} to {{ week.week_end }}</h2>
+          <h2 class="text-sm font-bold text-slate-900">{{ formatDate(week.week_start) }} – {{ formatDate(week.week_end) }}</h2>
           <p class="mt-1 text-xs text-slate-500">{{ week.entries_count }} daily entries</p>
         </div>
         <span class="rounded-full px-3 py-1 text-xs font-bold" :class="statusClass(week)">
@@ -333,10 +243,8 @@ onMounted(() => {
           </div>
 
           <div class="mt-5">
-            <!-- Read-only states show the same typed document the PDF and the
-                 supervisor's preview render; draft/returned keep the editable
-                 textarea (editing/submit mechanics untouched). -->
-            <template v-if="weekState(week) === 'submitted' || weekState(week) === 'approved'">
+            <!-- Submitted/approved weeks are read-only: always the paper document. -->
+            <template v-if="!isEditable(week)">
               <h3 class="text-sm font-bold text-slate-900">Weekly Narrative</h3>
               <div class="mt-2 rounded-md bg-slate-100 p-4 sm:p-6">
                 <WeeklyJournalPaperView
@@ -347,125 +255,65 @@ onMounted(() => {
                 />
               </div>
             </template>
-            <div v-else>
-              <div class="flex items-center justify-between gap-3">
+
+            <!-- Draft/returned weeks get an Edit ⇄ Preview switch; Save/Submit
+                 stay in the action bar below so the student can submit from
+                 Preview after seeing the rendered document. -->
+            <template v-else>
+              <div class="flex flex-wrap items-center justify-between gap-3">
                 <h3 class="text-sm font-bold text-slate-900">Weekly Narrative</h3>
-                <span
-                  class="font-mono text-xs"
-                  :class="isNarrativeOverLimit(week.week_start) ? 'font-semibold text-red-600' : 'text-slate-400'"
-                >
-                  {{ narrativeLength(week.week_start) }} / {{ WEEKLY_NARRATIVE_CHAR_LIMIT }}
-                </span>
+                <div class="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-sm font-semibold">
+                  <button
+                    type="button"
+                    class="rounded-md px-4 py-1.5 transition"
+                    :class="!previewMode[week.week_start] ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'"
+                    @click="previewMode[week.week_start] = false"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-md px-4 py-1.5 transition"
+                    :class="previewMode[week.week_start] ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'"
+                    @click="previewMode[week.week_start] = true"
+                  >
+                    Preview
+                  </button>
+                </div>
               </div>
-              <p class="mt-1 text-xs text-slate-400">
-                Summarize your week. This is what your supervisor reviews — write it in full sentences.
-              </p>
-              <textarea
-                v-model="details[week.week_start].narrative"
-                rows="14"
-                class="mt-2 min-h-72 w-full rounded-md border px-4 py-3 text-sm leading-6 text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                :class="isNarrativeOverLimit(week.week_start) ? 'border-red-400' : 'border-slate-300'"
-              />
-            </div>
+
+              <div v-if="previewMode[week.week_start]" class="mt-2 rounded-md bg-slate-100 p-4 sm:p-6">
+                <WeeklyJournalPaperView
+                  :narrative="details[week.week_start].narrative ?? ''"
+                  :student-name="auth.user?.name ?? ''"
+                  :week-start="week.week_start"
+                  :week-end="week.week_end"
+                />
+              </div>
+
+              <div v-else class="mt-2">
+                <p class="text-xs text-slate-400">
+                  Summarize your week. This is what your supervisor reviews — write it in full sentences.
+                </p>
+                <textarea
+                  v-model="details[week.week_start].narrative"
+                  rows="14"
+                  class="mt-2 min-h-72 w-full rounded-md border px-4 py-3 text-sm leading-6 text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  :class="isNarrativeOverLimit(week.week_start) ? 'border-red-400' : 'border-slate-300'"
+                />
+                <p class="mt-1 text-right font-mono text-xs" :class="isNarrativeOverLimit(week.week_start) ? 'font-semibold text-red-600' : 'text-slate-400'">
+                  {{ narrativeLength(week.week_start) }} / {{ WEEKLY_NARRATIVE_CHAR_LIMIT }}
+                </p>
+              </div>
+            </template>
           </div>
 
           <div v-if="week.status === 'returned' && week.supervisor_comment" class="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             Supervisor's note: {{ week.supervisor_comment }}
           </div>
 
-          <div class="mt-5 rounded-md border border-slate-200 p-4">
-            <div class="flex items-center justify-between">
-              <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500">Weekly Activity Log (SIPP)</h3>
-              <button
-                v-if="week.activityLog"
-                type="button"
-                class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-                @click="downloadPdf(week.activityLog.id)"
-              >
-                Download PDF
-              </button>
-            </div>
-
-            <div v-if="!week.activityLog" class="mt-3">
-              <button
-                type="button"
-                class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:grayscale disabled:cursor-not-allowed"
-                :disabled="activityLogLoading[week.week_start]"
-                @click="createActivityLog(week)"
-              >
-                {{ activityLogLoading[week.week_start] ? 'Creating...' : 'Create Weekly Activity Log' }}
-              </button>
-            </div>
-
-            <template v-else>
-              <table class="mt-3 min-w-full divide-y divide-slate-200">
-                <thead>
-                  <tr>
-                    <th class="py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Dates</th>
-                    <th class="py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Activities</th>
-                    <th class="py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Documents</th>
-                    <th class="py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Objectives</th>
-                    <th class="py-2"></th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100">
-                  <tr v-if="!week.activityLog.entries?.length">
-                    <td colspan="5" class="py-3 text-sm text-slate-400">No rows yet.</td>
-                  </tr>
-                  <tr v-for="entry in week.activityLog.entries" :key="entry.id">
-                    <td class="py-2 font-mono text-xs text-slate-600">{{ entry.inclusive_date_start }} to {{ entry.inclusive_date_end }}</td>
-                    <td class="py-2 text-sm text-slate-700">{{ entry.activities }}</td>
-                    <td class="py-2 text-sm text-slate-500">{{ entry.documents_records }}</td>
-                    <td class="py-2 text-sm text-slate-500">{{ entry.objectives }}</td>
-                    <td class="py-2 text-right">
-                      <button type="button" class="text-xs font-semibold text-red-600 transition hover:text-red-800" @click="removeEntry(week.activityLog, entry.id)">
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <div class="mt-3 grid gap-2 md:grid-cols-2">
-                <input
-                  v-model="ensureEntryForm(week.activityLog.id).inclusive_date_start"
-                  type="date"
-                  class="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                />
-                <input
-                  v-model="ensureEntryForm(week.activityLog.id).inclusive_date_end"
-                  type="date"
-                  class="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                />
-                <textarea
-                  v-model="ensureEntryForm(week.activityLog.id).activities"
-                  placeholder="Activities"
-                  class="rounded-md border border-slate-300 px-3 py-2 text-sm md:col-span-2"
-                />
-                <input
-                  v-model="ensureEntryForm(week.activityLog.id).supervisor_name"
-                  placeholder="Supervisor name"
-                  class="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                />
-                <input
-                  v-model="ensureEntryForm(week.activityLog.id).supervisor_position"
-                  placeholder="Supervisor position"
-                  class="rounded-md border border-slate-300 px-3 py-2 text-sm"
-                />
-              </div>
-              <button
-                type="button"
-                class="mt-2 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:grayscale disabled:cursor-not-allowed"
-                :disabled="entrySaving[week.activityLog.id]"
-                @click="addEntry(week.activityLog)"
-              >
-                + Add Row
-              </button>
-            </template>
-          </div>
-
-          <div class="mt-4 flex items-center justify-end gap-3">
-            <span v-if="saveMessage[week.week_start]" class="text-sm text-slate-500">{{ saveMessage[week.week_start] }}</span>
+          <div class="mt-5 flex flex-wrap items-center justify-end gap-3">
+            <span v-if="saveMessage[week.week_start]" class="mr-auto text-sm text-slate-500">{{ saveMessage[week.week_start] }}</span>
             <button
               type="button"
               class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
@@ -474,7 +322,7 @@ onMounted(() => {
               Download PDF
             </button>
             <button
-              v-if="weekState(week) === 'draft' || weekState(week) === 'returned'"
+              v-if="isEditable(week)"
               type="button"
               class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:grayscale disabled:cursor-not-allowed"
               :disabled="savingDetail[week.week_start] || isNarrativeOverLimit(week.week_start)"
@@ -483,7 +331,7 @@ onMounted(() => {
               {{ savingDetail[week.week_start] ? 'Saving...' : 'Save Narrative' }}
             </button>
             <button
-              v-if="weekState(week) === 'draft' || weekState(week) === 'returned'"
+              v-if="isEditable(week)"
               type="button"
               class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:grayscale disabled:cursor-not-allowed"
               :disabled="submittingDetail[week.week_start] || !details[week.week_start].narrative?.trim() || isNarrativeOverLimit(week.week_start)"

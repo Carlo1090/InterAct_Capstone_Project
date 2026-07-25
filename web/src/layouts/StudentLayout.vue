@@ -70,7 +70,7 @@ const logout = async () => {
     />
 
     <aside
-      class="fixed inset-y-0 left-0 z-40 flex w-64 flex-col overflow-visible bg-linear-to-b from-blue-600 to-indigo-700 text-white transition-transform duration-200 md:z-20 md:translate-x-0 md:transition-all"
+      class="fixed inset-y-0 left-0 z-40 flex w-64 flex-col overflow-visible bg-linear-to-b from-blue-600 to-indigo-700 text-white transition-all duration-300 ease-in-out md:z-20 md:translate-x-0"
       :class="[
         collapsed ? 'md:w-20' : 'md:w-64',
         mobileOpen ? 'translate-x-0' : '-translate-x-full',
@@ -165,7 +165,7 @@ const logout = async () => {
       </button>
     </aside>
 
-    <div class="min-h-screen transition-all duration-200 md:ml-64" :class="collapsed ? 'md:ml-20' : 'md:ml-64'">
+    <div class="min-h-screen transition-[margin] duration-300 ease-in-out" :class="collapsed ? 'md:ml-20' : 'md:ml-64'">
       <header class="sticky top-0 z-10 flex h-16 items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 md:px-8">
         <div class="flex min-w-0 items-center gap-3">
           <button
@@ -179,13 +179,6 @@ const logout = async () => {
             </svg>
           </button>
           <h1 class="truncate text-base font-bold text-slate-950 md:text-lg">{{ pageTitle }}</h1>
-          <RouterLink
-            v-if="!isGated && !isPaused && route.path !== '/student/write-journal'"
-            to="/student/write-journal"
-            class="hidden shrink-0 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 sm:inline-block"
-          >
-            + Write Today's Journal
-          </RouterLink>
         </div>
 
         <div class="flex items-center gap-3">
