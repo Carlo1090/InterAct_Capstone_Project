@@ -10,10 +10,10 @@ use Illuminate\Http\Request;
 class WeeklyBundlingController extends Controller
 {
     /**
-     * Demo/manual trigger for the same compilation the Saturday-00:00
+     * Demo/manual trigger for the same compilation the Monday-00:00
      * schedule runs — lets an admin click through it live rather than
      * waiting for the schedule. Defaults to the most recently completed
-     * Mon-Fri; an admin may pick any week_start for demo flexibility.
+     * Mon-Sun; an admin may pick any week_start for demo flexibility.
      */
     public function run(Request $request, WeeklyBundlingService $service): JsonResponse
     {

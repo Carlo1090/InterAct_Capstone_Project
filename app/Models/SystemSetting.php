@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Model;
 class SystemSetting extends Model
 {
     public $timestamps = false;
+
     const UPDATED_AT = 'updated_at';
+
     const CREATED_AT = null;
 }

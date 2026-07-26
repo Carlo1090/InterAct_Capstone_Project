@@ -10,7 +10,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class CompanySupervisor extends Model
 {
     public $timestamps = false;
+
     const CREATED_AT = 'assigned_at';
+
     const UPDATED_AT = null;
 
     public function company(): BelongsTo

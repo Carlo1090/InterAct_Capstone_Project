@@ -7,9 +7,9 @@ use Illuminate\Console\Command;
 
 class RunWeeklyBundling extends Command
 {
-    protected $signature = 'journal:run-weekly-bundling {--week-start= : Y-m-d date within the target week; defaults to the most recently completed Mon-Fri}';
+    protected $signature = 'journal:run-weekly-bundling {--week-start= : Y-m-d date within the target week; defaults to the most recently completed Mon-Sun}';
 
-    protected $description = "Compile each active student's Mon-Fri Daily Accomplishment entries into their WeeklyLog narrative.";
+    protected $description = "Compile each active student's Daily Accomplishment entries for a Mon-Sun week into their WeeklyLog narrative.";
 
     public function handle(WeeklyBundlingService $service): int
     {

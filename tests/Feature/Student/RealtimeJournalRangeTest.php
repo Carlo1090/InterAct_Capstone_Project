@@ -7,6 +7,7 @@ use App\Models\JournalEntry;
 use App\Models\StudentInformationSheet;
 use App\Models\User;
 use App\Models\WeeklyLog;
+use App\Services\WeeklyBundlingService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -21,8 +22,8 @@ use Tests\TestCase;
  */
 class RealtimeJournalRangeTest extends TestCase
 {
-    use RefreshDatabase;
     use EnrollsStudentInBatch;
+    use RefreshDatabase;
 
     private function enrollmentOf(User $student): BatchStudent
     {
@@ -232,7 +233,7 @@ class RealtimeJournalRangeTest extends TestCase
 
         $this->enrollmentOf($student)->update(['status' => 'completed']);
 
-        $result = app(\App\Services\WeeklyBundlingService::class)->bundleWeek($lastMonday);
+        $result = app(WeeklyBundlingService::class)->bundleWeek($lastMonday);
 
         $this->assertSame(0, $result['compiled']);
         $this->assertFalse(

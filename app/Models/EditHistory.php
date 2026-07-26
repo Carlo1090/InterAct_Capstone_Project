@@ -10,7 +10,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class EditHistory extends Model
 {
     public $timestamps = false;
+
     const CREATED_AT = 'edited_at';
+
     const UPDATED_AT = null;
 
     public function weeklyLog(): BelongsTo

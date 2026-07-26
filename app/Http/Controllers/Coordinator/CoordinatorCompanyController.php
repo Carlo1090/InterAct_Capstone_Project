@@ -14,8 +14,8 @@ use App\Models\CompanySupervisor;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Hash;
 
 class CoordinatorCompanyController extends Controller
 {
@@ -257,7 +257,7 @@ class CoordinatorCompanyController extends Controller
      * name-only row (display name from its own name column) to the same
      * shape, so the frontend doesn't need to special-case either.
      *
-     * @param Collection<int, CompanySupervisor> $supervisors
+     * @param  Collection<int, CompanySupervisor>  $supervisors
      * @return Collection<int, array<string, mixed>>
      */
     private function mapSupervisors(Collection $supervisors): Collection

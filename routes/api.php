@@ -25,6 +25,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Student\JournalCalendarController;
 use App\Http\Controllers\Student\JournalEntryController;
+use App\Http\Controllers\Student\ReminderPreferenceController;
 use App\Http\Controllers\Student\StudentDashboardController;
 use App\Http\Controllers\Student\StudentInfoSheetController;
 use App\Http\Controllers\Student\WeeklyActivityLogController;
@@ -216,6 +217,10 @@ Route::middleware(['auth:sanctum', 'role:student', 'infosheet.approved'])
         Route::post('journal-entries', [JournalEntryController::class, 'store']);
 
         Route::get('journal-calendar', [JournalCalendarController::class, 'index']);
+
+        // The student's own reminder "alarm" — days, time, on/off.
+        Route::get('reminder-preferences', [ReminderPreferenceController::class, 'show']);
+        Route::put('reminder-preferences', [ReminderPreferenceController::class, 'update']);
 
         Route::get('weekly-logs', [WeeklyLogController::class, 'index']);
         Route::get('weekly-logs/{weekStart}', [WeeklyLogController::class, 'show']);

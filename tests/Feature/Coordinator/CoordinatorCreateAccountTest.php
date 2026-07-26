@@ -6,6 +6,7 @@ use App\Models\Batch;
 use App\Models\Department;
 use App\Models\JournalEntry;
 use App\Models\Program;
+use App\Models\StudentInformationSheet;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -94,7 +95,7 @@ class CoordinatorCreateAccountTest extends TestCase
         // the middle name must NOT bleed into the family name (regression: the
         // scaffold used to re-split the joined users.name and produce
         // last_name = "Q Student").
-        $sheet = \App\Models\StudentInformationSheet::where('student_id', $student->id)->first();
+        $sheet = StudentInformationSheet::where('student_id', $student->id)->first();
         $this->assertSame('Student', $sheet->personal_info['last_name']);
         $this->assertSame('New', $sheet->personal_info['first_name']);
         $this->assertSame('Q', $sheet->personal_info['middle_name']);

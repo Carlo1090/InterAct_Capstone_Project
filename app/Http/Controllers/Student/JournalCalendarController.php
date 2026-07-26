@@ -35,7 +35,11 @@ class JournalCalendarController extends Controller
         $workingDaysPerWeek = $enrollment->batch->working_days_per_week;
 
         $entriesByDate = JournalEntry::where('student_id', $user->id)
-            ->whereBetween('entry_date', [$month->startOfMonth()->toDateString(), $month->endOfMonth()->toDateString()])
+            // whereDate on both bounds, never whereBetween: entry_date is a
+            // date-cast column and SQLite stores it with a time component, which
+            // sorts after a bare upper bound and drops the month's last day.
+            ->whereDate('entry_date', '>=', $month->startOfMonth()->toDateString())
+            ->whereDate('entry_date', '<=', $month->endOfMonth()->toDateString())
             ->get()
             ->keyBy(fn (JournalEntry $entry) => $entry->entry_date->toDateString());
 
@@ -78,16 +82,22 @@ class JournalCalendarController extends Controller
             return 'future';
         }
 
-        if (! BatchWorkingDays::isWorkingDay($date, $workingDaysPerWeek)) {
-            return 'no_entry';
-        }
-
+        // An entry the student actually wrote always wins, whatever day of the
+        // week it falls on — an intern who worked a Saturday must not see their
+        // submitted entry reported as 'no_entry' (which reads identically to
+        // "outside your OJT window").
         if ($entry?->status === 'submitted') {
             return 'submitted';
         }
 
         if ($entry?->status === 'draft') {
             return 'draft';
+        }
+
+        // Nothing written. Only now does the schedule matter: a non-working day
+        // was never expected, so it stays 'no_entry' and is never 'missing'.
+        if (! BatchWorkingDays::isWorkingDay($date, $workingDaysPerWeek)) {
+            return 'no_entry';
         }
 
         return $date->lt($today) ? 'missing' : 'draft';

@@ -10,6 +10,7 @@ use App\Models\JournalEntry;
 use App\Models\Program;
 use App\Models\User;
 use App\Models\WeeklyLog;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -77,7 +78,7 @@ class CoordinatorWeeklyJournalTest extends TestCase
         bool $submitted = true,
         string $weekStart = '2026-06-29'
     ): WeeklyLog {
-        $start = \Carbon\Carbon::parse($weekStart);
+        $start = Carbon::parse($weekStart);
 
         return WeeklyLog::create([
             'batch_id' => $enrollment->batch_id,

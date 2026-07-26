@@ -34,7 +34,7 @@ class BatchController extends Controller
                 'company:id,name',
                 'supervisor:id,name,email',
             ])
-            ->orderByDesc('enrolled_at')
+            ->orderByDesc('enrolled_at'),
         ]);
 
         return response()->json($batch);

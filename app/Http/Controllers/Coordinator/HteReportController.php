@@ -13,6 +13,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Collection;
 
 class HteReportController extends Controller
 {
@@ -132,7 +133,7 @@ class HteReportController extends Controller
      * ordered company-then-student by buildRows(), so a "run" is simply a
      * streak of adjacent equal values — no re-sorting here.
      *
-     * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $rows
+     * @param  Collection<int, array<string, mixed>>  $rows
      * @return array<int, array<string, mixed>>
      */
     private function withHostEstablishmentSpans($rows): array

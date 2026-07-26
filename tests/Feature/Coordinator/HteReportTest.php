@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Coordinator;
 
+use App\Http\Controllers\Coordinator\HteReportController;
 use App\Models\Batch;
 use App\Models\BatchStudent;
 use App\Models\Company;
@@ -304,7 +305,7 @@ class HteReportTest extends TestCase
 
         // The rendered blade only reflects included rows (verified on the HTML the PDF is built from).
         $report = HteReport::where('coordinator_id', $coordinator->id)->where('academic_year', '2026')->first();
-        $controller = new \App\Http\Controllers\Coordinator\HteReportController();
+        $controller = new HteReportController;
         $build = (new \ReflectionMethod($controller, 'buildRows'))->getClosure($controller);
         $rows = collect($build($coordinator, '2026', null, $report))->filter(fn ($r) => $r['included'])->values();
         $html = view('pdf.hte-report', ['academicYear' => '2026', 'rows' => $rows, 'meta' => [

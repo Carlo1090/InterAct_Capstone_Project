@@ -13,8 +13,8 @@ use Tests\TestCase;
 
 class JournalEntryTest extends TestCase
 {
-    use RefreshDatabase;
     use EnrollsStudentInBatch;
+    use RefreshDatabase;
 
     public function test_student_can_download_a_daily_entry_pdf(): void
     {
@@ -295,6 +295,54 @@ class JournalEntryTest extends TestCase
         $showResponse->assertOk();
         $showResponse->assertJsonPath('editable', false);
         $showResponse->assertJsonPath('locked_reason', 'bundled');
+    }
+
+    /**
+     * The bug this fixes: bundling used to run Saturday 00:00 for the week that
+     * was still in progress, and stamping a WeeklyLog is a one-way edit lock on
+     * every daily entry in that week. So an intern rostered on a Saturday found
+     * the day locked before their shift had even started — they could never
+     * write it. Bundling now runs Monday, for the Mon-Sun week that has actually
+     * ended, leaving the current week (Saturday included) writable.
+     */
+    public function test_a_saturday_entry_stays_writable_after_bundling_runs(): void
+    {
+        $saturday = Carbon::parse('2026-08-01'); // a Saturday
+        $this->travelTo($saturday);
+
+        $student = $this->enrolledStudent([
+            'start_date' => $saturday->copy()->subMonth(),
+            'end_date' => $saturday->copy()->addMonth(),
+            'working_days_per_week' => 5, // a Mon-Fri batch working an extra Saturday
+        ]);
+        Sanctum::actingAs($student, ['*']);
+
+        // Exactly what the schedule does: no --week-start, so it bundles whatever
+        // mostRecentlyCompletedWeekStart() resolves to.
+        $this->artisan('journal:run-weekly-bundling')->assertSuccessful();
+
+        // The bundle must have landed on the PREVIOUS week, not this one.
+        $thisMonday = $saturday->copy()->startOfWeek(Carbon::MONDAY);
+        $this->assertDatabaseMissing('weekly_logs', [
+            'student_id' => $student->id,
+            'week_start' => $thisMonday->toDateString(),
+        ]);
+
+        $showResponse = $this->getJson('/api/student/journal-entries/'.$saturday->toDateString());
+        $showResponse->assertOk();
+        $showResponse->assertJsonPath('editable', true);
+        $showResponse->assertJsonPath('locked_reason', null);
+
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $saturday->toDateString(),
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'Covered the Saturday shift.'],
+        ])->assertOk();
+
+        $this->assertDatabaseHas('journal_entries', [
+            'student_id' => $student->id,
+            'content->task_performed' => 'Covered the Saturday shift.',
+        ]);
     }
 
     public function test_draft_can_be_saved_and_overwritten_freely_before_submission(): void

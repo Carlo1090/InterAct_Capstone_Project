@@ -10,7 +10,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class BatchStudent extends Model
 {
     public $timestamps = false;
+
     const CREATED_AT = 'enrolled_at';
+
     const UPDATED_AT = null;
 
     protected function casts(): array

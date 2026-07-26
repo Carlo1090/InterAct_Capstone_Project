@@ -10,8 +10,8 @@ use Tests\TestCase;
 
 class WeeklyActivityLogTest extends TestCase
 {
-    use RefreshDatabase;
     use EnrollsStudentInBatch;
+    use RefreshDatabase;
 
     public function test_student_can_build_a_weekly_activity_log_and_download_its_pdf(): void
     {

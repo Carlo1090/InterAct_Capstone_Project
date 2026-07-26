@@ -12,8 +12,8 @@ use Tests\TestCase;
 
 class WeeklyBundlingServiceTest extends TestCase
 {
-    use RefreshDatabase;
     use EnrollsStudentInBatch;
+    use RefreshDatabase;
 
     private function entry(int $studentId, int $batchId, string $date, string $status, ?string $dailyAccomplishment = null): JournalEntry
     {
@@ -83,7 +83,13 @@ Only Monday was submitted.', $log->narrative);
         $this->assertStringNotContainsString('Should not appear', $log->narrative);
     }
 
-    public function test_weekend_entries_are_never_included(): void
+    /**
+     * Interns are sometimes genuinely rostered on a Saturday. A weekend entry
+     * they actually submitted must reach the narrative — this is the compliance
+     * document supervisors review, and it used to drop the day silently while
+     * still stamping week_end on the following Sunday.
+     */
+    public function test_submitted_weekend_entries_are_included(): void
     {
         $student = $this->enrolledStudent();
         $batchId = $student->batchEnrollment->batch_id;
@@ -91,14 +97,40 @@ Only Monday was submitted.', $log->narrative);
         $saturday = $monday->copy()->addDays(5);
         $sunday = $monday->copy()->addDays(6);
 
-        $this->entry($student->id, $batchId, $saturday->toDateString(), 'submitted', 'Weekend work, should be ignored.');
-        $this->entry($student->id, $batchId, $sunday->toDateString(), 'submitted', 'Also ignored.');
+        $this->entry($student->id, $batchId, $monday->toDateString(), 'submitted', 'Regular Monday work.');
+        $this->entry($student->id, $batchId, $saturday->toDateString(), 'submitted', 'Covered the Saturday shift.');
+        $this->entry($student->id, $batchId, $sunday->toDateString(), 'submitted', 'Inventory count.');
 
         (new WeeklyBundlingService)->bundleWeek($monday);
 
         $log = $this->weeklyLogFor($student->id, $monday);
 
-        $this->assertSame('', $log->narrative);
+        $this->assertSame(
+            "MONDAY\nRegular Monday work.\n\nSATURDAY\nCovered the Saturday shift.\n\nSUNDAY\nInventory count.",
+            $log->narrative
+        );
+    }
+
+    /**
+     * The flip side: presence of an entry is the ONLY signal. A Mon-Fri intern's
+     * narrative must be byte-identical to what it was before weekend support,
+     * with no empty SATURDAY/SUNDAY headers appearing.
+     */
+    public function test_a_weekend_with_no_entry_adds_no_day_header(): void
+    {
+        $student = $this->enrolledStudent();
+        $batchId = $student->batchEnrollment->batch_id;
+        $monday = Carbon::now()->startOfWeek(Carbon::MONDAY);
+
+        $this->entry($student->id, $batchId, $monday->toDateString(), 'submitted', 'Monday only.');
+
+        (new WeeklyBundlingService)->bundleWeek($monday);
+
+        $log = $this->weeklyLogFor($student->id, $monday);
+
+        $this->assertSame("MONDAY\nMonday only.", $log->narrative);
+        $this->assertStringNotContainsString('SATURDAY', $log->narrative);
+        $this->assertStringNotContainsString('SUNDAY', $log->narrative);
     }
 
     public function test_does_not_overwrite_an_already_submitted_weekly_log(): void
@@ -154,19 +186,36 @@ Only Monday was submitted.', $log->narrative);
         $this->assertSame("MONDAY\nCompiled Monday text.", $log->narrative);
     }
 
-    public function test_most_recently_completed_week_start_on_a_saturday_is_the_week_that_just_ended(): void
+    /**
+     * A week is complete only once its SUNDAY has passed. On a Saturday the
+     * current week is still running — a Saturday shift may not even have been
+     * written yet — so the answer is the previous Monday, not this one. (The
+     * old Friday pivot returned this week's Monday here, which is precisely how
+     * the one-way bundle lock used to land on students mid-Saturday.)
+     */
+    public function test_most_recently_completed_week_start_on_a_saturday_is_the_previous_monday(): void
     {
-        $saturday = Carbon::parse('2026-07-11'); // a Saturday
-        $expectedMonday = Carbon::parse('2026-07-06'); // the Monday of that same week
+        $saturday = Carbon::parse('2026-07-11'); // a Saturday; its own week is not over yet
+        $expectedMonday = Carbon::parse('2026-06-29'); // the Monday before this week's Monday
 
         $result = WeeklyBundlingService::mostRecentlyCompletedWeekStart($saturday);
 
         $this->assertSame($expectedMonday->toDateString(), $result->toDateString());
     }
 
+    public function test_most_recently_completed_week_start_on_a_monday_is_the_week_that_just_ended(): void
+    {
+        $monday = Carbon::parse('2026-07-06'); // a Monday — the scheduled run day
+        $expectedMonday = Carbon::parse('2026-06-29'); // the Mon-Sun week that ended yesterday
+
+        $result = WeeklyBundlingService::mostRecentlyCompletedWeekStart($monday);
+
+        $this->assertSame($expectedMonday->toDateString(), $result->toDateString());
+    }
+
     public function test_most_recently_completed_week_start_mid_week_is_last_weeks_monday(): void
     {
-        $wednesday = Carbon::parse('2026-07-08'); // a Wednesday, this week's Friday hasn't happened
+        $wednesday = Carbon::parse('2026-07-08'); // a Wednesday, this week is still running
         $expectedMonday = Carbon::parse('2026-06-29'); // the previous Monday
 
         $result = WeeklyBundlingService::mostRecentlyCompletedWeekStart($wednesday);

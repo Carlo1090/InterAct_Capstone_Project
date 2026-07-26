@@ -76,6 +76,21 @@ export type AppNotification = {
   sent_at: string
 }
 
+/**
+ * The student's own daily-journal reminder "alarm". `reminder_days` uses ISO day
+ * numbers (1 = Monday .. 7 = Sunday); null on either field means "fall back to
+ * my batch", and `defaults` says what that fallback currently resolves to.
+ */
+export type ReminderPreferences = {
+  reminder_enabled: boolean
+  reminder_days: number[] | null
+  reminder_time: string | null
+  defaults: {
+    days: number[]
+    time: string
+  }
+}
+
 export type Batch = {
   id: number
   name: string

@@ -14,6 +14,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Symfony\Component\HttpFoundation\Response;
 
 class WeeklyLogController extends Controller
@@ -168,7 +169,7 @@ class WeeklyLogController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, JournalEntry>  $dailyEntries
+     * @param  Collection<int, JournalEntry>  $dailyEntries
      * @param  array<int, array<string, mixed>>  $sections
      * @return array<int, array{entry_date: string, fields: array<int, array{key: string, label: string, text: string}>}>
      */

@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Supervisor;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Supervisor\Concerns\ScopesSupervisorWork;
-use App\Models\BatchStudent;
 use App\Models\WeeklyLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;

@@ -6,11 +6,15 @@ import { confirmAction } from '@/lib/toast'
 import EditProfilePanel from '@/components/profile/panels/EditProfilePanel.vue'
 import ChangePasswordPanel from '@/components/profile/panels/ChangePasswordPanel.vue'
 import ActivityLogPanel from '@/components/profile/panels/ActivityLogPanel.vue'
+import ReminderSettingsPanel from '@/components/profile/panels/ReminderSettingsPanel.vue'
 
-type View = 'menu' | 'edit' | 'password' | 'activity'
+type View = 'menu' | 'edit' | 'password' | 'activity' | 'reminders'
 
 const auth = useAuthStore()
 const router = useRouter()
+
+// Journal reminders only exist for students, so the menu item does too.
+const isStudent = computed(() => auth.user?.role === 'student')
 
 const rootRef = ref<HTMLElement | null>(null)
 const isOpen = ref(false)
@@ -35,6 +39,7 @@ const viewTitle = computed(() => ({
   edit: 'Edit Profile',
   password: 'Change Password',
   activity: 'Activity Log',
+  reminders: 'Reminder Settings',
 }[view.value]))
 
 const openMenu = () => {
@@ -192,6 +197,18 @@ onBeforeUnmount(() => {
             Activity Log
           </button>
           <button
+            v-if="isStudent"
+            type="button"
+            class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            @click="selectView('reminders')"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5 shrink-0 text-slate-400">
+              <path d="M6.5 10a5.5 5.5 0 0 1 11 0c0 3 .7 4.6 1.5 5.5H5c.8-.9 1.5-2.5 1.5-5.5Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M10 18.5a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+            </svg>
+            Reminder Settings
+          </button>
+          <button
             type="button"
             class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:grayscale disabled:cursor-not-allowed"
             :disabled="isLoggingOut"
@@ -207,6 +224,7 @@ onBeforeUnmount(() => {
         <EditProfilePanel v-else-if="view === 'edit'" />
         <ChangePasswordPanel v-else-if="view === 'password'" :forced="forced" @success="onPasswordChanged" />
         <ActivityLogPanel v-else-if="view === 'activity'" />
+        <ReminderSettingsPanel v-else-if="view === 'reminders'" />
       </div>
     </div>
   </div>

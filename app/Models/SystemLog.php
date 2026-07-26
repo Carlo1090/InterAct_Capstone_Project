@@ -10,7 +10,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class SystemLog extends Model
 {
     public $timestamps = false;
+
     const CREATED_AT = 'logged_at';
+
     const UPDATED_AT = null;
 
     public function user(): BelongsTo

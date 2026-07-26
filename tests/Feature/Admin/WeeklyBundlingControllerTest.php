@@ -12,8 +12,8 @@ use Tests\TestCase;
 
 class WeeklyBundlingControllerTest extends TestCase
 {
-    use RefreshDatabase;
     use EnrollsStudentInBatch;
+    use RefreshDatabase;
 
     private function admin(): User
     {

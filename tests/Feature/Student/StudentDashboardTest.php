@@ -12,8 +12,8 @@ use Tests\TestCase;
 
 class StudentDashboardTest extends TestCase
 {
-    use RefreshDatabase;
     use EnrollsStudentInBatch;
+    use RefreshDatabase;
 
     public function test_enrolled_student_sees_real_dashboard_stats_and_internship_details(): void
     {

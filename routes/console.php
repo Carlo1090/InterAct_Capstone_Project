@@ -11,13 +11,20 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Runs daily at the schema's default daily_reminder_time (21:00). Per-batch
-// custom reminder times are a future refinement.
-Schedule::command(SendMissingJournalEntryReminders::class)->dailyAt('21:00');
+// Hourly, NOT daily: each student can pick their own reminder hour (and their
+// own reminder days, weekends included), so the command decides whose hour it
+// currently is. It resolves each student's preference over the batch's
+// daily_reminder_time — which, before this, nothing read at all.
+Schedule::command(SendMissingJournalEntryReminders::class)->hourly();
 
-// Saturday 00:00 — compiles the Mon-Fri week that just ended. weeklyOn(6, ...)
+// Monday 00:00 — compiles the full Mon-Sun week that just ended. weeklyOn(1, ...)
 // because Carbon/Laravel's day numbering is 0=Sunday..6=Saturday.
-Schedule::command(RunWeeklyBundling::class)->weeklyOn(6, '00:00');
+//
+// Deliberately NOT Saturday: bundling stamps a WeeklyLog, and that is a one-way
+// edit lock on every daily entry in the week (JournalEntryController::isBundledWeek).
+// Running it Saturday 00:00 locked the week before a Saturday shift had even
+// started, so an intern who worked that day could never write the entry.
+Schedule::command(RunWeeklyBundling::class)->weeklyOn(1, '00:00');
 
 // Nightly — permanently deletes batch_students rows archived 30+ days ago.
 Schedule::command(PurgeArchivedBatchStudents::class)->dailyAt('02:00');

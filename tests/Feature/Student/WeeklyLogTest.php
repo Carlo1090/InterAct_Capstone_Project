@@ -12,8 +12,8 @@ use Tests\TestCase;
 
 class WeeklyLogTest extends TestCase
 {
-    use RefreshDatabase;
     use EnrollsStudentInBatch;
+    use RefreshDatabase;
 
     public function test_student_can_save_a_weekly_narrative(): void
     {
@@ -85,7 +85,7 @@ class WeeklyLogTest extends TestCase
             'narrative' => 'Revised draft.',
         ])->assertOk();
 
-        $this->assertSame(1, \App\Models\WeeklyLog::where('student_id', $student->id)->count());
+        $this->assertSame(1, WeeklyLog::where('student_id', $student->id)->count());
         $this->assertDatabaseHas('weekly_logs', ['student_id' => $student->id, 'narrative' => 'Revised draft.']);
     }
 
