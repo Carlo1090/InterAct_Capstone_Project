@@ -143,6 +143,15 @@ class GoogleController extends Controller
 
     private function startFlow(string $intent, ?int $userId): RedirectResponse
     {
+        // Fail INSIDE the app rather than handing the browser to Google with an
+        // empty client_id — Socialite will happily build that URL, and Google
+        // answers with its own "Access blocked: Authorisation error / Missing
+        // required parameter: client_id" page, which strands the user outside
+        // InternTrack with no way back.
+        if (blank(config('services.google.client_id')) || blank(config('services.google.client_secret'))) {
+            return $this->fail($intent, 'not_configured');
+        }
+
         $nonce = Str::random(40);
 
         $state = Crypt::encryptString(json_encode([

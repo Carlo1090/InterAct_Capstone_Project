@@ -31,6 +31,8 @@ export const GOOGLE_ERROR_MESSAGES: Record<string, string> = {
   email_taken: 'That email address is already used by another InternTrack account.',
   google_failed: 'We could not complete the Google sign-in. Please try again.',
   invalid_state: 'That sign-in link expired or was invalid. Please try again.',
+  not_configured:
+    'Google sign-in is not set up on this server yet. Use your username and password for now, and ask your administrator to configure the Google credentials.',
 }
 
 export const googleErrorMessage = (code: string | null): string => {

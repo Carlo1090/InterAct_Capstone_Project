@@ -228,6 +228,38 @@ class GoogleAuthTest extends TestCase
     }
 
     /**
+     * With no credentials configured, Socialite would still happily build a
+     * redirect carrying an empty client_id, and Google answers that with its own
+     * "Access blocked: Authorisation error" page — stranding the user outside
+     * the app entirely. Fail inside InternTrack instead.
+     */
+    public function test_missing_google_credentials_fail_inside_the_app_rather_than_at_google(): void
+    {
+        config(['services.google.client_id' => null, 'services.google.client_secret' => null]);
+
+        $response = $this->get('/auth/google/login');
+
+        $response->assertRedirectContains('google_error=not_configured');
+        $this->assertStringNotContainsString('accounts.google.com', $response->headers->get('Location'));
+    }
+
+    public function test_a_configured_login_entry_point_redirects_to_google(): void
+    {
+        config([
+            'services.google.client_id' => 'test-client-id',
+            'services.google.client_secret' => 'test-client-secret',
+            'services.google.redirect' => 'http://localhost:8000/auth/google/callback',
+        ]);
+
+        $this->get('/auth/google/login')
+            ->assertRedirectContains('accounts.google.com')
+            ->assertRedirectContains('client_id=test-client-id')
+            // The encrypted state we mint ourselves, since stateless() drops
+            // Socialite's own session-backed state.
+            ->assertRedirectContains('state=');
+    }
+
+    /**
      * The Edit Profile badge and the dashboard banner both key off this field,
      * so /api/user must keep exposing it.
      */
