@@ -77,11 +77,6 @@ const router = createRouter({
           component: () => import('@/pages/admin/AdminSystemSettingsPage.vue'),
           meta: { title: 'System Settings' },
         },
-        {
-          path: 'profile',
-          component: () => import('@/pages/admin/AdminProfilePage.vue'),
-          meta: { title: 'Profile' },
-        },
       ],
     },
     {
@@ -150,11 +145,6 @@ const router = createRouter({
           component: () => import('@/pages/coordinator/CoordinatorHtePage.vue'),
           meta: { title: 'HTE & Student Interns List' },
         },
-        {
-          path: 'profile',
-          component: () => import('@/pages/coordinator/CoordinatorProfilePage.vue'),
-          meta: { title: 'Profile' },
-        },
       ],
     },
     {
@@ -177,11 +167,6 @@ const router = createRouter({
           path: 'interns',
           component: () => import('@/pages/supervisor/SupervisorInternsPage.vue'),
           meta: { title: 'Interns' },
-        },
-        {
-          path: 'profile',
-          component: () => import('@/pages/supervisor/SupervisorProfilePage.vue'),
-          meta: { title: 'Profile' },
         },
       ],
     },
@@ -226,11 +211,6 @@ const router = createRouter({
           component: () => import('@/pages/student/StudentPausedPage.vue'),
           meta: { title: 'Enrollment Inactive' },
         },
-        {
-          path: 'profile',
-          component: () => import('@/pages/student/StudentProfilePage.vue'),
-          meta: { title: 'Profile' },
-        },
       ],
     },
   ],
@@ -251,23 +231,20 @@ router.beforeEach(async (to) => {
     return '/login'
   }
 
-  // A forced password change can be set on ANY role (e.g. an admin issuing a
-  // temporary password), so the redirect must target that user's own Profile
-  // page, not a hardcoded student path.
-  if (auth.user?.must_change_password) {
-    const profilePath = `/${auth.user.role}/profile`
-    if (to.path !== profilePath) {
-      return profilePath
-    }
-  }
+  // A forced password change (e.g. an admin-issued temporary password) is no
+  // longer route-enforced — there's no dedicated Profile page to redirect to
+  // anymore. ProfileMenuPopover.vue (mounted in every layout header) watches
+  // auth.user.must_change_password itself and locks the user into its Change
+  // Password view with a blocking backdrop until they save a new one.
 
   // Info-sheet enrollment gate: a not-yet-approved student may only reach the
-  // info-sheet page (and their own profile/password). Backend enforces this too.
+  // info-sheet page. Backend enforces this too. (The account popover — Edit
+  // Profile/Change Password/Activity Log — stays reachable regardless, since
+  // it's not a route.)
   if (
     auth.user?.role === 'student' &&
     auth.user?.student_gated &&
-    to.path !== '/student/info-sheet' &&
-    to.path !== '/student/profile'
+    to.path !== '/student/info-sheet'
   ) {
     return '/student/info-sheet'
   }
@@ -280,8 +257,7 @@ router.beforeEach(async (to) => {
     !auth.user?.student_gated &&
     auth.user?.student_paused &&
     to.path !== '/student/paused' &&
-    to.path !== '/student/info-sheet' &&
-    to.path !== '/student/profile'
+    to.path !== '/student/info-sheet'
   ) {
     return '/student/paused'
   }

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import NotificationBell from '@/components/notifications/NotificationBell.vue'
+import ProfileMenuPopover from '@/components/profile/ProfileMenuPopover.vue'
 
 const allNavItems = [
   { label: 'Dashboard', to: '/student/dashboard', badge: '', icon: 'dashboard' },
@@ -15,7 +16,6 @@ const allNavItems = [
 
 const auth = useAuthStore()
 const route = useRoute()
-const router = useRouter()
 
 // Desktop-only rail collapse (the circular chevron). On phones the sidebar is
 // instead an off-canvas drawer driven by `mobileOpen`.
@@ -23,13 +23,14 @@ const collapsed = ref(false)
 const mobileOpen = ref(false)
 
 // Until their info sheet is approved, a student may only reach the info-sheet
-// page — so the rest of the nav is hidden while gated. Profile stays reachable
-// via the header avatar regardless (the router guard and backend both already
-// allow it while gated).
+// page — so the rest of the nav is hidden while gated. The header's account
+// popover (Edit Profile/Change Password/Activity Log/Log Out) stays reachable
+// regardless, since it's not part of this filtered nav list — the backend
+// already allows those endpoints while gated too.
 const isGated = computed(() => auth.user?.role === 'student' && auth.user?.student_gated === true)
 // Dropped from their batch: keep only the Info Sheet link reachable (their
-// journal pages have no active enrollment to load). The header avatar still
-// reaches Profile. The router guard bounces everything else to /student/paused.
+// journal pages have no active enrollment to load). The router guard bounces
+// everything else to /student/paused.
 const isPaused = computed(
   () => auth.user?.role === 'student' && auth.user?.student_gated !== true && auth.user?.student_paused === true,
 )
@@ -39,23 +40,7 @@ const navItems = computed(() =>
 
 const pageTitle = computed(() => (typeof route.meta.title === 'string' ? route.meta.title : 'Dashboard'))
 const userName = computed(() => auth.user?.name ?? 'Student')
-const initials = computed(() =>
-  userName.value
-    .split(' ')
-    .map((part) => part[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase(),
-)
 const department = computed(() => auth.user?.program?.department?.name ?? 'CAST')
-
-const logout = async () => {
-  try {
-    await auth.logout()
-  } finally {
-    router.push('/login')
-  }
-}
 </script>
 
 <template>
@@ -139,20 +124,6 @@ const logout = async () => {
         </RouterLink>
       </nav>
 
-      <div class="border-t border-white/20 p-3">
-        <button
-          type="button"
-          class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-medium text-blue-100 transition hover:bg-white/10 hover:text-white"
-          :class="collapsed && 'justify-center px-0'"
-          @click="logout"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5 shrink-0">
-            <path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3M16 16l4-4-4-4M20 12H9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-          <span v-if="!collapsed">Log Out</span>
-        </button>
-      </div>
-
       <button
         type="button"
         class="absolute -right-3.5 top-1/2 hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-indigo-700 text-white shadow-md ring-2 ring-white transition hover:bg-indigo-800 md:flex"
@@ -187,14 +158,7 @@ const logout = async () => {
             <p class="text-xs text-slate-400">Student &middot; {{ department }}</p>
           </div>
           <NotificationBell />
-          <RouterLink
-            to="/student/profile"
-            title="Profile"
-            class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-600 text-sm font-bold text-white ring-offset-2 transition hover:ring-2 hover:ring-blue-600"
-          >
-            <img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" alt="Profile photo" class="h-full w-full object-cover" />
-            <span v-else>{{ initials }}</span>
-          </RouterLink>
+          <ProfileMenuPopover />
         </div>
       </header>
 
