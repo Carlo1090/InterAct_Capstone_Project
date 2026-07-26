@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { confirmAction } from '@/lib/toast'
 import EditProfilePanel from '@/components/profile/panels/EditProfilePanel.vue'
 import ChangePasswordPanel from '@/components/profile/panels/ChangePasswordPanel.vue'
 import ActivityLogPanel from '@/components/profile/panels/ActivityLogPanel.vue'
@@ -54,6 +55,13 @@ const selectView = (next: Exclude<View, 'menu'>) => {
 const isLoggingOut = ref(false)
 
 const doLogout = async () => {
+  const confirmed = await confirmAction({
+    title: 'Log out?',
+    message: 'You will be signed out on this device and returned to the login page.',
+    confirmLabel: 'Log Out',
+  })
+  if (!confirmed) return
+
   isLoggingOut.value = true
   try {
     await auth.logout()
@@ -70,12 +78,21 @@ const onPasswordChanged = () => {
 
 const onDocumentClick = (event: MouseEvent) => {
   if (forced.value || !isOpen.value || !rootRef.value) return
+
+  // ConfirmHost teleports its modal to <body>, so a click on the logout
+  // confirmation's Cancel button reads as "outside" and would close the
+  // popover behind it. Treat any click inside a modal dialog as in-bounds.
+  const path = event.composedPath()
+  if (path.some((node) => node instanceof HTMLElement && node.getAttribute('role') === 'dialog')) {
+    return
+  }
+
   // Selecting a menu item (e.g. "Change Password") swaps `view` and unmounts
   // the clicked button in the same tick, before this bubbled listener runs —
   // so `event.target` is already detached and `rootRef.contains(target)`
   // would always read as "outside". composedPath() is captured at dispatch
   // time and stays accurate even after the DOM mutates mid-event.
-  if (!event.composedPath().includes(rootRef.value)) {
+  if (!path.includes(rootRef.value)) {
     isOpen.value = false
   }
 }
