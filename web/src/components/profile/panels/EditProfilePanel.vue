@@ -1,12 +1,23 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { useAuthStore } from '@/stores/auth'
 import { showToast } from '@/lib/toast'
+import { googleVerifyUrl } from '@/lib/googleAuth'
 import AvatarCropperModal from '@/components/profile/AvatarCropperModal.vue'
 
 const auth = useAuthStore()
+
+// Only the Google flow ever sets email_verified_at, so a non-null value is
+// proof Google confirmed the address — which is what unlocks reminder email
+// and Google sign-in.
+const isEmailVerified = computed(() => Boolean(auth.user?.email_verified_at))
+
+// A full page navigation, not XHR: we are handing the browser to Google.
+const verifyWithGoogle = () => {
+  window.location.href = googleVerifyUrl()
+}
 
 const errorMessageFrom = (error: unknown, fallback: string): string => {
   const data = axios.isAxiosError(error) ? error.response?.data : null
@@ -180,13 +191,50 @@ const removePhoto = async () => {
       </div>
 
       <div>
-        <label class="mb-1.5 block text-xs font-medium text-slate-700" for="popover-profile-email">Email</label>
+        <div class="mb-1.5 flex items-center gap-2">
+          <label class="block text-xs font-medium text-slate-700" for="popover-profile-email">Email</label>
+          <span
+            v-if="isEmailVerified"
+            class="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-semibold text-green-700"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-3 w-3">
+              <path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            Verified
+          </span>
+          <span v-else class="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+            Not verified
+          </span>
+        </div>
         <input
           id="popover-profile-email"
           v-model="profileForm.email"
           type="email"
           class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
         />
+
+        <p v-if="isEmailVerified" class="mt-1.5 text-[11px] text-slate-500">
+          Editing this address will unverify it and disable Google sign-in until you verify again.
+        </p>
+        <template v-else>
+          <p class="mt-1.5 text-[11px] text-slate-500">
+            Verify with Google to receive journal reminders by email and to sign in with one tap.
+            Google supplies the address, so there is nothing to type.
+          </p>
+          <button
+            type="button"
+            class="mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            @click="verifyWithGoogle"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" class="h-4 w-4">
+              <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62Z" />
+              <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18Z" />
+              <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33Z" />
+              <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58Z" />
+            </svg>
+            Verify with Google
+          </button>
+        </template>
       </div>
 
       <p v-if="profileError" class="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{{ profileError }}</p>

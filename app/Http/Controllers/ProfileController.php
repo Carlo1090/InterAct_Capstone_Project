@@ -25,7 +25,21 @@ class ProfileController extends Controller
     public function update(UpdateProfileRequest $request): JsonResponse
     {
         $user = $request->user();
-        $user->update($request->validated());
+        $validated = $request->validated();
+
+        // A hand-typed address is unverified by definition. Clearing the stamp
+        // matters twice over: it stops reminder mail going to an unconfirmed
+        // inbox, and — since a non-null email_verified_at is exactly what
+        // authorizes Google sign-in — it revokes that too. Editing your email
+        // is therefore also how you unlink your Google account.
+        $emailChanged = array_key_exists('email', $validated) && $validated['email'] !== $user->email;
+
+        $user->update($validated);
+
+        if ($emailChanged) {
+            // forceFill: email_verified_at is deliberately not mass-assignable.
+            $user->forceFill(['email_verified_at' => null])->save();
+        }
 
         SystemLog::record('Profile Updated', "{$user->name} updated their profile");
 

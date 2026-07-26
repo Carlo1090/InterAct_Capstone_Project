@@ -35,4 +35,19 @@ return [
         ],
     ],
 
+    /*
+     * Google OAuth — used ONLY to (a) prove a user owns an email address and
+     * (b) sign in an account whose address was already proven that way. It
+     * never creates accounts and never assigns roles; see
+     * App\Http\Controllers\Auth\GoogleController.
+     *
+     * The redirect URI must match one registered on the OAuth client exactly,
+     * including scheme, host and port.
+     */
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect' => env('GOOGLE_REDIRECT_URI', env('APP_URL').'/auth/google/callback'),
+    ],
+
 ];

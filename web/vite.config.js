@@ -41,6 +41,15 @@ export default defineConfig(({ mode }) => {
           target: backendUrl,
           changeOrigin: true,
         },
+        // Google OAuth entry points live on the API as web routes (they are
+        // top-level browser navigations, not XHR). Proxying them keeps dev
+        // same-origin; in production the SPA points at the API host directly
+        // via VITE_BACKEND_URL. Google itself redirects straight back to
+        // GOOGLE_REDIRECT_URI on the API, bypassing this proxy entirely.
+        '/auth/google': {
+          target: backendUrl,
+          changeOrigin: true,
+        },
         '/register': {
           target: backendUrl,
           changeOrigin: true,

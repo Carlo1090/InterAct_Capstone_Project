@@ -56,6 +56,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Frontend URL
+    |--------------------------------------------------------------------------
+    |
+    | Where the Vue SPA is served from. Anything that has to bounce a browser
+    | back out of the API and into the app — the Google OAuth callback, and
+    | Breeze's stock email-verification redirect — builds its target from this.
+    |
+    | It was referenced as config('app.frontend_url') by
+    | Auth\VerifyEmailController without ever being defined, so that redirect
+    | resolved to a bare "/dashboard" on no host at all.
+    |
+    */
+
+    'frontend_url' => env('FRONTEND_URL', 'http://localhost:5173'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

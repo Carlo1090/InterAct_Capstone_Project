@@ -103,7 +103,16 @@ class UserController extends Controller
             'student_id_number' => ['sometimes', 'nullable', 'string', 'max:30', Rule::unique('users', 'student_id_number')->ignore($user->id)],
         ]);
 
+        // An admin retyping someone's address makes it unverified again — same
+        // rule as the self-service path in ProfileController::update(), and it
+        // also revokes Google sign-in for the old address.
+        $emailChanged = array_key_exists('email', $validated) && $validated['email'] !== $user->email;
+
         $user->update($validated);
+
+        if ($emailChanged) {
+            $user->forceFill(['email_verified_at' => null])->save();
+        }
 
         SystemLog::record('User Updated', "Updated account details for {$user->name}");
 

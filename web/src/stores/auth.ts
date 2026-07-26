@@ -17,6 +17,9 @@ export type AuthUser = {
   name: string
   username: string
   email: string | null
+  // Set ONLY by the Google verification flow. Non-null means Google confirmed
+  // the address, which is what unlocks reminder email and Google sign-in.
+  email_verified_at: string | null
   role: string
   must_change_password: boolean
   avatar_url: string | null
