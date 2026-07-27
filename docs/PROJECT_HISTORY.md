@@ -54,3 +54,39 @@ Company Supervisor login/named-individual split, and the shared Profile/
 Change Password/Activity Log surface, among others. None of that is
 recapped here — `CLAUDE.md` is kept current as each of those lands, so it's
 the only place that needs to stay in sync going forward.
+
+## Deployment groundwork — 2026-07-28
+
+The point at which the project stopped being local-only. Recorded here because
+it changed a few long-standing assumptions; the operational detail lives in
+`docs/DEPLOYMENT.md` and the full decision record in `CLAUDE.md`.
+
+A **zero-cost stack** was chosen for the capstone defense — SPA on Vercel, API
+on Render's free tier via Docker, database on Aiven's always-free MySQL, no
+credit card anywhere. Notably **not** Render's own free PostgreSQL, which expires
+30 days after creation and would have forced a MySQL-to-Postgres switch shortly
+before the defense.
+
+Three security issues were fixed on the way, all of which only mattered once the
+app became publicly reachable:
+
+- **`POST /register` was removed.** Breeze's self-service registration route had
+  shipped with the project since Phase 1 and created an *active* `role: student`
+  account for any anonymous caller, unthrottled. Harmless on localhost; on a
+  public URL it means a stranger self-enrolls into a coordinator's intake queue.
+- **Demo credentials were made rotatable** (`demo:set-password`) and a
+  `ProductionSeeder` was added. Because this repository is public and `CLAUDE.md`
+  documents both the demo usernames and their shared `password`, a seeded demo
+  deployment was trivially takeover-able as admin.
+- **Ten dependency advisories were cleared** — six in dompdf (which renders every
+  PDF in the app) and one class in Guzzle (which performs the Google token
+  exchange).
+
+Two architectural decisions worth remembering: the SPA reaches the API through
+**Vercel rewrites** rather than cross-domain CORS, so the session cookie stays
+first-party and login never depends on third-party cookies; and deploys track a
+dedicated **`deploy` branch**, so pushing to `main` cannot move the live site.
+
+One earlier belief was also corrected: the API host was documented as needing a
+**queue worker**, which it does not — nothing in the codebase implements
+`ShouldQueue`, and the reminder notification sends inline.
