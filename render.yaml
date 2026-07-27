@@ -28,6 +28,21 @@ services:
     # Laravel registers /up via withRouting(health: '/up') in bootstrap/app.php.
     # It must answer without a session or database, which it does.
     healthCheckPath: /up
+
+    # Deploys track the `deploy` branch, NOT `main`.
+    #
+    # This is what keeps day-to-day work off the live demo: pushing to main has
+    # no effect here at all, and the deployed copy only moves when main is
+    # deliberately merged into deploy. Before a defense that matters — with
+    # autoDeploy on main, one broken commit takes the demo down, and the
+    # entrypoint runs `migrate --force` on every boot, so a half-finished
+    # migration would reach live data on the next wake.
+    #
+    # To ship:  git checkout deploy && git merge main && git push origin deploy
+    #
+    # web/vercel.json disables Vercel deployments for main for the same reason;
+    # set Vercel's Production Branch to `deploy` in its dashboard to match.
+    branch: deploy
     autoDeploy: true
 
     envVars:
