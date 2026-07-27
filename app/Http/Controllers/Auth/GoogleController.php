@@ -48,8 +48,18 @@ class GoogleController extends Controller
     }
 
     /** Sign in with a previously verified Google address. */
-    public function redirectToLogin(): RedirectResponse
+    public function redirectToLogin(Request $request): RedirectResponse
     {
+        // Already signed in — typically a session that outlived what the SPA
+        // thought, so the user was looking at the login page with a live
+        // session behind it. This route deliberately does NOT use the `guest`
+        // middleware: that redirects to "/", which on the API origin is
+        // Laravel's root JSON response, stranding the user on the wrong host.
+        // Send them into the app instead and let the router place them by role.
+        if ($request->user()) {
+            return $this->toFrontend('/');
+        }
+
         return $this->startFlow('login', null);
     }
 

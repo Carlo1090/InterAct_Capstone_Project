@@ -243,6 +243,22 @@ class GoogleAuthTest extends TestCase
         $this->assertStringNotContainsString('accounts.google.com', $response->headers->get('Location'));
     }
 
+    /**
+     * A session that outlives what the SPA thinks — the user is looking at the
+     * login page with a live session behind it and clicks "Sign in with Google".
+     * The `guest` middleware used to bounce them to "/", which on the API origin
+     * is Laravel's root JSON response: a dead end on the wrong host.
+     */
+    public function test_an_already_signed_in_user_is_sent_into_the_app_not_the_api_root(): void
+    {
+        $user = User::factory()->create(['role' => 'student']);
+
+        $response = $this->actingAs($user)->get('/auth/google/login');
+
+        $response->assertRedirect(config('app.frontend_url').'/');
+        $this->assertStringNotContainsString('{"Laravel"', (string) $response->getContent());
+    }
+
     public function test_a_configured_login_entry_point_redirects_to_google(): void
     {
         config([

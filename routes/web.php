@@ -24,8 +24,11 @@ Route::middleware('throttle:10,1')->group(function () {
         ->middleware('auth')
         ->name('google.verify');
 
+    // No `guest` middleware on purpose — it redirects an already-authenticated
+    // user to "/", which on the API origin is Laravel's root JSON response, a
+    // dead end on a different host from the SPA. The controller handles the
+    // already-signed-in case by sending them into the app instead.
     Route::get('auth/google/login', [GoogleController::class, 'redirectToLogin'])
-        ->middleware('guest')
         ->name('google.login');
 
     Route::get('auth/google/callback', [GoogleController::class, 'callback'])
