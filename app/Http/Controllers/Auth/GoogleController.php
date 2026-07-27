@@ -56,8 +56,12 @@ class GoogleController extends Controller
         // middleware: that redirects to "/", which on the API origin is
         // Laravel's root JSON response, stranding the user on the wrong host.
         // Send them into the app instead and let the router place them by role.
+        Log::info('Google OAuth: login entry point hit', [
+            'already_authenticated' => $request->user() !== null,
+        ]);
+
         if ($request->user()) {
-            return $this->toFrontend('/');
+            return $this->toFrontend($this->dashboardPathFor($request->user()));
         }
 
         return $this->startFlow('login', null);
@@ -65,6 +69,12 @@ class GoogleController extends Controller
 
     public function callback(Request $request): RedirectResponse
     {
+        Log::info('Google OAuth: callback hit', [
+            'has_state' => $request->query('state') !== null,
+            'has_code' => $request->query('code') !== null,
+            'google_error' => $request->query('error'),
+        ]);
+
         $state = $this->decodeState($request->query('state'));
 
         if ($state === null) {
@@ -157,8 +167,22 @@ class GoogleController extends Controller
 
         $this->log($user, 'Logged In', "{$user->name} signed in with Google");
 
-        // "/" lets the SPA router's roleRedirect route them by role.
-        return $this->toFrontend('/');
+        // Straight to their dashboard, NOT "/". The SPA's "/" route is an
+        // unconditional `redirect: '/login'`, and its router guard only calls
+        // fetchUser() for routes marked requiresAuth — so landing on "/" with a
+        // perfectly good session dumped the user back on the login page, where
+        // clicking Login merely rode the session they already had.
+        return $this->toFrontend($this->dashboardPathFor($user));
+    }
+
+    /**
+     * Where a signed-in user belongs in the SPA. Mirrors roleRedirect() in
+     * web/src/router/index.ts; these routes are requiresAuth, so the router
+     * guard resolves the session on arrival.
+     */
+    private function dashboardPathFor(User $user): string
+    {
+        return "/{$user->role}/dashboard";
     }
 
     private function startFlow(string $intent, ?int $userId): RedirectResponse

@@ -100,9 +100,15 @@ class GoogleAuthTest extends TestCase
         ]);
         $this->mockGoogleUser('renz@gmail.com');
 
-        $this->hitCallback($this->state('login', null));
+        $response = $this->hitCallback($this->state('login', null));
 
         $this->assertAuthenticatedAs($user);
+
+        // Their dashboard, NOT "/". The SPA's "/" is an unconditional redirect to
+        // /login and its guard only resolves the session for requiresAuth routes,
+        // so landing on "/" threw away a perfectly good sign-in.
+        $response->assertRedirectContains('/student/dashboard');
+        $this->assertStringNotContainsString('/login', (string) $response->headers->get('Location'));
     }
 
     /**
@@ -255,7 +261,7 @@ class GoogleAuthTest extends TestCase
 
         $response = $this->actingAs($user)->get('/auth/google/login');
 
-        $response->assertRedirect(config('app.frontend_url').'/');
+        $response->assertRedirect(config('app.frontend_url').'/student/dashboard');
         $this->assertStringNotContainsString('{"Laravel"', (string) $response->getContent());
     }
 
