@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
 
@@ -72,8 +73,17 @@ class GoogleController extends Controller
 
         try {
             $googleUser = Socialite::driver('google')->stateless()->user();
-        } catch (\Throwable) {
-            // Bad/expired code, a revoked consent, or missing credentials.
+        } catch (\Throwable $e) {
+            // The user only ever sees a generic message, but swallowing the real
+            // reason makes this undebuggable — a bad/expired code, a mismatched
+            // redirect URI, and a host that cannot verify Google's TLS
+            // certificate all look identical from the outside.
+            Log::warning('Google OAuth token exchange failed', [
+                'intent' => $state['intent'],
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+
             return $this->fail($state['intent'], 'google_failed');
         }
 
