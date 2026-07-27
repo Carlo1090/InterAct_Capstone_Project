@@ -282,6 +282,29 @@ class GoogleAuthTest extends TestCase
     }
 
     /**
+     * Shared devices are the norm here (computer labs, borrowed laptops). With
+     * a single Google account signed into the browser, Google auto-selects it
+     * silently — so one student clicking "Sign in with Google" on another's
+     * machine would be signed straight in as them, no password, no prompt.
+     * prompt=select_account forces the chooser every time.
+     */
+    public function test_both_flows_force_googles_account_chooser(): void
+    {
+        config([
+            'services.google.client_id' => 'test-client-id',
+            'services.google.client_secret' => 'test-client-secret',
+            'services.google.redirect' => 'http://localhost:8000/auth/google/callback',
+        ]);
+
+        $this->get('/auth/google/login')
+            ->assertRedirectContains('prompt=select_account');
+
+        $this->actingAs(User::factory()->create(['role' => 'student']))
+            ->get('/auth/google/verify')
+            ->assertRedirectContains('prompt=select_account');
+    }
+
+    /**
      * The Edit Profile badge and the dashboard banner both key off this field,
      * so /api/user must keep exposing it.
      */

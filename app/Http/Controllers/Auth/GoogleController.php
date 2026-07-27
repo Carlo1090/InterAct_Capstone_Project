@@ -218,7 +218,26 @@ class GoogleController extends Controller
 
         return Socialite::driver('google')
             ->stateless()
-            ->with(['state' => $state])
+            ->with([
+                'state' => $state,
+                // ALWAYS show Google's account chooser, even when exactly one
+                // account is signed in on the device. Without this, Google
+                // silently auto-selects that account — so on a shared machine
+                // (a computer lab, a borrowed laptop) one student clicking
+                // "Sign in with Google" would be signed straight in as
+                // whoever last used Chrome, with no password and no prompt.
+                //
+                // The verify flow needs it just as much: silent selection
+                // there would bind someone else's Gmail onto your account,
+                // and since a verified address is what authorises Google
+                // sign-in, that hands them a way in permanently.
+                //
+                // Deliberately Google's chooser rather than a confirmation
+                // screen of our own: the account state lives on Google's
+                // domain, so only Google can truthfully say which accounts
+                // are available and let the user switch or add one.
+                'prompt' => 'select_account',
+            ])
             ->redirect();
     }
 
