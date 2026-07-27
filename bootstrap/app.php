@@ -17,6 +17,25 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        /*
+         * The deployed SPA reaches this API through Vercel's rewrite proxy, so
+         * every request arrives from an edge IP rather than the real client.
+         * Laravel trusts NO proxies by default (TrustProxies::handle() calls
+         * setTrustedProxies([]) unless configured), which means it ignores
+         * X-Forwarded-For and reports the proxy's address as $request->ip().
+         *
+         * That matters because rate limiting keys off the IP for unauthenticated
+         * callers: the 'api' limiter in AppServiceProvider falls back to it, and
+         * the throttle:10,1 on the Google OAuth routes in routes/web.php uses it
+         * outright. Untrusted, all visitors share ONE bucket.
+         *
+         * Trade-off accepted knowingly: '*' means a caller could spoof
+         * X-Forwarded-For to dodge throttling. The alternative is a fixed list
+         * of edge IPs, which Vercel does not publish as a stable set. For this
+         * deployment an accidental shared-bucket lockout is the likelier harm.
+         */
+        $middleware->trustProxies(at: '*');
+
         $middleware->api(prepend: [
             EnsureFrontendRequestsAreStateful::class,
         ]);

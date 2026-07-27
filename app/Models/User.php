@@ -115,11 +115,18 @@ class User extends Authenticatable
     /**
      * Public URL of the uploaded avatar, or null so the frontend can fall
      * back to initials — never fabricate a URL for a missing file.
+     *
+     * The disk comes from config('filesystems.avatars') so it follows wherever
+     * ProfileController wrote the file — "public" locally, "r2" on a host with
+     * an ephemeral filesystem. The resulting URL is absolute, which is what the
+     * split SPA/API deployment needs.
      */
     protected function avatarUrl(): Attribute
     {
         return Attribute::make(
-            get: fn () => $this->avatar_path ? Storage::disk('public')->url($this->avatar_path) : null,
+            get: fn () => $this->avatar_path
+                ? Storage::disk(config('filesystems.avatars'))->url($this->avatar_path)
+                : null,
         );
     }
 

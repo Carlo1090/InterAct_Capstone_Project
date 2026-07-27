@@ -47,7 +47,16 @@ export const useAuthStore = defineStore('auth', {
     async login(identifier: string, password: string): Promise<void> {
       try {
         await api.get('/sanctum/csrf-cookie')
-        await api.post('/login', { login: identifier, password })
+        // NOT '/login'. That path is ALSO this SPA's own router page route, and
+        // the deployed proxy (web/vercel.json) cannot tell a page GET from this
+        // credential POST — Vercel rewrites match on path, never on method — so
+        // proxying '/login' wholesale would make the login page itself proxy to
+        // Laravel, which only defines POST there, and answer 405.
+        //
+        // '/auth/login' is a proxy-only path with no page behind it. Both the
+        // Vercel rewrite and the Vite dev proxy map it back to the API's real
+        // '/login', so no backend route changed.
+        await api.post('/auth/login', { login: identifier, password })
         await this.fetchUser()
       } catch (error) {
         this.user = null
@@ -65,7 +74,8 @@ export const useAuthStore = defineStore('auth', {
     },
     async logout(): Promise<void> {
       try {
-        await api.post('/logout')
+        // '/auth/logout' for the same reason as '/auth/login' above.
+        await api.post('/auth/logout')
       } catch (error) {
         throw error
       } finally {

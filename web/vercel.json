@@ -1,0 +1,22 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://REPLACE-WITH-API-HOST/api/:path*" },
+    { "source": "/sanctum/:path*", "destination": "https://REPLACE-WITH-API-HOST/sanctum/:path*" },
+    { "source": "/auth/google/:path*", "destination": "https://REPLACE-WITH-API-HOST/auth/google/:path*" },
+    { "source": "/auth/login", "destination": "https://REPLACE-WITH-API-HOST/login" },
+    { "source": "/auth/logout", "destination": "https://REPLACE-WITH-API-HOST/logout" },
+    { "source": "/forgot-password", "destination": "https://REPLACE-WITH-API-HOST/forgot-password" },
+    { "source": "/reset-password", "destination": "https://REPLACE-WITH-API-HOST/reset-password" },
+    { "source": "/:path*", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/assets/:path*",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    }
+  ]
+}

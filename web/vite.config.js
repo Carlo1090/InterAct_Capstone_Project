@@ -25,35 +25,37 @@ export default defineConfig(({ mode }) => {
           target: backendUrl,
           changeOrigin: true,
         },
-        '/login': {
+        // The SPA posts credentials to '/auth/login' and '/auth/logout', which
+        // are rewritten back to the API's real '/login' and '/logout' here.
+        //
+        // The indirection exists because '/login' is ALSO the SPA's own page
+        // route. Proxying that path meant a hard navigation or refresh on the
+        // login page (a GET) hit Laravel, which only defines POST there, so this
+        // block used to carry a `bypass` returning index.html for GETs. The
+        // deployed Vercel proxy has no equivalent escape hatch — its rewrites
+        // cannot match on method — so the paths were separated instead, which
+        // retires the hack here too.
+        '/auth/login': {
           target: backendUrl,
           changeOrigin: true,
-          // '/login' is both the Sanctum POST endpoint AND the Vue Router
-          // page route. A hard navigation/refresh on the login page (GET)
-          // must fall through to the SPA (index.html) instead of hitting
-          // the backend, which only defines a POST route there and would
-          // 405 — only the actual POST submit should be proxied.
-          bypass: (req) => {
-            if (req.method === 'GET') return '/index.html'
-          },
+          rewrite: () => '/login',
         },
-        '/logout': {
+        '/auth/logout': {
           target: backendUrl,
           changeOrigin: true,
+          rewrite: () => '/logout',
         },
         // Google OAuth entry points live on the API as web routes (they are
         // top-level browser navigations, not XHR). Proxying them keeps dev
-        // same-origin; in production the SPA points at the API host directly
-        // via VITE_BACKEND_URL. Google itself redirects straight back to
-        // GOOGLE_REDIRECT_URI on the API, bypassing this proxy entirely.
+        // same-origin. In the deployed setup web/vercel.json proxies them the
+        // same way, and GOOGLE_REDIRECT_URI points at the SPA origin so the
+        // callback's session cookie lands on the host the SPA actually reads.
         '/auth/google': {
           target: backendUrl,
           changeOrigin: true,
         },
-        '/register': {
-          target: backendUrl,
-          changeOrigin: true,
-        },
+        // No '/register' entry: self-service registration was removed from the
+        // API (see routes/auth.php), so proxying it would only forward to a 404.
         '/forgot-password': {
           target: backendUrl,
           changeOrigin: true,

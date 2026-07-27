@@ -17,6 +17,28 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Avatar Disk
+    |--------------------------------------------------------------------------
+    |
+    | Which disk uploaded profile photos live on. Read by ProfileController and
+    | by User::avatarUrl(), which is what puts `avatar_url` on every JSON user
+    | payload — so this one value decides both where a photo is written and the
+    | URL the SPA loads it from.
+    |
+    | Local dev uses "public" (storage/app/public, exposed via the
+    | public/storage symlink created by `php artisan storage:link`).
+    |
+    | Most hosts that deploy from git have an EPHEMERAL filesystem: every deploy
+    | starts from a fresh container, so anything written to the public disk is
+    | silently gone. Set AVATAR_DISK=r2 there. Hosts with a real persistent disk
+    | (a VPS, or a mounted volume) can keep "public" safely.
+    |
+    */
+
+    'avatars' => env('AVATAR_DISK', 'public'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |
@@ -56,6 +78,33 @@ return [
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'throw' => false,
+            'report' => false,
+        ],
+
+        /*
+         * Cloudflare R2. S3-compatible, so it uses the same driver — kept as its
+         * own disk rather than overloading "s3" so the two can coexist and so
+         * the R2-specific requirements are stated where they are set:
+         *
+         *  - region MUST be "auto"
+         *  - endpoint is https://<account-id>.r2.cloudflarestorage.com
+         *  - R2_URL is the PUBLIC read URL, and is not optional for avatars:
+         *    User::avatarUrl() hands it straight to an <img> tag, so the bucket
+         *    needs public access enabled (an r2.dev URL or a custom domain).
+         *    Without it Storage::url() returns a path the browser cannot load.
+         *  - path-style endpoints, because R2 does not do virtual-host buckets.
+         */
+        'r2' => [
+            'driver' => 's3',
+            'key' => env('R2_ACCESS_KEY_ID'),
+            'secret' => env('R2_SECRET_ACCESS_KEY'),
+            'region' => env('R2_DEFAULT_REGION', 'auto'),
+            'bucket' => env('R2_BUCKET'),
+            'url' => env('R2_URL'),
+            'endpoint' => env('R2_ENDPOINT'),
+            'use_path_style_endpoint' => true,
+            'visibility' => 'public',
             'throw' => false,
             'report' => false,
         ],

@@ -1,0 +1,49 @@
+# Keep the build context small and, more importantly, keep secrets and host
+# artifacts out of the image.
+
+# Never ship real credentials. The host supplies environment variables directly;
+# a stray .env inside the image would silently take precedence over them.
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Installed inside the image by composer, for the correct platform. Copying a
+# Windows-built vendor/ in would ship the wrong platform binaries.
+vendor/
+
+# The SPA deploys separately to Vercel and is not served by this container.
+web/
+mobile/
+
+node_modules/
+package-lock.json
+
+.git/
+.gitignore
+.gitattributes
+.github/
+.claude/
+.agents/
+.editorconfig
+.vscode/
+.idea/
+
+# Local database and logs — a committed sqlite file would quietly become the
+# production database if DB_CONNECTION were ever left as sqlite.
+database/*.sqlite
+database/*.sqlite-journal
+storage/logs/*
+storage/framework/cache/data/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/app/public/avatars/*
+
+# Test and tooling artifacts have no place in a runtime image.
+tests/
+phpunit.xml
+.phpunit.result.cache
+docs/
+README.md
+CLAUDE.md
+clear

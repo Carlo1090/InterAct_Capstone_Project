@@ -71,15 +71,17 @@ class ProfileController extends Controller
     {
         $user = $request->user();
 
+        $disk = config('filesystems.avatars');
+
         $avatar = $avatars->toAvatarImage($request->file('photo')->get());
         $path = 'avatars/'.Str::random(40).'.'.$avatar['extension'];
-        Storage::disk('public')->put($path, $avatar['binary']);
+        Storage::disk($disk)->put($path, $avatar['binary']);
 
         $previousPath = $user->avatar_path;
         $user->update(['avatar_path' => $path]);
 
         if ($previousPath) {
-            Storage::disk('public')->delete($previousPath);
+            Storage::disk($disk)->delete($previousPath);
         }
 
         SystemLog::record('Profile Photo Updated', "{$user->name} updated their profile photo");
@@ -92,7 +94,7 @@ class ProfileController extends Controller
         $user = $request->user();
 
         if ($user->avatar_path) {
-            Storage::disk('public')->delete($user->avatar_path);
+            Storage::disk(config('filesystems.avatars'))->delete($user->avatar_path);
             $user->update(['avatar_path' => null]);
 
             SystemLog::record('Profile Photo Removed', "{$user->name} removed their profile photo");

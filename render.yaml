@@ -1,0 +1,124 @@
+# Render Blueprint for the InternTrack API.
+#
+# Render's dashboard can create this service by hand; keeping it as a file means
+# the configuration is reviewable and reproducible instead of living only in a
+# web UI.
+#
+# Deliberately NOT declared here: a database. Render's free Postgres EXPIRES 30
+# days after creation, and this app is MySQL — switching engines shortly before a
+# defense is a risk with no upside. The database is an external always-free
+# managed MySQL (Aiven), supplied through DB_* below.
+#
+# Also not declared: a cron job. Render cron has no free tier. The scheduled
+# commands in routes/console.php (weekly bundling, archive purge, hourly
+# reminders) therefore do NOT run on this deployment — the admin System Settings
+# page already exposes manual triggers for bundling and the archive purge, which
+# is what a demo needs.
+
+services:
+  - type: web
+    name: interntrack-api
+    runtime: docker
+    plan: free
+    # Closest Render region to Bohol — the alternatives (Oregon, Virginia,
+    # Frankfurt) add avoidable round-trip latency for every user.
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # Laravel registers /up via withRouting(health: '/up') in bootstrap/app.php.
+    # It must answer without a session or database, which it does.
+    healthCheckPath: /up
+    autoDeploy: true
+
+    envVars:
+      # --- Set once, in the dashboard (sync: false = "prompt me, don't commit") -
+      - key: APP_KEY
+        sync: false
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_DATABASE
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      # The SPA's Vercel origin. Three separate things read it: CORS
+      # (allowed_origins), Sanctum's stateful-domain check, and the Google OAuth
+      # redirect back into the app.
+      - key: FRONTEND_URL
+        sync: false
+      - key: SANCTUM_STATEFUL_DOMAINS
+        sync: false
+      # This service's own public origin, which Render only assigns after the
+      # first deploy — so it cannot be predicted here.
+      - key: APP_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      # One-shot: 'demo' or 'production'. Unset it again after the first
+      # successful boot so a later wake cannot re-seed over live data.
+      - key: SEED_ON_BOOT
+        sync: false
+      # Required when SEED_ON_BOOT=demo. The entrypoint refuses to seed the demo
+      # dataset without it, because the seeded default password is published in
+      # this repo's CLAUDE.md.
+      - key: DEMO_PASSWORD
+        sync: false
+
+      # --- Safe to commit ------------------------------------------------------
+      - key: APP_NAME
+        value: InternTrack
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      # Every user is in the Philippines (UTC+8). On UTC, anything before 08:00
+      # Manila still reads as YESTERDAY, so the journal calendar offers the wrong
+      # date and "this week" counts are off.
+      - key: APP_TIMEZONE
+        value: Asia/Manila
+      - key: LOG_CHANNEL
+        value: stack
+      - key: LOG_STACK
+        value: single
+      - key: LOG_LEVEL
+        value: warning
+      - key: DB_CONNECTION
+        value: mysql
+      - key: SESSION_DRIVER
+        value: database
+      - key: SESSION_LIFETIME
+        value: "120"
+      # Empty on purpose: a host-only cookie is what lets the session attach to
+      # the Vercel domain the browser believes it is talking to through the
+      # rewrite proxy. Setting this to the API's own domain breaks login.
+      - key: SESSION_DOMAIN
+        value: ""
+      - key: SESSION_SECURE_COOKIE
+        value: "true"
+      # 'lax' is correct BECAUSE of the rewrite proxy: the browser sees
+      # same-origin requests, so the cookie is first-party. It also still rides
+      # the top-level GET redirect back from accounts.google.com.
+      - key: SESSION_SAME_SITE
+        value: lax
+      # Nothing in this codebase implements ShouldQueue and there is no app/Jobs
+      # directory, so no worker is needed. 'sync' runs anything queued later
+      # inline rather than letting it vanish unprocessed.
+      - key: QUEUE_CONNECTION
+        value: sync
+      - key: CACHE_STORE
+        value: database
+      # This host's filesystem is ephemeral: uploaded avatars are discarded on
+      # every redeploy. Switch to r2 and add the R2_* variables to persist them.
+      - key: AVATAR_DISK
+        value: public
+      # Sends nothing at all. Only the missing-journal reminder mails anyone, and
+      # only to Google-verified addresses — of which a fresh seed has none.
+      - key: MAIL_MAILER
+        value: log

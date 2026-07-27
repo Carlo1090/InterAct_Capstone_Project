@@ -76,13 +76,21 @@ return [
     | Application Timezone
     |--------------------------------------------------------------------------
     |
-    | Here you may specify the default timezone for your application, which
-    | will be used by the PHP date and date-time functions. The timezone
-    | is set to "UTC" by default as it is suitable for most use cases.
+    | Every user of this system is in the Philippines (UTC+8), and the app is
+    | full of "what day is it" logic that a UTC server gets wrong for them: the
+    | journal calendar's today/future boundary, the missing-entry reminder's
+    | per-student hour, "this week" on the coordinator and student dashboards,
+    | and the rolling end of ResolvesStudentEnrollment::ojtRange(). On a UTC
+    | server, anything before 08:00 Manila still reads as YESTERDAY — so a
+    | student writing a journal at 7am is offered the wrong date.
+    |
+    | The DEFAULT stays UTC on purpose so the test suite (which travels through
+    | fixed dates with Carbon::setTestNow) keeps behaving exactly as it always
+    | has. Deployments set APP_TIMEZONE=Asia/Manila.
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'UTC'),
 
     /*
     |--------------------------------------------------------------------------
