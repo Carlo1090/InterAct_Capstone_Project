@@ -80,8 +80,11 @@ RUN composer install \
 
 COPY . .
 
-# --no-dev matters: it omits Faker, which the database/factories and the twelve
-# demo seeders depend on. ProductionSeeder deliberately uses neither.
+# --no-dev omits Faker (a require-dev package), which makes database/factories
+# unusable in this image. The SEEDERS are unaffected and still work here: every
+# one of them hand-writes its rows and none call ->factory() or Faker, so
+# SEED_ON_BOOT=demo is viable. Only the factories (used by tests) are lost, and
+# tests are excluded from the image anyway via .dockerignore.
 RUN composer dump-autoload --optimize --no-dev \
     && chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R ug+rw storage bootstrap/cache
