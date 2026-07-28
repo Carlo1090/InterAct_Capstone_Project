@@ -164,10 +164,24 @@ const login = async () => {
             Google sign-in works only after you verify your email from Edit Profile.
           </p>
 
+          <!--
+            Demo usernames only — deliberately NO password.
+
+            This box used to print "password: password", which was the seeded
+            default. On a deployed instance that is wrong twice over: the deploy
+            pipeline rotates every demo password (`demo:set-password`), so the
+            printed value simply fails; and publishing a working admin password on
+            a public login page would hand the system to anyone who loaded it.
+            The usernames stay because they are already documented in the repo and
+            a demo is unusable without them.
+          -->
           <div class="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-800">
-            Demo logins (password: <strong>password</strong>): <strong>mdcadmin</strong>,
-            <strong>mdccore</strong>, <strong>mdcbalbero</strong>, <strong>mdcstudent</strong>,
+            Demo logins: <strong>mdcadmin</strong>, <strong>mdccore</strong>,
+            <strong>mdcbalbero</strong>, <strong>mdcstudent</strong>,
             <strong>mdcsupervisor</strong>
+            <span class="mt-1 block text-xs text-blue-700">
+              Ask your administrator for the demo password.
+            </span>
           </div>
         </div>
       </div>

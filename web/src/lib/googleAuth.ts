@@ -5,10 +5,19 @@
  * whole point is to hand the browser to Google and let it come back. They are
  * WEB routes on the Laravel API, not /api/* endpoints.
  *
- * In dev, VITE_BACKEND_URL is normally unset and the returned path is relative,
- * so Vite's `/auth/google` proxy forwards it to the API. In production the SPA
- * and the API sit on different hosts, so VITE_BACKEND_URL must be set to the
- * API origin — the same split that makes avatar URLs absolute.
+ * LEAVE `VITE_BACKEND_URL` UNSET in both dev and production. Unset means these
+ * paths stay RELATIVE, which is what makes them ride the same-origin proxy —
+ * Vite's `/auth/google` proxy locally, and the `/auth/google/:path*` rewrite in
+ * `web/vercel.json` once deployed.
+ *
+ * Setting it to the API origin breaks Google sign-in in a way that looks like a
+ * Google problem: the browser would navigate straight to the API host, so the
+ * session cookie the callback creates lands on the API's domain while the SPA
+ * reads the deployment domain — the user is silently returned to the login page.
+ *
+ * (An earlier revision of this comment said the opposite. That was written for a
+ * cross-domain deployment model which was rejected in favour of the proxy; see
+ * the DECIDED STACK bullet in CLAUDE.md.)
  */
 const apiOrigin = (import.meta.env.VITE_BACKEND_URL ?? '').replace(/\/$/, '')
 

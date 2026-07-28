@@ -142,7 +142,16 @@ Nothing else here. Migrations run automatically on the API's first boot.
 4. **Settings → Git → Production Branch → `deploy`.** There is no `vercel.json`
    field for this, so it must be set in the dashboard. (`vercel.json` already
    disables deployments for `main`.)
-5. Deploy, then copy the assigned domain (e.g. `interntrack.vercel.app`).
+5. **Add no environment variables.** The SPA needs none.
+
+   > **Specifically, do NOT set `VITE_BACKEND_URL`.** Leaving it unset is what
+   > keeps the two Google entry-point links relative so they ride the proxy.
+   > Setting it to the API origin breaks Google sign-in in a way that looks like
+   > a Google fault: the browser goes straight to the API host, so the session
+   > cookie the callback creates lands on the API's domain while the SPA reads
+   > the Vercel domain, and the user is silently returned to the login page.
+
+6. Deploy, then copy the assigned domain (e.g. `interntrack.vercel.app`).
 
 ---
 
@@ -252,7 +261,10 @@ variable.
 | Login succeeds, then **every** request 401s | `SANCTUM_STATEFUL_DOMAINS` wrong | Must be the **Vercel host, no scheme** (§6) |
 | Logged out immediately after logging in | `SESSION_DOMAIN` is set | Leave it **empty** |
 | Google sign-in returns to the login page as if it failed | `GOOGLE_REDIRECT_URI` points at the API instead of Vercel | See §7 |
-| Google: *"Access blocked — Missing required parameter: client_id"* | Credentials blank but buttons used | Set both `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, or leave both blank for the clean in-app message |
+| In-app: *"Google sign-in is not set up on this server yet"* | `GOOGLE_CLIENT_ID` or `GOOGLE_CLIENT_SECRET` is blank on the API. **This is the app failing safely on purpose**, not a bug | Set both on Render, plus `GOOGLE_REDIRECT_URI`, then redeploy (§7) |
+| Google: *"Access blocked — Missing required parameter: client_id"* | Should no longer be reachable — the guard above catches it first | If you see it, the guard was bypassed; check `config/services.php` |
+| Google sign-in returns *"That Google account is not linked"* | **Expected on fresh data.** No seeded account has a Google-verified email | Sign in with username + password first, then Edit Profile → **Verify with Google**. Only then does Google *sign-in* work |
+| Google sign-in silently returns to the login page | `VITE_BACKEND_URL` was set on Vercel | Remove it and redeploy the SPA — see §5 step 5 |
 | Google: `cURL error 60: unable to get local issuer certificate` | No CA bundle in PHP | Should not happen on this image (Debian ships `ca-certificates`). If you move hosts, point `curl.cainfo` and `openssl.cafile` at `cacert.pem` |
 | Profile photo broken, **404** | Wrong host/port in `APP_URL` | Set `APP_URL` to the real API origin |
 | Profile photo broken, **403** | The file genuinely is not on disk | Expected after a redeploy — ephemeral filesystem (§9) |
