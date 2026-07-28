@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
@@ -243,12 +244,14 @@ class User extends Authenticatable
      */
     public function coordinatorProgramIds(): Collection
     {
-        $departmentIds = $this->departmentsCoordinated()->pluck('departments.id');
+        return Cache::remember("coordinator-program-ids:{$this->id}", now()->addDay(), function () {
+            $departmentIds = $this->departmentsCoordinated()->pluck('departments.id');
 
-        return Program::whereIn('department_id', $departmentIds)->pluck('id')
-            ->merge($this->batchesCoordinated()->pluck('program_id'))
-            ->unique()
-            ->values();
+            return Program::whereIn('department_id', $departmentIds)->pluck('id')
+                ->merge($this->batchesCoordinated()->pluck('program_id'))
+                ->unique()
+                ->values();
+        });
     }
 
     public function companySupervisorAssignments(): HasMany
