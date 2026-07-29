@@ -437,9 +437,9 @@ onMounted(load)
 <template>
   <section class="space-y-5">
     <ToastHost />
-    <div class="flex items-center justify-between gap-4">
+    <div class="flex flex-wrap items-center justify-between gap-4">
       <div>
-        <h2 class="text-2xl font-bold text-slate-950">Batches</h2>
+        <h2 class="text-xl font-bold text-slate-950 md:text-2xl">Batches</h2>
         <p class="mt-1 text-sm text-slate-500">Create and manage OJT cohorts for your program(s).</p>
       </div>
       <button
@@ -457,17 +457,17 @@ onMounted(load)
       You are not currently assigned to a program, so there are no batches to manage yet.
     </p>
 
-    <div v-else class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+    <div v-else class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
       <table class="min-w-full divide-y divide-slate-200">
         <thead class="bg-slate-50">
           <tr>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Batch</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">AY / Semester</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Start</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">End</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Batch</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">AY / Semester</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Start</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">End</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
@@ -478,8 +478,8 @@ onMounted(load)
             <td class="px-4 py-3 text-sm font-semibold text-slate-900">{{ batch.name }}</td>
             <td class="px-4 py-3 text-sm text-slate-700">{{ batch.program?.name ?? '—' }}</td>
             <td class="px-4 py-3 text-sm text-slate-500">{{ batch.academic_year }} · {{ batch.semester }}</td>
-            <td class="px-4 py-3 text-sm text-slate-500">{{ formatDate(batch.start_date) }}</td>
-            <td class="px-4 py-3 text-sm text-slate-500">{{ formatDate(batch.end_date) }}</td>
+            <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-500">{{ formatDate(batch.start_date) }}</td>
+            <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-500">{{ formatDate(batch.end_date) }}</td>
             <td class="px-4 py-3">
               <span
                 class="rounded-full px-3 py-1 text-xs font-bold"
@@ -669,7 +669,7 @@ onMounted(load)
         <div v-else class="mt-5 space-y-5">
           <div>
             <p class="mb-2 text-sm font-semibold text-slate-800">Active interns ({{ activeRoster.length }})</p>
-            <div class="overflow-hidden rounded-md ring-1 ring-slate-200">
+            <div class="overflow-x-auto rounded-md ring-1 ring-slate-200">
               <table class="min-w-full divide-y divide-slate-200 text-sm">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
@@ -707,7 +707,7 @@ onMounted(load)
           <!-- Completed interns (journal window frozen; can be reopened) -->
           <div v-if="completedRoster.length">
             <p class="mb-2 text-sm font-semibold text-slate-800">Completed ({{ completedRoster.length }})</p>
-            <div class="overflow-hidden rounded-md ring-1 ring-slate-200">
+            <div class="overflow-x-auto rounded-md ring-1 ring-slate-200">
               <table class="min-w-full divide-y divide-slate-200 text-sm">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
@@ -744,7 +744,7 @@ onMounted(load)
           <!-- Dropped interns (can be archived) -->
           <div v-if="droppedRoster.length">
             <p class="mb-2 text-sm font-semibold text-slate-800">Dropped ({{ droppedRoster.length }})</p>
-            <div class="overflow-hidden rounded-md ring-1 ring-slate-200">
+            <div class="overflow-x-auto rounded-md ring-1 ring-slate-200">
               <table class="min-w-full divide-y divide-slate-200 text-sm">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
@@ -774,7 +774,7 @@ onMounted(load)
           <!-- Archived interns (reversible for 30 days, then auto-purged) -->
           <div v-if="archivedRoster.length">
             <p class="mb-2 text-sm font-semibold text-slate-800">Archived ({{ archivedRoster.length }})</p>
-            <div class="overflow-hidden rounded-md ring-1 ring-slate-200">
+            <div class="overflow-x-auto rounded-md ring-1 ring-slate-200">
               <table class="min-w-full divide-y divide-slate-200 text-sm">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>

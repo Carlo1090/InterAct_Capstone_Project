@@ -19,7 +19,7 @@ const formatDate = (raw: string) => {
 </script>
 
 <template>
-  <article class="report-paper mx-auto max-w-4xl rounded-md bg-white px-8 py-10 shadow-md ring-1 ring-slate-200">
+  <article class="report-paper mx-auto min-w-[44rem] max-w-4xl rounded-md bg-white px-8 py-10 shadow-md ring-1 ring-slate-200">
     <header class="text-center leading-snug">
       <p class="text-base font-bold">Mater Dei College</p>
       <p class="text-sm">Tubigon, Bohol</p>

@@ -7,6 +7,7 @@ import ToastHost from '@/components/ToastHost.vue'
 import WeeklyJournalPaperView from '@/components/journal/WeeklyJournalPaperView.vue'
 import { confirmAction, showToast } from '@/lib/toast'
 import { isNotEnrolledError } from '@/lib/enrollment'
+import { useFormDraft } from '@/lib/formDraft'
 import { useAuthStore } from '@/stores/auth'
 import type { WeeklyLogDetail, WeeklyLogSummary } from '@/types/api'
 
@@ -66,6 +67,36 @@ const isEditable = (week: WeeklyLogSummary): boolean => {
   return state === 'draft' || state === 'returned'
 }
 
+/**
+ * Keep unsaved weekly narratives alive across a refresh.
+ *
+ * Weeks load lazily (each <details> fetches on first open), so this holds a
+ * weekStart -> narrative map and `restore()` is called after every loadDetail;
+ * re-applying is idempotent. Only weeks that are still editable (draft/returned)
+ * are restored — a submitted or approved week is read-only, so putting text back
+ * into one would show writing the student can no longer save.
+ */
+const weeklyDraft = useFormDraft(
+  'student:weekly-narratives',
+  () => {
+    const narratives: Record<string, string> = {}
+    for (const [weekStart, detail] of Object.entries(details)) {
+      if (detail && typeof detail.narrative === 'string') narratives[weekStart] = detail.narrative
+    }
+    return { narratives }
+  },
+  (draft) => {
+    if (!draft.narratives) return
+    for (const [weekStart, text] of Object.entries(draft.narratives)) {
+      if (typeof text !== 'string') continue
+      const detail = details[weekStart]
+      const week = weeks.value.find((w) => w.week_start === weekStart)
+      if (detail && week && isEditable(week)) detail.narrative = text
+    }
+  },
+  { autoRestore: false },
+)
+
 const loadWeeks = async () => {
   isLoading.value = true
   errorMessage.value = ''
@@ -95,6 +126,8 @@ const loadDetail = async (weekStart: string) => {
   try {
     const { data } = await api.get<WeeklyLogDetail>(`/api/student/weekly-logs/${weekStart}`)
     details[weekStart] = data
+    // Server copy is in place — layer any unsaved narrative back on top.
+    weeklyDraft.restore()
   } catch {
     saveMessage[weekStart] = 'Unable to load this week.'
   } finally {
@@ -221,25 +254,27 @@ onMounted(loadWeeks)
 
           <div>
             <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500">Daily Entries (Reference)</h3>
-            <table class="mt-2 min-w-full divide-y divide-slate-200">
-              <thead>
-                <tr>
-                  <th class="py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Date</th>
-                  <th class="py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
-                  <th class="py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Summary</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-100">
-                <tr v-if="details[week.week_start].daily_entries.length === 0">
-                  <td colspan="3" class="py-3 text-sm text-slate-400">No daily entries this week.</td>
-                </tr>
-                <tr v-for="entry in details[week.week_start].daily_entries" :key="entry.entry_date">
-                  <td class="py-3 text-sm text-slate-600">{{ formatDate(entry.entry_date) }}</td>
-                  <td class="py-3 text-sm capitalize text-slate-600">{{ entry.status }}</td>
-                  <td class="py-3 text-sm text-slate-800">{{ Object.values(entry.content)[0] ?? '' }}</td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="overflow-x-auto">
+              <table class="mt-2 min-w-full divide-y divide-slate-200">
+                <thead>
+                  <tr>
+                    <th class="whitespace-nowrap py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Date</th>
+                    <th class="whitespace-nowrap py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+                    <th class="whitespace-nowrap py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Summary</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr v-if="details[week.week_start].daily_entries.length === 0">
+                    <td colspan="3" class="py-3 text-sm text-slate-400">No daily entries this week.</td>
+                  </tr>
+                  <tr v-for="entry in details[week.week_start].daily_entries" :key="entry.entry_date">
+                    <td class="whitespace-nowrap py-3 text-sm text-slate-600">{{ formatDate(entry.entry_date) }}</td>
+                    <td class="py-3 text-sm capitalize text-slate-600">{{ entry.status }}</td>
+                    <td class="py-3 text-sm text-slate-800">{{ Object.values(entry.content)[0] ?? '' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div class="mt-5">

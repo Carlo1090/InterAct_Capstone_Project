@@ -155,15 +155,15 @@ onMounted(load)
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
     <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
 
-    <div v-else class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+    <div v-else class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
       <table class="min-w-full divide-y divide-slate-200">
         <thead class="bg-slate-50">
           <tr>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Student</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Week</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Daily Entries</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Submitted</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Student</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Week</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Daily Entries</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Submitted</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
@@ -175,11 +175,11 @@ onMounted(load)
               <p class="text-sm font-semibold text-slate-900">{{ log.student_name }}</p>
               <p class="font-mono text-xs text-slate-400">{{ log.student_id_number ?? '—' }}</p>
             </td>
-            <td class="px-4 py-3 font-mono text-sm text-slate-700">{{ log.week_start }} – {{ log.week_end }}</td>
+            <td class="whitespace-nowrap px-4 py-3 font-mono text-sm text-slate-700">{{ log.week_start }} – {{ log.week_end }}</td>
             <td class="px-4 py-3">
               <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{{ log.entries_count }} entries</span>
             </td>
-            <td class="px-4 py-3 font-mono text-sm text-slate-700">{{ formatDateTime(log.submitted_at) }}</td>
+            <td class="whitespace-nowrap px-4 py-3 font-mono text-sm text-slate-700">{{ formatDateTime(log.submitted_at) }}</td>
             <td class="px-4 py-3">
               <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="openReview(log)">
                 Review

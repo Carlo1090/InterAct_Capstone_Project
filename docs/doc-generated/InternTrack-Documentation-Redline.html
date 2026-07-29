@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>InternTrack Documentation — Revision Redline</title>
+<style>
+  @page { size: Letter portrait; margin: 20mm 18mm 18mm 18mm; }
+
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Times New Roman", Times, serif;
+    font-size: 11.5pt;
+    line-height: 1.5;
+    color: #111;
+    margin: 0;
+  }
+
+  h1, h2, h3 { font-family: Arial, Helvetica, sans-serif; margin: 0; }
+
+  /* ---------- cover ---------- */
+  .cover { text-align: center; padding-top: 55mm; page-break-after: always; }
+  .cover .eyebrow { font-family: Arial, sans-serif; font-size: 10pt; letter-spacing: 2.5px; color: #64748b; text-transform: uppercase; }
+  .cover h1 { font-size: 24pt; margin: 10mm 0 4mm; color: #1F3864; line-height: 1.25; }
+  .cover .sub { font-size: 13pt; color: #334155; }
+  .cover .rule { width: 60mm; height: 3px; background: #1F3864; margin: 8mm auto; }
+  .cover .meta { margin-top: 14mm; font-size: 10.5pt; color: #475569; }
+  .cover .meta div { margin: 1.5mm 0; }
+
+  /* ---------- legend ---------- */
+  .legend { border: 1px solid #cbd5e1; border-radius: 4px; padding: 5mm 6mm; margin: 0 0 7mm; background: #f8fafc; }
+  .legend h3 { font-size: 11pt; margin-bottom: 3mm; color: #1F3864; }
+  .legend p { margin: 2mm 0; font-size: 10.5pt; }
+
+  .del {
+    color: #b91c1c;
+    background: #fef2f2;
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+    padding: 0 2px;
+  }
+  .ins {
+    color: #15803d;
+    background: #f0fdf4;
+    padding: 0 2px;
+  }
+
+  /* ---------- sections ---------- */
+  h2.chapter {
+    font-size: 13pt;
+    color: #fff;
+    background: #1F3864;
+    padding: 2.5mm 4mm;
+    margin: 8mm 0 5mm;
+    border-radius: 3px;
+    page-break-after: avoid;
+  }
+  h2.chapter:first-of-type { margin-top: 0; }
+
+  .change { margin: 0 0 6mm; page-break-inside: avoid; border-left: 3px solid #cbd5e1; padding-left: 4mm; }
+  .change .loc {
+    font-family: Arial, sans-serif; font-size: 9pt; font-weight: bold;
+    color: #1F3864; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 2mm;
+  }
+  .change .row { margin: 1.5mm 0; }
+  .change .tag {
+    display: inline-block; width: 20mm; font-family: Arial, sans-serif; font-size: 8.5pt;
+    font-weight: bold; vertical-align: top; padding-top: 0.6mm;
+  }
+  .tag-was { color: #b91c1c; }
+  .tag-now { color: #15803d; }
+  .change .body { display: inline-block; width: calc(100% - 21mm); vertical-align: top; }
+  .why {
+    margin-top: 2.5mm; font-size: 9.5pt; color: #475569;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 2mm 3mm;
+  }
+  .why b { color: #334155; font-family: Arial, sans-serif; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.4px; }
+  code { font-family: "Courier New", monospace; font-size: 9.5pt; background: #eef2f7; padding: 0 2px; border-radius: 2px; }
+
+  .note { font-size: 10pt; color: #475569; margin-bottom: 6mm; }
+  .addition { border-left-color: #15803d; }
+</style>
+</head>
+<body>
+
+<!-- ============================ COVER ============================ -->
+<div class="cover">
+  <div class="eyebrow">Mater Dei College &middot; Tubigon, Bohol &middot; Group 1</div>
+  <h1>InternTrack<br />Documentation Revision Redline</h1>
+  <div class="rule"></div>
+  <div class="sub">Tracked corrections to <em>G1&nbsp;-&nbsp;InterTrack.pdf</em></div>
+  <div class="meta">
+    <div><strong>Source document:</strong> G1 - InterTrack.pdf (20 pages)</div>
+    <div><strong>Prepared:</strong> 29 July 2026</div>
+    <div><strong>Basis:</strong> Implemented system behaviour as recorded in CLAUDE.md and verified against the codebase</div>
+    <div style="margin-top:6mm;">ALERIA, MARK LLOYD L. &middot; MAR, JOHN CARLO S.<br />PELESORIES, REGGIE NIÑO Z. &middot; SAPID, LENNY B.</div>
+  </div>
+</div>
+
+<!-- ============================ LEGEND ============================ -->
+<div class="legend">
+  <h3>How to read this document</h3>
+  <p><span class="del">Text shown in red with a strikethrough</span> is the wording in the current documentation that is being replaced or corrected.</p>
+  <p><span class="ins">Text shown in green</span> is the corrected or newly added wording.</p>
+  <p>Each entry cites where it appears in the source PDF and why it changed. Every correction below was checked against the actual implementation, not assumed.</p>
+</div>
+
+<p class="note">
+  This redline covers factual drift between the written documentation and the system as built. The largest recurring
+  issues are the <strong>weekly bundling day</strong> (documented as Sunday, implemented as Monday), the
+  <strong>reminder schedule</strong> (documented as a fixed 9:00&nbsp;PM coordinator setting, implemented as an hourly
+  job driven by each student's own preference), the <strong>coordinator's permissions</strong> (documented as read-only,
+  actually a full management role), and the <strong>local development stack</strong> (documented as XAMPP, actually
+  Laragon with Laravel's built-in server).
+</p>
+
+<div class="legend" style="border-color:#bfdbfe;background:#eff6ff;">
+  <h3>Deliberately left unchanged: the mobile application</h3>
+  <p>
+    Every statement about the React Native mobile application and mobile push notifications is retained exactly as
+    written in the source document. The mobile component has not been implemented yet, so no revision is proposed for
+    it in this pass and the existing wording stands as the project's stated intent.
+  </p>
+  <p>
+    Where a sentence mentions mobile alongside something that genuinely did need correcting — the reminder schedule,
+    for example — only the non-mobile portion is marked, and the mobile clause is left untouched.
+  </p>
+</div>
+
+<!-- ============================ NAMING ============================ -->
+<h2 class="chapter">Product Name — Consistency Throughout</h2>
+
+<div class="change">
+  <div class="loc">Title page, §1.2 (p.&nbsp;2), §3.2 Laravel (p.&nbsp;15)</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body"><span class="del">InterTrack</span> was created for Mater Dei College… / …fit well with <span class="del">InterTrack</span>'s process-heavy ecosystem.</span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body"><span class="ins">InternTrack</span> was created for Mater Dei College… / …fit well with <span class="ins">InternTrack</span>'s process-heavy ecosystem.</span></div>
+  <div class="why"><b>Reason</b> — The system name is spelled two different ways across the document (and in the PDF filename). The product is <strong>InternTrack</strong>; every occurrence of "InterTrack" should be corrected, including the source filename.</div>
+</div>
+
+<!-- ============================ CHAPTER I ============================ -->
+<h2 class="chapter">Chapter I — §1.2 Purpose and Description</h2>
+
+<div class="change">
+  <div class="loc">Page 3 — automated weekly bundling</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body">InternTrack features weekly automated bundling of daily entries into a weekly log <span class="del">on Sundays</span>…</span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body">InternTrack features weekly automated bundling of daily entries into a weekly log <span class="ins">every Monday at 00:00, compiling the full Monday–Sunday week that has just ended</span>…</span></div>
+  <div class="why"><b>Reason</b> — <code>routes/console.php</code> schedules <code>RunWeeklyBundling</code> with <code>weeklyOn(1, '00:00')</code>; day&nbsp;1 is Monday. The job previously ran on Saturday, which was corrected because stamping a Weekly Log locks every daily entry in that week — a Saturday run locked the week before a Saturday shift had even started, leaving a rostered intern unable to write that day's entry.</div>
+</div>
+
+<div class="change">
+  <div class="loc">Page 2 — student notifications</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body">Students are notified by email, on the web, and via mobile applications about overdue and missing journal entries.</span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body">Students are notified by email<span class="ins">, where the address has been verified,</span> on the web, and via mobile applications about overdue and missing journal entries.</span></div>
+  <div class="why"><b>Reason</b> — Reminder email is sent only when <code>email</code> is present <em>and</em> <code>email_verified_at</code> is set; a student without a verified address receives the in-app notification instead. Because most students are created by coordinators without an email address, the in-app bell is the usual delivery path in practice. The web and mobile channels are left as written.</div>
+</div>
+
+<div class="change">
+  <div class="loc">Page 2 — supervisor scope</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body">Company supervisors also have another window to view and comment on student's weekly journals <span class="del">from other batches</span> before approving or sending them back.</span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body">Company supervisors also have another window to view and comment on the weekly journals <span class="ins">of the interns hosted at their own company</span> before approving or sending them back.</span></div>
+  <div class="why"><b>Reason</b> — Supervisor scope is by <strong>company</strong>, not batch. <code>ScopesSupervisorWork</code> resolves the companies the signed-in supervisor is attached to and returns every enrolment at those companies, which is what lets one shared company login see that company's full roster.</div>
+</div>
+
+<!-- ============================ OBJECTIVES ============================ -->
+<h2 class="chapter">Chapter I — §1.3 Objectives</h2>
+
+<div class="change">
+  <div class="loc">Page 4 — weekly compilation objective</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body">To implement a process that compiles daily entries into a single weekly file <span class="del">each Sunday</span> for supervisor approval…</span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body">To implement a process that compiles daily entries into a single weekly file <span class="ins">every Monday at 00:00, covering the Monday–Sunday week just ended,</span> for supervisor approval…</span></div>
+  <div class="why"><b>Reason</b> — Same schedule correction as above. A week is only treated as complete once its Sunday has passed, so the compilation necessarily runs on the following Monday.</div>
+</div>
+
+<div class="change">
+  <div class="loc">Page 4 — reminder objective</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body">To include an auto-email reminder script that emails students about missing or late daily logs <span class="del">at 9:00 PM, customized by coordinators for different batches of students</span>, and sends these reminders to the mobile app as push notifications.</span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body">To include an auto-email reminder script that emails students about missing or late daily logs <span class="ins">at a time each student sets for themselves — the service runs hourly and notifies a student in their chosen hour, falling back to their batch's schedule and then to a 9:00 PM default</span>, and sends these reminders to the mobile app as push notifications.</span></div>
+  <div class="why"><b>Reason</b> — <code>journal:send-missing-entry-reminders</code> is scheduled <code>->hourly()</code>; the command itself decides whose hour it currently is. Reminder preferences are stored per student (<code>reminder_days</code>, <code>reminder_time</code>, <code>reminder_enabled</code> on <code>student_profiles</code>) and are the student's own setting, not a coordinator's. The batch's <code>daily_reminder_time</code> is only a fallback. The mobile push clause is left as written.</div>
+</div>
+
+<div class="change">
+  <div class="loc">Page 3 — review and approval tiers</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body">…utilize the OJT journal's built-in review and approval process <span class="del">that consists of many tiers, such as immediate supervisors and upper management coordinators</span>…</span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body">…utilize the OJT journal's built-in review and approval process <span class="ins">in which the company supervisor is the sole approving authority — approving a weekly journal or returning it with a required comment — while academic coordinators observe the outcome in a read-only capacity</span>…</span></div>
+  <div class="why"><b>Reason</b> — There is exactly one approval tier. <code>CoordinatorWeeklyJournalController</code> exposes no approve, return, or edit action anywhere; review verdicts belong to supervisors only. Describing coordinators as an approval tier overstates the workflow.</div>
+</div>
+
+<div class="change">
+  <div class="loc">Page 5 — Weekly Activity Log objective</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body">To implement <span class="del">Weekly Activity Log functionality for students to record and report highlights of their weekly activities</span>, as well as automatically include approved Journal Entry input for the Student SIPP report available to coordinators.</span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body">To automatically include approved Journal Entry input for the Student SIPP report available to coordinators. <span class="ins">(The separate student-facing Weekly Activity Log form was withdrawn from the interface; its function is served by the supervisor-reviewed Weekly Journal.)</span></span></div>
+  <div class="why"><b>Reason</b> — The "Weekly Activity Log (SIPP)" section was removed from the student interface because no coordinator, supervisor, or administrator ever viewed it and it duplicated the Weekly Narrative. The database tables, controller, routes, and PDF template were deliberately retained so the capability is recoverable, but it is no longer a user-facing feature and should not be documented as one.</div>
+</div>
+
+<div class="change">
+  <div class="loc">Page 5 — responsive delivery objective (wording)</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body">To deliver a responsive web application that <span class="del">operated</span> effectively across desktop and mobile browsers…</span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body">To deliver a responsive web application that <span class="ins">operates</span> effectively across desktop and mobile browsers…</span></div>
+  <div class="why"><b>Reason</b> — Tense agreement with the surrounding objectives. This objective is now met: all four role interfaces use an off-canvas navigation drawer below the medium breakpoint, and all 28 role pages were verified at 320&nbsp;px, 375&nbsp;px, and 768&nbsp;px with no horizontal overflow.</div>
+</div>
+
+<!-- ============================ SCOPE ============================ -->
+<h2 class="chapter">Chapter I — §1.4 Scope and Limitations</h2>
+
+<div class="change">
+  <div class="loc">Page 6 — Weekly Processing</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body">Weekly Processing: The system automatically collects daily logs into a weekly format <span class="del">every Sunday evening</span>, including only entries supplied inside the active batch schedule.</span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body">Weekly Processing: The system automatically collects daily logs into a weekly format <span class="ins">every Monday at 00:00 for the week just ended</span>, including only <span class="ins">submitted</span> entries <span class="ins">from students with an active enrolment</span>.</span></div>
+  <div class="why"><b>Reason</b> — Schedule correction, plus a precision point: bundling compiles only <em>submitted</em> daily entries. Days without a submitted entry are skipped silently rather than filled with a placeholder, and an already-submitted Weekly Log is never overwritten.</div>
+</div>
+
+<div class="change">
+  <div class="loc">Page 6 — Coordinator Tools</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body">Coordinator Tools: A portal for administering programs and tracking multiple student groups. <span class="del">Includes read-only access to all records approved by supervisors.</span></span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body">Coordinator Tools: A portal for administering programs and tracking multiple student groups. <span class="ins">Coordinators create student and supervisor accounts, manage batches and their rosters, maintain partner companies, author journal templates, accept or reject Student Information Sheets (acceptance is what enrols a student), and curate the SIPP, HTE, and Group Information Sheet reports. Their access is read-only only with respect to journal content itself.</span></span></div>
+  <div class="why"><b>Reason</b> — "Read-only" materially understates the role. There are twelve coordinator controllers with write capability. Most significantly, accepting a Student Information Sheet is the action that creates the enrolment record — the single gateway through which every student enters a batch.</div>
+</div>
+
+<div class="change">
+  <div class="loc">Page 7 — Notification Engine</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body">Notification Engine: Send automatic email and mobile push notifications to students <span class="del">with open journals who have not submitted partially complete, based on reading batch parameters</span>.</span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body">Notification Engine: Send automatic email and mobile push notifications to students <span class="ins">who have not submitted a daily journal on a day they were expected to work. Email is sent where the student's address has been verified, and an in-app notification is always recorded. Timing follows each student's own reminder preference, falling back to their batch's schedule</span>.</span></div>
+  <div class="why"><b>Reason</b> — The original sentence is grammatically incomplete ("who have not submitted partially complete") and attributes the timing to batch parameters alone. Corrected for readability and to reflect the per-student reminder preference plus the email-verification condition. The email and mobile push channels are left as written.</div>
+</div>
+
+<div class="change">
+  <div class="loc">Page 7 — Weekly Activity Log scope item</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body"><span class="del">Weekly Activity Log: Students can record and submit their weekly activities. Approved daily logs will be automatically reflected in their SIPP report, which coordinators can view.</span></span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body"><span class="ins">Weekly Journal: Students write a weekly narrative, which the company supervisor approves or returns with a comment. SIPP-flagged journal fields feed the coordinator's Annual SIPP Report.</span></span></div>
+  <div class="why"><b>Reason</b> — Reflects the removal of the standalone Weekly Activity Log form and names the feature that actually performs this role.</div>
+</div>
+
+<div class="change">
+  <div class="loc">Page 8 — Connectivity Requirement (limitation)</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body">Connectivity Requirement: The platform needs a stable internet connection… <span class="del">However, Offline drafts and local saving are features now available but require internet connection to use, so users should make sure they are connected to the internet before using the platform.</span></span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body">Connectivity Requirement: The platform needs an internet connection to load data, save work, and submit reports. <span class="ins">Work typed into a form is preserved in the browser for the duration of the tab, so refreshing the page — or recovering from a browser crash — does not discard unsaved input. This is a convenience only: the data is not submitted to the server until the user saves, and no feature operates fully offline.</span></span></div>
+  <div class="why"><b>Reason</b> — The original sentence contradicts itself, describing offline drafts as available while requiring an internet connection to use them. It has been rewritten to state what the system genuinely does: form input is mirrored into per-tab browser storage and restored after a refresh. Per-tab storage was chosen deliberately over persistent storage because the system is used on shared college laboratory machines, and a half-completed Student Information Sheet containing personal and guardian details must not remain readable to the next user of that browser. Passwords are explicitly excluded from this mechanism.</div>
+</div>
+
+<!-- ============================ CHAPTER III ============================ -->
+<h2 class="chapter">Chapter III — §3.1 Architecture Design</h2>
+
+<div class="change">
+  <div class="loc">Page 13 — coordinator capability</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body">Academic coordinators can look at what many students are doing, <span class="del">but they cannot change anything</span>.</span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body">Academic coordinators can look at what many students are doing <span class="ins">across their department, and they administer the structures those students work within — accounts, batches, rosters, partner companies, journal templates, intake approval, and the SIPP compliance reports. What they cannot alter is journal content itself or a supervisor's review decision</span>.</span></div>
+  <div class="why"><b>Reason</b> — Same correction as the Coordinator Tools scope entry; this sentence is the strongest statement of the inaccuracy and is the one most likely to be quoted during the defence.</div>
+</div>
+
+<div class="change">
+  <div class="loc">Page 14 — backend responsibilities</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body">The part that makes it work includes rules such as creating weekly bundles, <span class="del">sending emails every Sunday</span>, and generating PDF reports.</span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body">The part that makes it work includes rules such as <span class="ins">compiling weekly bundles each Monday, running the hourly reminder service, purging expired archived roster records nightly,</span> and generating PDF reports.</span></div>
+  <div class="why"><b>Reason</b> — Corrects the schedule and names the third scheduled task the documentation omits: <code>roster:purge-archived</code> runs daily at 02:00 and permanently removes archived roster records older than thirty days.</div>
+</div>
+
+<!-- ============================ TECHNOLOGY ============================ -->
+<h2 class="chapter">Chapter III — §3.2 Details of Technology Used</h2>
+
+<div class="change">
+  <div class="loc">Page 16 — XAMPP</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body"><span class="del">XAMPP — a local server environment used throughout the development and testing stages of InternTrack. XAMPP provides a locally-hosted Apache web server, MySQL database, and PHP interpreter.</span></span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body"><span class="ins">Laragon and the Laravel development server — the local environment used during development and testing. Laragon supplies the MySQL service, while the application itself is served by Laravel's built-in development server (<code>php artisan serve</code>) alongside the Vite development server for the Vue front end.</span></span></div>
+  <div class="why"><b>Reason</b> — XAMPP is not the stack in use. MySQL is provided by Laragon, and the application runs under <code>php artisan serve</code> with Vite proxying API requests, which is what makes the front end and API same-origin during development.</div>
+</div>
+
+<div class="change addition">
+  <div class="loc">Page 16 — new entry to add after the local environment</div>
+  <div class="row"><span class="tag tag-now">Add</span><span class="body"><span class="ins">Deployment platform — the production build is split across three free-tier services: the Vue front end is hosted on Vercel, the Laravel API runs as a Docker container on Render, and the MySQL database is hosted on Aiven. The front end proxies API requests to the backend so that both appear to the browser as a single origin, which keeps authentication working without third-party cookies.</span></span></div>
+  <div class="why"><b>Reason</b> — The document describes only the local environment and never states how the system is deployed, which is a question the panel is likely to ask. The full operational procedure is documented separately in <code>docs/DEPLOYMENT.md</code>.</div>
+</div>
+
+<div class="change">
+  <div class="loc">Page 14 — Laravel</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body"><span class="del">Laravel</span> — a PHP web application framework… including automatic journal bundling <span class="del">on Sundays</span>, the email reminder engine, the <span class="del">four-tier</span> review and approval workflow…</span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body"><span class="ins">Laravel 13 (PHP 8.3)</span> — a PHP web application framework… including automatic journal bundling <span class="ins">each Monday</span>, the <span class="ins">hourly</span> reminder engine, the <span class="ins">supervisor</span> review and approval workflow…</span></div>
+  <div class="why"><b>Reason</b> — Adds the version actually in use and applies the schedule and workflow corrections. "Four-tier" conflates the four <em>user roles</em> with the review workflow, which has one approving tier.</div>
+</div>
+
+<div class="change">
+  <div class="loc">Page 14 — Vue</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body"><span class="del">Vue — Vue.js is the JavaScript framework we used to build InternTrack's web view.</span></span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body"><span class="ins">Vue 3 with TypeScript — the front-end framework used to build InternTrack's web interface, built with Vite and using Pinia for application state and Vue Router for navigation. TypeScript is used throughout the front end so that data exchanged with the API is type-checked at build time.</span></span></div>
+  <div class="why"><b>Reason</b> — The front end is TypeScript, not plain JavaScript, and the supporting libraries (Vite, Pinia, Vue Router) are unstated. These are reasonable things for a panel to ask about.</div>
+</div>
+
+<div class="change">
+  <div class="loc">Page 15 — Tailwind CSS</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body"><span class="del">Tailwind CSS</span> — is a utility-first framework…</span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body"><span class="ins">Tailwind CSS v4</span> — is a utility-first framework…</span></div>
+  <div class="why"><b>Reason</b> — Version 4 differs enough from version 3 in configuration and syntax that the major version is worth stating.</div>
+</div>
+
+<div class="change addition">
+  <div class="loc">Page 15 — new entry to add</div>
+  <div class="row"><span class="tag tag-now">Add</span><span class="body"><span class="ins">Authentication — sign-in is username and password based, using Laravel Sanctum's cookie and session authentication for the web application. Google sign-in is additionally available in a strictly link-only capacity: it never creates an account and only signs in an existing account whose email address Google itself has verified. The same mechanism is what verifies a student's email address so that reminder email may be sent to them.</span></span></div>
+  <div class="why"><b>Reason</b> — Authentication is not described anywhere in the technology chapter, yet it is central to the system. It is also worth stating explicitly that self-registration does not exist — every account is created by staff — since that is a deliberate security decision rather than an omission.</div>
+</div>
+
+<!-- ============================ TYPOS ============================ -->
+<h2 class="chapter">Editorial Corrections</h2>
+
+<div class="change">
+  <div class="loc">Page 16 — Smartphones</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body">Since many interns do not always have <span class="del">acces</span> to their desktop or laptop during their OJT…</span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body">Since many interns do not always have <span class="ins">access</span> to their desktop or laptop during their OJT…</span></div>
+  <div class="why"><b>Reason</b> — Spelling.</div>
+</div>
+
+<div class="change">
+  <div class="loc">Page 12 — Review of Related Literature, closing paragraph</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body">…or were not designed for <span class="del">academic institution</span> in the Philippines.</span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body">…or were not designed for <span class="ins">academic institutions</span> in the Philippines.</span></div>
+  <div class="why"><b>Reason</b> — Number agreement.</div>
+</div>
+
+<div class="change">
+  <div class="loc">Page 1 — §1.1 Project Context</div>
+  <div class="row"><span class="tag tag-was">Was</span><span class="body"><span class="del">While inside assigned to their company</span>, students should keep a daily log of their activities…</span></div>
+  <div class="row"><span class="tag tag-now">Now</span><span class="body"><span class="ins">While assigned to their host company</span>, students should keep a daily log of their activities…</span></div>
+  <div class="why"><b>Reason</b> — The original phrase is not grammatical.</div>
+</div>
+
+</body>
+</html>

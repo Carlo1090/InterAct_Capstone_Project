@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { nextTick, onMounted, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { showToast, confirmAction } from '@/lib/toast'
@@ -7,6 +7,7 @@ import ToastHost from '@/components/ToastHost.vue'
 import ReportEditorBar from '@/components/coordinator/ReportEditorBar.vue'
 import HtePaperView from '@/components/coordinator/HtePaperView.vue'
 import type { HteIndex, HteMeta, HteReport, HteRow } from '@/types/api'
+import { useFormDraft } from '@/lib/formDraft'
 
 const academicYears = ref<string[]>([])
 const academicYear = ref<string>('')
@@ -62,6 +63,8 @@ const loadReport = async () => {
   try {
     const { data } = await api.get<HteReport>(`/api/coordinator/hte/${academicYear.value}`)
     applyReport(data)
+    // Server copy is in place — layer unsaved curation back on top.
+    hteDraft.restore()
   } catch {
     errorMessage.value = 'Unable to load this HTE list.'
   } finally {
@@ -74,6 +77,45 @@ const applyReport = (data: HteReport) => {
   meta.value = data.meta
   status.value = data.status
   deletedIds.value = []
+}
+
+/**
+ * Keep unsaved curation alive across a refresh.
+ *
+ * Keyed by academic year inside the payload: the year selector re-runs
+ * loadReport() without remounting, so a draft from 2025 must never be applied
+ * over 2026's rows.
+ *
+ * Unlike the student narrative drafts, this one is genuinely cleared after a
+ * successful save — the rows are derived from live enrollments, so a lingering
+ * draft could later mask legitimately refreshed server data.
+ */
+const hteDraft = useFormDraft(
+  'coordinator:hte',
+  () => ({
+    year: academicYear.value,
+    rows: rows.value,
+    meta: meta.value,
+    deletedIds: deletedIds.value,
+  }),
+  (draft) => {
+    if (draft.year !== academicYear.value) return
+    if (Array.isArray(draft.rows)) rows.value = draft.rows
+    if (draft.meta) meta.value = draft.meta
+    if (Array.isArray(draft.deletedIds)) deletedIds.value = draft.deletedIds
+  },
+  { autoRestore: false },
+)
+
+/**
+ * Drop the draft after the server copy has been applied. The nextTick matters:
+ * applyReport() mutates the watched refs, so a write is already queued — clear()
+ * must run after that scheduling to cancel its timer, otherwise the just-saved
+ * server state would be written straight back as a "draft".
+ */
+const clearDraftAfterSave = async () => {
+  await nextTick()
+  hteDraft.clear()
 }
 
 const onYearChange = async () => {
@@ -133,6 +175,7 @@ const save = async (nextStatus: 'draft' | 'finalized') => {
       deleted_ids: deletedIds.value,
     })
     applyReport(data)
+    await clearDraftAfterSave()
     showToast(nextStatus === 'finalized' ? 'HTE list finalized.' : 'Draft saved.')
   } catch (error) {
     const responseData = axios.isAxiosError(error) ? error.response?.data : null
@@ -174,7 +217,7 @@ onMounted(loadIndex)
   <section class="space-y-5">
     <ToastHost />
     <div>
-      <h2 class="text-2xl font-bold text-slate-950">HTE &amp; Student Interns List</h2>
+      <h2 class="text-xl font-bold text-slate-950 md:text-2xl">HTE &amp; Student Interns List</h2>
       <p class="mt-1 text-sm text-slate-500">
         Host Training Establishments and the interns placed with them, auto-populated from enrollments. Curate the
         list, then export the official SIPP report.
@@ -186,11 +229,11 @@ onMounted(loadIndex)
     <template v-else>
       <!-- Filter -->
       <div class="flex flex-wrap items-end gap-4 rounded-lg bg-white p-4 shadow-sm ring-1 ring-slate-200">
-        <label class="block">
+        <label class="block w-full sm:w-auto">
           <span class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Academic Year</span>
           <select
             v-model="academicYear"
-            class="w-56 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
+            class="w-full sm:w-56 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
             :disabled="academicYears.length === 0"
             @change="onYearChange"
           >
@@ -219,7 +262,7 @@ onMounted(loadIndex)
       <p v-if="isLoadingReport" class="text-sm text-slate-500">Loading list...</p>
 
       <!-- PREVIEW — read-only document -->
-      <div v-else-if="mode === 'preview'" class="rounded-lg bg-slate-100 p-4 sm:p-6">
+      <div v-else-if="mode === 'preview'" class="overflow-x-auto rounded-lg bg-slate-100 p-4 sm:p-6">
         <HtePaperView :rows="rows" :meta="meta" :academic-year="academicYear" />
       </div>
 

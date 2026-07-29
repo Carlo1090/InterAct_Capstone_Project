@@ -39,7 +39,7 @@ onMounted(loadStats)
 
 <template>
   <section>
-    <h2 class="text-2xl font-bold text-slate-950">Admin Dashboard</h2>
+    <h2 class="text-xl font-bold text-slate-950 md:text-2xl">Admin Dashboard</h2>
 
     <p v-if="isLoading" class="mt-6 text-sm text-slate-500">Loading...</p>
     <p v-else-if="errorMessage" class="mt-6 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">

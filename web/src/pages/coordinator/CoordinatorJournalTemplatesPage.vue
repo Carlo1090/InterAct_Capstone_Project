@@ -5,6 +5,7 @@ import api from '@/lib/axios'
 import { showToast, confirmAction } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
 import ValidationErrorList from '@/components/ui/ValidationErrorList.vue'
+import { useFormDraft } from '@/lib/formDraft'
 import type { JournalTemplateProgramOption, JournalTemplateRecord, JournalTemplateSection } from '@/types/api'
 
 /**
@@ -126,9 +127,42 @@ const resetForm = () => {
   originalKeys.value = []
 }
 
+/**
+ * Keep an in-progress NEW template alive across a refresh.
+ *
+ * Create-mode only. An edit modal is deliberately excluded: restoring a draft
+ * over a record freshly loaded from the server would display stale values as
+ * though they were the template's current state, which is worse than losing a
+ * few keystrokes. `isCreate` is stored alongside so an edit session can never
+ * pick this up.
+ *
+ * A refresh closes the modal (it isn't a route), so the draft is re-applied when
+ * the coordinator next opens "Create Template" rather than on mount.
+ */
+const templateDraft = useFormDraft(
+  'coordinator:journal-template',
+  () => ({
+    isCreate: editingTemplateId.value === null,
+    form: { ...form },
+    customSections: customSections.value,
+    sippEnabled: sippEnabled.value,
+    sippPrompts: { ...sippPrompts },
+  }),
+  (draft) => {
+    if (!draft.isCreate || editingTemplateId.value !== null) return
+    if (draft.form) Object.assign(form, draft.form)
+    if (Array.isArray(draft.customSections)) customSections.value = draft.customSections
+    if (typeof draft.sippEnabled === 'boolean') sippEnabled.value = draft.sippEnabled
+    if (draft.sippPrompts) Object.assign(sippPrompts, draft.sippPrompts)
+  },
+  { autoRestore: false },
+)
+
 const openCreateModal = () => {
   editingTemplateId.value = null
   resetForm()
+  // Re-apply anything typed into a previous, unfinished Create session.
+  templateDraft.restore()
   isModalOpen.value = true
 }
 
@@ -237,6 +271,9 @@ const performSave = async () => {
     }
 
     showToast(editingTemplateId.value ? 'Template saved.' : 'Template created.')
+    // Persisted server-side now — drop the create draft so the next "Create
+    // Template" starts clean.
+    templateDraft.clear()
     await load()
     closeModal()
   } catch (error) {
@@ -290,9 +327,9 @@ onMounted(load)
 <template>
   <section class="space-y-5">
     <ToastHost />
-    <div class="flex items-center justify-between gap-4">
+    <div class="flex flex-wrap items-center justify-between gap-4">
       <div>
-        <h2 class="text-2xl font-bold text-slate-950">Journal Templates</h2>
+        <h2 class="text-xl font-bold text-slate-950 md:text-2xl">Journal Templates</h2>
         <p class="mt-1 text-sm text-slate-500">Shape the daily journal fields students fill in for your programs.</p>
       </div>
       <button
@@ -312,15 +349,15 @@ onMounted(load)
       You are not currently assigned as coordinator of any batch, so there are no programs to author templates for.
     </p>
 
-    <div v-else class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+    <div v-else class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
       <table class="min-w-full divide-y divide-slate-200">
         <thead class="bg-slate-50">
           <tr>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Name</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Programs</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Sections</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Name</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Programs</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Sections</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-200">
@@ -371,7 +408,7 @@ onMounted(load)
               </div>
               <div class="md:col-span-2">
                 <span class="mb-2 block text-sm font-medium text-slate-700">Programs</span>
-                <div class="grid grid-cols-2 gap-x-4 gap-y-2 rounded-md border border-slate-200 p-3">
+                <div class="grid grid-cols-1 gap-x-4 gap-y-2 rounded-md border border-slate-200 p-3 sm:grid-cols-2">
                   <label
                     v-for="program in programs"
                     :key="program.id"

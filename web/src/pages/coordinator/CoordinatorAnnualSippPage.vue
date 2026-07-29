@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { nextTick, onMounted, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { showToast, confirmAction } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
 import ReportEditorBar from '@/components/coordinator/ReportEditorBar.vue'
 import AnnualSippPaperView from '@/components/coordinator/AnnualSippPaperView.vue'
+import { useFormDraft } from '@/lib/formDraft'
 import type {
   AnnualSippIndex,
   AnnualSippMeta,
@@ -80,6 +81,8 @@ const loadReport = async () => {
       params: { academic_year: academicYear.value },
     })
     applyReport(data)
+    // Server copy in place — layer unsaved curation back on top.
+    sippDraft.restore()
   } catch {
     errorMessage.value = 'Unable to load this report.'
   } finally {
@@ -92,6 +95,41 @@ const applyReport = (data: AnnualSippReport) => {
   meta.value = data.meta
   status.value = data.status
   deletedIds.value = []
+}
+
+/**
+ * Keep unsaved curation alive across a refresh.
+ *
+ * Scoped by BOTH program and academic year — this report has per-program tabs
+ * and switching either re-runs loadReport() without remounting, so the draft
+ * must only re-apply to the exact tab it was written on.
+ *
+ * Cleared after a successful save: rows derive from live journal entries, so a
+ * lingering draft could later mask refreshed server data.
+ */
+const sippDraft = useFormDraft(
+  'coordinator:annual-sipp',
+  () => ({
+    programId: activeProgramId.value,
+    year: academicYear.value,
+    rows: rows.value,
+    meta: meta.value,
+    deletedIds: deletedIds.value,
+  }),
+  (draft) => {
+    if (draft.programId !== activeProgramId.value || draft.year !== academicYear.value) return
+    if (Array.isArray(draft.rows)) rows.value = draft.rows
+    if (draft.meta) meta.value = draft.meta
+    if (Array.isArray(draft.deletedIds)) deletedIds.value = draft.deletedIds
+  },
+  { autoRestore: false },
+)
+
+// nextTick so clear() cancels the write applyReport() just queued — see the
+// same helper in CoordinatorHtePage.vue.
+const clearDraftAfterSave = async () => {
+  await nextTick()
+  sippDraft.clear()
 }
 
 const selectProgram = async (programId: number) => {
@@ -138,6 +176,7 @@ const save = async (nextStatus: 'draft' | 'finalized') => {
       deleted_ids: deletedIds.value,
     })
     applyReport(data)
+    await clearDraftAfterSave()
     showToast(nextStatus === 'finalized' ? 'Report finalized.' : 'Draft saved.')
   } catch (error) {
     const responseData = axios.isAxiosError(error) ? error.response?.data : null
@@ -180,7 +219,7 @@ onMounted(loadIndex)
   <section class="space-y-5">
     <ToastHost />
     <div>
-      <h2 class="text-2xl font-bold text-slate-950">Annual SIPP Report</h2>
+      <h2 class="text-xl font-bold text-slate-950 md:text-2xl">Annual SIPP Report</h2>
       <p class="mt-1 text-sm text-slate-500">
         Curate students' SIPP notes (issues, solutions, recommendations) per program, then export the official report.
       </p>
@@ -213,11 +252,11 @@ onMounted(loadIndex)
 
       <!-- Filter -->
       <div class="flex flex-wrap items-end gap-4 rounded-lg bg-white p-4 shadow-sm ring-1 ring-slate-200">
-        <label class="block">
+        <label class="block w-full sm:w-auto">
           <span class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Academic Year</span>
           <select
             v-model="academicYear"
-            class="w-56 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
+            class="w-full sm:w-56 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
             :disabled="academicYears.length === 0"
             @change="onYearChange"
           >
@@ -246,7 +285,7 @@ onMounted(loadIndex)
       <p v-if="isLoadingReport" class="text-sm text-slate-500">Loading report...</p>
 
       <!-- PREVIEW — read-only document -->
-      <div v-else-if="mode === 'preview'" class="rounded-lg bg-slate-100 p-4 sm:p-6">
+      <div v-else-if="mode === 'preview'" class="overflow-x-auto rounded-lg bg-slate-100 p-4 sm:p-6">
         <AnnualSippPaperView :rows="rows" :meta="meta" :academic-year="academicYear" />
       </div>
 

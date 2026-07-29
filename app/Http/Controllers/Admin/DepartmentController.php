@@ -11,12 +11,19 @@ use App\Models\Department;
 use App\Models\SystemLog;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Cache;
 
 class DepartmentController extends Controller
 {
     public function index(): JsonResponse
     {
-        return response()->json(Department::withCount('programs')->get());
+        // Cache ->toArray(), never the Eloquent collection — see the note in
+        // Admin\ProgramController::index(). `serializable_classes => false` means a
+        // cached model comes back as __PHP_Incomplete_Class on every request after
+        // the first. toArray() keeps the JSON (including programs_count) identical.
+        return response()->json(
+            Cache::remember('reference:departments', now()->addDay(), fn () => Department::withCount('programs')->get()->toArray())
+        );
     }
 
     public function show(Department $department): JsonResponse
@@ -54,6 +61,11 @@ class DepartmentController extends Controller
         $coordinator = User::find($request->validated('user_id'));
         SystemLog::record('Coordinator Assigned', "Assigned {$coordinator->name} to {$department->name}");
 
+        // The coordinator's scoped program list depends on which department(s)
+        // they're assigned to — a stale cache here would leave them unable to
+        // see the department they were just handed.
+        Cache::forget("coordinator-program-ids:{$coordinator->id}");
+
         return response()->json($department->coordinators()->orderBy('name')->get(), 201);
     }
 
@@ -62,6 +74,8 @@ class DepartmentController extends Controller
         $department->coordinators()->detach($coordinator->id);
 
         SystemLog::record('Coordinator Removed', "Removed {$coordinator->name} from {$department->name}");
+
+        Cache::forget("coordinator-program-ids:{$coordinator->id}");
 
         return response()->json($department->coordinators()->orderBy('name')->get());
     }
@@ -75,6 +89,8 @@ class DepartmentController extends Controller
 
         SystemLog::record('Department Created', "Created department {$department->name} ({$department->code})");
 
+        Cache::forget('reference:departments');
+
         return response()->json($department, 201);
     }
 
@@ -83,6 +99,8 @@ class DepartmentController extends Controller
         $department->update($request->validated());
 
         SystemLog::record('Department Updated', "Updated department {$department->name}");
+
+        Cache::forget('reference:departments');
 
         return response()->json($department);
     }

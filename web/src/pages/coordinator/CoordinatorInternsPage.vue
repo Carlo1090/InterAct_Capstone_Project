@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { showToast } from '@/lib/toast'
+import { useFormDraft } from '@/lib/formDraft'
 import { categorizeError } from '@/lib/apiError'
 import ToastHost from '@/components/ToastHost.vue'
 import InternDetailModal from '@/components/interns/InternDetailModal.vue'
@@ -316,6 +317,31 @@ const submitEnrollment = async () => {
   }
 }
 
+/**
+ * Keep an in-progress Create Student Account form alive across a refresh.
+ *
+ * THE PASSWORD IS DELIBERATELY ABSENT from the persisted object and must stay
+ * that way. Web storage is plain text readable by any JavaScript on the page,
+ * and this form sets the credential a student will actually sign in with — on a
+ * shared staff machine it would remain readable via DevTools until the tab
+ * closed. Because only the fields listed here are stored, the exclusion is
+ * structural: it cannot be defeated by forgetting to update a denylist.
+ */
+const accountDraft = useFormDraft(
+  'coordinator:create-account',
+  () => ({
+    first_name: accountForm.first_name,
+    middle_name: accountForm.middle_name,
+    last_name: accountForm.last_name,
+    username: accountForm.username,
+    program_id: accountForm.program_id,
+    batch_id: accountForm.batch_id,
+    student_id_number: accountForm.student_id_number,
+  }),
+  (draft) => Object.assign(accountForm, draft),
+  { autoRestore: false },
+)
+
 const openAccountModal = async () => {
   accountForm.first_name = ''
   accountForm.middle_name = ''
@@ -327,6 +353,9 @@ const openAccountModal = async () => {
   accountForm.student_id_number = ''
   accountErrors.value = {}
   accountMessage.value = ''
+  // Re-apply anything typed into a previous, unfinished session. The password
+  // is never restored — it is not stored in the first place.
+  accountDraft.restore()
   isAccountModalOpen.value = true
   await loadEnrollmentData()
 }
@@ -353,6 +382,8 @@ const submitAccount = async () => {
       ...(accountForm.student_id_number ? { student_id_number: accountForm.student_id_number } : {}),
     })
     const createdName = [accountForm.first_name, accountForm.last_name].filter(Boolean).join(' ')
+    // Account exists now — drop the draft so the next Create starts clean.
+    accountDraft.clear()
     closeAccountModal()
     await loadInterns()
     showToast(`Student account created for ${createdName}. Username: ${data.username}`)
@@ -434,7 +465,7 @@ onMounted(() => {
 
     <div class="flex flex-wrap items-center justify-between gap-4">
       <div>
-        <h2 class="text-2xl font-bold text-slate-950">Users</h2>
+        <h2 class="text-xl font-bold text-slate-950 md:text-2xl">Users</h2>
         <p class="mt-1 text-sm text-slate-500">Interns and supervisors across your department's programs.</p>
       </div>
       <!-- Header actions are tab-contextual: only what belongs to the active tab. -->
@@ -490,17 +521,17 @@ onMounted(() => {
           <option v-for="program in programOptions" :key="program.id" :value="program.id">{{ program.code ?? program.name }}</option>
         </select>
       </div>
-      <div class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+      <div class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
         <table class="min-w-full divide-y divide-slate-200">
           <thead class="bg-slate-50">
             <tr>
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Student</th>
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Enrollment</th>
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Batch</th>
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Company</th>
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Supervisor</th>
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Student</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Enrollment</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Batch</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Company</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Supervisor</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
@@ -559,15 +590,15 @@ onMounted(() => {
           </select>
         </div>
       </div>
-      <div class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+      <div class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
         <table class="min-w-full divide-y divide-slate-200">
           <thead class="bg-slate-50">
             <tr>
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Supervisor</th>
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Email</th>
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Companies</th>
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Batches</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Supervisor</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Email</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Companies</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Batches</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">

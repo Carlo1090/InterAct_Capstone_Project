@@ -144,7 +144,7 @@ onBeforeUnmount(() => {
 
     <div
       v-if="isOpen"
-      class="absolute right-0 z-45 mt-2 w-96 rounded-lg bg-white shadow-xl ring-1 ring-slate-200"
+      class="absolute right-0 z-45 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-lg bg-white shadow-xl ring-1 ring-slate-200"
     >
       <div class="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
         <button
@@ -161,7 +161,7 @@ onBeforeUnmount(() => {
         <p class="text-sm font-bold text-slate-900">{{ viewTitle }}</p>
       </div>
 
-      <div class="max-h-112 overflow-y-auto">
+      <div class="max-h-[min(28rem,calc(100vh-8rem))] overflow-y-auto">
         <div v-if="view === 'menu'" class="divide-y divide-slate-100">
           <button
             type="button"

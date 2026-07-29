@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { roleRedirect } from '@/router/index.ts'
 import { consumeQueryParam, googleErrorMessage, googleLoginUrl } from '@/lib/googleAuth'
+import { useFormDraft } from '@/lib/formDraft'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -13,6 +14,25 @@ const password = ref('')
 const errorMessage = ref('')
 const isLoading = ref(false)
 const showPassword = ref(false)
+
+/**
+ * Keep the typed username across a refresh — losing it mid-login is the papercut
+ * this solves.
+ *
+ * The PASSWORD IS DELIBERATELY ABSENT from the persisted object and must stay
+ * that way: sessionStorage is plain text readable by any JS on the page, so
+ * storing it would turn any XSS into credential theft, and on a shared MDC lab
+ * machine it would remain readable via DevTools until the tab closed. The
+ * password input already carries `autocomplete="current-password"`, so the
+ * browser's own password manager — encrypted and OS-protected — handles refill.
+ */
+const loginDraft = useFormDraft(
+  'login',
+  () => ({ identifier: identifier.value }),
+  (draft) => {
+    if (typeof draft.identifier === 'string') identifier.value = draft.identifier
+  },
+)
 
 // A full page navigation, not XHR — Google needs the browser itself.
 const signInWithGoogle = () => {
@@ -30,6 +50,10 @@ const login = async () => {
 
   try {
     await auth.login(identifier.value, password.value)
+    // Signed in successfully — don't leave the username sitting in storage on a
+    // shared machine. A FAILED login deliberately keeps it, since that's the
+    // case where retyping is the actual annoyance.
+    loginDraft.clear()
     router.push(roleRedirect(auth.role))
   } catch {
     errorMessage.value = 'Invalid credentials. Please try again.'
@@ -115,6 +139,7 @@ const login = async () => {
                   id="identifier"
                   v-model="identifier"
                   type="text"
+                  name="username"
                   placeholder="Enter your username"
                   class="w-full border-b-2 border-slate-200 bg-transparent px-1 py-2 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500"
                   autocomplete="username"
@@ -143,6 +168,7 @@ const login = async () => {
                     id="password"
                     v-model="password"
                     :type="showPassword ? 'text' : 'password'"
+                    name="password"
                     placeholder="Enter your password"
                     class="w-full border-b-2 border-slate-200 bg-transparent py-2 pr-9 pl-1 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500"
                     autocomplete="current-password"

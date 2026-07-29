@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import api from '@/lib/axios'
 import { categorizeError } from '@/lib/apiError'
+import { useFormDraft } from '@/lib/formDraft'
 import { confirmAction, showToast } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -58,6 +59,41 @@ const isSubmitted = computed(() => submissionStatus.value === 'submitted')
 // coordinator's Accept step used them to place the student; everything
 // else on the sheet stays editable for profile upkeep.
 const systemLocked = computed(() => isApproved.value)
+
+/**
+ * Keep a half-filled sheet alive across a refresh — this is the longest form in
+ * the app and students fill it in one sitting, so losing it is the worst case.
+ *
+ * `autoRestore: false` is essential here: loadInfoSheet() populates these same
+ * objects from the API on mount, so an eager restore would be silently
+ * overwritten by the server response. We restore AFTER the load resolves.
+ *
+ * Deliberately NOT persisted: program_course / department / internship_coordinator.
+ * Those are re-derived server-side from the student's intended batch (anti-spoof)
+ * and are rendered read-only, so a stale draft value would only ever misreport
+ * what the server actually holds.
+ */
+const sheetDraft = useFormDraft(
+  'student:info-sheet',
+  () => ({
+    personal: { ...personalInfo },
+    year_level: academicInfo.year_level,
+    ojt: { ...ojtInfo },
+  }),
+  (draft) => {
+    if (draft.personal) Object.assign(personalInfo, draft.personal)
+    // Year and company are disabled once the sheet is approved, so the student
+    // cannot have edited them — the server copy stays authoritative.
+    if (!systemLocked.value) {
+      if (typeof draft.year_level === 'string') academicInfo.year_level = draft.year_level
+      if (draft.ojt) Object.assign(ojtInfo, draft.ojt)
+    } else if (draft.ojt) {
+      const { company_id, host_company, ...editable } = draft.ojt
+      Object.assign(ojtInfo, editable)
+    }
+  },
+  { autoRestore: false },
+)
 const submitLabel = computed(() => (isRejected.value ? 'Resubmit' : 'Submit'))
 
 const onCompanyChange = () => {
@@ -91,6 +127,9 @@ const loadInfoSheet = async () => {
     if (!ojtInfo.company_id && ojtInfo.host_company) {
       ojtInfo.company_id = companies.value.find((company) => company.name === ojtInfo.host_company)?.id ?? null
     }
+    // Only now that the server copy is in place may an unsaved draft be layered
+    // back on top — otherwise this load would have wiped it.
+    sheetDraft.restore()
   } catch {
     errorMessage.value = 'Unable to load your info sheet.'
   } finally {
@@ -154,6 +193,9 @@ const save = async (status: 'draft' | 'submitted') => {
     })
     submissionStatus.value = data.submission_status
     rejectionReason.value = data.rejection_reason ?? null
+    // Safely on the server now — drop the local copy so it can't later be
+    // restored over newer saved data.
+    sheetDraft.clear()
     showToast(status === 'submitted' ? 'Information Sheet submitted for review.' : 'Draft saved.')
     // Submitting clears the gate check on the next full load; refresh the user
     // so nav/guard state stays in sync (still gated until approved).
@@ -240,7 +282,7 @@ onMounted(loadInfoSheet)
             Contact No.
             <input v-model="personalInfo.contact_number" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
           </label>
-          <div class="grid grid-cols-2 gap-2 md:col-span-2">
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 md:col-span-2">
             <label class="block text-sm font-medium text-slate-700">
               Program
               <input :value="academicInfo.program_course" readonly class="mt-2 w-full rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-sm" />

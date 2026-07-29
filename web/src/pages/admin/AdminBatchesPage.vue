@@ -71,7 +71,7 @@ onMounted(() => {
 
 <template>
   <section>
-    <h2 class="text-2xl font-bold text-slate-950">Batches</h2>
+    <h2 class="text-xl font-bold text-slate-950 md:text-2xl">Batches</h2>
 
     <div class="mt-6 flex flex-wrap gap-3">
       <select v-model="departmentFilter" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
@@ -91,14 +91,14 @@ onMounted(() => {
       <table class="min-w-full divide-y divide-slate-200">
         <thead class="bg-slate-50">
           <tr>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Batch Name</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Program</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Department</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Coordinator</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Start Date</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">End Date</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Batch Name</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Program</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Department</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Coordinator</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Start Date</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">End Date</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-200">
@@ -110,8 +110,8 @@ onMounted(() => {
             <td class="px-4 py-3 text-sm text-slate-700">{{ batch.program?.name ?? 'No Program' }}</td>
             <td class="px-4 py-3 text-sm text-slate-700">{{ batch.program?.department?.name ?? 'No Department' }}</td>
             <td class="px-4 py-3 text-sm text-slate-700">{{ batch.coordinator?.name ?? 'No Coordinator' }}</td>
-            <td class="px-4 py-3 text-sm text-slate-700">{{ batch.start_date }}</td>
-            <td class="px-4 py-3 text-sm text-slate-700">{{ batch.end_date }}</td>
+            <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-700">{{ batch.start_date }}</td>
+            <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-700">{{ batch.end_date }}</td>
             <td class="px-4 py-3">
               <span
                 class="rounded-full px-3 py-1 text-xs font-bold"
@@ -135,8 +135,8 @@ onMounted(() => {
     </div>
 
     <!-- View (read-only preview) modal -->
-    <div v-if="isViewOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4">
-      <section class="w-full max-w-3xl rounded-lg bg-white p-6 shadow-xl">
+    <div v-if="isViewOpen" class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
+      <section class="max-h-[calc(100vh-4rem)] w-full max-w-3xl overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
         <div class="flex items-center justify-between">
           <h3 class="text-lg font-semibold text-slate-950">Batch Details</h3>
           <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeViewModal">Close</button>
@@ -174,11 +174,11 @@ onMounted(() => {
               <table class="min-w-full divide-y divide-slate-200">
                 <thead class="bg-slate-50">
                   <tr>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Student</th>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Company</th>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Supervisor</th>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Enrolled</th>
+                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Student</th>
+                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Company</th>
+                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Supervisor</th>
+                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Enrolled</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">

@@ -141,7 +141,7 @@ onMounted(load)
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
     <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
 
-    <div v-else class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+    <div v-else class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
       <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
         <p class="text-sm font-semibold text-slate-700">
           {{ isSingleDay ? `Journals for ${from}` : `Range: ${from} → ${to}` }}
@@ -152,18 +152,18 @@ onMounted(load)
       <table class="min-w-full divide-y divide-slate-200">
         <thead class="bg-slate-50">
           <tr>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Student</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Company</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Student</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Company</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
             <template v-if="isSingleDay">
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Submitted At</th>
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Submitted At</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
             </template>
             <template v-else>
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Submitted</th>
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Missing</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Submitted</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Missing</th>
             </template>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Entry</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Entry</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
@@ -175,7 +175,7 @@ onMounted(load)
             <td class="px-4 py-3 text-sm text-slate-500">{{ row.company || '—' }}</td>
             <td class="px-4 py-3 text-sm text-slate-500">{{ row.program || '—' }}</td>
             <template v-if="isSingleDay">
-              <td class="px-4 py-3 font-mono text-sm text-slate-700">{{ formatTime(row.submitted_at) }}</td>
+              <td class="whitespace-nowrap px-4 py-3 font-mono text-sm text-slate-700">{{ formatTime(row.submitted_at) }}</td>
               <td class="px-4 py-3">
                 <span
                   class="rounded-full px-3 py-1 text-xs font-bold"

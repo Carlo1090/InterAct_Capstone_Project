@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import api from '@/lib/axios'
 import { categorizeError } from '@/lib/apiError'
 import { showToast, confirmAction } from '@/lib/toast'
+import { useFormDraft } from '@/lib/formDraft'
 import ToastHost from '@/components/ToastHost.vue'
 import LoadStatus from '@/components/LoadStatus.vue'
 import ReportEditorBar from '@/components/coordinator/ReportEditorBar.vue'
@@ -92,6 +93,8 @@ const loadSheet = async () => {
       `/api/coordinator/group-info-sheets/${companyId.value}/${academicYear.value}`,
     )
     applySheet(data)
+    // Server copy in place — layer unsaved curation back on top.
+    groupDraft.restore()
   } catch (error) {
     errorMessage.value = categorizeError(error, 'Unable to load this group information sheet.').message
   } finally {
@@ -105,6 +108,43 @@ const applySheet = (data: GroupInfoSheet) => {
   departmentLine.value = data.department_line
   status.value = data.status
   deletedIds.value = []
+}
+
+/**
+ * Keep unsaved curation alive across a refresh.
+ *
+ * Scoped by BOTH company and academic year — either selector re-runs loadSheet()
+ * without remounting, so a draft must only re-apply to the exact sheet it was
+ * written on. The company block is coordinator-typed (not derived from any one
+ * student), so losing it to a refresh means genuinely re-typing it.
+ *
+ * Cleared after a successful save, same reasoning as the other two reports.
+ */
+const groupDraft = useFormDraft(
+  'coordinator:group-info-sheet',
+  () => ({
+    companyId: companyId.value,
+    year: academicYear.value,
+    rows: rows.value,
+    company: company.value,
+    departmentLine: departmentLine.value,
+    deletedIds: deletedIds.value,
+  }),
+  (draft) => {
+    if (draft.companyId !== companyId.value || draft.year !== academicYear.value) return
+    if (Array.isArray(draft.rows)) rows.value = draft.rows
+    if (draft.company) company.value = draft.company
+    if (typeof draft.departmentLine === 'string') departmentLine.value = draft.departmentLine
+    if (Array.isArray(draft.deletedIds)) deletedIds.value = draft.deletedIds
+  },
+  { autoRestore: false },
+)
+
+// nextTick so clear() cancels the write applySheet() just queued — see the same
+// helper in CoordinatorHtePage.vue.
+const clearDraftAfterSave = async () => {
+  await nextTick()
+  groupDraft.clear()
 }
 
 /** Changing the year can invalidate the picked company — re-anchor it first. */
@@ -172,6 +212,7 @@ const save = async (nextStatus: 'draft' | 'finalized') => {
       },
     )
     applySheet(data)
+    await clearDraftAfterSave()
     showToast(nextStatus === 'finalized' ? 'Group information sheet finalized.' : 'Draft saved.')
   } catch (error) {
     errorMessage.value = categorizeError(error, 'Unable to save the group information sheet.').message
@@ -213,7 +254,7 @@ onMounted(loadIndex)
   <section class="space-y-5">
     <ToastHost />
     <div>
-      <h2 class="text-2xl font-bold text-slate-950">Group Info Sheets</h2>
+      <h2 class="text-xl font-bold text-slate-950 md:text-2xl">Group Info Sheets</h2>
       <p class="mt-1 text-sm text-slate-500">
         One official Student Information Sheet per company. The intern roster is pulled from each student's own
         information sheet; you type the company details once, so they never disagree between students.
@@ -223,11 +264,11 @@ onMounted(loadIndex)
     <LoadStatus :loading="isLoadingIndex" :error="indexError" :retry="loadIndex">
       <!-- Filters -->
       <div class="flex flex-wrap items-end gap-4 rounded-lg bg-white p-4 shadow-sm ring-1 ring-slate-200">
-        <label class="block">
+        <label class="block w-full sm:w-auto">
           <span class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Academic Year</span>
           <select
             v-model="academicYear"
-            class="w-48 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
+            class="w-full sm:w-48 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
             :disabled="academicYears.length === 0"
             @change="onYearChange"
           >
@@ -236,11 +277,11 @@ onMounted(loadIndex)
           </select>
         </label>
 
-        <label class="block">
+        <label class="block w-full sm:w-auto">
           <span class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Company</span>
           <select
             v-model="companyId"
-            class="w-72 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
+            class="w-full sm:w-72 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
             :disabled="companiesForYear.length === 0"
             @change="loadSheet"
           >
@@ -273,7 +314,7 @@ onMounted(loadIndex)
       <p v-else-if="isLoadingSheet" class="text-sm text-slate-500">Loading sheet...</p>
 
       <!-- PREVIEW — read-only document -->
-      <div v-else-if="mode === 'preview'" class="rounded-lg bg-slate-100 p-4 sm:p-6">
+      <div v-else-if="mode === 'preview'" class="overflow-x-auto rounded-lg bg-slate-100 p-4 sm:p-6">
         <GroupInfoSheetPaperView :department-line="departmentLine" :company="company" :rows="rows" />
       </div>
 

@@ -92,14 +92,14 @@ const canConfirm = computed(() => phase.value === 'unlocked' && !props.busy)
   <Teleport to="body">
     <div
       v-if="open"
-      class="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/60 px-4"
+      class="fixed inset-0 z-[110] flex items-center justify-center overflow-y-auto bg-slate-950/60 px-4 py-8"
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="danger-title"
       aria-describedby="danger-message"
       @keydown="onKeydown"
     >
-      <div class="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-red-200">
+      <div class="max-h-[calc(100vh-4rem)] w-full max-w-md overflow-y-auto rounded-xl bg-white shadow-2xl ring-1 ring-red-200">
         <div class="border-b border-red-100 bg-red-50 px-6 py-4">
           <div class="flex items-center gap-3">
             <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600">

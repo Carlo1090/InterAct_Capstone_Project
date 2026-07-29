@@ -43,7 +43,7 @@ class MissingJournalEntryReminder extends Notification
 
     private function systemEmail(): ?string
     {
-        $value = trim((string) SystemSetting::where('key', 'system_email')->value('value'));
+        $value = trim((string) SystemSetting::cached()->get('system_email'));
 
         // Stored free-form and validated only on write, so re-check here rather
         // than handing a malformed address to the transport.

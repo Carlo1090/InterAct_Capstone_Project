@@ -113,9 +113,19 @@ onBeforeUnmount(() => {
       >{{ unreadCount > 9 ? '9+' : unreadCount }}</span>
     </button>
 
+    <!--
+      On phones this is pinned to the VIEWPORT (fixed, inset-x-4, below the 4rem
+      header), not anchored to the bell button. `absolute right-0` aligns the
+      panel's right edge to the BUTTON's right edge, and the bell is not flush
+      with the screen edge — the avatar sits to its right — so a ~20rem panel
+      overshot past x=0 and its left edge rendered off-screen (measured left=-28
+      at 375px, -51 at 320px). That never showed up as page overflow because
+      content spilling leftward doesn't add to scrollWidth. From `sm` up there is
+      room, so it goes back to the original anchored dropdown.
+    -->
     <div
       v-if="isOpen"
-      class="absolute right-0 z-20 mt-2 w-80 rounded-lg bg-white shadow-xl ring-1 ring-slate-200"
+      class="fixed inset-x-4 top-16 z-20 rounded-lg bg-white shadow-xl ring-1 ring-slate-200 sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[min(20rem,calc(100vw-2rem))]"
     >
       <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
         <p class="text-sm font-bold text-slate-900">Notifications</p>
@@ -130,7 +140,7 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
-      <div class="max-h-96 overflow-y-auto">
+      <div class="max-h-[min(24rem,calc(100vh-8rem))] overflow-y-auto">
         <p v-if="isLoading" class="px-4 py-6 text-center text-sm text-slate-500">Loading...</p>
         <p v-else-if="notifications.length === 0" class="px-4 py-6 text-center text-sm text-slate-400">No notifications yet.</p>
         <div v-else class="divide-y divide-slate-100">

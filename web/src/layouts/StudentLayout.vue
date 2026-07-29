@@ -70,7 +70,7 @@ const department = computed(() => auth.user?.program?.department?.name ?? 'CAST'
 
       <div class="mx-3 mb-2 border-t border-white/20" />
 
-      <nav class="flex-1 space-y-1 px-3 py-2">
+      <nav class="flex-1 space-y-1 overflow-y-auto px-3 py-2">
         <RouterLink
           v-for="item in navItems"
           :key="item.to"
@@ -152,8 +152,9 @@ const department = computed(() => auth.user?.program?.department?.name ?? 'CAST'
           <h1 class="truncate text-base font-bold text-slate-950 md:text-lg">{{ pageTitle }}</h1>
         </div>
 
-        <div class="flex items-center gap-3">
-          <div class="text-right leading-tight">
+        <div class="flex shrink-0 items-center gap-3">
+          <!-- Hidden on phones: a long name wraps and collides with the page title. -->
+          <div class="hidden text-right leading-tight sm:block">
             <p class="text-sm font-bold uppercase tracking-wide text-slate-700">{{ userName }}</p>
             <p class="text-xs text-slate-400">Student &middot; {{ department }}</p>
           </div>

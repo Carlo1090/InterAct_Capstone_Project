@@ -7,6 +7,7 @@ import JournalPaperView from '@/components/journal/JournalPaperView.vue'
 import NotEnrolledNotice from '@/components/student/NotEnrolledNotice.vue'
 import { confirmAction } from '@/lib/toast'
 import { isNotEnrolledError } from '@/lib/enrollment'
+import { useFormDraft } from '@/lib/formDraft'
 import type { JournalEntryDetail, JournalTemplateSection } from '@/types/api'
 
 const route = useRoute()
@@ -36,6 +37,35 @@ const isViewMode = ref(false)
 
 const sippCharLimit = 300
 const sippEnabled = ref(false)
+
+/**
+ * Keep an unsaved entry alive across a refresh.
+ *
+ * The stored draft carries its own `date` and is only re-applied when it matches
+ * the entry currently open — otherwise switching days (the date input pushes a
+ * new ?date= query, which re-runs load() without remounting) could spill one
+ * day's writing into another. Only the most recently edited day is kept, which
+ * is enough: the date lives in the URL, so a refresh returns to the same day.
+ *
+ * `autoRestore: false` because load() rebuilds `content`/`enabledSections` from
+ * the API and would overwrite an eager restore.
+ */
+const journalDraft = useFormDraft(
+  'student:journal-entry',
+  () => ({
+    date: entryDate.value,
+    content: { ...content },
+    enabled: { ...enabledSections },
+    sipp: sippEnabled.value,
+  }),
+  (draft) => {
+    if (draft.date !== entryDate.value) return
+    if (draft.content) Object.assign(content, draft.content)
+    if (draft.enabled) Object.assign(enabledSections, draft.enabled)
+    if (typeof draft.sipp === 'boolean') sippEnabled.value = draft.sipp
+  },
+  { autoRestore: false },
+)
 
 const nonSippSections = computed(() => sections.value.filter((section) => !section.sipp))
 const sippSections = computed(() => sections.value.filter((section) => section.sipp))
@@ -134,6 +164,11 @@ const load = async () => {
     // A locked entry (bundled / out of range) or an explicit ?view=1 opens
     // straight to the read-only paper; an editable entry lands in the editor.
     isViewMode.value = route.query.view === '1' || !data.editable
+
+    // Layer any unsaved work back on top, now that the server copy is in place.
+    // Never into a locked entry — it can't be saved, so restoring would only
+    // show text the student is unable to keep.
+    if (data.editable) journalDraft.restore()
   } catch (error) {
     if (isNotEnrolledError(error)) {
       notEnrolled.value = true
@@ -168,6 +203,8 @@ const save = async (nextStatus: 'draft' | 'submitted') => {
     })
     status.value = data.status
     statusMessage.value = nextStatus === 'submitted' ? 'Entry submitted.' : 'Draft saved.'
+    // Persisted server-side now; drop the local copy.
+    journalDraft.clear()
 
     // A submitted entry stays on the paper (the review surface it was sent
     // from); a saved draft returns the student to the editor to keep writing.

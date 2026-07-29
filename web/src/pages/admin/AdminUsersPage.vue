@@ -156,8 +156,8 @@ onMounted(() => {
 <template>
   <section>
     <ToastHost />
-    <div class="flex items-center justify-between gap-4">
-      <h2 class="text-2xl font-bold text-slate-950">Users</h2>
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <h2 class="text-xl font-bold text-slate-950 md:text-2xl">Users</h2>
       <button
         type="button"
         class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
@@ -168,7 +168,7 @@ onMounted(() => {
     </div>
 
     <div class="mt-6 flex flex-wrap gap-3">
-      <input v-model="search" class="min-w-72 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Search by name..." />
+      <input v-model="search" class="w-full sm:w-auto sm:min-w-72 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Search by name..." />
       <select v-model="roleFilter" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
         <option value="">All Users</option>
         <option value="student">Student</option>
@@ -192,13 +192,13 @@ onMounted(() => {
       <table class="min-w-full divide-y divide-slate-200">
         <thead class="bg-slate-50">
           <tr>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Name</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Email</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Role</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Program</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Department</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
-            <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Name</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Email</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Role</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Program</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Department</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-200">
@@ -251,8 +251,8 @@ onMounted(() => {
       </table>
     </div>
 
-    <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4">
-      <section class="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
+    <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
+      <section class="max-h-[calc(100vh-4rem)] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
         <div class="flex items-center justify-between">
           <h3 class="text-lg font-semibold text-slate-950">Create Coordinator</h3>
           <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeModal">
@@ -312,8 +312,8 @@ onMounted(() => {
       </section>
     </div>
 
-    <div v-if="viewingUser" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4">
-      <section class="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+    <div v-if="viewingUser" class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
+      <section class="max-h-[calc(100vh-4rem)] w-full max-w-md overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
         <div class="flex items-center justify-between">
           <h3 class="text-lg font-semibold text-slate-950">Account Details</h3>
           <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeView">

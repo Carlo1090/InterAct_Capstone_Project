@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { nextTick, onMounted, reactive, ref, watch } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { categorizeError } from '@/lib/apiError'
 import { confirmAction, showToast } from '@/lib/toast'
+import { useFormDraft } from '@/lib/formDraft'
 import ToastHost from '@/components/ToastHost.vue'
 import LoadStatus from '@/components/LoadStatus.vue'
 import type { ArchivePurgeResult, PaginatedResponse, SystemSettingsMap, User, WeeklyBundlingResult } from '@/types/api'
@@ -29,6 +30,21 @@ const settingsError = ref('')
 const saveError = ref('')
 const settingsSaved = ref(false)
 
+/**
+ * Keep unsaved settings edits across a refresh. `autoRestore: false` because
+ * loadSettings() overwrites generalForm from the API on mount.
+ *
+ * Cleared on a successful save AND on Cancel — Cancel explicitly means "discard
+ * what I typed and reload the stored values", so leaving a draft behind would
+ * resurrect the very edits the admin just abandoned.
+ */
+const settingsDraft = useFormDraft(
+  'admin:system-settings',
+  () => ({ ...generalForm }),
+  (draft) => Object.assign(generalForm, draft),
+  { autoRestore: false },
+)
+
 const loadSettings = async () => {
   isLoadingSettings.value = true
   settingsError.value = ''
@@ -41,6 +57,7 @@ const loadSettings = async () => {
       institution_address: response.data.institution_address ?? '',
       system_email: response.data.system_email ?? '',
     })
+    settingsDraft.restore()
   } catch (error) {
     settingsError.value = categorizeError(error, 'Unable to load system settings.').message
   } finally {
@@ -56,6 +73,7 @@ const saveSettings = async () => {
   try {
     await api.put('/api/admin/system-settings', generalForm)
     settingsSaved.value = true
+    settingsDraft.clear()
   } catch (error) {
     saveError.value = categorizeError(error, 'Unable to save settings.').message
   } finally {
@@ -63,10 +81,18 @@ const saveSettings = async () => {
   }
 }
 
-const cancelSettings = () => {
+const cancelSettings = async () => {
   settingsSaved.value = false
   saveError.value = ''
-  loadSettings()
+  // Cancel means "discard my edits". Clear twice, deliberately: once BEFORE the
+  // reload so loadSettings()'s restore() finds nothing to put back, and once
+  // after (post-nextTick) to cancel the write that repopulating the form has
+  // just queued on the watcher. Without the second clear the draft key returns,
+  // mirroring server state, and would later override genuinely newer settings.
+  settingsDraft.clear()
+  await loadSettings()
+  await nextTick()
+  settingsDraft.clear()
 }
 
 const studentSearch = ref('')

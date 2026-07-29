@@ -185,8 +185,8 @@ onMounted(() => {
 <template>
   <section class="space-y-5">
     <ToastHost />
-    <div class="flex items-center justify-between gap-4">
-      <h2 class="text-2xl font-bold text-slate-950">Departments</h2>
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <h2 class="text-xl font-bold text-slate-950 md:text-2xl">Departments</h2>
       <button
         type="button"
         class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
@@ -247,8 +247,8 @@ onMounted(() => {
     </div>
 
     <!-- Create / Edit modal -->
-    <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4">
-      <section class="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
+    <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
+      <section class="max-h-[calc(100vh-4rem)] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
         <div class="flex items-center justify-between">
           <h3 class="text-lg font-semibold text-slate-950">{{ editingDepartmentId ? 'Edit Department' : 'Add Department' }}</h3>
           <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeModal">Cancel</button>
@@ -290,8 +290,8 @@ onMounted(() => {
     </div>
 
     <!-- View (read-only preview) modal -->
-    <div v-if="isViewOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4">
-      <section class="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl">
+    <div v-if="isViewOpen" class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
+      <section class="max-h-[calc(100vh-4rem)] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
         <div class="flex items-center justify-between">
           <h3 class="text-lg font-semibold text-slate-950">Department Details</h3>
           <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeViewModal">Close</button>
@@ -325,11 +325,11 @@ onMounted(() => {
               <table class="min-w-full divide-y divide-slate-200">
                 <thead class="bg-slate-50">
                   <tr>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Code</th>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Active Interns</th>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Total (All-time)</th>
+                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Code</th>
+                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
+                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Active Interns</th>
+                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Total (All-time)</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
@@ -359,9 +359,9 @@ onMounted(() => {
               <table class="min-w-full divide-y divide-slate-200">
                 <thead class="bg-slate-50">
                   <tr>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Email</th>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
+                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
+                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Email</th>
+                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
