@@ -73,8 +73,6 @@ onMounted(() => {
 
 <template>
   <section class="space-y-5">
-    <h2 class="text-xl font-bold text-slate-950 md:text-2xl">Programs</h2>
-
     <div class="flex flex-wrap gap-3">
       <select v-model="departmentFilter" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
         <option value="">All Departments</option>

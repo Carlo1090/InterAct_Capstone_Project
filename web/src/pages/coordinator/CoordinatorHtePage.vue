@@ -217,8 +217,7 @@ onMounted(loadIndex)
   <section class="space-y-5">
     <ToastHost />
     <div>
-      <h2 class="text-xl font-bold text-slate-950 md:text-2xl">HTE &amp; Student Interns List</h2>
-      <p class="mt-1 text-sm text-slate-500">
+      <p class="text-sm text-slate-500">
         Host Training Establishments and the interns placed with them, auto-populated from enrollments. Curate the
         list, then export the official SIPP report.
       </p>

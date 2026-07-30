@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/lib/axios'
+import SidebarCollapseToggle from '@/components/layout/SidebarCollapseToggle.vue'
 import NotificationBell from '@/components/notifications/NotificationBell.vue'
 import ProfileMenuPopover from '@/components/profile/ProfileMenuPopover.vue'
 
@@ -185,21 +186,12 @@ onBeforeUnmount(() => {
         </RouterLink>
       </nav>
 
-      <button
-        type="button"
-        class="absolute -right-3.5 top-1/2 hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-indigo-700 text-white shadow-md ring-2 ring-white transition hover:bg-indigo-800 md:flex"
-        :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
-        @click="collapsed = !collapsed"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4 transition-transform" :class="collapsed && 'rotate-180'">
-          <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-      </button>
+      <SidebarCollapseToggle :collapsed="collapsed" @toggle="collapsed = !collapsed" />
     </aside>
 
     <div class="min-h-screen transition-[margin] duration-300 ease-in-out" :class="collapsed ? 'md:ml-20' : 'md:ml-64'">
       <header class="sticky top-0 z-10 flex h-16 items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 md:px-8">
-        <div class="flex min-w-0 items-center gap-3 md:gap-4">
+        <div class="flex min-w-0 items-center gap-3">
           <button
             type="button"
             class="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 md:hidden"
@@ -210,14 +202,15 @@ onBeforeUnmount(() => {
               <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
             </svg>
           </button>
+          <!--
+            THE page title, and the only one. Pages must not print their own
+            copy in the body: this renders `route.meta.title`, which is the same
+            string as the active sidebar label, so a body heading repeating it
+            put the same word on screen three times. The 11 pages that used to
+            do that had their duplicate <h2> removed (subtitles and action
+            buttons kept) — don't reintroduce one.
+          -->
           <h1 class="truncate text-base font-bold text-slate-950 md:text-lg">{{ pageTitle }}</h1>
-          <!-- Shortcut duplicates a sidebar nav item; the drawer covers it on phones. -->
-          <RouterLink
-            to="/coordinator/users"
-            class="hidden shrink-0 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 lg:inline-block"
-          >
-            View Users
-          </RouterLink>
         </div>
 
         <div class="flex shrink-0 items-center gap-3">

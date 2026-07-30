@@ -219,8 +219,7 @@ onMounted(loadIndex)
   <section class="space-y-5">
     <ToastHost />
     <div>
-      <h2 class="text-xl font-bold text-slate-950 md:text-2xl">Annual SIPP Report</h2>
-      <p class="mt-1 text-sm text-slate-500">
+      <p class="text-sm text-slate-500">
         Curate students' SIPP notes (issues, solutions, recommendations) per program, then export the official report.
       </p>
     </div>

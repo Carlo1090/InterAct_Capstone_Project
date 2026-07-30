@@ -439,8 +439,7 @@ onMounted(load)
     <ToastHost />
     <div class="flex flex-wrap items-center justify-between gap-4">
       <div>
-        <h2 class="text-xl font-bold text-slate-950 md:text-2xl">Batches</h2>
-        <p class="mt-1 text-sm text-slate-500">Create and manage OJT cohorts for your program(s).</p>
+        <p class="text-sm text-slate-500">Create and manage OJT cohorts for your program(s).</p>
       </div>
       <button
         type="button"

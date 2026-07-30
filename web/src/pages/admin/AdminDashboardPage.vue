@@ -39,16 +39,14 @@ onMounted(loadStats)
 
 <template>
   <section>
-    <h2 class="text-xl font-bold text-slate-950 md:text-2xl">Admin Dashboard</h2>
-
-    <p v-if="isLoading" class="mt-6 text-sm text-slate-500">Loading...</p>
-    <p v-else-if="errorMessage" class="mt-6 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
+    <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
+    <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
       {{ errorMessage }}
     </p>
 
-    <div v-else class="mt-6 grid gap-4 md:grid-cols-3">
+    <div v-else class="grid gap-4 md:grid-cols-3">
       <article class="overflow-hidden rounded-lg bg-white text-center shadow-sm ring-1 ring-slate-200">
-        <div class="h-1 bg-slate-200" />
+        <div class="h-1 bg-blue-600" />
         <div class="px-5 py-6">
           <p class="text-4xl font-extrabold text-slate-900">{{ totalUsers }}</p>
           <div class="mx-auto my-3 h-px w-10 bg-slate-200" />
@@ -56,7 +54,7 @@ onMounted(loadStats)
         </div>
       </article>
       <article class="overflow-hidden rounded-lg bg-white text-center shadow-sm ring-1 ring-slate-200">
-        <div class="h-1 bg-slate-200" />
+        <div class="h-1 bg-green-600" />
         <div class="px-5 py-6">
           <p class="text-4xl font-extrabold text-slate-900">{{ totalBatches }}</p>
           <div class="mx-auto my-3 h-px w-10 bg-slate-200" />
@@ -64,7 +62,7 @@ onMounted(loadStats)
         </div>
       </article>
       <article class="overflow-hidden rounded-lg bg-white text-center shadow-sm ring-1 ring-slate-200">
-        <div class="h-1 bg-slate-200" />
+        <div class="h-1 bg-amber-500" />
         <div class="px-5 py-6">
           <p class="text-4xl font-extrabold text-slate-900">{{ totalPrograms }}</p>
           <div class="mx-auto my-3 h-px w-10 bg-slate-200" />

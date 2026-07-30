@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import SidebarCollapseToggle from '@/components/layout/SidebarCollapseToggle.vue'
 import NotificationBell from '@/components/notifications/NotificationBell.vue'
 import ProfileMenuPopover from '@/components/profile/ProfileMenuPopover.vue'
 
@@ -117,16 +118,7 @@ const userName = computed(() => auth.user?.name ?? 'Test Admin')
         </RouterLink>
       </nav>
 
-      <button
-        type="button"
-        class="absolute -right-3.5 top-1/2 hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-indigo-700 text-white shadow-md ring-2 ring-white transition hover:bg-indigo-800 md:flex"
-        :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
-        @click="collapsed = !collapsed"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4 transition-transform" :class="collapsed && 'rotate-180'">
-          <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-      </button>
+      <SidebarCollapseToggle :collapsed="collapsed" @toggle="collapsed = !collapsed" />
     </aside>
 
     <div class="min-h-screen transition-[margin] duration-300 ease-in-out" :class="collapsed ? 'md:ml-20' : 'md:ml-64'">
@@ -142,6 +134,14 @@ const userName = computed(() => auth.user?.name ?? 'Test Admin')
               <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
             </svg>
           </button>
+          <!--
+            THE page title, and the only one. Pages must not print their own
+            copy in the body: this renders `route.meta.title`, which is the same
+            string as the active sidebar label, so a body heading repeating it
+            put the same word on screen three times. The 11 pages that used to
+            do that had their duplicate <h2> removed (subtitles and action
+            buttons kept) — don't reintroduce one.
+          -->
           <h1 class="truncate text-base font-bold text-slate-950 md:text-lg">{{ pageTitle }}</h1>
         </div>
 

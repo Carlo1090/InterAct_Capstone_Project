@@ -156,8 +156,7 @@ onMounted(() => {
 <template>
   <section>
     <ToastHost />
-    <div class="flex flex-wrap items-center justify-between gap-4">
-      <h2 class="text-xl font-bold text-slate-950 md:text-2xl">Users</h2>
+    <div class="flex flex-wrap items-center justify-end gap-4">
       <button
         type="button"
         class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"

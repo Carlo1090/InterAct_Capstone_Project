@@ -254,8 +254,7 @@ onMounted(loadIndex)
   <section class="space-y-5">
     <ToastHost />
     <div>
-      <h2 class="text-xl font-bold text-slate-950 md:text-2xl">Group Info Sheets</h2>
-      <p class="mt-1 text-sm text-slate-500">
+      <p class="text-sm text-slate-500">
         One official Student Information Sheet per company. The intern roster is pulled from each student's own
         information sheet; you type the company details once, so they never disagree between students.
       </p>

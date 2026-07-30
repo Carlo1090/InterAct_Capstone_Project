@@ -329,8 +329,7 @@ onMounted(load)
     <ToastHost />
     <div class="flex flex-wrap items-center justify-between gap-4">
       <div>
-        <h2 class="text-xl font-bold text-slate-950 md:text-2xl">Journal Templates</h2>
-        <p class="mt-1 text-sm text-slate-500">Shape the daily journal fields students fill in for your programs.</p>
+        <p class="text-sm text-slate-500">Shape the daily journal fields students fill in for your programs.</p>
       </div>
       <button
         type="button"

@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { roleRedirect } from '@/router/index.ts'
 import { consumeQueryParam, googleErrorMessage, googleLoginUrl } from '@/lib/googleAuth'
-import { useFormDraft } from '@/lib/formDraft'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -16,32 +15,143 @@ const isLoading = ref(false)
 const showPassword = ref(false)
 
 /**
- * Keep the typed username across a refresh — losing it mid-login is the papercut
- * this solves.
+ * The eye icon is PRESS-AND-HOLD, not click-to-toggle: the password is only ever
+ * plain text while a finger/mouse button is physically held down, so it cannot be
+ * left revealed on a shared MDC lab machine by a stray click. A plain click/tap
+ * does nothing at all — the press reveals, the release re-masks.
  *
- * The PASSWORD IS DELIBERATELY ABSENT from the persisted object and must stay
- * that way: sessionStorage is plain text readable by any JS on the page, so
- * storing it would turn any XSS into credential theft, and on a shared MDC lab
- * machine it would remain readable via DevTools until the tab closed. The
- * password input already carries `autocomplete="current-password"`, so the
- * browser's own password manager — encrypted and OS-protected — handles refill.
+ * Three details below are load-bearing, each found by watching this fail in a
+ * real browser rather than reasoned about up front:
+ *
+ *  1. The two eye icons are `pointer-events-none` so the BUTTON is the event
+ *     target, not the `<svg>`. Revealing swaps the icon via `v-if`/`v-else`,
+ *     which destroys the very node the touch started on; a touch sequence is
+ *     dispatched to its original target, so with the icon as target the
+ *     `touchend` reached a detached node, never bubbled, and the password
+ *     stayed in plain text after the finger lifted. Measured: adding the static
+ *     `@touchend` alone did NOT fix it; this did.
+ *  2. `document` listeners are added on reveal to catch a release OFF the
+ *     button. Chromium implicitly captures mouse events on the element that
+ *     received `mousedown`, so press → drag away → release fires neither
+ *     `mouseup` nor `mouseleave` on the button.
+ *  3. That same capture is why drag-off is detected by hit-testing the cursor
+ *     against the button's rect on `mousemove`: `mouseleave` never arrives
+ *     mid-press. The `@mouseleave` binding stays as a cheap backstop for
+ *     engines that do not capture.
+ *
+ * The template's static `@mouseup`/`@touchend`/`@touchcancel` are the ordinary
+ * in-place release path; they overlap with the `document` set, which is
+ * harmless because hiding is idempotent.
  */
-const loginDraft = useFormDraft(
-  'login',
-  () => ({ identifier: identifier.value }),
-  (draft) => {
-    if (typeof draft.identifier === 'string') identifier.value = draft.identifier
-  },
-)
+const eyeButton = ref<HTMLButtonElement | null>(null)
+
+const hidePassword = () => {
+  showPassword.value = false
+  document.removeEventListener('mouseup', hidePassword)
+  document.removeEventListener('mousemove', hideIfPointerLeftEye)
+  document.removeEventListener('touchend', hidePassword)
+  document.removeEventListener('touchcancel', hidePassword)
+}
+
+const hideIfPointerLeftEye = (event: MouseEvent) => {
+  const rect = eyeButton.value?.getBoundingClientRect()
+  if (!rect) return
+  const inside =
+    event.clientX >= rect.left &&
+    event.clientX <= rect.right &&
+    event.clientY >= rect.top &&
+    event.clientY <= rect.bottom
+  if (!inside) hidePassword()
+}
+
+const revealPassword = () => {
+  if (showPassword.value) return
+  showPassword.value = true
+  document.addEventListener('mouseup', hidePassword)
+  document.addEventListener('mousemove', hideIfPointerLeftEye)
+  document.addEventListener('touchend', hidePassword)
+  document.addEventListener('touchcancel', hidePassword)
+}
+
+// Never leave a stray listener behind if the page unmounts mid-press.
+onUnmounted(hidePassword)
+
+/**
+ * Keep BOTH typed credentials alive across a refresh, in sessionStorage.
+ *
+ * SECURITY — this deliberately persists a password, at the project owner's
+ * explicit instruction (2026-07-30), and REVERSES the previous rule here (which
+ * stored the username only). Understand the trade before extending it:
+ * sessionStorage is plain text readable by any JavaScript on the page, so a
+ * single XSS bug anywhere in the SPA turns this into credential theft, and on
+ * the shared MDC lab machines this app targets it stays readable via DevTools
+ * until the TAB is closed — not merely until the user walks away. Clearing on a
+ * successful login bounds the exposure to an in-progress or abandoned attempt.
+ *
+ * This is written inline rather than through `useFormDraft`, on purpose. That
+ * helper backs roughly a dozen other forms and its contract is "never return a
+ * credential from read()"; routing a password through it would relax that
+ * guarantee for every one of those call sites instead of just this page.
+ *
+ * Note the browser's own password manager already does this properly — the
+ * input carries `autocomplete="current-password"` and remains the encrypted,
+ * OS-protected path. This runs alongside it.
+ */
+const USERNAME_STORAGE_KEY = 'interntrack_login_username'
+const PASSWORD_STORAGE_KEY = 'interntrack_login_password'
+
+/**
+ * Every access is best-effort: Safari private mode and a full quota THROW
+ * rather than merely failing, and losing a draft must never break the login
+ * form itself.
+ */
+const readStored = (key: string): string | null => {
+  try {
+    return sessionStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+const writeStored = (key: string, value: string): void => {
+  try {
+    sessionStorage.setItem(key, value)
+  } catch {
+    /* storage unavailable or full — drop it rather than break typing */
+  }
+}
+
+const clearStoredCredentials = (): void => {
+  try {
+    sessionStorage.removeItem(USERNAME_STORAGE_KEY)
+    sessionStorage.removeItem(PASSWORD_STORAGE_KEY)
+  } catch {
+    /* nothing to do — see readStored */
+  }
+}
+
+// Written synchronously on every change, NOT debounced. A pending debounced
+// write is exactly what made `clear()` fail elsewhere in this app (the timer
+// fired ~300ms later and re-wrote what had just been cleared); with direct
+// writes, clearing on a successful login cannot be undone by a stale timer.
+watch(identifier, (value) => writeStored(USERNAME_STORAGE_KEY, value))
+watch(password, (value) => writeStored(PASSWORD_STORAGE_KEY, value))
 
 // A full page navigation, not XHR — Google needs the browser itself.
 const signInWithGoogle = () => {
   window.location.href = googleLoginUrl()
 }
 
-// The OAuth callback bounces failures back here as ?google_error=<code>.
 onMounted(() => {
+  // The OAuth callback bounces failures back here as ?google_error=<code>.
   errorMessage.value = googleErrorMessage(consumeQueryParam('google_error'))
+
+  // Pre-fill from the previous visit to this tab. Assigning these triggers the
+  // watchers above, which simply rewrite the identical value — harmless.
+  const storedUsername = readStored(USERNAME_STORAGE_KEY)
+  const storedPassword = readStored(PASSWORD_STORAGE_KEY)
+  if (storedUsername !== null) identifier.value = storedUsername
+  if (storedPassword !== null) password.value = storedPassword
 })
 
 const login = async () => {
@@ -50,10 +160,11 @@ const login = async () => {
 
   try {
     await auth.login(identifier.value, password.value)
-    // Signed in successfully — don't leave the username sitting in storage on a
-    // shared machine. A FAILED login deliberately keeps it, since that's the
-    // case where retyping is the actual annoyance.
-    loginDraft.clear()
+    // Signed in successfully — the stored copies have served their purpose, so
+    // drop them immediately rather than leaving a password sitting in this tab's
+    // storage for the rest of the session. A FAILED login deliberately keeps
+    // both, since that is the case where retyping is the actual annoyance.
+    clearStoredCredentials()
     router.push(roleRedirect(auth.role))
   } catch {
     errorMessage.value = 'Invalid credentials. Please try again.'
@@ -175,10 +286,16 @@ const login = async () => {
                     required
                   />
                   <button
+                    ref="eyeButton"
                     type="button"
-                    class="absolute top-1/2 right-0 -translate-y-1/2 rounded p-1 text-slate-400 transition hover:text-slate-600"
-                    :aria-label="showPassword ? 'Hide password' : 'Show password'"
-                    @click="showPassword = !showPassword"
+                    class="absolute top-1/2 right-0 -translate-y-1/2 rounded p-1 text-slate-400 transition select-none hover:text-slate-600"
+                    aria-label="Press and hold to show password"
+                    @mousedown.prevent="revealPassword"
+                    @mouseup="hidePassword"
+                    @mouseleave="hidePassword"
+                    @touchstart.prevent="revealPassword"
+                    @touchend="hidePassword"
+                    @touchcancel="hidePassword"
                   >
                     <svg
                       v-if="!showPassword"
@@ -187,7 +304,7 @@ const login = async () => {
                       fill="none"
                       stroke="currentColor"
                       stroke-width="1.8"
-                      class="h-4 w-4"
+                      class="pointer-events-none h-4 w-4"
                     >
                       <path
                         d="M2.25 12s3.75-6.75 9.75-6.75S21.75 12 21.75 12s-3.75 6.75-9.75 6.75S2.25 12 2.25 12Z"
@@ -203,7 +320,7 @@ const login = async () => {
                       fill="none"
                       stroke="currentColor"
                       stroke-width="1.8"
-                      class="h-4 w-4"
+                      class="pointer-events-none h-4 w-4"
                     >
                       <path
                         d="M3 3l18 18M10.6 10.6a2.75 2.75 0 0 0 3.8 3.8M6.4 6.5C4 8.2 2.25 12 2.25 12s3.75 6.75 9.75 6.75c1.6 0 3-.36 4.2-.94M17.9 15.3c2-1.7 3.85-3.3 3.85-3.3S18 5.25 12 5.25c-.7 0-1.37.07-2 .2"
@@ -252,26 +369,6 @@ const login = async () => {
           <p class="mt-3 text-center text-xs text-slate-500">
             Google sign-in works only after you verify your email from Edit Profile.
           </p>
-        </div>
-
-        <!--
-          Demo usernames only — deliberately NO password. Moved outside the card so
-          the sign-in surface itself stays uncluttered.
-
-          This used to print "password: password", the seeded default. On a
-          deployed instance that is wrong twice over: the deploy pipeline rotates
-          every demo password (`demo:set-password`), so the printed value simply
-          fails; and publishing a working admin password on a public login page
-          would hand the system to anyone who loaded it. The usernames stay because
-          they are already documented in the repo and a demo is unusable without
-          them.
-        -->
-        <div class="mt-6 rounded-xl bg-blue-50 px-4 py-3 text-center text-xs text-blue-800">
-          <span class="font-semibold">Demo logins</span>
-          <span class="mt-1 block leading-relaxed">
-            mdcadmin &middot; mdccore &middot; mdcbalbero &middot; mdcstudent &middot; mdcsupervisor
-          </span>
-          <span class="mt-1.5 block text-blue-700">Ask your administrator for the password.</span>
         </div>
       </div>
     </section>

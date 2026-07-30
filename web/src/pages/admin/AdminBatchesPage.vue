@@ -71,9 +71,7 @@ onMounted(() => {
 
 <template>
   <section>
-    <h2 class="text-xl font-bold text-slate-950 md:text-2xl">Batches</h2>
-
-    <div class="mt-6 flex flex-wrap gap-3">
+    <div class="flex flex-wrap gap-3">
       <select v-model="departmentFilter" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
         <option value="">All Departments</option>
         <option v-for="department in departments" :key="department.id" :value="department.id">

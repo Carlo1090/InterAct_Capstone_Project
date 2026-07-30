@@ -465,8 +465,7 @@ onMounted(() => {
 
     <div class="flex flex-wrap items-center justify-between gap-4">
       <div>
-        <h2 class="text-xl font-bold text-slate-950 md:text-2xl">Users</h2>
-        <p class="mt-1 text-sm text-slate-500">Interns and supervisors across your department's programs.</p>
+        <p class="text-sm text-slate-500">Interns and supervisors across your department's programs.</p>
       </div>
       <!-- Header actions are tab-contextual: only what belongs to the active tab. -->
       <div v-if="activeTab === 'interns'" class="flex items-center gap-2">
