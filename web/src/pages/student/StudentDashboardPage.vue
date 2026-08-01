@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import api from '@/lib/axios'
 import LoadStatus from '@/components/LoadStatus.vue'
 import NotEnrolledNotice from '@/components/student/NotEnrolledNotice.vue'
@@ -10,6 +11,13 @@ import { consumeQueryParam, googleErrorMessage, googleVerifyUrl } from '@/lib/go
 import type { StudentDashboard } from '@/types/api'
 
 const auth = useAuthStore()
+
+// The sidebar's own "Write Daily Journal" target — kept identical to the nav
+// item in StudentLayout.vue rather than re-derived here.
+const WRITE_JOURNAL_ROUTE = '/student/write-journal'
+
+// 2πr for the progress rings' r=52 circle.
+const RING_CIRCUMFERENCE = 326.73
 
 // Reminder email only goes to a Google-verified address, so an unverified
 // student silently gets in-app notifications only. Say so rather than letting
@@ -47,6 +55,27 @@ const load = async () => {
   }
 }
 
+// Same derivation the header avatar uses in ProfileMenuPopover.vue, so the two
+// initials never disagree.
+const initials = computed(() =>
+  (auth.user?.name ?? '')
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase(),
+)
+
+const firstName = computed(() => (auth.user?.name ?? '').trim().split(/\s+/)[0] ?? '')
+const greeting = computed(() => (firstName.value ? `Hello, ${firstName.value}` : 'Hello'))
+
+const heroSubline = computed(() => {
+  const i = dashboard.value?.internship
+  if (!i) return ''
+
+  return `${i.host_company ?? '—'} · ${i.supervisor ?? '—'}`
+})
+
 const stats = computed(() => {
   if (!dashboard.value) return []
   const s = dashboard.value.stats
@@ -64,21 +93,22 @@ const progress = computed(() => {
   const p = dashboard.value.progress
 
   return [
-    { label: 'Weekly Reports Approved', value: p.weekly_reports_approved_percent, barClass: 'bg-green-600', textClass: 'text-green-700' },
-    { label: 'OJT Duration Progress', value: p.ojt_duration_percent, barClass: 'bg-amber-600', textClass: 'text-amber-700' },
+    { label: 'Weekly Reports Approved', value: p.weekly_reports_approved_percent, ringClass: 'text-green-600' },
+    { label: 'OJT Duration Progress', value: p.ojt_duration_percent, ringClass: 'text-amber-500' },
   ]
 })
 
-const details = computed(() => {
+// Host Company and Supervisor also head the hero card, so the meta grid carries
+// the remaining internship fields plus Host Company for at-a-glance scanning.
+const details = computed<[string, string][]>(() => {
   if (!dashboard.value) return []
   const i = dashboard.value.internship
 
   return [
-    ['Host Company', i.host_company ?? '—'],
-    ['Supervisor', i.supervisor ?? '—'],
     ['Coordinator', i.coordinator ?? '—'],
     ['Department', i.department ?? '—'],
     ['Start Date', i.start_date ?? '—'],
+    ['Host Company', i.host_company ?? '—'],
   ]
 })
 
@@ -96,6 +126,13 @@ const statAccentClass = (tone: string): string => {
 
 const activityDotClass = (tone: string): string => statAccentClass(tone)
 
+// A ring can only ever draw between empty and full, whatever the API reports.
+const ringOffset = (value: number): number => {
+  const clamped = Math.min(100, Math.max(0, value))
+
+  return RING_CIRCUMFERENCE * (1 - clamped / 100)
+}
+
 onMounted(async () => {
   verifiedJustNow.value = consumeQueryParam('email_verified') === '1'
   emailErrorMessage.value = googleErrorMessage(consumeQueryParam('email_error'))
@@ -111,10 +148,10 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="space-y-5">
+  <section class="space-y-6">
     <div
       v-if="verifiedJustNow"
-      class="flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3"
+      class="flex items-start gap-3 rounded-xl bg-green-50 px-5 py-4 ring-1 ring-green-100"
     >
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="mt-0.5 h-5 w-5 shrink-0 text-green-600">
         <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" />
@@ -125,13 +162,13 @@ onMounted(async () => {
       </p>
     </div>
 
-    <p v-if="emailErrorMessage" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+    <p v-if="emailErrorMessage" class="rounded-xl bg-red-50 px-5 py-4 text-sm text-red-700 ring-1 ring-red-100">
       {{ emailErrorMessage }}
     </p>
 
     <div
       v-else-if="needsEmailVerification"
-      class="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+      class="flex flex-col gap-3 rounded-xl bg-amber-50 px-5 py-4 ring-1 ring-amber-100 sm:flex-row sm:items-center sm:justify-between"
     >
       <div class="flex items-start gap-3">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="mt-0.5 h-5 w-5 shrink-0 text-amber-600">
@@ -148,7 +185,7 @@ onMounted(async () => {
       </div>
       <button
         type="button"
-        class="flex shrink-0 items-center justify-center gap-2 rounded-md border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+        class="flex shrink-0 items-center justify-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-amber-200 transition hover:bg-slate-50"
         @click="verifyWithGoogle"
       >
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" class="h-4 w-4">
@@ -167,73 +204,117 @@ onMounted(async () => {
       <template v-else-if="dashboard">
         <div
           v-if="dashboard.stats.missing_this_week > 0"
-          class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+          class="rounded-xl bg-amber-50 px-5 py-4 text-sm text-amber-800 ring-1 ring-amber-100"
         >
           You have <strong>{{ dashboard.stats.missing_this_week }} missing entr{{ dashboard.stats.missing_this_week === 1 ? 'y' : 'ies' }}</strong>
           this week ({{ dashboard.week.start }} to {{ dashboard.week.end }}).
         </div>
 
-        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <article
-            v-for="stat in stats"
-            :key="stat.label"
-            class="overflow-hidden rounded-lg bg-white text-center shadow-sm ring-1 ring-slate-200"
-          >
-            <div class="h-1" :class="statAccentClass(stat.tone)" />
-            <div class="px-5 py-6">
-              <p class="text-4xl font-extrabold text-slate-900">{{ stat.value }}</p>
-              <div class="mx-auto my-3 h-px w-10 bg-slate-200" />
-              <p class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ stat.label }}</p>
-              <p class="mt-1 text-xs text-slate-400">{{ stat.sub }}</p>
-            </div>
-          </article>
-        </div>
-
-        <div class="grid gap-5 xl:grid-cols-2">
-          <section class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-            <h2 class="border-l-4 border-blue-600 pl-3 text-sm font-bold text-slate-900">Completion Progress</h2>
-            <div class="mt-5 space-y-4">
-              <div v-for="item in progress" :key="item.label">
-                <div class="mb-2 flex justify-between text-sm">
-                  <span class="text-slate-600">{{ item.label }}</span>
-                  <span class="font-bold" :class="item.textClass">{{ item.value }}%</span>
-                </div>
-                <div class="h-2 overflow-hidden rounded-full bg-slate-100">
-                  <div class="h-full rounded-full" :class="item.barClass" :style="{ width: `${item.value}%` }"></div>
-                </div>
+        <section class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex min-w-0 items-center gap-4">
+              <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-blue-50 text-lg font-semibold text-blue-700">
+                {{ initials }}
+              </span>
+              <div class="min-w-0">
+                <p class="text-xl font-semibold tracking-tight text-slate-900">{{ greeting }}</p>
+                <p class="mt-0.5 truncate text-sm text-slate-500">{{ heroSubline }}</p>
               </div>
             </div>
-          </section>
 
-          <section class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-            <h2 class="border-l-4 border-blue-600 pl-3 text-sm font-bold text-slate-900">Recent Activity</h2>
-            <div v-if="dashboard.recent_activity.length === 0" class="mt-4 text-sm text-slate-400">No recent activity yet.</div>
-            <div v-else class="mt-4 divide-y divide-slate-100">
-              <div v-for="(activity, index) in dashboard.recent_activity" :key="index" class="flex gap-3 py-3">
-                <span class="mt-1.5 h-2 w-2 rounded-full" :class="activityDotClass(activity.tone)"></span>
-                <div>
-                  <p class="text-sm text-slate-800">{{ activity.text }}</p>
-                  <p class="mt-1 text-xs text-slate-400">{{ activity.time }}</p>
-                </div>
-              </div>
+            <div class="flex flex-wrap items-center gap-3 sm:shrink-0 sm:justify-end">
+              <span
+                v-if="dashboard.internship.program"
+                class="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600"
+              >
+                {{ dashboard.internship.program }}
+              </span>
+              <RouterLink
+                :to="WRITE_JOURNAL_ROUTE"
+                class="inline-flex items-center gap-2 rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+              >
+                Write Daily Journal
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
+                  <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </RouterLink>
             </div>
-          </section>
-        </div>
-
-        <section class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <div class="flex items-center justify-between">
-            <h2 class="border-l-4 border-blue-600 pl-3 text-sm font-bold text-slate-900">Internship Details</h2>
-            <span v-if="dashboard.internship.program" class="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
-              {{ dashboard.internship.program }}
-            </span>
           </div>
-          <div class="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <div v-for="[label, value] in details" :key="label" class="border-b border-slate-100 pb-3">
-              <p class="text-xs text-slate-400">{{ label }}</p>
+
+          <div class="mt-6 grid gap-4 border-t border-slate-100 pt-6 sm:grid-cols-2 xl:grid-cols-4">
+            <div v-for="[label, value] in details" :key="label">
+              <p class="text-xs font-medium uppercase tracking-wide text-slate-400">{{ label }}</p>
               <p class="mt-1 text-sm font-semibold text-slate-900">{{ value }}</p>
             </div>
           </div>
         </section>
+
+        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <article
+            v-for="stat in stats"
+            :key="stat.label"
+            class="flex h-full flex-col rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70"
+          >
+            <div class="flex items-center gap-2">
+              <span class="h-2 w-2 shrink-0 rounded-full" :class="statAccentClass(stat.tone)" />
+              <p class="text-xs font-medium uppercase tracking-wide text-slate-400">{{ stat.label }}</p>
+            </div>
+            <p class="mt-3 text-3xl font-semibold tracking-tight text-slate-900">{{ stat.value }}</p>
+            <p class="mt-1 text-xs text-slate-400">{{ stat.sub }}</p>
+          </article>
+        </div>
+
+        <div class="grid gap-6 xl:grid-cols-2">
+          <section class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
+            <h2 class="text-sm font-semibold text-slate-900">Completion Progress</h2>
+            <div class="mt-6 grid grid-cols-2 gap-6">
+              <div v-for="item in progress" :key="item.label" class="flex flex-col items-center">
+                <div
+                  class="relative w-full max-w-[140px]"
+                  role="img"
+                  :aria-label="`${item.label}: ${item.value} percent`"
+                >
+                  <svg viewBox="0 0 120 120" class="h-auto w-full">
+                    <circle cx="60" cy="60" r="52" fill="none" stroke-width="10" class="stroke-slate-100" />
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r="52"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="10"
+                      stroke-linecap="round"
+                      stroke-dasharray="326.73"
+                      :stroke-dashoffset="ringOffset(item.value)"
+                      transform="rotate(-90 60 60)"
+                      :class="item.ringClass"
+                    />
+                  </svg>
+                  <span class="absolute inset-0 flex items-center justify-center text-2xl font-semibold tracking-tight text-slate-900">
+                    {{ item.value }}%
+                  </span>
+                </div>
+                <p class="mt-3 text-center text-xs text-slate-500">{{ item.label }}</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
+            <h2 class="text-sm font-semibold text-slate-900">Recent Activity</h2>
+            <p v-if="dashboard.recent_activity.length === 0" class="mt-4 text-sm text-slate-400">No recent activity yet.</p>
+            <ol v-else class="relative mt-5 space-y-5 pl-6">
+              <span class="absolute bottom-2 left-[3px] top-2 w-px bg-slate-100" aria-hidden="true" />
+              <li v-for="(activity, index) in dashboard.recent_activity" :key="index" class="relative">
+                <span
+                  class="absolute -left-6 top-1.5 h-[7px] w-[7px] rounded-full ring-2 ring-white"
+                  :class="activityDotClass(activity.tone)"
+                />
+                <p class="text-sm text-slate-700">{{ activity.text }}</p>
+                <p class="mt-1 text-xs text-slate-400">{{ activity.time ?? '—' }}</p>
+              </li>
+            </ol>
+          </section>
+        </div>
       </template>
     </LoadStatus>
   </section>
