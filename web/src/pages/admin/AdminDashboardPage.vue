@@ -44,6 +44,18 @@ const activityFeed = ref<InstanceType<typeof AdminActivityFeed> | null>(null)
 
 const greetingName = computed(() => (auth.user?.name ?? '').trim().split(/\s+/)[0] || 'Admin')
 
+// The sidebar's own "Users" target, kept identical to the nav.
+const USERS_ROUTE = '/admin/users'
+
+const initials = computed(() =>
+  (auth.user?.name ?? '')
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase(),
+)
+
 const roleLabel = computed(() => {
   const role = auth.user?.role ?? ''
 
@@ -113,8 +125,8 @@ const statCards = computed<StatCard[]>(() => [
     value: totalUsers.value,
     caption: 'Excludes admin accounts',
     to: '/admin/users',
-    card: 'bg-blue-50/50',
-    tile: 'bg-blue-100 text-blue-600',
+    card: 'bg-blue-50/40',
+    tile: 'bg-white ring-1 ring-slate-200/70 text-blue-600',
     icon: 'people',
   },
   {
@@ -122,8 +134,8 @@ const statCards = computed<StatCard[]>(() => [
     value: totalBatches.value,
     caption: 'All academic years',
     to: '/admin/batches',
-    card: 'bg-emerald-50/50',
-    tile: 'bg-emerald-100 text-emerald-600',
+    card: 'bg-emerald-50/40',
+    tile: 'bg-white ring-1 ring-slate-200/70 text-emerald-600',
     icon: 'batch',
   },
   {
@@ -131,8 +143,8 @@ const statCards = computed<StatCard[]>(() => [
     value: totalPrograms.value,
     caption: 'Across all departments',
     to: '/admin/programs',
-    card: 'bg-amber-50/50',
-    tile: 'bg-amber-100 text-amber-600',
+    card: 'bg-amber-50/40',
+    tile: 'bg-white ring-1 ring-slate-200/70 text-amber-600',
     icon: 'program',
   },
   {
@@ -140,8 +152,8 @@ const statCards = computed<StatCard[]>(() => [
     value: totalDepartments.value,
     caption: 'Top-level units',
     to: '/admin/departments',
-    card: 'bg-violet-50/50',
-    tile: 'bg-violet-100 text-violet-600',
+    card: 'bg-rose-50/40',
+    tile: 'bg-white ring-1 ring-slate-200/70 text-rose-600',
     icon: 'department',
   },
 ])
@@ -273,13 +285,38 @@ onMounted(refreshAll)
 
 <template>
   <section class="space-y-6">
-    <!-- A. Header strip -->
-    <div class="flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <h2 class="text-xl font-semibold text-slate-900">Hello, {{ greetingName }}</h2>
-        <p class="mt-1 text-sm text-slate-500">{{ roleLabel }}</p>
+    <!-- Hero: greeting + primary action. No meta grid — there is no admin
+         dashboard endpoint, so nothing beyond the auth store is available. -->
+    <section class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex min-w-0 items-center gap-4">
+          <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-blue-50 text-lg font-semibold text-blue-700">
+            {{ initials }}
+          </span>
+          <div class="min-w-0">
+            <p class="text-xl font-semibold tracking-tight text-slate-900">Hello, {{ greetingName }}</p>
+            <p class="mt-0.5 truncate text-sm text-slate-500">{{ roleLabel }}</p>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3 sm:shrink-0 sm:justify-end">
+          <TooltipWrap label="Manage user accounts" placement="bottom">
+            <RouterLink
+              :to="USERS_ROUTE"
+              aria-label="Manage user accounts"
+              class="inline-flex items-center gap-2 rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+            >
+              Manage Users
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
+                <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </RouterLink>
+          </TooltipWrap>
+        </div>
       </div>
-      <div class="flex items-center gap-3">
+    </section>
+
+    <div class="flex flex-wrap items-center justify-end gap-3">
         <p class="text-xs text-slate-400">Last updated {{ lastUpdatedLabel }}</p>
         <TooltipWrap label="Refresh dashboard" placement="bottom" align="end">
           <button
@@ -299,7 +336,6 @@ onMounted(refreshAll)
             </svg>
           </button>
         </TooltipWrap>
-      </div>
     </div>
 
     <!-- B. Stat row -->
@@ -351,9 +387,12 @@ onMounted(refreshAll)
     </LoadStatus>
 
     <!-- C. Two-column row -->
-    <div class="grid gap-6 xl:grid-cols-2">
-      <section class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
+    <div>
+      <h3 class="mb-3 text-xs font-medium uppercase tracking-wide text-slate-400">System overview</h3>
+      <div class="grid items-stretch gap-6 xl:grid-cols-2">
+      <section class="flex h-full flex-col rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
         <h2 class="text-sm font-semibold text-slate-900">Users by Role</h2>
+        <p class="mt-1 text-xs text-slate-400">Every non-admin account, grouped by role.</p>
 
         <LoadStatus :loading="rolesLoading" :error="rolesError" :retry="loadRoles">
           <div class="relative mx-auto mt-5 w-full max-w-[180px]" role="img" :aria-label="roleAriaLabel">
@@ -401,8 +440,9 @@ onMounted(refreshAll)
         </LoadStatus>
       </section>
 
-      <section class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
+      <section class="flex h-full flex-col rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
         <h2 class="text-sm font-semibold text-slate-900">Batches by Status</h2>
+        <p class="mt-1 text-xs text-slate-400">Every batch on record, active or not.</p>
 
         <LoadStatus :loading="batchesLoading" :error="batchesError" :retry="loadBatchStatus">
           <p v-if="batchTotal === 0" class="mt-5 text-sm text-slate-400">No batches yet.</p>
@@ -421,6 +461,7 @@ onMounted(refreshAll)
           </div>
         </LoadStatus>
       </section>
+      </div>
     </div>
 
     <!-- D. Recent activity -->

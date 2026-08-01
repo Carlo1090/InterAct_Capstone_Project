@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import api from '@/lib/axios'
+import TooltipWrap from '@/components/ui/TooltipWrap.vue'
 import LoadStatus from '@/components/LoadStatus.vue'
 import CoordinatorActivityLog from '@/components/coordinator/CoordinatorActivityLog.vue'
 import { categorizeError } from '@/lib/apiError'
@@ -36,6 +38,28 @@ const infoSheetError = ref('')
 
 const department = computed(() => auth.user?.program?.department?.name ?? 'your department')
 
+// The sidebar's own "Daily Journal Activities" target, kept identical to the nav.
+const JOURNAL_ACTIVITIES_ROUTE = '/coordinator/journal-activities'
+
+const initials = computed(() =>
+  (auth.user?.name ?? '')
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase(),
+)
+
+const firstName = computed(() => (auth.user?.name ?? '').trim().split(/\s+/)[0] ?? '')
+const greeting = computed(() => (firstName.value ? `Hello, ${firstName.value}` : 'Hello'))
+
+/**
+ * The role label, not the department: `/api/user` loads only `program.department`
+ * and a coordinator's `program_id` is null, so no department name reaches the
+ * frontend. Showing one here would mean inventing it.
+ */
+const heroSubline = computed(() => 'Coordinator')
+
 const statCards = computed<
   { label: string; value: number; sub: string; card: string; tile: string; icon: StatIcon }[]
 >(() => [
@@ -43,32 +67,32 @@ const statCards = computed<
     label: 'My Interns',
     value: stats.value.active_interns,
     sub: 'Active enrollments in scope',
-    card: 'bg-blue-50/50',
-    tile: 'bg-blue-100 text-blue-600',
+    card: 'bg-blue-50/40',
+    tile: 'bg-white ring-1 ring-slate-200/70 text-blue-600',
     icon: 'people',
   },
   {
     label: 'Submitted This Week',
     value: stats.value.journals_submitted_this_week,
     sub: `Journals since ${week.value.start}`,
-    card: 'bg-emerald-50/50',
-    tile: 'bg-emerald-100 text-emerald-600',
+    card: 'bg-emerald-50/40',
+    tile: 'bg-white ring-1 ring-slate-200/70 text-emerald-600',
     icon: 'check',
   },
   {
     label: 'Missing This Week',
     value: stats.value.journals_missing_this_week,
     sub: 'Unsubmitted daily journals',
-    card: 'bg-rose-50/50',
-    tile: 'bg-rose-100 text-rose-600',
+    card: 'bg-rose-50/40',
+    tile: 'bg-white ring-1 ring-slate-200/70 text-rose-600',
     icon: 'alert',
   },
   {
     label: 'Active Batches',
     value: stats.value.active_batches,
     sub: 'Running in your programs',
-    card: 'bg-amber-50/50',
-    tile: 'bg-amber-100 text-amber-600',
+    card: 'bg-amber-50/40',
+    tile: 'bg-white ring-1 ring-slate-200/70 text-amber-600',
     icon: 'briefcase',
   },
 ])
@@ -148,9 +172,55 @@ onMounted(load)
 
 <template>
   <section class="space-y-6">
-    <div class="rounded-xl bg-blue-50 px-5 py-4 text-sm text-blue-800 ring-1 ring-blue-100">
-      This workspace is scoped to <strong>{{ department }}</strong>. Stats below reflect your assigned programs only.
+    <div class="flex items-center gap-3 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600 ring-1 ring-slate-200/70">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4 shrink-0 text-slate-400">
+        <circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.6" />
+        <path d="M12 11v5M12 8h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+      </svg>
+      <span>This workspace is scoped to <strong class="font-semibold text-slate-700">{{ department }}</strong>.</span>
+      <TooltipWrap label="Every stat, list and report on this page counts only students in the programs assigned to you." placement="bottom" class="ml-auto shrink-0">
+        <span
+          aria-label="Every stat, list and report on this page counts only students in the programs assigned to you."
+          class="flex h-5 w-5 items-center justify-center rounded-full text-slate-400"
+          tabindex="0"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
+            <circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.6" />
+            <path d="M9.8 9.6a2.2 2.2 0 1 1 2.9 2.1c-.5.2-.7.6-.7 1.1v.4M12 16.4h.01" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+          </svg>
+        </span>
+      </TooltipWrap>
     </div>
+
+    <!-- Hero: greeting + primary action. No meta grid — the coordinator
+         dashboard endpoint returns only stats, students_behind and week, none
+         of which belongs in a hero, and no department name reaches the client. -->
+    <section class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex min-w-0 items-center gap-4">
+          <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-blue-50 text-lg font-semibold text-blue-700">
+            {{ initials }}
+          </span>
+          <div class="min-w-0">
+            <p class="text-xl font-semibold tracking-tight text-slate-900">{{ greeting }}</p>
+            <p class="mt-0.5 truncate text-sm text-slate-500">{{ heroSubline }}</p>
+          </div>
+        </div>
+
+        <TooltipWrap label="Monitor today's journal activity" placement="bottom" class="sm:shrink-0">
+          <RouterLink
+            :to="JOURNAL_ACTIVITIES_ROUTE"
+            aria-label="Monitor today's journal activity"
+            class="inline-flex items-center gap-2 rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+          >
+            Journal Activities
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
+              <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </RouterLink>
+        </TooltipWrap>
+      </div>
+    </section>
 
     <LoadStatus :loading="isLoading" :error="errorMessage" :retry="load">
       <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -190,8 +260,10 @@ onMounted(load)
         </article>
       </div>
 
-      <div class="grid gap-6 xl:grid-cols-2">
-        <section class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
+      <div>
+        <h3 class="mb-3 text-xs font-medium uppercase tracking-wide text-slate-400">This week</h3>
+        <div class="grid items-stretch gap-6 xl:grid-cols-2">
+        <section class="flex h-full flex-col rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
           <h2 class="text-sm font-semibold text-slate-900">Info Sheet Completion</h2>
           <p class="mt-1 text-xs text-slate-400">Across information sheets on file in your programs.</p>
 
@@ -229,10 +301,16 @@ onMounted(load)
           </template>
         </section>
 
-        <section class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
+        <section class="flex h-full flex-col rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
           <div class="flex items-center justify-between gap-3">
-            <h2 class="text-sm font-semibold text-slate-900">Students Behind This Week</h2>
-            <span class="shrink-0 rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
+            <div class="min-w-0">
+              <h2 class="text-sm font-semibold text-slate-900">Students Behind This Week</h2>
+              <p class="mt-1 text-xs text-slate-400">In-scope interns with a missing daily entry this week.</p>
+            </div>
+            <span
+              class="shrink-0 rounded-full px-3 py-1 text-xs font-semibold"
+              :class="stats.students_behind === 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'"
+            >
               {{ stats.students_behind }} flagged
             </span>
           </div>
@@ -253,6 +331,7 @@ onMounted(load)
             </div>
           </div>
         </section>
+        </div>
       </div>
     </LoadStatus>
 

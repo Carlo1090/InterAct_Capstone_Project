@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import api from '@/lib/axios'
 import { categorizeError } from '@/lib/apiError'
 import { useFormDraft } from '@/lib/formDraft'
@@ -96,6 +96,176 @@ const sheetDraft = useFormDraft(
 )
 const submitLabel = computed(() => (isRejected.value ? 'Resubmit' : 'Submit'))
 
+// ---------------------------------------------------------- duty schedule
+//
+// Still ONE string under `ojt_info.intern_duty_schedule` — the selects only
+// compose it. Separate shift-time fields are deferred on this project and must
+// not be introduced here.
+//
+// The format is copied byte-for-byte from the field's original placeholder:
+// EN DASH (U+2013) in both places, but tight between the days ("Mon–Fri") and
+// spaced between the times ("8:00 AM – 5:00 PM").
+const SCHEDULE_PLACEHOLDER = 'e.g. Mon\u2013Fri, 8:00 AM \u2013 5:00 PM'
+const TIME_DASH = ' \u2013 '
+
+const DAY_RANGES = ['Mon\u2013Fri', 'Mon\u2013Sat', 'Mon\u2013Thu', 'Tue\u2013Sat', 'Sat\u2013Sun', 'Sun\u2013Thu']
+
+/** 6:00 AM to 9:00 PM in 30-minute steps, generated rather than hand-written. */
+const TIME_OPTIONS = ((): string[] => {
+  const options: string[] = []
+
+  for (let minutes = 6 * 60; minutes <= 21 * 60; minutes += 30) {
+    const hour24 = Math.floor(minutes / 60)
+    const minute = minutes % 60
+    const suffix = hour24 < 12 ? 'AM' : 'PM'
+    const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12
+    options.push(`${hour12}:${String(minute).padStart(2, '0')} ${suffix}`)
+  }
+
+  return options
+})()
+
+const scheduleMode = ref<'builder' | 'text'>('builder')
+const scheduleDays = ref('')
+const scheduleStart = ref('')
+const scheduleEnd = ref('')
+/** Set when a typed value could not be parsed back into the three selects. */
+const scheduleKeptAsTyped = ref(false)
+
+/**
+ * Guards the write-back watcher while the selects are being set FROM the stored
+ * value. Without it, prefilling on load (or clearing them when a typed value
+ * cannot be parsed) would immediately write back over the value it just read.
+ */
+let suppressScheduleWrite = false
+
+const setScheduleSelects = (days: string, start: string, end: string) => {
+  suppressScheduleWrite = true
+  scheduleDays.value = days
+  scheduleStart.value = start
+  scheduleEnd.value = end
+  void nextTick(() => {
+    suppressScheduleWrite = false
+  })
+}
+
+const minutesOf = (label: string): number | null => {
+  const match = /^(\d{1,2}):(\d{2}) (AM|PM)$/.exec(label.trim())
+  if (!match) return null
+
+  const hour = Number(match[1]) % 12
+  const minute = Number(match[2])
+
+  return (hour + (match[3] === 'PM' ? 12 : 0)) * 60 + minute
+}
+
+/**
+ * Joins only the parts that have a value, so a partial selection never produces
+ * a trailing comma, a leading comma, or a dash with nothing after it.
+ *
+ * An end time with no start is deliberately ignored rather than emitted alone:
+ * "5:00 PM" on its own is indistinguishable from a start time, and re-reading it
+ * later would silently turn their end time into a start time.
+ */
+const composeSchedule = (days: string, start: string, end: string): string => {
+  const times = start ? [start, end].filter(Boolean).join(TIME_DASH) : ''
+
+  return [days, times].filter(Boolean).join(', ')
+}
+
+/**
+ * Splits a stored value back into the three selects, or null if it is free text.
+ *
+ * Every shape `composeSchedule` can emit must round-trip, partials included —
+ * otherwise saving a partial and reopening the sheet would drop it into Type it
+ * mode. The tight day dash ("Mon–Fri") and the spaced time dash ("8:00 AM –
+ * 5:00 PM") are what keep the two halves unambiguous.
+ */
+const parseSchedule = (value: string): { days: string; start: string; end: string } | null => {
+  const trimmed = value.trim()
+  if (trimmed === '') return { days: '', start: '', end: '' }
+
+  const separator = trimmed.indexOf(', ')
+  const days = separator === -1 ? '' : trimmed.slice(0, separator)
+  const rest = separator === -1 ? trimmed : trimmed.slice(separator + 2)
+
+  if (days !== '' && !DAY_RANGES.includes(days)) return null
+
+  // No comma: the whole string is either a day range on its own or a time part.
+  if (separator === -1 && DAY_RANGES.includes(trimmed)) return { days: trimmed, start: '', end: '' }
+
+  const [start, end = ''] = rest.split(TIME_DASH)
+  if (!TIME_OPTIONS.includes(start)) return null
+  if (end !== '' && !TIME_OPTIONS.includes(end)) return null
+
+  return { days, start, end }
+}
+
+const composedSchedule = computed(() =>
+  composeSchedule(scheduleDays.value, scheduleStart.value, scheduleEnd.value),
+)
+
+const scheduleTimeInvalid = computed(() => {
+  const start = minutesOf(scheduleStart.value)
+  const end = minutesOf(scheduleEnd.value)
+  if (start === null || end === null) return false
+
+  return end <= start
+})
+
+/** Save is blocked only while the builder is showing an impossible range. */
+const scheduleBlocksSave = computed(() => scheduleMode.value === 'builder' && scheduleTimeInvalid.value)
+
+// Every select change writes through, partial selections included, so the
+// read-only field below fills in as the student picks.
+watch([scheduleDays, scheduleStart, scheduleEnd], () => {
+  if (suppressScheduleWrite || scheduleMode.value !== 'builder') return
+
+  scheduleKeptAsTyped.value = false
+  ojtInfo.intern_duty_schedule = composedSchedule.value
+})
+
+/** Mirrors a stored value onto the control, choosing the mode it fits. */
+const syncScheduleFromValue = () => {
+  const parsed = parseSchedule(ojtInfo.intern_duty_schedule ?? '')
+  scheduleKeptAsTyped.value = false
+
+  if (parsed) {
+    setScheduleSelects(parsed.days, parsed.start, parsed.end)
+    scheduleMode.value = 'builder'
+
+    return
+  }
+
+  // Only a non-empty value that does not fit the pattern is legacy free text
+  // ("Flexible shift"). It opens in Type it mode, untouched.
+  setScheduleSelects('', '', '')
+  scheduleMode.value = 'text'
+}
+
+const useTypeItMode = () => {
+  scheduleKeptAsTyped.value = false
+  scheduleMode.value = 'text'
+}
+
+const useBuilderMode = () => {
+  const parsed = parseSchedule(ojtInfo.intern_duty_schedule ?? '')
+
+  if (parsed) {
+    setScheduleSelects(parsed.days, parsed.start, parsed.end)
+    scheduleKeptAsTyped.value = false
+    scheduleMode.value = 'builder'
+
+    return
+  }
+
+  // Unparseable: keep exactly what they typed and say so, rather than blanking
+  // the field or forcing it into the pattern.
+  setScheduleSelects('', '', '')
+  scheduleKeptAsTyped.value = true
+  scheduleMode.value = 'builder'
+}
+
 const onCompanyChange = () => {
   const picked = companies.value.find((company) => company.id === ojtInfo.company_id)
   ojtInfo.host_company = picked?.name ?? ''
@@ -130,6 +300,7 @@ const loadInfoSheet = async () => {
     // Only now that the server copy is in place may an unsaved draft be layered
     // back on top — otherwise this load would have wiped it.
     sheetDraft.restore()
+    syncScheduleFromValue()
   } catch {
     errorMessage.value = 'Unable to load your info sheet.'
   } finally {
@@ -364,10 +535,96 @@ onMounted(loadInfoSheet)
             Contact Number
             <input v-model="ojtInfo.supervisor_contact" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
           </label>
-          <label class="block text-sm font-medium text-slate-700">
-            Intern's Duty Schedule
-            <input v-model="ojtInfo.intern_duty_schedule" placeholder="e.g. Mon–Fri, 8:00 AM – 5:00 PM" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
-          </label>
+          <div class="md:col-span-2">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span class="text-sm font-medium text-slate-700">Intern's Duty Schedule</span>
+              <button
+                v-if="scheduleMode === 'builder'"
+                type="button"
+                aria-label="Type the duty schedule instead of using the dropdowns"
+                class="text-xs font-semibold text-blue-600 transition hover:text-blue-700"
+                @click="useTypeItMode"
+              >
+                Type it instead
+              </button>
+              <button
+                v-else
+                type="button"
+                aria-label="Build the duty schedule with dropdowns instead of typing"
+                class="text-xs font-semibold text-blue-600 transition hover:text-blue-700"
+                @click="useBuilderMode"
+              >
+                Use dropdowns
+              </button>
+            </div>
+
+            <template v-if="scheduleMode === 'builder'">
+              <div class="mt-2 grid gap-3 sm:grid-cols-3">
+                <label class="block text-xs font-medium uppercase tracking-wide text-slate-400" for="duty-days">
+                  Days
+                  <select
+                    id="duty-days"
+                    v-model="scheduleDays"
+                    class="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm font-normal normal-case tracking-normal text-slate-700"
+                  >
+                    <option value="">Select days</option>
+                    <option v-for="range in DAY_RANGES" :key="range" :value="range">{{ range }}</option>
+                  </select>
+                </label>
+                <label class="block text-xs font-medium uppercase tracking-wide text-slate-400" for="duty-start">
+                  Start time
+                  <select
+                    id="duty-start"
+                    v-model="scheduleStart"
+                    class="mt-1 h-10 w-full rounded-md border px-3 text-sm font-normal normal-case tracking-normal text-slate-700"
+                    :class="scheduleTimeInvalid ? 'border-red-400' : 'border-slate-300'"
+                  >
+                    <option value="">Select time</option>
+                    <option v-for="time in TIME_OPTIONS" :key="`start-${time}`" :value="time">{{ time }}</option>
+                  </select>
+                </label>
+                <label class="block text-xs font-medium uppercase tracking-wide text-slate-400" for="duty-end">
+                  End time
+                  <select
+                    id="duty-end"
+                    v-model="scheduleEnd"
+                    class="mt-1 h-10 w-full rounded-md border px-3 text-sm font-normal normal-case tracking-normal text-slate-700"
+                    :class="scheduleTimeInvalid ? 'border-red-400' : 'border-slate-300'"
+                  >
+                    <option value="">Select time</option>
+                    <option v-for="time in TIME_OPTIONS" :key="`end-${time}`" :value="time">{{ time }}</option>
+                  </select>
+                </label>
+              </div>
+
+              <!-- The value as it will be saved, filling in live as the
+                   selects change. Read-only: the selects are the input. -->
+              <input
+                :value="ojtInfo.intern_duty_schedule"
+                readonly
+                aria-live="polite"
+                aria-label="Intern's Duty Schedule"
+                :placeholder="SCHEDULE_PLACEHOLDER"
+                class="mt-3 w-full cursor-default rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600"
+              />
+
+              <p v-if="scheduleTimeInvalid" class="mt-1.5 text-xs text-red-600">
+                End time must be after start time. Overnight shifts are not supported here — type it instead.
+              </p>
+              <p v-else-if="scheduleKeptAsTyped" class="mt-1.5 text-xs text-slate-500">
+                Your typed schedule doesn't match the dropdown format, so it will be saved exactly as you wrote it.
+              </p>
+            </template>
+
+            <template v-else>
+              <input
+                v-model="ojtInfo.intern_duty_schedule"
+                aria-label="Intern's Duty Schedule"
+                :placeholder="SCHEDULE_PLACEHOLDER"
+                class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100"
+              />
+            </template>
+          </div>
           <label class="block text-sm font-medium text-slate-700">
             Area Assigned
             <input v-model="ojtInfo.area_assigned" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
@@ -389,7 +646,7 @@ onMounted(loadInfoSheet)
         <button
           type="button"
           class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
-          :disabled="isSaving"
+          :disabled="isSaving || scheduleBlocksSave"
           @click="save('submitted')"
         >
           {{ isSaving ? 'Saving...' : 'Save Changes' }}
@@ -399,7 +656,7 @@ onMounted(loadInfoSheet)
         <button
           type="button"
           class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
-          :disabled="isSaving"
+          :disabled="isSaving || scheduleBlocksSave"
           @click="save('draft')"
         >
           {{ isSaving ? 'Saving...' : 'Save Draft' }}
@@ -407,7 +664,7 @@ onMounted(loadInfoSheet)
         <button
           type="button"
           class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
-          :disabled="isSaving"
+          :disabled="isSaving || scheduleBlocksSave"
           @click="save('submitted')"
         >
           {{ isSaving ? 'Saving...' : submitLabel }}

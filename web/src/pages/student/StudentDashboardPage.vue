@@ -173,8 +173,8 @@ const stats = computed<StatCard[]>(() => {
       label: 'Entries Submitted',
       value: String(s.entries_submitted_total),
       sub: 'All time',
-      cardClass: 'bg-blue-50/50',
-      tileClass: 'bg-blue-100 text-blue-600',
+      cardClass: 'bg-blue-50/40',
+      tileClass: 'bg-white ring-1 ring-slate-200/70 text-blue-600',
       icon: 'document',
       barClass: 'bg-blue-500',
       barPercent: null,
@@ -183,8 +183,8 @@ const stats = computed<StatCard[]>(() => {
       label: 'Weekly Reports Approved',
       value: String(s.weekly_logs_approved),
       sub: 'By supervisor',
-      cardClass: 'bg-emerald-50/50',
-      tileClass: 'bg-emerald-100 text-emerald-600',
+      cardClass: 'bg-emerald-50/40',
+      tileClass: 'bg-white ring-1 ring-slate-200/70 text-emerald-600',
       icon: 'check',
       barClass: 'bg-emerald-500',
       barPercent: total > 0 ? clampPercent((approved / total) * 100) : 0,
@@ -193,8 +193,8 @@ const stats = computed<StatCard[]>(() => {
       label: 'Pending Review',
       value: String(s.weekly_logs_pending),
       sub: 'Awaiting supervisor',
-      cardClass: 'bg-amber-50/50',
-      tileClass: 'bg-amber-100 text-amber-600',
+      cardClass: 'bg-amber-50/40',
+      tileClass: 'bg-white ring-1 ring-slate-200/70 text-amber-600',
       icon: 'clock',
       barClass: 'bg-amber-500',
       barPercent: total > 0 ? clampPercent((pending / total) * 100) : 0,
@@ -203,8 +203,8 @@ const stats = computed<StatCard[]>(() => {
       label: 'Missing Entries',
       value: String(s.missing_this_week),
       sub: 'This week',
-      cardClass: 'bg-rose-50/50',
-      tileClass: 'bg-rose-100 text-rose-600',
+      cardClass: 'bg-rose-50/40',
+      tileClass: 'bg-white ring-1 ring-slate-200/70 text-rose-600',
       icon: 'alert',
       barClass: 'bg-rose-500',
       barPercent: days > 0 ? clampPercent((safeCount(s.missing_this_week) / days) * 100) : 0,
@@ -283,26 +283,38 @@ onMounted(async () => {
 
     <div
       v-else-if="needsEmailVerification"
-      class="flex flex-col gap-3 rounded-xl bg-amber-50 px-5 py-4 ring-1 ring-amber-100 sm:flex-row sm:items-center sm:justify-between"
+      class="flex flex-col gap-3 rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200/70 sm:flex-row sm:items-center sm:justify-between"
     >
-      <div class="flex items-start gap-3">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="mt-0.5 h-5 w-5 shrink-0 text-amber-600">
-          <path d="M12 8.5v4.5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-          <path d="M10.3 3.9 2.6 17.4A2 2 0 0 0 4.3 20.4h15.4a2 2 0 0 0 1.7-3l-7.7-13.5a2 2 0 0 0-3.4 0Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+      <div class="flex items-center gap-3">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4 shrink-0 text-slate-400">
+          <circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.6" />
+          <path d="M12 11v5M12 8h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
         </svg>
-        <div>
-          <p class="text-sm font-semibold text-amber-900">Your email is not verified</p>
-          <p class="text-xs text-amber-800">
-            Journal reminders are only emailed to a verified address — right now you get in-app
-            notifications only. Verifying also lets you sign in with Google.
-          </p>
-        </div>
+        <p class="text-sm text-slate-600">
+          Your email is <strong class="font-semibold text-slate-700">not verified</strong>.
+        </p>
+        <TooltipWrap
+          label="Journal reminders are only emailed to a verified address — right now you get in-app notifications only. Verifying also lets you sign in with Google."
+          placement="bottom"
+          class="shrink-0"
+        >
+          <span
+            aria-label="Journal reminders are only emailed to a verified address — right now you get in-app notifications only. Verifying also lets you sign in with Google."
+            class="flex h-5 w-5 items-center justify-center rounded-full text-slate-400"
+            tabindex="0"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
+              <circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.6" />
+              <path d="M9.8 9.6a2.2 2.2 0 1 1 2.9 2.1c-.5.2-.7.6-.7 1.1v.4M12 16.4h.01" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+            </svg>
+          </span>
+        </TooltipWrap>
       </div>
       <TooltipWrap label="Verify your email with Google" placement="bottom" class="shrink-0">
       <button
         type="button"
         aria-label="Verify your email with Google"
-        class="flex shrink-0 items-center justify-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-amber-200 transition hover:bg-slate-50"
+        class="flex shrink-0 items-center justify-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-300 transition hover:bg-slate-50"
         @click="verifyWithGoogle"
       >
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" class="h-4 w-4">
@@ -322,7 +334,7 @@ onMounted(async () => {
       <template v-else-if="dashboard">
         <div
           v-if="dashboard.stats.missing_this_week > 0"
-          class="rounded-xl bg-amber-50 px-5 py-4 text-sm text-amber-800 ring-1 ring-amber-100"
+          class="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-100"
         >
           You have <strong>{{ dashboard.stats.missing_this_week }} missing entr{{ dashboard.stats.missing_this_week === 1 ? 'y' : 'ies' }}</strong>
           this week ({{ dashboard.week.start }} to {{ dashboard.week.end }}).
@@ -412,9 +424,12 @@ onMounted(async () => {
           </article>
         </div>
 
-        <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          <section class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
+        <div>
+          <h3 class="mb-3 text-xs font-medium uppercase tracking-wide text-slate-400">Your progress</h3>
+          <div class="grid items-stretch gap-6 md:grid-cols-2 xl:grid-cols-3">
+          <section class="flex h-full flex-col rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
             <h2 class="text-sm font-semibold text-slate-900">OJT Duration</h2>
+            <p class="mt-1 text-xs text-slate-400">How far through your batch's planned dates you are.</p>
             <div
               class="mx-auto mt-5 w-full max-w-[180px]"
               role="img"
@@ -456,8 +471,9 @@ onMounted(async () => {
             </div>
           </section>
 
-          <section class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
+          <section class="flex h-full flex-col rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
             <h2 class="text-sm font-semibold text-slate-900">Weekly Reports</h2>
+            <p class="mt-1 text-xs text-slate-400">Your submitted weekly reports, by review outcome.</p>
             <div
               class="relative mx-auto mt-5 w-full max-w-[180px]"
               role="img"
@@ -533,6 +549,7 @@ onMounted(async () => {
             class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70"
           >
             <h2 class="text-sm font-semibold text-slate-900">This Week</h2>
+            <p class="mt-1 text-xs text-slate-400">Days logged since Monday.</p>
             <p class="mt-5 text-sm text-slate-600">
               <span class="font-semibold text-slate-900">{{ weekStrip.logged }}</span>
               of {{ weekStrip.days }} days logged
@@ -549,10 +566,12 @@ onMounted(async () => {
               {{ dashboard.week.start }} – {{ dashboard.week.end }}
             </p>
           </section>
+          </div>
         </div>
 
         <section class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
           <h2 class="text-sm font-semibold text-slate-900">Recent Activity</h2>
+          <p class="mt-1 text-xs text-slate-400">Your own last five actions in the system.</p>
           <p v-if="dashboard.recent_activity.length === 0" class="mt-4 text-sm text-slate-400">No recent activity yet.</p>
           <ol v-else class="relative mt-5 space-y-5 pl-6">
             <span class="absolute bottom-2 left-[3px] top-2 w-px bg-slate-100" aria-hidden="true" />

@@ -4,7 +4,9 @@ import axios from 'axios'
 import api from '@/lib/axios'
 import { showToast, confirmAction } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
+import LoadStatus from '@/components/LoadStatus.vue'
 import WeeklyJournalPaperView from '@/components/journal/WeeklyJournalPaperView.vue'
+import TooltipWrap from '@/components/ui/TooltipWrap.vue'
 import type { SupervisorJournalDetail, SupervisorJournalRow, SupervisorReviewStatus } from '@/types/api'
 
 const tabs: { key: SupervisorReviewStatus; label: string }[] = [
@@ -33,7 +35,58 @@ const statusClass = (status: SupervisorReviewStatus): string => {
   return 'bg-amber-50 text-amber-700'
 }
 
+/**
+ * `submitted_at` / `reviewed_at` are genuine instants carrying a timezone
+ * marker ("2026-07-20T21:00:00+00:00"), so parsing and formatting locally is
+ * correct — the exact moment is what matters. The untouched original stays in a
+ * tooltip beside it.
+ */
+const formatInstant = (iso: string | null | undefined): string | null => {
+  if (!iso) return null
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return null
+
+  return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
 const formatDateTime = (iso: string | null): string => (iso ? new Date(iso).toLocaleString() : '—')
+
+/**
+ * Date-only values are sliced, never parsed. `entry_date` is a `date`-cast
+ * column serialised at midnight UTC ("2026-07-13T00:00:00.000000Z"); parsing it
+ * and re-formatting lands on the 12th once the app runs in Asia/Manila.
+ * `week_start`/`week_end` already arrive as a bare Y-m-d and pass through.
+ */
+const dateOnly = (value: string | null | undefined): string | null => {
+  const trimmed = value?.trim()
+
+  return trimmed ? trimmed.slice(0, 10) : null
+}
+
+/**
+ * Journal fields come from coordinator-authored templates and differ per
+ * program, so there is no fixed set to map and the API returns no label — only
+ * the snake_case key. Derive the label from the key instead: a hardcoded map
+ * would silently fall back to raw keys for any template it did not anticipate.
+ */
+const fieldLabel = (key: string): string =>
+  key
+    .split('_')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+
+/** Skip blank fields rather than printing an empty label. */
+const filledContent = (content: Record<string, string> | null | undefined): [string, string][] =>
+  Object.entries(content ?? {}).filter(([, value]) => typeof value === 'string' && value.trim() !== '')
+
+const entriesOpen = ref(true)
+
+const EMPTY_STATE: Record<SupervisorReviewStatus, string> = {
+  pending: 'Nothing waiting for review.',
+  approved: 'No approved journals yet.',
+  returned: 'No returned journals yet.',
+}
 
 const downloadPdf = () => {
   if (!detail.value) return
@@ -134,7 +187,7 @@ onMounted(load)
   <section class="space-y-5">
     <ToastHost />
 
-    <div class="rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+    <div class="rounded-xl border border-blue-100 bg-blue-50 p-6 text-sm text-blue-800">
       Review your interns' <strong>weekly narrative journals</strong>. Approve a journal, or return it with a comment so
       the student can revise it.
     </div>
@@ -144,7 +197,7 @@ onMounted(load)
         v-for="tab in tabs"
         :key="tab.key"
         type="button"
-        class="border-b-2 px-4 py-2 text-sm font-semibold transition"
+        class="border-b-2 px-5 py-3 text-sm font-medium transition"
         :class="tab.key === activeStatus ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700'"
         @click="selectTab(tab.key)"
       >
@@ -152,129 +205,191 @@ onMounted(load)
       </button>
     </div>
 
-    <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
-    <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
+    <LoadStatus :loading="isLoading" :error="errorMessage" :retry="load">
+      <p v-if="logs.length === 0" class="rounded-xl bg-white px-6 py-8 text-center text-sm text-slate-500 shadow-sm ring-1 ring-slate-200/70">
+        {{ EMPTY_STATE[activeStatus] }}
+      </p>
 
-    <div v-else class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
-      <table class="min-w-full divide-y divide-slate-200">
-        <thead class="bg-slate-50">
-          <tr>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Student</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Week</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Daily Entries</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Submitted</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-100">
-          <tr v-if="logs.length === 0">
-            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="5">No {{ activeStatus }} weekly journals.</td>
-          </tr>
-          <tr v-for="log in logs" :key="log.id">
-            <td class="px-4 py-3">
-              <p class="text-sm font-semibold text-slate-900">{{ log.student_name }}</p>
-              <p class="font-mono text-xs text-slate-400">{{ log.student_id_number ?? '—' }}</p>
-            </td>
-            <td class="whitespace-nowrap px-4 py-3 font-mono text-sm text-slate-700">{{ log.week_start }} – {{ log.week_end }}</td>
-            <td class="px-4 py-3">
-              <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{{ log.entries_count }} entries</span>
-            </td>
-            <td class="whitespace-nowrap px-4 py-3 font-mono text-sm text-slate-700">{{ formatDateTime(log.submitted_at) }}</td>
-            <td class="px-4 py-3">
-              <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="openReview(log)">
-                Review
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+      <template v-else>
+        <!-- md and up: aligned table. `table-fixed` makes the colgroup binding. -->
+        <div class="hidden overflow-x-auto rounded-xl bg-white px-6 shadow-sm ring-1 ring-slate-200/70 md:block">
+          <table class="w-full table-fixed">
+            <colgroup>
+              <col />
+              <col class="w-[220px]" />
+              <col class="w-[120px]" />
+              <col class="w-[150px]" />
+              <col class="w-[110px]" />
+            </colgroup>
+            <thead>
+              <tr class="text-xs font-medium uppercase tracking-wide text-slate-400">
+                <th class="whitespace-nowrap border-b border-slate-200 pb-3 pl-0 pr-4 pt-4 text-left font-medium">Student</th>
+                <th class="whitespace-nowrap border-b border-slate-200 px-4 pb-3 pt-4 text-left font-medium">Week</th>
+                <th class="whitespace-nowrap border-b border-slate-200 px-4 pb-3 pt-4 text-left font-medium">Daily Entries</th>
+                <th class="whitespace-nowrap border-b border-slate-200 px-4 pb-3 pt-4 text-right font-medium">Submitted</th>
+                <th class="whitespace-nowrap border-b border-slate-200 pb-3 pl-4 pr-0 pt-4 text-right font-medium">Action</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr v-for="log in logs" :key="log.id" class="transition-colors hover:bg-slate-50/70">
+                <td class="py-3.5 pl-0 pr-4">
+                  <p class="truncate text-sm font-medium text-slate-900">{{ log.student_name }}</p>
+                  <p class="truncate text-xs text-slate-400">{{ log.student_id_number ?? '—' }}</p>
+                </td>
+                <td class="whitespace-nowrap px-4 py-3.5 text-sm tabular-nums text-slate-500">
+                  {{ dateOnly(log.week_start) ?? '—' }} – {{ dateOnly(log.week_end) ?? '—' }}
+                </td>
+                <td class="whitespace-nowrap px-4 py-3.5">
+                  <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{{ log.entries_count }} entries</span>
+                </td>
+                <td class="whitespace-nowrap px-4 py-3.5 text-right text-sm tabular-nums text-slate-500">
+                  <TooltipWrap v-if="formatInstant(log.submitted_at)" :label="log.submitted_at ?? ''" placement="top" align="end">
+                    <span>{{ formatInstant(log.submitted_at) }}</span>
+                  </TooltipWrap>
+                  <span v-else class="text-slate-300">—</span>
+                </td>
+                <td class="whitespace-nowrap py-3.5 pl-4 pr-0 text-right">
+                  <button
+                    type="button"
+                    class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                    @click="openReview(log)"
+                  >
+                    Review
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-    <!-- Review modal -->
-    <div v-if="isDetailOpen" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
-      <section class="w-full max-w-3xl rounded-lg bg-white p-6 shadow-xl">
-        <div class="flex items-center justify-between">
-          <div>
-            <h3 class="text-lg font-semibold text-slate-950">{{ detail?.student.name ?? 'Weekly Journal' }}</h3>
-            <p v-if="detail" class="mt-0.5 text-xs text-slate-500">Week {{ detail.week_start }} – {{ detail.week_end }}</p>
+        <!-- Below md: one stacked block per journal, so nothing scrolls sideways. -->
+        <ul class="divide-y divide-slate-100 rounded-xl bg-white px-6 shadow-sm ring-1 ring-slate-200/70 md:hidden">
+          <li v-for="log in logs" :key="log.id" class="py-4">
+            <div class="flex items-start justify-between gap-3">
+              <p class="min-w-0 truncate text-sm font-medium text-slate-900">{{ log.student_name }}</p>
+              <span class="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+                {{ log.entries_count }} entries
+              </span>
+            </div>
+            <p class="mt-1 text-xs tabular-nums text-slate-500">
+              {{ dateOnly(log.week_start) ?? '—' }} – {{ dateOnly(log.week_end) ?? '—' }}
+            </p>
+            <p class="mt-1 text-xs text-slate-400">Submitted {{ formatInstant(log.submitted_at) ?? '—' }}</p>
+            <button
+              type="button"
+              class="mt-3 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              @click="openReview(log)"
+            >
+              Review
+            </button>
+          </li>
+        </ul>
+      </template>
+    </LoadStatus>
+
+    <!-- Review modal: three-part flex shell, body is the only scroller. -->
+    <div v-if="isDetailOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+      <section class="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+        <div class="shrink-0 border-b border-slate-200 px-6 py-4">
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <h3 class="truncate text-xl font-semibold text-slate-900">{{ detail?.student.name ?? 'Weekly Journal' }}</h3>
+              <p v-if="detail" class="mt-0.5 text-sm text-slate-500">
+                Week {{ dateOnly(detail.week_start) ?? '—' }} – {{ dateOnly(detail.week_end) ?? '—' }}
+              </p>
+            </div>
+            <button type="button" class="shrink-0 text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeDetail">
+              Close
+            </button>
           </div>
-          <div class="flex items-center gap-3">
-            <button v-if="detail" type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="downloadPdf">Download PDF</button>
-            <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeDetail">Close</button>
+          <div v-if="detail" class="mt-3 flex flex-wrap items-center gap-2">
+            <span class="rounded-full px-3 py-1 text-xs font-bold capitalize" :class="statusClass(detail.status)">{{ detail.status }}</span>
+            <span class="text-xs text-slate-400">
+              Submitted
+              <TooltipWrap v-if="formatInstant(detail.submitted_at)" :label="detail.submitted_at ?? ''" placement="bottom">
+                <span>{{ formatInstant(detail.submitted_at) }}</span>
+              </TooltipWrap>
+              <span v-else>—</span>
+            </span>
           </div>
         </div>
 
-        <p v-if="isDetailLoading" class="mt-5 text-sm text-slate-500">Loading...</p>
+        <div class="flex-1 overflow-y-auto px-6 py-5">
+          <p v-if="isDetailLoading" class="text-sm text-slate-500">Loading...</p>
 
-        <div v-else-if="detail" class="mt-5 space-y-5">
-          <div class="flex items-center gap-2">
-            <span class="rounded-full px-3 py-1 text-xs font-bold capitalize" :class="statusClass(detail.status)">{{ detail.status }}</span>
-            <span class="text-xs text-slate-400">Submitted {{ formatDateTime(detail.submitted_at) }}</span>
-          </div>
+          <div v-else-if="detail" class="space-y-5">
+            <!-- Document preview: the weekly narrative rendered as the same
+                 typed document the PDF produces. Status/actions stay out here
+                 in the page chrome. -->
+            <div class="rounded-md bg-slate-100 p-4 sm:p-6">
+              <WeeklyJournalPaperView
+                :narrative="detail.narrative"
+                :student-name="detail.student.name"
+                :week-start="detail.week_start"
+                :week-end="detail.week_end"
+              />
+            </div>
 
-          <!-- Document preview: the weekly narrative rendered as the same
-               typed document the PDF produces. Status/actions stay out here
-               in the page chrome. -->
-          <div class="rounded-md bg-slate-100 p-4 sm:p-6">
-            <WeeklyJournalPaperView
-              :narrative="detail.narrative"
-              :student-name="detail.student.name"
-              :week-start="detail.week_start"
-              :week-end="detail.week_end"
-            />
-          </div>
+            <div v-if="detail.supervisor_comment">
+              <h4 class="text-xs font-medium uppercase tracking-wide text-slate-400">Your Previous Comment</h4>
+              <p class="mt-2 rounded-md bg-red-50 p-3 text-sm text-red-700">{{ detail.supervisor_comment }}</p>
+            </div>
 
-          <div v-if="detail.supervisor_comment">
-            <h4 class="text-xs font-bold uppercase tracking-wide text-slate-500">Your Previous Comment</h4>
-            <p class="mt-2 rounded-md bg-red-50 p-3 text-sm text-red-700">{{ detail.supervisor_comment }}</p>
-          </div>
+            <div class="rounded-lg ring-1 ring-slate-200">
+              <button
+                type="button"
+                class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-slate-50"
+                :aria-expanded="entriesOpen"
+                @click="entriesOpen = !entriesOpen"
+              >
+                <span class="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  Daily Entries This Week ({{ detail.daily_entries.length }})
+                </span>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  class="h-4 w-4 shrink-0 text-slate-400 transition-transform"
+                  :class="entriesOpen && 'rotate-180'"
+                >
+                  <path d="m6 9.5 6 6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
 
-          <details class="rounded-md border border-slate-200">
-            <summary class="cursor-pointer px-3 py-2 text-xs font-bold uppercase tracking-wide text-slate-500 transition hover:text-slate-700">
-              Daily Entries This Week ({{ detail.daily_entries.length }})
-            </summary>
-            <div class="border-t border-slate-100 p-3">
-              <div v-if="detail.daily_entries.length === 0" class="text-sm text-slate-400">No daily entries for this week.</div>
-              <div v-else class="space-y-2">
-                <div v-for="entry in detail.daily_entries" :key="entry.entry_date" class="rounded-md border border-slate-200 p-3">
-                  <div class="flex items-center justify-between">
-                    <p class="font-mono text-xs font-semibold text-slate-600">{{ entry.entry_date }}</p>
-                    <span class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{{ entry.status }}</span>
-                  </div>
-                  <p v-for="(value, key) in entry.content" :key="key" class="mt-1 text-xs text-slate-600">
-                    <span class="font-semibold text-slate-500">{{ key }}:</span> {{ value }}
-                  </p>
+              <div v-if="entriesOpen" class="border-t border-slate-100 p-4">
+                <p v-if="detail.daily_entries.length === 0" class="text-sm text-slate-400">No daily entries for this week.</p>
+
+                <div v-else class="space-y-3">
+                  <article v-for="entry in detail.daily_entries" :key="entry.entry_date" class="rounded-lg p-4 ring-1 ring-slate-200">
+                    <div class="flex items-center justify-between gap-3">
+                      <p class="text-sm font-medium tabular-nums text-slate-900">{{ dateOnly(entry.entry_date) ?? '—' }}</p>
+                      <span class="shrink-0 rounded-full px-2 py-0.5 text-xs font-bold capitalize" :class="statusClass(entry.status as SupervisorReviewStatus)">
+                        {{ entry.status }}
+                      </span>
+                    </div>
+
+                    <!--
+                      Labels are derived from the key, never mapped: these fields
+                      come from coordinator-authored templates and vary per
+                      program, so any hardcoded list would fall back to raw
+                      snake_case for a template it did not anticipate.
+                    -->
+                    <dl class="mt-3 space-y-3">
+                      <div v-for="[key, value] in filledContent(entry.content)" :key="key">
+                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-400">{{ fieldLabel(key) }}</dt>
+                        <dd class="mt-1 text-sm text-slate-700">{{ value }}</dd>
+                      </div>
+                    </dl>
+                  </article>
                 </div>
               </div>
             </div>
-          </details>
 
-          <p v-if="reviewError" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ reviewError }}</p>
+            <p v-if="reviewError" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ reviewError }}</p>
 
-          <!-- Review actions -->
-          <div v-if="detail.reviewable" class="border-t border-slate-200 pt-4">
-            <div v-if="!showReturnForm" class="flex justify-end gap-3">
-              <button
-                type="button"
-                class="rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 disabled:grayscale disabled:cursor-not-allowed"
-                :disabled="isSubmitting"
-                @click="showReturnForm = true"
-              >
-                Return with Comment
-              </button>
-              <button
-                type="button"
-                class="rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
-                :disabled="isSubmitting"
-                @click="approve"
-              >
-                {{ isSubmitting ? 'Working...' : 'Approve' }}
-              </button>
-            </div>
-
-            <div v-else class="space-y-3">
+            <div v-if="showReturnForm" class="space-y-3">
               <label class="block">
-                <span class="text-xs font-bold text-slate-600">Comment (what should the student fix?)</span>
+                <span class="text-xs font-medium uppercase tracking-wide text-slate-400">Comment (what should the student fix?)</span>
                 <textarea
                   v-model="returnComment"
                   rows="3"
@@ -283,25 +398,57 @@ onMounted(load)
                   placeholder="Explain what needs revision..."
                 ></textarea>
               </label>
-              <div class="flex justify-end gap-3">
-                <button type="button" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" @click="showReturnForm = false">
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  class="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
-                  :disabled="isSubmitting"
-                  @click="submitReturn"
-                >
-                  {{ isSubmitting ? 'Returning...' : 'Return Journal' }}
-                </button>
-              </div>
             </div>
-          </div>
 
-          <p v-else class="border-t border-slate-200 pt-4 text-sm text-slate-500">
-            This journal was reviewed {{ formatDateTime(detail.reviewed_at) }} and can no longer be changed.
-          </p>
+            <p v-if="!detail.reviewable" class="text-sm text-slate-500">
+              This journal was reviewed {{ formatDateTime(detail.reviewed_at) }} and can no longer be changed.
+            </p>
+          </div>
+        </div>
+
+        <div v-if="detail" class="flex shrink-0 flex-wrap items-center justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
+          <button type="button" class="mr-auto text-sm font-semibold text-blue-600 transition hover:text-blue-700" @click="downloadPdf">
+            Download PDF
+          </button>
+
+          <template v-if="detail.reviewable">
+            <template v-if="!showReturnForm">
+              <button
+                type="button"
+                class="rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="isSubmitting"
+                @click="showReturnForm = true"
+              >
+                Return with Comment
+              </button>
+              <button
+                type="button"
+                class="rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="isSubmitting"
+                @click="approve"
+              >
+                {{ isSubmitting ? 'Working...' : 'Approve' }}
+              </button>
+            </template>
+
+            <template v-else>
+              <button
+                type="button"
+                class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                @click="showReturnForm = false"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                class="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="isSubmitting"
+                @click="submitReturn"
+              >
+                {{ isSubmitting ? 'Returning...' : 'Return Journal' }}
+              </button>
+            </template>
+          </template>
         </div>
       </section>
     </div>
