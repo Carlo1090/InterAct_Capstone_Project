@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { confirmAction, showToast } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
+import TooltipWrap from '@/components/ui/TooltipWrap.vue'
 import type { Department, PaginatedResponse, User } from '@/types/api'
 
 type UserPayload = {
@@ -30,6 +31,46 @@ const departmentFilter = ref('')
 
 const viewingUser = ref<User | null>(null)
 
+/**
+ * The password is revealed only while the control is actively held — a click
+ * toggle can leave it in plain text on a shared machine after the admin has
+ * moved on.
+ */
+const revealPassword = ref(false)
+
+/** Space/Enter auto-repeat fires keydown continuously; only the first matters. */
+const holdViaKey = (event: KeyboardEvent) => {
+  if (event.repeat) return
+  revealPassword.value = true
+}
+
+const hidePassword = () => {
+  revealPassword.value = false
+}
+
+/**
+ * Releasing outside the button, or switching windows mid-hold, never delivers
+ * pointerup/keyup to the button itself — so the window has to be the backstop,
+ * or the password would stay visible with nothing holding it.
+ */
+watch(revealPassword, (revealed) => {
+  if (revealed) {
+    window.addEventListener('pointerup', hidePassword)
+    window.addEventListener('keyup', hidePassword)
+    window.addEventListener('blur', hidePassword)
+  } else {
+    window.removeEventListener('pointerup', hidePassword)
+    window.removeEventListener('keyup', hidePassword)
+    window.removeEventListener('blur', hidePassword)
+  }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('pointerup', hidePassword)
+  window.removeEventListener('keyup', hidePassword)
+  window.removeEventListener('blur', hidePassword)
+})
+
 let searchDebounce: ReturnType<typeof setTimeout> | undefined
 
 const emptyForm = (): UserPayload => ({
@@ -47,6 +88,7 @@ const userForm = ref<UserPayload>(emptyForm())
 const resetForm = () => {
   userForm.value = emptyForm()
   modalError.value = ''
+  revealPassword.value = false
 }
 
 const loadUsers = async () => {
@@ -157,29 +199,32 @@ onMounted(() => {
   <section>
     <ToastHost />
     <div class="flex flex-wrap items-center justify-end gap-4">
-      <button
-        type="button"
-        class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-        @click="openModal"
-      >
-        Create User
-      </button>
+      <button type="button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700" @click="openModal">Create User</button>
     </div>
 
-    <div class="mt-6 flex flex-wrap gap-3">
-      <input v-model="search" class="w-full sm:w-auto sm:min-w-72 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Search by name..." />
-      <select v-model="roleFilter" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
-        <option value="">All Users</option>
-        <option value="student">Student</option>
-        <option value="coordinator">Coordinator</option>
-        <option value="supervisor">Supervisor</option>
-      </select>
-      <select v-model="departmentFilter" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
-        <option value="">All Departments</option>
-        <option v-for="department in departments" :key="department.id" :value="department.id">
-          {{ department.name }}
-        </option>
-      </select>
+    <div class="mt-6 grid gap-3 sm:grid-cols-3 xl:max-w-3xl">
+      <label class="block">
+        <span class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400">Search</span>
+        <input v-model="search" class="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm" placeholder="Search by name..." />
+      </label>
+      <label class="block">
+        <span class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400">Role</span>
+        <select v-model="roleFilter" class="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm">
+          <option value="">All Users</option>
+          <option value="student">Student</option>
+          <option value="coordinator">Coordinator</option>
+          <option value="supervisor">Supervisor</option>
+        </select>
+      </label>
+      <label class="block">
+        <span class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400">Department</span>
+        <select v-model="departmentFilter" class="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm">
+          <option value="">All Departments</option>
+          <option v-for="department in departments" :key="department.id" :value="department.id">
+            {{ department.name }}
+          </option>
+        </select>
+      </label>
     </div>
 
     <p v-if="isLoading" class="mt-6 text-sm text-slate-500">Loading...</p>
@@ -187,129 +232,260 @@ onMounted(() => {
       {{ errorMessage }}
     </p>
 
-    <div v-else class="mt-6 overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
-      <table class="min-w-full divide-y divide-slate-200">
-        <thead class="bg-slate-50">
-          <tr>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Name</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Email</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Role</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Program</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Department</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-200">
-          <tr v-if="users.length === 0">
-            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="7">No users found.</td>
-          </tr>
-          <tr v-for="user in users" :key="user.id">
-            <td class="px-4 py-3 text-sm font-medium text-slate-900">{{ user.name }}</td>
-            <td class="px-4 py-3 text-sm text-slate-700">{{ user.email }}</td>
-            <td class="px-4 py-3 text-sm capitalize text-slate-700">{{ user.role }}</td>
-            <td class="px-4 py-3 text-sm text-slate-700">{{ user.program?.name ?? 'No Program' }}</td>
-            <td class="px-4 py-3 text-sm text-slate-700">{{ user.departments_coordinated?.[0]?.name ?? user.program?.department?.name ?? 'No Department' }}</td>
-            <td class="px-4 py-3 text-sm">
+    <template v-else>
+      <p v-if="users.length === 0" class="mt-6 rounded-xl bg-white px-6 py-8 text-center text-sm text-slate-500 shadow-sm ring-1 ring-slate-200/70">
+        No users found.
+      </p>
+
+      <template v-else>
+        <!--
+          md and up: aligned table. Column widths live in the colgroup and are
+          enforced by `table-fixed`, so the fixed-width Actions cell can never be
+          squeezed into wrapping onto two lines by a long name or email.
+        -->
+        <div class="mt-6 hidden overflow-x-auto rounded-xl bg-white px-6 shadow-sm ring-1 ring-slate-200/70 md:block">
+          <table class="w-full table-fixed">
+            <colgroup>
+              <col class="w-[200px]" />
+              <col />
+              <col class="w-[120px]" />
+              <col class="w-[150px]" />
+              <col class="w-[150px]" />
+              <col class="w-[100px]" />
+              <col class="w-[190px]" />
+            </colgroup>
+            <thead>
+              <tr class="text-xs font-medium uppercase tracking-wide text-slate-400">
+                <th class="whitespace-nowrap border-b border-slate-200 pb-3 pl-0 pr-4 pt-4 text-left font-medium">Name</th>
+                <th class="whitespace-nowrap border-b border-slate-200 px-4 pb-3 pt-4 text-left font-medium">Email</th>
+                <th class="whitespace-nowrap border-b border-slate-200 px-4 pb-3 pt-4 text-left font-medium">Role</th>
+                <th class="whitespace-nowrap border-b border-slate-200 px-4 pb-3 pt-4 text-left font-medium">Program</th>
+                <th class="whitespace-nowrap border-b border-slate-200 px-4 pb-3 pt-4 text-left font-medium">Department</th>
+                <th class="whitespace-nowrap border-b border-slate-200 px-4 pb-3 pt-4 text-left font-medium">Status</th>
+                <th class="whitespace-nowrap border-b border-slate-200 pb-3 pl-4 pr-0 pt-4 text-right font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr v-for="user in users" :key="user.id" class="transition-colors hover:bg-slate-50/70">
+                <td class="truncate py-3.5 pl-0 pr-4 text-sm font-medium text-slate-900">{{ user.name }}</td>
+                <td class="px-4 py-3.5 text-sm text-slate-500">
+                  <TooltipWrap :label="user.email || 'No email'" placement="top" class="max-w-full">
+                    <span class="block max-w-full truncate">{{ user.email || '—' }}</span>
+                  </TooltipWrap>
+                </td>
+                <td class="truncate px-4 py-3.5 text-sm capitalize text-slate-500">{{ user.role }}</td>
+                <td class="truncate px-4 py-3.5 text-sm text-slate-500">{{ user.program?.name ?? 'No Program' }}</td>
+                <td class="truncate px-4 py-3.5 text-sm text-slate-500">
+                  {{ user.departments_coordinated?.[0]?.name ?? user.program?.department?.name ?? 'No Department' }}
+                </td>
+                <td class="px-4 py-3.5 text-sm">
+                  <span
+                    class="rounded-full px-2 py-1 text-xs font-semibold"
+                    :class="user.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'"
+                  >
+                    {{ user.is_active ? 'Active' : 'Inactive' }}
+                  </span>
+                </td>
+                <td class="py-3.5 pl-4 pr-0">
+                  <div class="flex items-center justify-end gap-2 whitespace-nowrap">
+                    <button
+                      type="button"
+                      class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                      @click="openView(user)"
+                    >
+                      View
+                    </button>
+                    <button
+                      v-if="user.is_active"
+                      type="button"
+                      class="rounded-md px-3 py-1.5 text-sm font-medium text-red-600 transition hover:text-red-700"
+                      @click="deactivateUser(user)"
+                    >
+                      Deactivate
+                    </button>
+                    <button
+                      v-else
+                      type="button"
+                      class="rounded-md px-3 py-1.5 text-sm font-medium text-green-700 transition hover:text-green-800"
+                      @click="reactivateUser(user)"
+                    >
+                      Reactivate
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Below md: one stacked block per user, so nothing scrolls sideways. -->
+        <ul class="mt-6 divide-y divide-slate-100 rounded-xl bg-white px-6 shadow-sm ring-1 ring-slate-200/70 md:hidden">
+          <li v-for="user in users" :key="user.id" class="py-4">
+            <div class="flex items-start justify-between gap-3">
+              <p class="min-w-0 truncate text-sm font-medium text-slate-900">{{ user.name }}</p>
               <span
-                class="rounded-full px-2 py-1 text-xs font-semibold"
+                class="shrink-0 rounded-full px-2 py-1 text-xs font-semibold"
                 :class="user.is_active ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'"
               >
                 {{ user.is_active ? 'Active' : 'Inactive' }}
               </span>
-            </td>
-            <td class="px-4 py-3 text-sm">
-              <div class="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                  @click="openView(user)"
-                >
-                  View
-                </button>
-                <button
-                  v-if="user.is_active"
-                  type="button"
-                  class="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 transition hover:bg-red-50"
-                  @click="deactivateUser(user)"
-                >
-                  Deactivate
-                </button>
-                <button
-                  v-else
-                  type="button"
-                  class="rounded-md border border-green-200 px-3 py-1.5 text-sm font-medium text-green-700 transition hover:bg-green-50"
-                  @click="reactivateUser(user)"
-                >
-                  Reactivate
-                </button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+            </div>
+            <p class="mt-1 truncate text-xs text-slate-500">{{ user.email || '—' }}</p>
+            <p class="mt-1 truncate text-xs capitalize text-slate-500">
+              {{ [user.role, user.program?.name ?? 'No Program', user.departments_coordinated?.[0]?.name ?? user.program?.department?.name ?? 'No Department'].join(' · ') }}
+            </p>
+            <div class="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                @click="openView(user)"
+              >
+                View
+              </button>
+              <button
+                v-if="user.is_active"
+                type="button"
+                class="rounded-md px-3 py-1.5 text-sm font-medium text-red-600 transition hover:text-red-700"
+                @click="deactivateUser(user)"
+              >
+                Deactivate
+              </button>
+              <button
+                v-else
+                type="button"
+                class="rounded-md px-3 py-1.5 text-sm font-medium text-green-700 transition hover:text-green-800"
+                @click="reactivateUser(user)"
+              >
+                Reactivate
+              </button>
+            </div>
+          </li>
+        </ul>
+      </template>
+    </template>
 
-    <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
-      <section class="max-h-[calc(100vh-4rem)] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
-        <div class="flex items-center justify-between">
+    <!-- Create Coordinator: three-part flex shell, body is the only scroller. -->
+    <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+      <section class="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+        <div class="flex shrink-0 items-center justify-between border-b border-slate-200 px-6 py-4">
           <h3 class="text-lg font-semibold text-slate-950">Create Coordinator</h3>
           <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeModal">
             Cancel
           </button>
         </div>
 
-        <div class="mt-6 space-y-4">
-          <div class="grid gap-4 md:grid-cols-3">
+        <div class="flex-1 overflow-y-auto px-6 py-5">
+          <section class="space-y-4">
+            <h4 class="text-xs font-medium uppercase tracking-wide text-slate-400">Name</h4>
+            <div class="grid gap-4 sm:grid-cols-3">
+              <div>
+                <label class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400" for="user-first-name">First Name</label>
+                <input id="user-first-name" v-model="userForm.first_name" type="text" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm" />
+              </div>
+              <div>
+                <label class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400" for="user-middle-name">Middle Name</label>
+                <input id="user-middle-name" v-model="userForm.middle_name" type="text" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm" />
+              </div>
+              <div>
+                <label class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400" for="user-last-name">Family Name</label>
+                <input id="user-last-name" v-model="userForm.last_name" type="text" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm" />
+              </div>
+            </div>
+          </section>
+
+          <section class="mt-5 space-y-4 border-t border-slate-100 pt-5">
+            <h4 class="text-xs font-medium uppercase tracking-wide text-slate-400">Login Credentials</h4>
             <div>
-              <label class="mb-2 block text-sm font-medium text-slate-700" for="user-first-name">First Name</label>
-              <input id="user-first-name" v-model="userForm.first_name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2" />
+              <label class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400" for="user-email">Email / Username</label>
+              <input id="user-email" v-model="userForm.email" type="email" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm" />
+              <p class="mt-1 text-xs text-slate-400">Coordinators sign in with this. Must be a valid email address.</p>
             </div>
             <div>
-              <label class="mb-2 block text-sm font-medium text-slate-700" for="user-middle-name">Middle Name (optional)</label>
-              <input id="user-middle-name" v-model="userForm.middle_name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2" />
+              <label class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400" for="user-password">Password</label>
+              <!--
+                The wrapper holds ONLY the input and the button — the helper text
+                sits outside it, or `inset-y-0` would centre the button against
+                the combined height instead of the field's.
+
+                The absolute positioning lives on this span, NOT on TooltipWrap
+                and not on the button: TooltipWrap's own root is
+                `group relative inline-flex`, so an `absolute` class merged onto
+                it fights `relative` for the same property and loses on
+                stylesheet order (Tailwind emits `.absolute` first), which is
+                exactly what dropped the icon into normal flow below the field.
+                Positioning a plain span keeps TooltipWrap's relative context
+                intact for anchoring its own bubble.
+              -->
+              <div class="relative">
+                <input
+                  id="user-password"
+                  v-model="userForm.password"
+                  :type="revealPassword ? 'text' : 'password'"
+                  class="h-10 w-full rounded-md border border-slate-300 px-3 pr-11 text-sm"
+                />
+                <span class="absolute inset-y-0 right-0 flex items-center">
+                  <TooltipWrap label="Hold to show password" placement="top" align="end">
+                    <button
+                      type="button"
+                      tabindex="0"
+                      aria-label="Hold to show password"
+                      class="flex h-10 w-11 touch-none select-none items-center justify-center rounded-md text-slate-400 transition hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+                      @pointerdown.prevent="revealPassword = true"
+                      @pointerup="revealPassword = false"
+                      @pointerleave="revealPassword = false"
+                      @pointercancel="revealPassword = false"
+                      @blur="revealPassword = false"
+                      @contextmenu.prevent
+                      @keydown.space.prevent="holdViaKey"
+                      @keydown.enter.prevent="holdViaKey"
+                      @keyup.space="revealPassword = false"
+                      @keyup.enter="revealPassword = false"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5 transition-opacity">
+                        <g v-if="revealPassword">
+                          <path d="M3 12s3.6-6 9-6 9 6 9 6-3.6 6-9 6-9-6-9-6Z" stroke="currentColor" stroke-width="1.6" />
+                          <circle cx="12" cy="12" r="2.6" stroke="currentColor" stroke-width="1.6" />
+                        </g>
+                        <g v-else>
+                          <path d="M3 12s3.6-6 9-6 9 6 9 6-3.6 6-9 6-9-6-9-6Z" stroke="currentColor" stroke-width="1.6" />
+                          <path d="M4 4l16 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                        </g>
+                      </svg>
+                    </button>
+                  </TooltipWrap>
+                </span>
+              </div>
+              <p class="mt-1.5 text-xs text-slate-400">At least 8 characters.</p>
             </div>
+          </section>
+
+          <section class="mt-5 space-y-4 border-t border-slate-100 pt-5">
+            <h4 class="text-xs font-medium uppercase tracking-wide text-slate-400">Assignment</h4>
             <div>
-              <label class="mb-2 block text-sm font-medium text-slate-700" for="user-last-name">Family Name</label>
-              <input id="user-last-name" v-model="userForm.last_name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2" />
+              <label class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400" for="user-department">Department</label>
+              <select id="user-department" v-model="userForm.department_id" class="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm">
+                <option :value="null">Select Department</option>
+                <option v-for="department in departments" :key="department.id" :value="department.id">
+                  {{ department.name }}
+                </option>
+              </select>
             </div>
-          </div>
-          <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="user-email">Email</label>
-            <input id="user-email" v-model="userForm.email" type="email" class="w-full rounded-md border border-slate-300 px-3 py-2" />
-          </div>
-          <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="user-password">Password</label>
-            <input id="user-password" v-model="userForm.password" type="password" class="w-full rounded-md border border-slate-300 px-3 py-2" />
-          </div>
-          <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="user-department">Department</label>
-            <select id="user-department" v-model="userForm.department_id" class="w-full rounded-md border border-slate-300 px-3 py-2">
-              <option :value="null">Select Department</option>
-              <option v-for="department in departments" :key="department.id" :value="department.id">
-                {{ department.name }}
-              </option>
-            </select>
-          </div>
+          </section>
+
+          <p v-if="modalError" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ modalError }}</p>
         </div>
 
-        <p v-if="modalError" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ modalError }}</p>
-
-        <div class="mt-6 flex justify-end gap-3">
+        <div class="flex shrink-0 justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
           <button type="button" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" @click="closeModal">
             Cancel
           </button>
-          <button
-            type="button"
-            class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-400"
-            :disabled="isSaving"
-            @click="createUser"
-          >
+          <button type="button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50" :disabled="isSaving" @click="createUser">
             {{ isSaving ? 'Saving...' : 'Save' }}
           </button>
         </div>
       </section>
     </div>
+
 
     <div v-if="viewingUser" class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
       <section class="max-h-[calc(100vh-4rem)] w-full max-w-md overflow-y-auto rounded-lg bg-white p-6 shadow-xl">

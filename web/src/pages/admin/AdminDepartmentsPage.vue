@@ -185,82 +185,68 @@ onMounted(() => {
 <template>
   <section class="space-y-5">
     <ToastHost />
-    <div class="flex flex-wrap items-center justify-end gap-4">
-      <button
-        type="button"
-        class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-        @click="openCreateModal"
-      >
-        + Add Department
-      </button>
+<div class="flex flex-wrap items-center justify-end gap-4">
+      <button type="button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700" @click="openCreateModal">+ Add Department</button>
     </div>
 
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
     <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
 
-    <div v-else-if="departments.length === 0" class="rounded-lg bg-white px-4 py-6 text-center text-sm text-slate-500 shadow-sm ring-1 ring-slate-200">
+    <div v-else-if="departments.length === 0" class="rounded-xl bg-white px-6 py-8 text-center text-sm text-slate-500 shadow-sm ring-1 ring-slate-200/70">
       No departments found.
     </div>
 
-    <div v-else class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-      <div
+    <!-- `items-stretch` + `h-full` keeps every card in a row the same height. -->
+    <div v-else class="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <article
         v-for="department in departments"
         :key="department.id"
-        class="flex flex-col justify-between rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200"
+        class="flex h-full flex-col rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70 transition hover:shadow-md"
       >
-        <div>
-          <div class="flex items-center justify-between gap-2">
-            <span class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-700">
-              {{ department.code }}
-            </span>
-            <span
-              class="rounded-full px-2 py-0.5 text-xs font-bold"
-              :class="department.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
-            >
-              {{ department.is_active ? 'Active' : 'Inactive' }}
-            </span>
-          </div>
-          <h3 class="mt-3 text-base font-bold text-slate-950">{{ department.name }}</h3>
-          <p class="mt-2 text-sm text-slate-500">
-            {{ department.programs_count ?? 0 }} program{{ (department.programs_count ?? 0) === 1 ? '' : 's' }}
-          </p>
+        <div class="flex items-center justify-between gap-2">
+          <span class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-700">
+            {{ department.code }}
+          </span>
+          <span
+            class="rounded-full px-2 py-0.5 text-xs font-bold"
+            :class="department.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
+          >
+            {{ department.is_active ? 'Active' : 'Inactive' }}
+          </span>
         </div>
 
-        <div class="mt-4 flex gap-2">
-          <button
-            type="button"
-            class="flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700"
-            @click="openViewModal(department)"
-          >
-            View
-          </button>
-          <button
-            type="button"
-            class="flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700"
-            @click="openEditModal(department)"
-          >
-            Edit
-          </button>
+        <h3 class="mt-4 text-lg font-semibold text-slate-900">{{ department.name }}</h3>
+        <p class="mt-1 text-sm text-slate-500">
+          {{ department.programs_count ?? 0 }} program{{ (department.programs_count ?? 0) === 1 ? '' : 's' }}
+        </p>
+
+        <div class="mt-auto flex gap-2 border-t border-slate-100 pt-4">
+          <button type="button" class="flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50" @click="openViewModal(department)">View</button>
+          <button type="button" class="flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50" @click="openEditModal(department)">Edit</button>
         </div>
-      </div>
+      </article>
     </div>
 
-    <!-- Create / Edit modal -->
-    <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
-      <section class="max-h-[calc(100vh-4rem)] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
-        <div class="flex items-center justify-between">
+    <!-- Create / Edit modal: three-part flex shell, body is the only scroller. -->
+    <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+      <section class="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+        <div class="flex shrink-0 items-center justify-between border-b border-slate-200 px-6 py-4">
           <h3 class="text-lg font-semibold text-slate-950">{{ editingDepartmentId ? 'Edit Department' : 'Add Department' }}</h3>
           <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeModal">Cancel</button>
         </div>
 
-        <div class="mt-6 space-y-4">
+        <div class="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+          <!--
+            No helper under Code: the server rule is `required|string|max:20|unique`
+            with no format constraint, so there is no format to state.
+          -->
           <div v-if="!editingDepartmentId">
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="department-code">Code</label>
-            <input id="department-code" v-model="departmentForm.code" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2" />
+            <label class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400" for="department-code">Code</label>
+            <input id="department-code" v-model="departmentForm.code" type="text" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm" />
           </div>
           <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="department-name">Name</label>
-            <input id="department-name" v-model="departmentForm.name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2" />
+            <label class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400" for="department-name">Name</label>
+            <input id="department-name" v-model="departmentForm.name" type="text" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm" />
           </div>
           <div v-if="editingDepartmentId">
             <label class="flex items-center gap-2 text-sm font-medium text-slate-700">
@@ -268,20 +254,15 @@ onMounted(() => {
               Active
             </label>
           </div>
+
+          <p v-if="modalError" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ modalError }}</p>
         </div>
 
-        <p v-if="modalError" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ modalError }}</p>
-
-        <div class="mt-6 flex justify-end gap-3">
+        <div class="flex shrink-0 justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
           <button type="button" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" @click="closeModal">
             Cancel
           </button>
-          <button
-            type="button"
-            class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-400"
-            :disabled="isSaving"
-            @click="saveDepartment"
-          >
+          <button type="button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50" :disabled="isSaving" @click="saveDepartment">
             {{ isSaving ? 'Saving...' : 'Save' }}
           </button>
         </div>
@@ -427,7 +408,7 @@ onMounted(() => {
               </select>
               <button
                 type="button"
-                class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-400"
+                class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 :disabled="!coordinatorToAssign || isAssigningCoordinator"
                 @click="assignCoordinator"
               >

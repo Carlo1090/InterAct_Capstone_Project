@@ -14,7 +14,6 @@ const navItems = [
   { label: 'Programs', to: '/admin/programs', badge: '', icon: 'book' },
   { label: 'Batches', to: '/admin/batches', badge: '', icon: 'briefcase' },
   { label: 'Student Info Sheet', to: '/admin/info-sheets', badge: '', icon: 'id-card' },
-  { label: 'Annual SIPP Report', to: '/admin/annual-sipp', badge: '', icon: 'chart' },
   { label: 'Audit Logs', to: '/admin/audit-logs', badge: '', icon: 'clipboard' },
   { label: 'System Settings', to: '/admin/settings', badge: '', icon: 'gear' },
 ]
@@ -98,7 +97,6 @@ const userName = computed(() => auth.user?.name ?? 'Test Admin')
             <circle v-if="item.icon === 'id-card'" cx="9" cy="11.5" r="2" stroke="currentColor" stroke-width="1.6" />
             <path v-if="item.icon === 'id-card'" d="M6.5 15.5c.6-1.4 1.8-2 2.5-2s1.9.6 2.5 2M14 10h4M14 13h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
 
-            <path v-if="item.icon === 'chart'" d="M4 20V9M10 20V4M16 20v-7M4 20h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
 
             <rect v-if="item.icon === 'clipboard'" x="5.5" y="5" width="13" height="15" rx="1.5" stroke="currentColor" stroke-width="1.6" />
             <path v-if="item.icon === 'clipboard'" d="M9 5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1.2H9V5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
