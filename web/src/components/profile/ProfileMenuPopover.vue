@@ -7,6 +7,7 @@ import EditProfilePanel from '@/components/profile/panels/EditProfilePanel.vue'
 import ChangePasswordPanel from '@/components/profile/panels/ChangePasswordPanel.vue'
 import ActivityLogPanel from '@/components/profile/panels/ActivityLogPanel.vue'
 import ReminderSettingsPanel from '@/components/profile/panels/ReminderSettingsPanel.vue'
+import TooltipWrap from '@/components/ui/TooltipWrap.vue'
 
 type View = 'menu' | 'edit' | 'password' | 'activity' | 'reminders'
 
@@ -131,33 +132,36 @@ onBeforeUnmount(() => {
   <div ref="rootRef" class="relative">
     <div v-if="forced" class="fixed inset-0 z-44 bg-slate-950/60" />
 
-    <button
-      type="button"
-      title="Account"
-      :aria-expanded="isOpen"
-      class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-600 text-sm font-bold text-white ring-offset-2 transition hover:ring-2 hover:ring-blue-600"
-      @click="openMenu"
-    >
-      <img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" alt="Profile photo" class="h-full w-full object-cover" />
-      <span v-else>{{ initials }}</span>
-    </button>
+    <TooltipWrap label="Account menu" placement="bottom" align="end">
+      <button
+        type="button"
+        aria-label="Account menu"
+        :aria-expanded="isOpen"
+        class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-600 text-sm font-bold text-white ring-offset-2 transition hover:ring-2 hover:ring-blue-600"
+        @click="openMenu"
+      >
+        <img v-if="auth.user?.avatar_url" :src="auth.user.avatar_url" alt="Profile photo" class="h-full w-full object-cover" />
+        <span v-else>{{ initials }}</span>
+      </button>
+    </TooltipWrap>
 
     <div
       v-if="isOpen"
       class="absolute right-0 z-45 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-lg bg-white shadow-xl ring-1 ring-slate-200"
     >
       <div class="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
-        <button
-          v-if="view !== 'menu' && !forced"
-          type="button"
-          aria-label="Back"
-          class="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-          @click="goBack"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
-            <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-        </button>
+        <TooltipWrap v-if="view !== 'menu' && !forced" label="Back" placement="bottom">
+          <button
+            type="button"
+            aria-label="Back"
+            class="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            @click="goBack"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
+              <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        </TooltipWrap>
         <p class="text-sm font-bold text-slate-900">{{ viewTitle }}</p>
       </div>
 

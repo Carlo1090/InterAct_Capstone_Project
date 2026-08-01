@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { confirmAction, showToast } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
-import type { CoordinatorCompany, EnrollmentOptionSupervisor } from '@/types/api'
+import TooltipWrap from '@/components/ui/TooltipWrap.vue'
+import type { CompanySupervisorRecord, CoordinatorCompany, EnrollmentOptionSupervisor } from '@/types/api'
 
 const companies = ref<CoordinatorCompany[]>([])
 const search = ref('')
@@ -37,6 +38,90 @@ const form = reactive(blankForm())
 // The company's is_active value as loaded, so saveCompany() can tell a
 // true->false deactivation apart from a reactivation or no change.
 const originalIsActive = ref(true)
+
+/**
+ * The company-level contact_number is no longer edited here (the Head of Company
+ * block already collects one), but it is still SENT so an existing value is not
+ * wiped. This holds the value exactly as loaded — including a genuine `null` —
+ * because `form.contact_number` coerces null to '' and writing '' back would
+ * turn "no number on file" into "an empty number on file".
+ */
+const loadedContactNumber = ref<string | null>(null)
+
+/**
+ * Company status is an explicit choice with NOTHING preselected, so saving can
+ * never silently flip a company's availability. It writes through to
+ * `form.is_active` — the same boolean the API already takes.
+ */
+const statusChoice = ref<'active' | 'inactive' | null>(null)
+
+watch(statusChoice, (choice) => {
+  if (choice !== null) form.is_active = choice === 'active'
+})
+
+/**
+ * Department is a plain string column with no enum, constants file, or options
+ * endpoint behind it, so the dropdown is built from the distinct values already
+ * in use across the loaded company list. Nothing is invented, and a value the
+ * list does not cover is still reachable through "Other…".
+ *
+ * Sentinel rather than a real value, so a company genuinely named "Other" could
+ * never collide with it.
+ */
+const OTHER_DEPARTMENT = '__other__'
+
+/** The department exactly as loaded, so it survives even when no other company shares it. */
+const loadedIndustry = ref('')
+
+const departmentChoice = ref('')
+const departmentOther = ref('')
+const departmentOtherInput = ref<HTMLInputElement | null>(null)
+
+const departmentOptions = computed(() => {
+  // Keyed case-insensitively, first-seen casing wins. The loaded value is
+  // seeded FIRST and stored raw, so re-saving an untouched record sends back a
+  // byte-identical string rather than a re-cased or re-trimmed near-match.
+  const seen = new Map<string, string>()
+
+  const remember = (raw: string) => {
+    const trimmed = raw.trim()
+    if (trimmed === '') return
+    const key = trimmed.toLocaleLowerCase()
+    if (!seen.has(key)) seen.set(key, raw)
+  }
+
+  remember(loadedIndustry.value)
+  for (const company of companies.value) remember(company.industry ?? '')
+
+  return [...seen.values()].sort((a, b) => a.trim().localeCompare(b.trim()))
+})
+
+/**
+ * The select and its "Other…" input write through to `form.industry` — the same
+ * plain string under the same payload key the text input used. An empty
+ * "Other…" input means an empty department, never the literal "Other…".
+ */
+watch([departmentChoice, departmentOther], () => {
+  form.industry = departmentChoice.value === OTHER_DEPARTMENT ? departmentOther.value : departmentChoice.value
+})
+
+watch(departmentChoice, async (choice, previous) => {
+  if (choice === OTHER_DEPARTMENT) {
+    await nextTick()
+    departmentOtherInput.value?.focus()
+  } else if (previous === OTHER_DEPARTMENT) {
+    departmentOther.value = ''
+  }
+})
+
+/** Mirrors a loaded/blank department onto the control without going through the watcher's inverse. */
+const syncDepartmentChoice = (value: string) => {
+  loadedIndustry.value = value
+  departmentChoice.value = value.trim() === '' ? '' : value
+  departmentOther.value = ''
+}
+
+const canSaveCompany = computed(() => !isSaving.value && statusChoice.value !== null)
 
 // Supervisors panel (edit mode only).
 const activeCompany = ref<CoordinatorCompany | null>(null)
@@ -80,7 +165,10 @@ const openCreate = () => {
   editingId.value = null
   activeCompany.value = null
   Object.assign(form, blankForm())
+  syncDepartmentChoice('')
   originalIsActive.value = true
+  statusChoice.value = null
+  loadedContactNumber.value = null
   modalErrors.value = {}
   modalMessage.value = ''
   isModalOpen.value = true
@@ -91,6 +179,8 @@ const openEdit = async (company: CoordinatorCompany) => {
   modalMessage.value = ''
   isModalOpen.value = true
   editingId.value = company.id
+  statusChoice.value = null
+  loadedContactNumber.value = null
 
   try {
     const { data } = await api.get<CoordinatorCompany>(`/api/coordinator/companies/${company.id}`)
@@ -106,11 +196,13 @@ const applyCompanyToForm = (company: CoordinatorCompany) => {
   form.address = company.address
   form.location = company.location ?? ''
   form.industry = company.industry ?? ''
+  syncDepartmentChoice(form.industry)
   form.head_name = company.head_name ?? ''
   form.head_contact_number = company.head_contact_number ?? ''
   form.head_email = company.head_email ?? ''
   form.department_head = company.department_head ?? ''
   form.contact_number = company.contact_number ?? ''
+  loadedContactNumber.value = company.contact_number ?? null
   form.description = company.description ?? ''
   form.is_active = company.is_active
   originalIsActive.value = company.is_active
@@ -123,6 +215,8 @@ const closeModal = () => {
   supErrors.value = {}
   Object.assign(repForm, { name: '', position: '' })
   repErrors.value = {}
+  pendingRemovalId.value = null
+  removedRecords.value = []
 }
 
 const saveCompany = async () => {
@@ -140,13 +234,24 @@ const saveCompany = async () => {
   modalErrors.value = {}
   modalMessage.value = ''
 
+  // contact_number is no longer an input, so send back exactly what was loaded
+  // rather than form's ''-coerced copy — writing '' would overwrite a real
+  // number, or turn a null into an empty string.
+  // A hand-typed department is trimmed; a value picked from the list is sent
+  // back exactly as it was loaded, whitespace and casing included.
+  const payload = {
+    ...form,
+    contact_number: loadedContactNumber.value,
+    industry: departmentChoice.value === OTHER_DEPARTMENT ? form.industry.trim() : form.industry,
+  }
+
   try {
     if (editingId.value) {
-      const { data } = await api.put<CoordinatorCompany>(`/api/coordinator/companies/${editingId.value}`, form)
+      const { data } = await api.put<CoordinatorCompany>(`/api/coordinator/companies/${editingId.value}`, payload)
       applyCompanyToForm(data)
       showToast('Company updated.')
     } else {
-      const { data } = await api.post<CoordinatorCompany>('/api/coordinator/companies', form)
+      const { data } = await api.post<CoordinatorCompany>('/api/coordinator/companies', payload)
       editingId.value = data.id
       applyCompanyToForm(data)
       showToast('Company created.')
@@ -219,16 +324,77 @@ const createSupervisor = async () => {
   }
 }
 
-const detachSupervisor = async (companySupervisorId: number) => {
+/**
+ * Removal is confirmed inline on the row and can be undone until the modal
+ * closes. The strip below is deliberately SESSION-SCOPED and nothing about it is
+ * persisted — once the modal closes the removal is final, so the UI never claims
+ * otherwise.
+ */
+type RemovedRecord = {
+  key: number
+  name: string
+  position: string
+  /** Login-bearing rows re-attach by user id; representatives by name. */
+  userId: number | null
+  error: string
+  isRestoring: boolean
+}
+
+const pendingRemovalId = ref<number | null>(null)
+const removedRecords = ref<RemovedRecord[]>([])
+
+const removeCompanySupervisor = async (record: CompanySupervisorRecord) => {
   if (!editingId.value) return
-  if (!(await confirmAction('Remove this supervisor from the company?'))) return
+  pendingRemovalId.value = null
 
   try {
-    const { data } = await api.delete<CoordinatorCompany>(`/api/coordinator/companies/${editingId.value}/supervisors/${companySupervisorId}`)
+    const { data } = await api.delete<CoordinatorCompany>(
+      `/api/coordinator/companies/${editingId.value}/supervisors/${record.id}`,
+    )
     applyCompanyToForm(data)
-    showToast('Supervisor removed from company.')
+    removedRecords.value.push({
+      key: record.id,
+      name: record.display_name,
+      position: record.position ?? '',
+      userId: record.user_id,
+      error: '',
+      isRestoring: false,
+    })
   } catch {
     modalMessage.value = 'Unable to remove the supervisor.'
+  }
+}
+
+const undoRemoval = async (removed: RemovedRecord) => {
+  if (!editingId.value) return
+  removed.error = ''
+  removed.isRestoring = true
+
+  try {
+    // Re-attach through the same endpoints the panel already uses: a login
+    // supervisor by user id, a named-only representative by name.
+    const { data } =
+      removed.userId !== null
+        ? await api.post<CoordinatorCompany>(
+            `/api/coordinator/companies/${editingId.value}/supervisors`,
+            { user_id: removed.userId, position: removed.position },
+          )
+        : await api.post<CoordinatorCompany>(
+            `/api/coordinator/companies/${editingId.value}/representatives`,
+            { name: removed.name, position: removed.position },
+          )
+
+    applyCompanyToForm(data)
+    removedRecords.value = removedRecords.value.filter((entry) => entry.key !== removed.key)
+    showToast(`${removed.name} restored.`)
+  } catch (error) {
+    // Surface the server's own reason and leave the strip in place so the
+    // coordinator can retry.
+    removed.error = axios.isAxiosError(error)
+      ? (error.response?.data?.message ?? 'Unable to restore this record.')
+      : 'Unable to restore this record.'
+  } finally {
+    removed.isRestoring = false
   }
 }
 
@@ -268,7 +434,7 @@ onMounted(async () => {
           <tr>
             <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Company</th>
             <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Location</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Industry</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Department</th>
             <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Active Interns</th>
             <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Representatives</th>
             <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">OJT Supervisor</th>
@@ -307,199 +473,293 @@ onMounted(async () => {
     </div>
 
     <!-- Create / Edit modal -->
-    <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
-      <section class="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl">
-        <div class="flex items-center justify-between">
+    <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+      <!--
+        Three-part flex column: the header and footer are shrink-0 siblings and
+        the body is the ONLY scrolling element.
+
+        The overlay deliberately no longer scrolls. While it did, the panel grew
+        past the viewport with no height cap, so the footer's `sticky bottom-0`
+        had nothing to pin against inside its own containing block — it drifted
+        up over the Company Status block instead of staying put. A real flex
+        shell removes the need for sticky entirely.
+      -->
+      <section class="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+        <div class="flex shrink-0 items-center justify-between border-b border-slate-200 px-6 py-4">
           <h3 class="text-lg font-semibold text-slate-950">{{ editingId ? 'Manage Company' : 'Add Partner Company' }}</h3>
           <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeModal">Close</button>
         </div>
 
-        <div class="mt-5 grid gap-4 md:grid-cols-2">
-          <label class="block md:col-span-2">
-            <span class="text-xs font-bold text-slate-600">Name</span>
-            <input v-model="form.name" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </label>
-          <label class="block md:col-span-2">
-            <span class="text-xs font-bold text-slate-600">Address</span>
-            <input v-model="form.address" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </label>
-          <label class="block">
-            <span class="text-xs font-bold text-slate-600">Location</span>
-            <input v-model="form.location" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </label>
-          <label class="block">
-            <span class="text-xs font-bold text-slate-600">Industry</span>
-            <input v-model="form.industry" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </label>
-          <label class="block">
-            <span class="text-xs font-bold text-slate-600">Contact Number (optional)</span>
-            <input v-model="form.contact_number" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </label>
-          <label class="flex items-center gap-2 pt-6 text-sm font-medium" :class="form.is_active ? 'text-slate-700' : 'text-red-700'">
-            <input v-model="form.is_active" type="checkbox" />
-            <span>Active</span>
-          </label>
-          <label class="block md:col-span-2">
-            <span class="text-xs font-bold text-slate-600">Description (optional)</span>
-            <textarea v-model="form.description" rows="2" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"></textarea>
-          </label>
-        </div>
-
-        <div class="mt-5 rounded-md border border-slate-200 p-4">
-          <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Head of Company</p>
-          <div class="mt-3 grid gap-4 md:grid-cols-3">
-            <label class="block">
+        <!-- The only scroll container in the modal. -->
+        <div class="flex-1 overflow-y-auto px-6 py-5">
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="block md:col-span-2">
               <span class="text-xs font-bold text-slate-600">Name</span>
-              <input v-model="form.head_name" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <input v-model="form.name" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            </label>
+            <label class="block md:col-span-2">
+              <span class="text-xs font-bold text-slate-600">Address</span>
+              <input v-model="form.address" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             </label>
             <label class="block">
-              <span class="text-xs font-bold text-slate-600">Contact Number (optional)</span>
-              <input v-model="form.head_contact_number" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <span class="text-xs font-bold text-slate-600">Location</span>
+              <input v-model="form.location" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             </label>
             <label class="block">
-              <span class="text-xs font-bold text-slate-600">Email (optional)</span>
-              <input v-model="form.head_email" type="email" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <span class="text-xs font-bold text-slate-600">Department</span>
+              <select v-model="departmentChoice" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                <option v-if="departmentChoice === ''" value="" disabled>Select department</option>
+                <option v-for="option in departmentOptions" :key="option" :value="option">{{ option }}</option>
+                <option :value="OTHER_DEPARTMENT">Other…</option>
+              </select>
+              <span v-if="departmentChoice === OTHER_DEPARTMENT" class="mt-2 block">
+                <span class="text-xs font-bold text-slate-600">Department name</span>
+                <input
+                  ref="departmentOtherInput"
+                  v-model="departmentOther"
+                  type="text"
+                  class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                />
+              </span>
             </label>
-            <label class="block md:col-span-3">
-              <span class="text-xs font-bold text-slate-600">Department Head (optional)</span>
-              <input v-model="form.department_head" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <label class="block md:col-span-2">
+              <span class="text-xs font-bold text-slate-600">Description (optional)</span>
+              <textarea v-model="form.description" rows="2" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"></textarea>
             </label>
           </div>
-        </div>
 
-        <div
-          v-if="editingId && originalIsActive && !form.is_active"
-          class="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700"
-        >
-          Deactivating this company hides it from the enrollment company picker. Existing enrollments are unaffected.
-        </div>
-
-        <div v-if="Object.keys(modalErrors).length > 0" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
-          <p v-for="(messages, field) in modalErrors" :key="field">{{ field }}: {{ messages.join(' ') }}</p>
-        </div>
-        <p v-if="modalMessage" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ modalMessage }}</p>
-
-        <div class="mt-5 flex justify-end gap-3">
-          <button type="button" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" @click="closeModal">Cancel</button>
-          <button
-            type="button"
-            class="rounded-md px-4 py-2 text-sm font-semibold text-white disabled:bg-blue-300"
-            :class="editingId && originalIsActive && !form.is_active ? 'bg-red-600' : 'bg-blue-600'"
-            :disabled="isSaving"
-            @click="saveCompany"
-          >
-            {{ isSaving ? 'Saving...' : editingId && originalIsActive && !form.is_active ? 'Deactivate & Save' : editingId ? 'Save Changes' : 'Create Company' }}
-          </button>
-        </div>
-
-        <!-- Representatives panel (edit mode only, after the company exists) -->
-        <div v-if="editingId && activeCompany" class="mt-6 border-t border-slate-200 pt-5">
-          <h4 class="text-sm font-bold text-slate-900">Company Representatives</h4>
-          <p class="mt-1 text-xs text-slate-400">Informational contacts at this company — no login, just a name and position to reach them by.</p>
-
-          <div class="mt-3 divide-y divide-slate-100 rounded-md border border-slate-200">
-            <p v-if="representatives.length === 0" class="px-3 py-3 text-sm text-slate-400">No representatives added yet.</p>
-            <div v-for="rep in representatives" :key="rep.id" class="flex items-center justify-between gap-3 px-3 py-2">
-              <div>
-                <p class="text-sm font-semibold text-slate-800">{{ rep.display_name }}</p>
-                <p class="text-xs text-slate-500">{{ rep.position || 'No position' }}</p>
-              </div>
-              <button type="button" class="text-xs font-semibold text-red-600 hover:text-red-700" @click="detachSupervisor(rep.id)">Remove</button>
+          <div class="mt-5 rounded-md border border-slate-200 p-4">
+            <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Head of Company</p>
+            <div class="mt-3 grid gap-4 md:grid-cols-3">
+              <label class="block">
+                <span class="text-xs font-bold text-slate-600">Name</span>
+                <input v-model="form.head_name" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              </label>
+              <label class="block">
+                <span class="text-xs font-bold text-slate-600">Contact Number (optional)</span>
+                <input v-model="form.head_contact_number" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              </label>
+              <label class="block">
+                <span class="text-xs font-bold text-slate-600">Email (optional)</span>
+                <input v-model="form.head_email" type="email" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              </label>
+              <label class="block md:col-span-3">
+                <span class="text-xs font-bold text-slate-600">Department Head (optional)</span>
+                <input v-model="form.department_head" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              </label>
             </div>
           </div>
 
-          <div v-if="Object.keys(repErrors).length > 0" class="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
-            <p v-for="(messages, field) in repErrors" :key="field">{{ field }}: {{ messages.join(' ') }}</p>
-          </div>
-
-          <div class="mt-4 rounded-md border border-slate-200 p-3">
-            <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Add Representative</p>
-            <div class="mt-2 grid gap-2 md:grid-cols-3">
-              <input v-model="repForm.name" type="text" placeholder="Representative name" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm md:col-span-1" />
-              <input v-model="repForm.position" type="text" placeholder="Position" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm md:col-span-1" />
-              <button
-                type="button"
-                class="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed md:col-span-1"
-                :disabled="!repForm.name || !repForm.position"
-                @click="addRepresentative"
+          <!-- Representatives panel (edit mode only, after the company exists) -->
+          <div v-if="editingId && activeCompany" class="mt-6 border-t border-slate-200 pt-5">
+            <!--
+              Undo strips for anything removed in this session. They vanish when the
+              modal closes — the removal is only recoverable while this stays open,
+              so the copy never promises more than that.
+            -->
+            <div v-if="removedRecords.length > 0" class="mb-4 space-y-2">
+              <div
+                v-for="removed in removedRecords"
+                :key="removed.key"
+                class="rounded-md bg-slate-50 px-3 py-2"
               >
-                + Add Representative
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- OJT Supervisor Login panel (edit mode only) -->
-        <div v-if="editingId && activeCompany" class="mt-6 border-t border-slate-200 pt-5">
-          <h4 class="text-sm font-bold text-slate-900">OJT Supervisor Login</h4>
-          <p class="mt-1 text-xs text-slate-400">The one account this company uses to sign in and review interns' weekly logs.</p>
-
-          <div class="mt-3 divide-y divide-slate-100 rounded-md border border-slate-200">
-            <p v-if="!loginSupervisor" class="px-3 py-3 text-sm text-slate-400">No supervisor login attached yet.</p>
-            <div v-if="loginSupervisor" class="flex items-center justify-between gap-3 px-3 py-2">
-              <div>
-                <p class="text-sm font-semibold text-slate-800">{{ loginSupervisor.display_name }}</p>
-                <p class="text-xs text-slate-500">{{ loginSupervisor.user?.email }} · {{ loginSupervisor.position || 'No position' }}</p>
+                <div class="flex items-center justify-between gap-3">
+                  <div class="flex min-w-0 items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4 shrink-0 text-slate-400">
+                      <path d="M4 7h16M9.5 7V5.5A1.5 1.5 0 0 1 11 4h2a1.5 1.5 0 0 1 1.5 1.5V7M6.5 7l.8 12A1.5 1.5 0 0 0 8.8 20.5h6.4a1.5 1.5 0 0 0 1.5-1.4l.8-12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    <p class="min-w-0 truncate text-sm text-slate-600">Removed {{ removed.name }}</p>
+                  </div>
+                  <button
+                    type="button"
+                    class="shrink-0 text-xs font-semibold text-blue-600 transition hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    :disabled="removed.isRestoring"
+                    @click="undoRemoval(removed)"
+                  >
+                    {{ removed.isRestoring ? 'Restoring…' : 'Undo' }}
+                  </button>
+                </div>
+                <p v-if="removed.error" class="mt-1 text-xs text-red-600">{{ removed.error }}</p>
               </div>
-              <button type="button" class="text-xs font-semibold text-red-600 hover:text-red-700" @click="detachSupervisor(loginSupervisor.id)">Detach</button>
+            </div>
+
+            <h4 class="text-sm font-bold text-slate-900">Company Representatives</h4>
+            <p class="mt-1 text-xs text-slate-400">Informational contacts at this company — no login, just a name and position to reach them by.</p>
+
+            <div class="mt-3 divide-y divide-slate-100 rounded-md border border-slate-200">
+              <p v-if="representatives.length === 0" class="px-3 py-3 text-sm text-slate-400">No representatives added yet.</p>
+              <div v-for="rep in representatives" :key="rep.id" class="flex items-center justify-between gap-3 px-3 py-2">
+                <div>
+                  <p class="text-sm font-semibold text-slate-800">{{ rep.display_name }}</p>
+                  <p class="text-xs text-slate-500">{{ rep.position || 'No position' }}</p>
+                </div>
+                <button
+                  v-if="pendingRemovalId !== rep.id"
+                  type="button"
+                  class="shrink-0 text-xs font-semibold text-red-600 transition hover:text-red-700"
+                  :aria-label="`Remove ${rep.display_name}`"
+                  @click="pendingRemovalId = rep.id"
+                >
+                  Remove
+                </button>
+                <div v-else class="flex shrink-0 items-center gap-3">
+                  <span class="text-xs text-slate-600">Remove representative?</span>
+                  <button type="button" class="text-xs font-semibold text-red-600 transition hover:text-red-700" @click="removeCompanySupervisor(rep)">Remove</button>
+                  <button type="button" class="text-xs font-semibold text-slate-500 transition hover:text-slate-700" @click="pendingRemovalId = null">Cancel</button>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="Object.keys(repErrors).length > 0" class="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+              <p v-for="(messages, field) in repErrors" :key="field">{{ field }}: {{ messages.join(' ') }}</p>
+            </div>
+
+            <div class="mt-4 rounded-md border border-slate-200 p-3">
+              <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Add Representative</p>
+              <div class="mt-2 grid gap-2 md:grid-cols-3">
+                <input v-model="repForm.name" type="text" placeholder="Representative name" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm md:col-span-1" />
+                <input v-model="repForm.position" type="text" placeholder="Position" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm md:col-span-1" />
+                <button
+                  type="button"
+                  class="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:col-span-1"
+                  :disabled="!repForm.name || !repForm.position"
+                  @click="addRepresentative"
+                >
+                  + Add Representative
+                </button>
+              </div>
             </div>
           </div>
 
-          <div v-if="Object.keys(supErrors).length > 0" class="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
-            <p v-for="(messages, field) in supErrors" :key="field">{{ field }}: {{ messages.join(' ') }}</p>
+          <!-- OJT Supervisor Login panel (edit mode only) -->
+          <div v-if="editingId && activeCompany" class="mt-6 border-t border-slate-200 pt-5">
+            <h4 class="text-sm font-bold text-slate-900">OJT Supervisor Login</h4>
+            <p class="mt-1 text-xs text-slate-400">The one account this company uses to sign in and review interns' weekly logs.</p>
+
+            <div class="mt-3 divide-y divide-slate-100 rounded-md border border-slate-200">
+              <p v-if="!loginSupervisor" class="px-3 py-3 text-sm text-slate-400">No supervisor login attached yet.</p>
+              <div v-if="loginSupervisor" class="flex items-center justify-between gap-3 px-3 py-2">
+                <div>
+                  <p class="text-sm font-semibold text-slate-800">{{ loginSupervisor.display_name }}</p>
+                  <p class="text-xs text-slate-500">{{ loginSupervisor.user?.email }} · {{ loginSupervisor.position || 'No position' }}</p>
+                </div>
+                <button
+                  v-if="pendingRemovalId !== loginSupervisor.id"
+                  type="button"
+                  class="shrink-0 text-xs font-semibold text-red-600 transition hover:text-red-700"
+                  :aria-label="`Remove ${loginSupervisor.display_name}`"
+                  @click="pendingRemovalId = loginSupervisor.id"
+                >
+                  Remove
+                </button>
+                <div v-else class="flex shrink-0 items-center gap-3">
+                  <span class="text-xs text-slate-600">Remove supervisor?</span>
+                  <button type="button" class="text-xs font-semibold text-red-600 transition hover:text-red-700" @click="removeCompanySupervisor(loginSupervisor)">Remove</button>
+                  <button type="button" class="text-xs font-semibold text-slate-500 transition hover:text-slate-700" @click="pendingRemovalId = null">Cancel</button>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="Object.keys(supErrors).length > 0" class="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+              <p v-for="(messages, field) in supErrors" :key="field">{{ field }}: {{ messages.join(' ') }}</p>
+            </div>
+
+            <p v-if="hasLoginSupervisor" class="mt-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
+              This company already has a supervisor login — remove it first to attach or create a different one.
+            </p>
+
+            <div class="mt-4 grid gap-4 md:grid-cols-2">
+              <!-- Attach existing -->
+              <div class="rounded-md border border-slate-200 p-3">
+                <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Attach Existing Supervisor</p>
+                <select v-model.number="attachForm.user_id" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100">
+                  <option :value="null">Select supervisor</option>
+                  <option v-for="sup in supervisorPool" :key="sup.id" :value="sup.id">{{ sup.name }} ({{ sup.email }})</option>
+                </select>
+                <input
+                  v-model="attachForm.position"
+                  type="text"
+                  placeholder="Position (optional)"
+                  :disabled="hasLoginSupervisor"
+                  class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                />
+                <button
+                  type="button"
+                  class="mt-2 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  :disabled="!attachForm.user_id || hasLoginSupervisor"
+                  @click="attachSupervisor"
+                >
+                  Attach
+                </button>
+              </div>
+
+              <!-- Create new -->
+              <div class="rounded-md border border-slate-200 p-3">
+                <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Create New Supervisor</p>
+                <input v-model="createSupForm.name" type="text" placeholder="Name" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
+                <input v-model="createSupForm.email" type="email" placeholder="Email" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
+                <input v-model="createSupForm.password" type="password" placeholder="Password (min 8)" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
+                <input v-model="createSupForm.position" type="text" placeholder="Position (optional)" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
+                <button
+                  type="button"
+                  class="mt-2 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  :disabled="hasLoginSupervisor"
+                  @click="createSupervisor"
+                >
+                  Create &amp; Attach
+                </button>
+              </div>
+            </div>
           </div>
 
-          <p v-if="hasLoginSupervisor" class="mt-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
-            This company already has a supervisor login — detach it first to attach or create a different one.
+          <p v-else-if="!editingId" class="mt-6 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
+            Save the company first to add representatives or a supervisor login.
           </p>
 
-          <div class="mt-4 grid gap-4 md:grid-cols-2">
-            <!-- Attach existing -->
-            <div class="rounded-md border border-slate-200 p-3">
-              <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Attach Existing Supervisor</p>
-              <select v-model.number="attachForm.user_id" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100">
-                <option :value="null">Select supervisor</option>
-                <option v-for="sup in supervisorPool" :key="sup.id" :value="sup.id">{{ sup.name }} ({{ sup.email }})</option>
-              </select>
-              <input
-                v-model="attachForm.position"
-                type="text"
-                placeholder="Position (optional)"
-                :disabled="hasLoginSupervisor"
-                class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
-              />
-              <button
-                type="button"
-                class="mt-2 rounded-md bg-slate-950 px-3 py-1.5 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
-                :disabled="!attachForm.user_id || hasLoginSupervisor"
-                @click="attachSupervisor"
-              >
-                Attach
-              </button>
-            </div>
+          <div
+            v-if="editingId && originalIsActive && !form.is_active"
+            class="mt-6 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700"
+          >
+            Deactivating this company hides it from the enrollment company picker. Existing enrollments are unaffected.
+          </div>
 
-            <!-- Create new -->
-            <div class="rounded-md border border-slate-200 p-3">
-              <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Create New Supervisor</p>
-              <input v-model="createSupForm.name" type="text" placeholder="Name" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
-              <input v-model="createSupForm.email" type="email" placeholder="Email" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
-              <input v-model="createSupForm.password" type="password" placeholder="Password (min 8)" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
-              <input v-model="createSupForm.position" type="text" placeholder="Position (optional)" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
-              <button
-                type="button"
-                class="mt-2 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
-                :disabled="hasLoginSupervisor"
-                @click="createSupervisor"
-              >
-                Create &amp; Attach
-              </button>
+          <div v-if="Object.keys(modalErrors).length > 0" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+            <p v-for="(messages, field) in modalErrors" :key="field">{{ field }}: {{ messages.join(' ') }}</p>
+          </div>
+          <p v-if="modalMessage" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ modalMessage }}</p>
+
+          <div class="mt-5 rounded-md border border-slate-200 p-4">
+            <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Company Status</p>
+            <div class="mt-3 flex flex-wrap items-center gap-6">
+              <label class="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <input v-model="statusChoice" type="radio" value="active" name="company-status" />
+                <span>Active</span>
+              </label>
+              <label class="flex items-center gap-2 text-sm font-medium text-slate-700">
+                <input v-model="statusChoice" type="radio" value="inactive" name="company-status" />
+                <span>Not Active</span>
+              </label>
             </div>
+            <p v-if="editingId" class="mt-2 text-xs text-slate-400">
+              Currently: {{ originalIsActive ? 'Active' : 'Not Active' }}
+            </p>
           </div>
         </div>
 
-        <p v-else-if="!editingId" class="mt-6 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
-          Save the company first to add representatives or a supervisor login.
-        </p>
+        <div class="flex shrink-0 justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
+          <button type="button" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" @click="closeModal">Cancel</button>
+          <TooltipWrap :label="canSaveCompany ? '' : 'Select a company status to save'" placement="top" align="end">
+            <button
+              type="button"
+              class="rounded-md px-4 py-2 text-sm font-semibold text-white transition focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              :class="editingId && originalIsActive && !form.is_active ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'"
+              :disabled="!canSaveCompany"
+              @click="saveCompany"
+            >
+              {{ isSaving ? 'Saving...' : editingId && originalIsActive && !form.is_active ? 'Deactivate & Save' : editingId ? 'Save Changes' : 'Create Company' }}
+            </button>
+          </TooltipWrap>
+        </div>
       </section>
     </div>
   </section>

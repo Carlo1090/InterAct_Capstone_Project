@@ -333,7 +333,7 @@ onMounted(load)
       </div>
       <button
         type="button"
-        class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
+        class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:grayscale disabled:cursor-not-allowed"
         :disabled="programs.length === 0"
         @click="openCreateModal"
       >
@@ -438,7 +438,7 @@ onMounted(load)
             <div class="mt-6 rounded-md border border-slate-300 bg-slate-50 p-3">
               <div class="flex items-center justify-between gap-2">
                 <p class="text-sm font-semibold text-slate-900">{{ FIXED_SECTION.label }}</p>
-                <span class="rounded-full bg-slate-900 px-2.5 py-0.5 text-xs font-bold text-white">Required — used for Weekly Bundling</span>
+                <span class="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-700 ring-1 ring-blue-100">Required — used for Weekly Bundling</span>
               </div>
               <p class="mt-1 text-xs text-slate-500">{{ FIXED_SECTION.prompt }}</p>
               <p class="mt-2 text-xs text-slate-400">Fixed on every template. It can't be removed, renamed, or made optional.</p>
@@ -577,7 +577,7 @@ onMounted(load)
           </button>
           <button
             type="button"
-            class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-400"
+            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:bg-blue-300"
             :disabled="isSaving || !canSave"
             @click="save"
           >

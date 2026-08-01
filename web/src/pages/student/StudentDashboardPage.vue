@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import api from '@/lib/axios'
 import LoadStatus from '@/components/LoadStatus.vue'
@@ -8,7 +8,22 @@ import { categorizeError } from '@/lib/apiError'
 import { isNotEnrolledError } from '@/lib/enrollment'
 import { useAuthStore } from '@/stores/auth'
 import { consumeQueryParam, googleErrorMessage, googleVerifyUrl } from '@/lib/googleAuth'
+import TooltipWrap from '@/components/ui/TooltipWrap.vue'
 import type { StudentDashboard } from '@/types/api'
+
+type StatIcon = 'document' | 'check' | 'clock' | 'alert'
+
+type StatCard = {
+  label: string
+  value: string
+  sub: string
+  cardClass: string
+  tileClass: string
+  icon: StatIcon
+  barClass: string
+  // null means this stat has no honest denominator, so it gets no bar at all.
+  barPercent: number | null
+}
 
 const auth = useAuthStore()
 
@@ -16,8 +31,7 @@ const auth = useAuthStore()
 // item in StudentLayout.vue rather than re-derived here.
 const WRITE_JOURNAL_ROUTE = '/student/write-journal'
 
-// 2πr for the progress rings' r=52 circle.
-const RING_CIRCUMFERENCE = 326.73
+const MS_PER_DAY = 86_400_000
 
 // Reminder email only goes to a Google-verified address, so an unverified
 // student silently gets in-app notifications only. Say so rather than letting
@@ -35,6 +49,9 @@ const dashboard = ref<StudentDashboard | null>(null)
 const isLoading = ref(true)
 const errorMessage = ref('')
 const notEnrolled = ref(false)
+
+// Flipped once the data is on screen, so the arcs animate from empty.
+const drawn = ref(false)
 
 const load = async () => {
   isLoading.value = true
@@ -76,25 +93,122 @@ const heroSubline = computed(() => {
   return `${i.host_company ?? '—'} · ${i.supervisor ?? '—'}`
 })
 
-const stats = computed(() => {
-  if (!dashboard.value) return []
-  const s = dashboard.value.stats
+// The single choke point that keeps NaN/Infinity out of every arc, bar and
+// label on this page.
+const clampPercent = (value: number): number => {
+  if (!Number.isFinite(value)) return 0
 
-  return [
-    { label: 'Entries Submitted', value: String(s.entries_submitted_total), sub: 'All time', tone: 'blue' },
-    { label: 'Weekly Reports Approved', value: String(s.weekly_logs_approved), sub: 'By supervisor', tone: 'green' },
-    { label: 'Pending Review', value: String(s.weekly_logs_pending), sub: 'Awaiting supervisor', tone: 'amber' },
-    { label: 'Missing Entries', value: String(s.missing_this_week), sub: 'This week', tone: 'red' },
-  ]
+  return Math.min(100, Math.max(0, value))
+}
+
+const safeCount = (value: number | undefined): number => {
+  if (value === undefined || !Number.isFinite(value)) return 0
+
+  return Math.max(0, Math.trunc(value))
+}
+
+// week.start/week.end are plain YYYY-MM-DD strings (Carbon's toDateString()),
+// so read the parts directly — new Date(string) would drag the browser's
+// timezone in and can land on the wrong day.
+const parseDateString = (value: string | undefined): number | null => {
+  const parts = (value ?? '').split('-')
+  if (parts.length !== 3) return null
+
+  const [year, month, day] = parts.map(Number)
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null
+
+  return Date.UTC(year, month - 1, day)
+}
+
+// week.end is TODAY, not Sunday, so this spans Monday→today: 1-7 days. Zero
+// means the range is missing or malformed, which hides the strip entirely.
+const daysInWeek = computed(() => {
+  const week = dashboard.value?.week
+  const start = parseDateString(week?.start)
+  const end = parseDateString(week?.end)
+  if (start === null || end === null) return 0
+
+  const days = Math.round((end - start) / MS_PER_DAY) + 1
+
+  return Number.isFinite(days) && days > 0 ? days : 0
 })
 
-const progress = computed(() => {
+const weekStrip = computed(() => {
+  const days = daysInWeek.value
+  const missing = safeCount(dashboard.value?.stats.missing_this_week)
+
+  return { days, logged: Math.min(days, Math.max(0, days - missing)) }
+})
+
+const weeklyBreakdown = computed(() => {
+  const approved = safeCount(dashboard.value?.stats.weekly_logs_approved)
+  const pending = safeCount(dashboard.value?.stats.weekly_logs_pending)
+  const total = approved + pending
+
+  return {
+    approved,
+    pending,
+    total,
+    approvedShare: total > 0 ? clampPercent((approved / total) * 100) : 0,
+    pendingShare: total > 0 ? clampPercent((pending / total) * 100) : 0,
+  }
+})
+
+const ojtPercent = computed(() => clampPercent(dashboard.value?.progress.ojt_duration_percent ?? 0))
+
+// Not the donut's split — this is approvals over weeks elapsed, which is a
+// different number, so it gets its own labelled caption line.
+const approvalRatePercent = computed(() =>
+  clampPercent(dashboard.value?.progress.weekly_reports_approved_percent ?? 0),
+)
+
+const stats = computed<StatCard[]>(() => {
   if (!dashboard.value) return []
-  const p = dashboard.value.progress
+  const s = dashboard.value.stats
+  const { approved, pending, total } = weeklyBreakdown.value
+  const days = daysInWeek.value
 
   return [
-    { label: 'Weekly Reports Approved', value: p.weekly_reports_approved_percent, ringClass: 'text-green-600' },
-    { label: 'OJT Duration Progress', value: p.ojt_duration_percent, ringClass: 'text-amber-500' },
+    {
+      label: 'Entries Submitted',
+      value: String(s.entries_submitted_total),
+      sub: 'All time',
+      cardClass: 'bg-blue-50/50',
+      tileClass: 'bg-blue-100 text-blue-600',
+      icon: 'document',
+      barClass: 'bg-blue-500',
+      barPercent: null,
+    },
+    {
+      label: 'Weekly Reports Approved',
+      value: String(s.weekly_logs_approved),
+      sub: 'By supervisor',
+      cardClass: 'bg-emerald-50/50',
+      tileClass: 'bg-emerald-100 text-emerald-600',
+      icon: 'check',
+      barClass: 'bg-emerald-500',
+      barPercent: total > 0 ? clampPercent((approved / total) * 100) : 0,
+    },
+    {
+      label: 'Pending Review',
+      value: String(s.weekly_logs_pending),
+      sub: 'Awaiting supervisor',
+      cardClass: 'bg-amber-50/50',
+      tileClass: 'bg-amber-100 text-amber-600',
+      icon: 'clock',
+      barClass: 'bg-amber-500',
+      barPercent: total > 0 ? clampPercent((pending / total) * 100) : 0,
+    },
+    {
+      label: 'Missing Entries',
+      value: String(s.missing_this_week),
+      sub: 'This week',
+      cardClass: 'bg-rose-50/50',
+      tileClass: 'bg-rose-100 text-rose-600',
+      icon: 'alert',
+      barClass: 'bg-rose-500',
+      barPercent: days > 0 ? clampPercent((safeCount(s.missing_this_week) / days) * 100) : 0,
+    },
   ]
 })
 
@@ -126,13 +240,6 @@ const statAccentClass = (tone: string): string => {
 
 const activityDotClass = (tone: string): string => statAccentClass(tone)
 
-// A ring can only ever draw between empty and full, whatever the API reports.
-const ringOffset = (value: number): number => {
-  const clamped = Math.min(100, Math.max(0, value))
-
-  return RING_CIRCUMFERENCE * (1 - clamped / 100)
-}
-
 onMounted(async () => {
   verifiedJustNow.value = consumeQueryParam('email_verified') === '1'
   emailErrorMessage.value = googleErrorMessage(consumeQueryParam('email_error'))
@@ -144,6 +251,14 @@ onMounted(async () => {
   }
 
   await load()
+
+  // The arcs only enter the DOM once load() resolves — LoadStatus renders the
+  // loading branch until then — so flip this afterwards, and let the browser
+  // paint the empty state once first or there is nothing to transition from.
+  await nextTick()
+  requestAnimationFrame(() => {
+    drawn.value = true
+  })
 })
 </script>
 
@@ -183,8 +298,10 @@ onMounted(async () => {
           </p>
         </div>
       </div>
+      <TooltipWrap label="Verify your email with Google" placement="bottom" class="shrink-0">
       <button
         type="button"
+        aria-label="Verify your email with Google"
         class="flex shrink-0 items-center justify-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-amber-200 transition hover:bg-slate-50"
         @click="verifyWithGoogle"
       >
@@ -196,6 +313,7 @@ onMounted(async () => {
         </svg>
         Verify with Google
       </button>
+      </TooltipWrap>
     </div>
 
     <LoadStatus :loading="isLoading" :error="errorMessage" :retry="load">
@@ -229,15 +347,18 @@ onMounted(async () => {
               >
                 {{ dashboard.internship.program }}
               </span>
-              <RouterLink
-                :to="WRITE_JOURNAL_ROUTE"
-                class="inline-flex items-center gap-2 rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
-              >
-                Write Daily Journal
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
-                  <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-              </RouterLink>
+              <TooltipWrap label="Write today's journal entry" placement="bottom">
+                <RouterLink
+                  :to="WRITE_JOURNAL_ROUTE"
+                  aria-label="Write today's journal entry"
+                  class="inline-flex items-center gap-2 rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                >
+                  Write Daily Journal
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
+                    <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </RouterLink>
+              </TooltipWrap>
             </div>
           </div>
 
@@ -253,69 +374,218 @@ onMounted(async () => {
           <article
             v-for="stat in stats"
             :key="stat.label"
-            class="flex h-full flex-col rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70"
+            class="flex h-full flex-col rounded-xl p-6 ring-1 ring-slate-200/60"
+            :class="stat.cardClass"
           >
-            <div class="flex items-center gap-2">
-              <span class="h-2 w-2 shrink-0 rounded-full" :class="statAccentClass(stat.tone)" />
-              <p class="text-xs font-medium uppercase tracking-wide text-slate-400">{{ stat.label }}</p>
+            <div class="flex items-center gap-3">
+              <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" :class="stat.tileClass">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
+                  <g v-if="stat.icon === 'document'">
+                    <path d="M7 3.5h6.5L18 8v12.5H7z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+                    <path d="M13 3.5V8h5M9.5 12.5h6M9.5 16h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                  </g>
+                  <g v-else-if="stat.icon === 'check'">
+                    <circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.6" />
+                    <path d="M8.5 12.3l2.4 2.4 4.6-4.9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                  </g>
+                  <g v-else-if="stat.icon === 'clock'">
+                    <circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.6" />
+                    <path d="M12 7.5V12l3 1.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                  </g>
+                  <g v-else>
+                    <path d="M12 8v4.5M12 16h.01" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" />
+                    <path d="M10.3 4.4 3.1 17.1a2 2 0 0 0 1.7 3h14.4a2 2 0 0 0 1.7-3L13.7 4.4a2 2 0 0 0-3.4 0Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+                  </g>
+                </svg>
+              </span>
+              <p class="text-xs font-medium uppercase tracking-wide text-slate-500">{{ stat.label }}</p>
             </div>
-            <p class="mt-3 text-3xl font-semibold tracking-tight text-slate-900">{{ stat.value }}</p>
+
+            <p class="mt-4 text-3xl font-semibold tracking-tight text-slate-900">{{ stat.value }}</p>
             <p class="mt-1 text-xs text-slate-400">{{ stat.sub }}</p>
+
+            <div v-if="stat.barPercent !== null" class="mt-auto pt-5">
+              <div class="h-1 overflow-hidden rounded-full bg-slate-200/80">
+                <div class="h-full rounded-full" :class="stat.barClass" :style="{ width: `${stat.barPercent}%` }" />
+              </div>
+            </div>
           </article>
         </div>
 
-        <div class="grid gap-6 xl:grid-cols-2">
+        <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
           <section class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
-            <h2 class="text-sm font-semibold text-slate-900">Completion Progress</h2>
-            <div class="mt-6 grid grid-cols-2 gap-6">
-              <div v-for="item in progress" :key="item.label" class="flex flex-col items-center">
-                <div
-                  class="relative w-full max-w-[140px]"
-                  role="img"
-                  :aria-label="`${item.label}: ${item.value} percent`"
-                >
-                  <svg viewBox="0 0 120 120" class="h-auto w-full">
-                    <circle cx="60" cy="60" r="52" fill="none" stroke-width="10" class="stroke-slate-100" />
-                    <circle
-                      cx="60"
-                      cy="60"
-                      r="52"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="10"
-                      stroke-linecap="round"
-                      stroke-dasharray="326.73"
-                      :stroke-dashoffset="ringOffset(item.value)"
-                      transform="rotate(-90 60 60)"
-                      :class="item.ringClass"
-                    />
-                  </svg>
-                  <span class="absolute inset-0 flex items-center justify-center text-2xl font-semibold tracking-tight text-slate-900">
-                    {{ item.value }}%
-                  </span>
-                </div>
-                <p class="mt-3 text-center text-xs text-slate-500">{{ item.label }}</p>
+            <h2 class="text-sm font-semibold text-slate-900">OJT Duration</h2>
+            <div
+              class="mx-auto mt-5 w-full max-w-[180px]"
+              role="img"
+              :aria-label="`OJT duration progress: ${ojtPercent} percent`"
+            >
+              <svg viewBox="0 0 160 96" class="h-auto w-full">
+                <defs>
+                  <linearGradient id="gauge-ojt" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stop-color="#fbbf24" />
+                    <stop offset="100%" stop-color="#f97316" />
+                  </linearGradient>
+                </defs>
+                <path
+                  d="M 20 80 A 60 60 0 0 1 140 80"
+                  fill="none"
+                  stroke="#f1f5f9"
+                  stroke-width="14"
+                  stroke-linecap="round"
+                  pathLength="100"
+                />
+                <path
+                  class="draw-offset"
+                  d="M 20 80 A 60 60 0 0 1 140 80"
+                  fill="none"
+                  stroke="url(#gauge-ojt)"
+                  stroke-width="14"
+                  stroke-linecap="round"
+                  pathLength="100"
+                  stroke-dasharray="100"
+                  :stroke-dashoffset="drawn ? 100 - ojtPercent : 100"
+                />
+              </svg>
+              <div class="-mt-7 text-center">
+                <p class="text-3xl font-semibold tracking-tight text-slate-900">{{ ojtPercent }}%</p>
+                <p class="mt-1 text-xs text-slate-400">
+                  Start date · {{ dashboard.internship.start_date ?? '—' }}
+                </p>
               </div>
             </div>
           </section>
 
           <section class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
-            <h2 class="text-sm font-semibold text-slate-900">Recent Activity</h2>
-            <p v-if="dashboard.recent_activity.length === 0" class="mt-4 text-sm text-slate-400">No recent activity yet.</p>
-            <ol v-else class="relative mt-5 space-y-5 pl-6">
-              <span class="absolute bottom-2 left-[3px] top-2 w-px bg-slate-100" aria-hidden="true" />
-              <li v-for="(activity, index) in dashboard.recent_activity" :key="index" class="relative">
-                <span
-                  class="absolute -left-6 top-1.5 h-[7px] w-[7px] rounded-full ring-2 ring-white"
-                  :class="activityDotClass(activity.tone)"
-                />
-                <p class="text-sm text-slate-700">{{ activity.text }}</p>
-                <p class="mt-1 text-xs text-slate-400">{{ activity.time ?? '—' }}</p>
-              </li>
-            </ol>
+            <h2 class="text-sm font-semibold text-slate-900">Weekly Reports</h2>
+            <div
+              class="relative mx-auto mt-5 w-full max-w-[180px]"
+              role="img"
+              :aria-label="`Weekly reports: ${weeklyBreakdown.approved} approved, ${weeklyBreakdown.pending} pending`"
+            >
+              <svg viewBox="0 0 120 120" class="h-auto w-full">
+                <g transform="rotate(-90 60 60)">
+                  <circle
+                    cx="60"
+                    cy="60"
+                    r="48"
+                    fill="none"
+                    stroke="#f1f5f9"
+                    stroke-width="14"
+                    stroke-linecap="round"
+                    pathLength="100"
+                  />
+                  <circle
+                    v-if="weeklyBreakdown.approvedShare > 0"
+                    class="draw-dash"
+                    cx="60"
+                    cy="60"
+                    r="48"
+                    fill="none"
+                    stroke="#10b981"
+                    stroke-width="14"
+                    stroke-linecap="round"
+                    pathLength="100"
+                    :stroke-dasharray="`${drawn ? weeklyBreakdown.approvedShare : 0} 100`"
+                  />
+                  <circle
+                    v-if="weeklyBreakdown.pendingShare > 0"
+                    class="draw-dash"
+                    cx="60"
+                    cy="60"
+                    r="48"
+                    fill="none"
+                    stroke="#f59e0b"
+                    stroke-width="14"
+                    stroke-linecap="round"
+                    pathLength="100"
+                    :stroke-dasharray="`${drawn ? weeklyBreakdown.pendingShare : 0} 100`"
+                    :stroke-dashoffset="-weeklyBreakdown.approvedShare"
+                  />
+                </g>
+              </svg>
+              <div class="absolute inset-0 flex flex-col items-center justify-center">
+                <p class="text-2xl font-semibold tracking-tight text-slate-900">{{ weeklyBreakdown.total }}</p>
+                <p class="text-xs text-slate-400">Total</p>
+              </div>
+            </div>
+
+            <div v-if="weeklyBreakdown.total > 0" class="mt-5 space-y-2">
+              <div class="flex items-center gap-2 text-sm">
+                <span class="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                <span class="text-slate-600">Approved</span>
+                <span class="ml-auto font-semibold text-slate-900">{{ weeklyBreakdown.approved }}</span>
+              </div>
+              <div class="flex items-center gap-2 text-sm">
+                <span class="h-2 w-2 shrink-0 rounded-full bg-amber-500" />
+                <span class="text-slate-600">Pending</span>
+                <span class="ml-auto font-semibold text-slate-900">{{ weeklyBreakdown.pending }}</span>
+              </div>
+              <p class="pt-1 text-xs text-slate-400">
+                {{ approvalRatePercent }}% approval rate over weeks elapsed
+              </p>
+            </div>
+            <p v-else class="mt-5 text-sm text-slate-400">No weekly reports yet</p>
+          </section>
+
+          <section
+            v-if="weekStrip.days > 0"
+            class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70"
+          >
+            <h2 class="text-sm font-semibold text-slate-900">This Week</h2>
+            <p class="mt-5 text-sm text-slate-600">
+              <span class="font-semibold text-slate-900">{{ weekStrip.logged }}</span>
+              of {{ weekStrip.days }} days logged
+            </p>
+            <div class="mt-3 flex gap-1.5">
+              <span
+                v-for="day in weekStrip.days"
+                :key="day"
+                class="h-2.5 flex-1 rounded-full"
+                :class="day <= weekStrip.logged ? 'bg-emerald-500' : 'bg-slate-200'"
+              />
+            </div>
+            <p class="mt-3 text-xs text-slate-400">
+              {{ dashboard.week.start }} – {{ dashboard.week.end }}
+            </p>
           </section>
         </div>
+
+        <section class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
+          <h2 class="text-sm font-semibold text-slate-900">Recent Activity</h2>
+          <p v-if="dashboard.recent_activity.length === 0" class="mt-4 text-sm text-slate-400">No recent activity yet.</p>
+          <ol v-else class="relative mt-5 space-y-5 pl-6">
+            <span class="absolute bottom-2 left-[3px] top-2 w-px bg-slate-100" aria-hidden="true" />
+            <li v-for="(activity, index) in dashboard.recent_activity" :key="index" class="relative">
+              <span
+                class="absolute -left-6 top-1.5 h-[7px] w-[7px] rounded-full ring-2 ring-white"
+                :class="activityDotClass(activity.tone)"
+              />
+              <p class="text-sm text-slate-700">{{ activity.text }}</p>
+              <p class="mt-1 text-xs text-slate-400">{{ activity.time ?? '—' }}</p>
+            </li>
+          </ol>
+        </section>
       </template>
     </LoadStatus>
   </section>
 </template>
+
+<style scoped>
+/* The gauge fills by retracting its dash offset; the donut segments grow their
+   dash length in place, since their offset is what positions them on the ring. */
+.draw-offset {
+  transition: stroke-dashoffset 700ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.draw-dash {
+  transition: stroke-dasharray 700ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .draw-offset,
+  .draw-dash {
+    transition: none;
+  }
+}
+</style>

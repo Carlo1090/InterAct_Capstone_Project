@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import api from '@/lib/axios'
 import type { AppNotification } from '@/types/api'
+import TooltipWrap from '@/components/ui/TooltipWrap.vue'
 
 const POLL_INTERVAL_MS = 60_000
 
@@ -92,26 +93,28 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="rootRef" class="relative">
-    <button
-      type="button"
-      title="Notifications"
-      class="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-      @click="toggleDropdown"
-    >
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5">
-        <path
-          d="M6 9a6 6 0 0 1 12 0c0 3.2 1 5 1.8 6H4.2C5 14 6 12.2 6 9Z"
-          stroke="currentColor"
-          stroke-width="1.6"
-          stroke-linejoin="round"
-        />
-        <path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-      </svg>
-      <span
-        v-if="unreadCount > 0"
-        class="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white"
-      >{{ unreadCount > 9 ? '9+' : unreadCount }}</span>
-    </button>
+    <TooltipWrap label="Notifications" placement="bottom" align="end">
+      <button
+        type="button"
+        aria-label="Notifications"
+        class="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+        @click="toggleDropdown"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5">
+          <path
+            d="M6 9a6 6 0 0 1 12 0c0 3.2 1 5 1.8 6H4.2C5 14 6 12.2 6 9Z"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linejoin="round"
+          />
+          <path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+        </svg>
+        <span
+          v-if="unreadCount > 0"
+          class="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white"
+        >{{ unreadCount > 9 ? '9+' : unreadCount }}</span>
+      </button>
+    </TooltipWrap>
 
     <!--
       On phones this is pinned to the VIEWPORT (fixed, inset-x-4, below the 4rem

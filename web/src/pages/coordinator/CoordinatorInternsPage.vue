@@ -342,6 +342,104 @@ const accountDraft = useFormDraft(
   { autoRestore: false },
 )
 
+/*
+ * Login credentials are DERIVED from the student's name + ID rather than typed,
+ * so the coordinator has one less thing to invent and every account follows the
+ * same shape. `touched` flags stop the derivation from overwriting a manual edit.
+ *
+ * Note the password is deliberately still absent from `accountDraft` above: it
+ * regenerates from first_name + student_id_number, both of which ARE persisted,
+ * so restore keeps working without ever writing a credential to sessionStorage.
+ */
+const usernameTouched = ref(false)
+const passwordTouched = ref(false)
+const isEditingCredentials = ref(false)
+const copiedField = ref<'username' | 'password' | null>(null)
+let copiedTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Strip diacritics (Niño → NINO) and anything that is not a letter. */
+const lettersOnly = (value: string): string =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z]/g, '')
+    .toUpperCase()
+
+/**
+ * The three-letter stem used by the PASSWORD only — the username is now the
+ * student ID itself. The top-up chain stays so the generated password is
+ * byte-identical to before for every input, short names included.
+ */
+const credentialBase = computed(() => {
+  const first = lettersOnly(accountForm.first_name)
+  if (first.length >= 3) return first.slice(0, 3)
+
+  const padded = (first + lettersOnly(accountForm.last_name)).slice(0, 3)
+  if (padded.length >= 3) return padded
+
+  // Both names can still fall short once diacritics and punctuation are
+  // stripped (e.g. "Ñ Ü" reduces to "NU"), so top up from the student ID.
+  return (padded + accountForm.student_id_number.replace(/[^A-Za-z0-9]/g, '')).slice(0, 3)
+})
+
+const canDeriveCredentials = computed(
+  () => accountForm.first_name.trim() !== '' && accountForm.student_id_number.trim() !== '',
+)
+
+/**
+ * The student ID IS the username — no casing change, no prefix, no padding, and
+ * no involvement from the name. It only populates alongside the password, which
+ * still needs the first name, hence the shared `canDeriveCredentials` gate.
+ */
+const derivedUsername = computed(() =>
+  canDeriveCredentials.value ? accountForm.student_id_number.trim() : '',
+)
+const derivedPassword = computed(() =>
+  canDeriveCredentials.value ? `${credentialBase.value}_${accountForm.student_id_number.trim()}` : '',
+)
+
+const usernameTaken = computed(() => Boolean(accountFieldError('username')))
+
+const passwordTooShort = computed(
+  () => accountForm.password.length > 0 && accountForm.password.length < 8,
+)
+
+/** The backend requires a password, so submit stays closed until one is valid. */
+const credentialsBlockSubmit = computed(() => accountForm.password.length < 8)
+
+watch(
+  [
+    () => accountForm.first_name,
+    () => accountForm.last_name,
+    () => accountForm.student_id_number,
+  ],
+  () => {
+    if (!usernameTouched.value) accountForm.username = derivedUsername.value
+    if (!passwordTouched.value) accountForm.password = derivedPassword.value
+  },
+)
+
+const resetCredentials = () => {
+  usernameTouched.value = false
+  passwordTouched.value = false
+  accountForm.username = derivedUsername.value
+  accountForm.password = derivedPassword.value
+}
+
+const copyCredential = async (value: string, field: 'username' | 'password') => {
+  try {
+    await navigator.clipboard.writeText(value)
+    copiedField.value = field
+    if (copiedTimer !== null) clearTimeout(copiedTimer)
+    copiedTimer = setTimeout(() => {
+      copiedField.value = null
+    }, 1500)
+  } catch {
+    // Clipboard is unavailable (insecure origin or denied permission) — the
+    // value is on screen and selectable, so this is not worth an error banner.
+  }
+}
+
 const openAccountModal = async () => {
   accountForm.first_name = ''
   accountForm.middle_name = ''
@@ -351,6 +449,10 @@ const openAccountModal = async () => {
   accountForm.program_id = null
   accountForm.batch_id = null
   accountForm.student_id_number = ''
+  usernameTouched.value = false
+  passwordTouched.value = false
+  isEditingCredentials.value = false
+  copiedField.value = null
   accountErrors.value = {}
   accountMessage.value = ''
   // Re-apply anything typed into a previous, unfinished session. The password
@@ -766,44 +868,6 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- Section: Login Credentials -->
-          <div class="border-t border-slate-200 pt-5">
-            <div class="flex items-center gap-2 text-slate-500">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
-                <circle cx="8" cy="15" r="3.2" stroke="currentColor" stroke-width="1.6" />
-                <path d="M10.3 12.7 18 5m0 0h-3.5M18 5v3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-              <h4 class="text-xs font-semibold uppercase tracking-wide">Login Credentials</h4>
-            </div>
-            <div class="mt-3 space-y-4">
-              <div>
-                <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-username">Username (optional)</label>
-                <input
-                  id="acct-username"
-                  v-model="accountForm.username"
-                  type="text"
-                  autocomplete="off"
-                  placeholder="e.g. juan.delacruz — leave blank to auto-generate"
-                  class="w-full rounded-md border px-3 py-2 text-sm"
-                  :class="accountFieldError('username') ? 'border-red-400' : 'border-slate-300'"
-                />
-                <p v-if="accountFieldError('username')" class="mt-1 text-xs text-red-600">{{ accountFieldError('username') }}</p>
-                <p v-else class="mt-1 text-xs text-slate-500">The student signs in with this. No spaces — letters, numbers, dots, dashes and underscores only. Leave blank to auto-generate one from their name.</p>
-              </div>
-              <div>
-                <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-password">Password (min 8)</label>
-                <input
-                  id="acct-password"
-                  v-model="accountForm.password"
-                  type="password"
-                  class="w-full rounded-md border px-3 py-2 text-sm"
-                  :class="accountFieldError('password') ? 'border-red-400' : 'border-slate-300'"
-                />
-                <p v-if="accountFieldError('password')" class="mt-1 text-xs text-red-600">{{ accountFieldError('password') }}</p>
-              </div>
-            </div>
-          </div>
-
           <!-- Section: Program Placement -->
           <div class="border-t border-slate-200 pt-5">
             <div class="flex items-center gap-2 text-slate-500">
@@ -847,17 +911,112 @@ onMounted(() => {
                   <p v-else-if="accountBatchOptions.length === 0" class="mt-1 text-xs text-amber-600">You have no batches for this program yet.</p>
                 </div>
               </div>
-              <div>
-                <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-sid">Student ID Number (optional)</label>
-                <input
-                  id="acct-sid"
-                  v-model="accountForm.student_id_number"
-                  type="text"
-                  class="w-full rounded-md border px-3 py-2 text-sm"
-                  :class="accountFieldError('student_id_number') ? 'border-red-400' : 'border-slate-300'"
-                />
-                <p v-if="accountFieldError('student_id_number')" class="mt-1 text-xs text-red-600">{{ accountFieldError('student_id_number') }}</p>
+            </div>
+          </div>
+
+          <!-- Section: Student ID Number -->
+          <div class="border-t border-slate-200 pt-5">
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="acct-sid">Student ID Number</label>
+            <input
+              id="acct-sid"
+              v-model="accountForm.student_id_number"
+              type="text"
+              class="w-full rounded-md border px-3 py-2 text-sm"
+              :class="accountFieldError('student_id_number') ? 'border-red-400' : 'border-slate-300'"
+            />
+            <p v-if="accountFieldError('student_id_number')" class="mt-1 text-xs text-red-600">{{ accountFieldError('student_id_number') }}</p>
+            <p v-else class="mt-1 text-xs text-slate-500">Used to generate the login credentials below.</p>
+          </div>
+
+          <!-- Section: Generated Login Credentials — derived, not typed -->
+          <div class="border-t border-slate-200 pt-5">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2 text-slate-500">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
+                  <circle cx="8" cy="15" r="3.2" stroke="currentColor" stroke-width="1.6" />
+                  <path d="M10.3 12.7 18 5m0 0h-3.5M18 5v3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <h4 class="text-xs font-semibold uppercase tracking-wide">Generated Login Credentials</h4>
               </div>
+              <div class="flex shrink-0 items-center gap-3">
+                <button
+                  type="button"
+                  class="text-xs font-semibold text-blue-600 transition hover:text-blue-700"
+                  @click="isEditingCredentials = !isEditingCredentials"
+                >
+                  {{ isEditingCredentials ? 'Done' : 'Edit' }}
+                </button>
+                <button
+                  v-if="usernameTouched || passwordTouched"
+                  type="button"
+                  class="text-xs font-semibold text-slate-500 transition hover:text-slate-700"
+                  @click="resetCredentials"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+
+            <p v-if="!canDeriveCredentials && !isEditingCredentials" class="mt-3 text-sm text-slate-400">
+              Fill in the name and student ID to generate credentials.
+            </p>
+
+            <div v-else class="mt-3 space-y-3">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="w-20 shrink-0 text-xs font-medium uppercase tracking-wide text-slate-400">Username</span>
+                  <input
+                    v-if="isEditingCredentials"
+                    v-model="accountForm.username"
+                    type="text"
+                    autocomplete="off"
+                    class="w-full rounded-md border px-3 py-1.5 font-mono text-sm"
+                    :class="accountFieldError('username') ? 'border-red-400' : 'border-slate-300'"
+                    @input="usernameTouched = true"
+                  />
+                  <template v-else>
+                    <span class="min-w-0 flex-1 truncate font-mono text-sm text-slate-900">{{ accountForm.username || '—' }}</span>
+                    <button
+                      type="button"
+                      class="shrink-0 text-xs font-semibold text-slate-500 transition hover:text-slate-700"
+                      @click="copyCredential(accountForm.username, 'username')"
+                    >
+                      {{ copiedField === 'username' ? 'Copied' : 'Copy' }}
+                    </button>
+                  </template>
+                </div>
+                <p v-if="usernameTaken" class="mt-1 text-xs text-red-600">{{ accountFieldError('username') }}</p>
+              </div>
+
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="w-20 shrink-0 text-xs font-medium uppercase tracking-wide text-slate-400">Password</span>
+                  <input
+                    v-if="isEditingCredentials"
+                    v-model="accountForm.password"
+                    type="text"
+                    autocomplete="off"
+                    class="w-full rounded-md border px-3 py-1.5 font-mono text-sm"
+                    :class="accountFieldError('password') || passwordTooShort ? 'border-red-400' : 'border-slate-300'"
+                    @input="passwordTouched = true"
+                  />
+                  <template v-else>
+                    <span class="min-w-0 flex-1 truncate font-mono text-sm text-slate-900">{{ accountForm.password || '—' }}</span>
+                    <button
+                      type="button"
+                      class="shrink-0 text-xs font-semibold text-slate-500 transition hover:text-slate-700"
+                      @click="copyCredential(accountForm.password, 'password')"
+                    >
+                      {{ copiedField === 'password' ? 'Copied' : 'Copy' }}
+                    </button>
+                  </template>
+                </div>
+                <p v-if="accountFieldError('password')" class="mt-1 text-xs text-red-600">{{ accountFieldError('password') }}</p>
+              </div>
+
+              <p v-if="passwordTooShort" class="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                This password is under the 8-character minimum. Use <strong>Edit</strong> to set a longer one before creating the account.
+              </p>
             </div>
           </div>
         </div>
@@ -872,7 +1031,7 @@ onMounted(() => {
           <button
             type="button"
             class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
-            :disabled="isCreatingAccount"
+            :disabled="isCreatingAccount || credentialsBlockSubmit"
             @click="submitAccount"
           >
             {{ isCreatingAccount ? 'Creating...' : 'Create Account' }}

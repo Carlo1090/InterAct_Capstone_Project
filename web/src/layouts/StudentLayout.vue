@@ -3,13 +3,14 @@ import { computed, ref } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import SidebarCollapseToggle from '@/components/layout/SidebarCollapseToggle.vue'
+import TooltipWrap from '@/components/ui/TooltipWrap.vue'
 import NotificationBell from '@/components/notifications/NotificationBell.vue'
 import ProfileMenuPopover from '@/components/profile/ProfileMenuPopover.vue'
 
 const allNavItems = [
   { label: 'Dashboard', to: '/student/dashboard', badge: '', icon: 'dashboard' },
   { label: 'My Journal Calendar', to: '/student/calendar', badge: '', icon: 'calendar' },
-  { label: 'My Journals', to: '/student/journals', badge: '2', icon: 'journals' },
+  { label: 'My Journals', to: '/student/journals', badge: '', icon: 'journals' },
   { label: 'Write Daily Journal', to: '/student/write-journal', badge: '', icon: 'pencil' },
   { label: 'Weekly Journals', to: '/student/weekly-journals', badge: '', icon: 'stack' },
   { label: 'Student Info Sheet', to: '/student/info-sheet', badge: '', icon: 'id-card' },
@@ -72,9 +73,14 @@ const department = computed(() => auth.user?.program?.department?.name ?? 'CAST'
       <div class="mx-3 mb-2 border-t border-white/20" />
 
       <nav class="flex-1 space-y-1 overflow-y-auto px-3 py-2">
-        <RouterLink
+        <component
+          :is="collapsed ? TooltipWrap : 'div'"
           v-for="item in navItems"
           :key="item.to"
+          v-bind="collapsed ? { label: item.label, placement: 'right' } : {}"
+          class="w-full"
+        >
+        <RouterLink
           :to="item.to"
           class="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-blue-100 transition hover:bg-white/10 hover:text-white"
           :class="collapsed && 'md:justify-center md:px-0'"
@@ -123,6 +129,7 @@ const department = computed(() => auth.user?.program?.department?.name ?? 'CAST'
             class="rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white"
           >{{ item.badge }}</span>
         </RouterLink>
+        </component>
       </nav>
 
       <SidebarCollapseToggle :collapsed="collapsed" @toggle="collapsed = !collapsed" />

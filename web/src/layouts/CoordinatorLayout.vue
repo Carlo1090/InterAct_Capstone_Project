@@ -4,6 +4,7 @@ import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/lib/axios'
 import SidebarCollapseToggle from '@/components/layout/SidebarCollapseToggle.vue'
+import TooltipWrap from '@/components/ui/TooltipWrap.vue'
 import NotificationBell from '@/components/notifications/NotificationBell.vue'
 import ProfileMenuPopover from '@/components/profile/ProfileMenuPopover.vue'
 
@@ -117,9 +118,14 @@ onBeforeUnmount(() => {
       <div class="mx-3 mb-2 border-t border-white/20" />
 
       <nav class="flex-1 space-y-1 overflow-y-auto px-3 py-2">
-        <RouterLink
+        <component
+          :is="collapsed ? TooltipWrap : 'div'"
           v-for="item in navItems"
           :key="item.to"
+          v-bind="collapsed ? { label: item.label, placement: 'right' } : {}"
+          class="w-full"
+        >
+        <RouterLink
           :to="item.to"
           class="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-blue-100 transition hover:bg-white/10 hover:text-white"
           :class="collapsed && 'md:justify-center md:px-0'"
@@ -184,6 +190,7 @@ onBeforeUnmount(() => {
             title="New submissions"
           />
         </RouterLink>
+        </component>
       </nav>
 
       <SidebarCollapseToggle :collapsed="collapsed" @toggle="collapsed = !collapsed" />
