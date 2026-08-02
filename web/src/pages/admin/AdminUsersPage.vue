@@ -4,7 +4,11 @@ import axios from 'axios'
 import api from '@/lib/axios'
 import { confirmAction, showToast } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
+import LoadStatus from '@/components/LoadStatus.vue'
+import TableSkeleton from '@/components/ui/skeletons/TableSkeleton.vue'
 import type { Department, PaginatedResponse, User } from '@/types/api'
+
+const USER_TABLE_HEADERS = ['Name', 'Email', 'Role', 'Program', 'Department', 'Status', 'Actions']
 
 type UserPayload = {
   first_name: string
@@ -183,12 +187,13 @@ onMounted(() => {
       </select>
     </div>
 
-    <p v-if="isLoading" class="mt-6 text-sm text-slate-500">Loading...</p>
-    <p v-else-if="errorMessage" class="mt-6 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
-      {{ errorMessage }}
-    </p>
+    <div class="mt-6">
+      <LoadStatus :loading="isLoading" :error="errorMessage">
+        <template #skeleton>
+          <TableSkeleton :headers="USER_TABLE_HEADERS" :rows="6" />
+        </template>
 
-    <div v-else class="mt-6 overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+        <div class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
       <table class="min-w-full divide-y divide-slate-200">
         <thead class="bg-slate-50">
           <tr>
@@ -249,6 +254,8 @@ onMounted(() => {
           </tr>
         </tbody>
       </table>
+        </div>
+      </LoadStatus>
     </div>
 
     <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4">

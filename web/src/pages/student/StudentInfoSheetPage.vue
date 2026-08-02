@@ -4,6 +4,8 @@ import api from '@/lib/axios'
 import { categorizeError } from '@/lib/apiError'
 import { confirmAction, showToast } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
+import LoadStatus from '@/components/LoadStatus.vue'
+import FormSkeleton from '@/components/ui/skeletons/FormSkeleton.vue'
 import { useAuthStore } from '@/stores/auth'
 import type { InfoSheet, InfoSheetStatus, StudentCompanyOption } from '@/types/api'
 
@@ -12,6 +14,10 @@ const auth = useAuthStore()
 const isLoading = ref(true)
 const isSaving = ref(false)
 const errorMessage = ref('')
+// Separate from errorMessage (which also carries save/validation failures) so
+// a save error after the page has loaded can't get caught by LoadStatus's
+// error branch and blank out the whole filled-in form.
+const loadErrorMessage = ref('')
 // Keyed by the dotted field path (e.g. 'personal_info.first_name'); drives the
 // red ring + "field required" hint next to each offending input.
 const fieldErrors = ref<Record<string, boolean>>({})
@@ -74,6 +80,7 @@ const downloadPdf = () => {
 const loadInfoSheet = async () => {
   isLoading.value = true
   errorMessage.value = ''
+  loadErrorMessage.value = ''
 
   try {
     const [{ data }, companyResponse] = await Promise.all([
@@ -92,7 +99,7 @@ const loadInfoSheet = async () => {
       ojtInfo.company_id = companies.value.find((company) => company.name === ojtInfo.host_company)?.id ?? null
     }
   } catch {
-    errorMessage.value = 'Unable to load your info sheet.'
+    loadErrorMessage.value = 'Unable to load your info sheet.'
   } finally {
     isLoading.value = false
   }
@@ -205,9 +212,12 @@ onMounted(loadInfoSheet)
       </button>
     </div>
 
-    <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
+    <LoadStatus :loading="isLoading" :error="loadErrorMessage" :retry="loadInfoSheet">
+      <template #skeleton>
+        <FormSkeleton :sections="2" :fields-per-section="4" />
+      </template>
 
-    <form v-else class="rounded-lg bg-white p-6 shadow-sm ring-1 ring-slate-200" @submit.prevent>
+    <form class="rounded-lg bg-white p-6 shadow-sm ring-1 ring-slate-200" @submit.prevent>
       <!-- STUDENT TRAINEE INFORMATION -->
       <div class="rounded-lg bg-slate-50 p-5">
         <h2 class="text-xs font-bold uppercase tracking-wide text-blue-700">Student Trainee Information</h2>
@@ -372,5 +382,6 @@ onMounted(loadInfoSheet)
         </button>
       </div>
     </form>
+    </LoadStatus>
   </section>
 </template>

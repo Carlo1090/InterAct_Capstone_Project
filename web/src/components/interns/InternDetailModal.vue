@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import DetailPanelSkeleton from '@/components/ui/skeletons/DetailPanelSkeleton.vue'
 import type { InternDetail } from '@/types/api'
 
 const props = defineProps<{ detail: InternDetail | null; isLoading: boolean; errorMessage?: string }>()
@@ -29,7 +30,7 @@ const formatDate = (value: string | null | undefined): string => {
         <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="$emit('close')">Close</button>
       </div>
 
-      <p v-if="isLoading" class="mt-6 text-sm text-slate-500">Loading...</p>
+      <DetailPanelSkeleton v-if="isLoading" :fields="6" :placement-fields="3" />
       <p v-else-if="errorMessage" class="mt-6 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ errorMessage }}</p>
 
       <div v-else-if="detail" class="mt-5 space-y-5">

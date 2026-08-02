@@ -7,6 +7,8 @@ import { categorizeError } from '@/lib/apiError'
 import ToastHost from '@/components/ToastHost.vue'
 import InternDetailModal from '@/components/interns/InternDetailModal.vue'
 import DangerCountdownModal from '@/components/ui/DangerCountdownModal.vue'
+import LoadStatus from '@/components/LoadStatus.vue'
+import TableSkeleton from '@/components/ui/skeletons/TableSkeleton.vue'
 import type {
   CoordinatorCompany,
   CoordinatorInternUser,
@@ -17,6 +19,8 @@ import type {
 } from '@/types/api'
 
 type UsersTab = 'interns' | 'supervisors'
+
+const INTERN_TABLE_HEADERS = ['Student', 'Program', 'Enrollment', 'Batch', 'Company', 'Supervisor', 'Action']
 
 const activeTab = ref<UsersTab>('interns')
 
@@ -475,11 +479,13 @@ onMounted(() => {
       </button>
     </div>
 
-    <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
-    <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
+    <LoadStatus :loading="isLoading" :error="errorMessage">
+      <template #skeleton>
+        <TableSkeleton :headers="INTERN_TABLE_HEADERS" :rows="6" />
+      </template>
 
     <!-- Interns tab -->
-    <template v-else-if="activeTab === 'interns'">
+    <template v-if="activeTab === 'interns'">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <p class="text-xs text-slate-500">
           <span class="font-semibold text-green-700">{{ enrolledCount }}</span> enrolled ·
@@ -611,6 +617,7 @@ onMounted(() => {
         </table>
       </div>
     </template>
+    </LoadStatus>
 
     <!-- Enroll modal -->
     <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
