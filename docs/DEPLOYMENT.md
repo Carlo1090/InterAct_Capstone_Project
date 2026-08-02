@@ -7,7 +7,7 @@ cost** — no paid tier, and no credit card required anywhere in this path.
 Everything in the repo is already prepared for this. What remains is creating
 three free accounts, pasting environment variables, and filling one placeholder.
 
-> **Current status:** the application code is deploy-ready (395 tests passing,
+> **Current status:** the application code is deploy-ready (416 tests passing,
 > SPA build clean, `composer audit` clean). The Docker image has **never been
 > built** — there is no Docker daemon on the machine it was written on, so
 > Render's first build log is its first real test. Budget time for one or two
@@ -22,7 +22,7 @@ three free accounts, pasting environment variables, and filling one placeholder.
 | Vue SPA (`web/`) | **Vercel Hobby** | Free | Static Vite build. No card. |
 | Laravel API (repo root) | **Render**, free web service, Docker | Free | No card. **Sleeps after 15 min idle**; first request then takes 30–60s. |
 | Database | **Aiven** managed MySQL, free plan | Free | No card, 1 GB, **does not expire**. |
-| Scheduled jobs | *not deployed* | — | Render cron has no free tier. See [§9](#9-known-limitations-of-this-free-stack). |
+| Scheduled jobs | **cron-job.org** → `/api/cron/run` | Free | Render cron has no free tier, so an external scheduler pings an endpoint instead. Setup: [`CRON-AND-EMAIL-SETUP.txt`](CRON-AND-EMAIL-SETUP.txt). |
 | Avatar storage | container disk (ephemeral) | Free | Uploaded photos are lost on redeploy. See [§9](#9-known-limitations-of-this-free-stack). |
 
 Two choices worth understanding before you start, because they explain
@@ -99,6 +99,7 @@ Nothing else here. Migrations run automatically on the API's first boot.
    | `SEED_ON_BOOT` | `demo` |
    | `DEMO_PASSWORD` | your 12+ character password |
    | `APP_URL`, `FRONTEND_URL`, `SANCTUM_STATEFUL_DOMAINS`, `GOOGLE_*` | **leave blank for now** — filled in §6 |
+   | `CRON_SECRET`, `MAIL_*` | **leave blank for now** — see [`CRON-AND-EMAIL-SETUP.txt`](CRON-AND-EMAIL-SETUP.txt). A blank `CRON_SECRET` disables the cron endpoint (404) rather than leaving it open, so skipping it is safe |
 
    Everything else (`APP_ENV=production`, `APP_DEBUG=false`,
    `APP_TIMEZONE=Asia/Manila`, session and queue settings) is already committed
@@ -240,9 +241,10 @@ What is **not** affected by ongoing work:
 | Limitation | Impact | Mitigation |
 |---|---|---|
 | API sleeps after 15 min idle | First request takes 30–60s | Open the site a minute before demoing, or point a free pinger (cron-job.org, UptimeRobot) at `/up` every 10 min |
-| No cron | Weekly bundling, the nightly archive purge, and hourly journal reminders **do not run** | The **admin → System Settings** page has manual triggers for weekly bundling and the archive purge |
+| No cron | Weekly bundling, the nightly archive purge, and hourly journal reminders have no scheduler | **Solved** — set `CRON_SECRET` and point cron-job.org at `/api/cron/run` hourly. See [`CRON-AND-EMAIL-SETUP.txt`](CRON-AND-EMAIL-SETUP.txt). (The admin → System Settings manual triggers this table used to recommend were removed on 2026-08-01; the endpoint replaces them.) |
 | Ephemeral filesystem | Uploaded avatars vanish on redeploy | Set `AVATAR_DISK=r2` plus the `R2_*` variables — already wired, pure env flip, but R2 needs a card on Cloudflare |
-| `MAIL_MAILER=log` | No email is sent at all | Intentional. Reminder email only targets Google-verified addresses, of which a fresh seed has none |
+| `MAIL_MAILER=log` is the default | No email is sent at all until you change it | Intentional, so a deploy cannot email real students by accident. To send for real, add the Gmail app-password variables — see [`CRON-AND-EMAIL-SETUP.txt`](CRON-AND-EMAIL-SETUP.txt) §3 |
+| Email needs a *verified* address | Even with SMTP configured, a fresh seed emails **nobody** | Not a bug. `email_verified_at` is set **only** by Google "Verify with Google", so reminder email depends on §7 being finished first. Unverified students still get the in-app bell row |
 | Aiven free: 1 GB | Ample for a demo | — |
 
 ---
@@ -270,6 +272,11 @@ variable.
 | Profile photo broken, **403** | The file genuinely is not on disk | Expected after a redeploy — ephemeral filesystem (§9) |
 | Demo logins rejected | `demo:set-password` rotated them | Use your `DEMO_PASSWORD`, not `password` |
 | Migrations fail on first boot | DB credentials or Aiven not reachable | Re-check the five `DB_*` values; confirm the Aiven service is *Running* |
+| `/api/cron/run` 404s with the right key | `CRON_SECRET` unset, or the service has not redeployed since you set it | Set it, wait for the redeploy to go green. A blank secret disables the endpoint **by design** |
+| Cron runs 200 but `emailed: 0` | Usually correct: nobody has a Google-verified address, or it is nobody's chosen reminder hour, or they were already reminded today | See the email row in §9 |
+| Mail: `The "tls" scheme is not supported` | `MAIL_SCHEME=tls` | Set it to `null` — port 587 negotiates STARTTLS itself. Symfony Mailer only accepts `smtp`/`smtps` |
+| Mail: `Failed to authenticate on SMTP server` | Using the Gmail account password instead of a 16-character App Password | Generate an App Password (2-Step Verification must be on first) and paste it with the spaces removed |
+| Email arrives signed *"Laravel"* | `APP_NAME` not set | Set `APP_NAME=InternTrack` |
 
 ---
 
