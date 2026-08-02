@@ -21,6 +21,7 @@ use App\Http\Controllers\Coordinator\EnrollmentController;
 use App\Http\Controllers\Coordinator\GroupInfoSheetController;
 use App\Http\Controllers\Coordinator\HteReportController;
 use App\Http\Controllers\Coordinator\JournalTemplateController;
+use App\Http\Controllers\CronController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Student\JournalCalendarController;
@@ -42,6 +43,15 @@ use Illuminate\Support\Facades\Route;
 // APP_DEBUG is on) for any non-date input.
 Route::pattern('date', '\d{4}-\d{2}-\d{2}');
 Route::pattern('weekStart', '\d{4}-\d{2}-\d{2}');
+
+// Scheduled work, triggerable over HTTP for hosts with no cron (the deploy
+// stack's free tier has none, so routes/console.php never runs there). Guarded
+// by CRON_SECRET, not by auth — the caller is an external scheduler, not a user.
+// Unauthenticated on purpose; 404s unless the secret is both set and matched.
+// GET is accepted alongside POST because several free cron services only issue
+// a plain GET. Throttled tightly since it is public-facing and does real work.
+Route::match(['get', 'post'], 'cron/run', [CronController::class, 'run'])
+    ->middleware('throttle:12,1');
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     $user = $request->user()->load('program.department');
