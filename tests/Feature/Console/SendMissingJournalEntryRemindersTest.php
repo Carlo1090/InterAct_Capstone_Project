@@ -4,6 +4,7 @@ namespace Tests\Feature\Console;
 
 use App\Models\JournalEntry;
 use App\Models\SystemSetting;
+use App\Models\User;
 use App\Notifications\MissingJournalEntryReminder;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -29,7 +30,15 @@ class SendMissingJournalEntryRemindersTest extends TestCase
 
     private const SATURDAY = '2026-08-01 21:00:00';
 
-    public function test_it_reminds_students_with_no_submitted_entry_today_and_skips_the_rest(): void
+    /** Monday, Tuesday and Wednesday of DUE_WEDNESDAY's week. */
+    private const WEEK_SO_FAR = ['2026-07-06', '2026-07-07', '2026-07-08'];
+
+    /**
+     * "Up to date" means the whole week, not just today: the reminder covers
+     * every day still owed since Monday, so a student is only skipped once
+     * there is nothing left missing at all.
+     */
+    public function test_it_reminds_students_with_a_missing_entry_and_skips_those_up_to_date(): void
     {
         Notification::fake();
         $this->travelTo(Carbon::parse(self::DUE_WEDNESDAY));
@@ -37,14 +46,9 @@ class SendMissingJournalEntryRemindersTest extends TestCase
         $studentWithNoEntry = $this->enrolledStudent();
         $studentWhoSubmitted = $this->enrolledStudent();
 
-        JournalEntry::create([
-            'student_id' => $studentWhoSubmitted->id,
-            'batch_id' => $studentWhoSubmitted->batchEnrollment->batch_id,
-            'entry_date' => now()->toDateString(),
-            'content' => ['Tasks Performed' => 'Already submitted today.'],
-            'status' => 'submitted',
-            'submitted_at' => now(),
-        ]);
+        foreach (self::WEEK_SO_FAR as $date) {
+            $this->submitEntry($studentWhoSubmitted, $date);
+        }
 
         $this->artisan('journal:send-missing-entry-reminders')->assertSuccessful();
 
@@ -216,6 +220,147 @@ class SendMissingJournalEntryRemindersTest extends TestCase
         $this->assertDatabaseHas('notifications', [
             'user_id' => $student->id,
             'type' => 'in_app',
+        ]);
+    }
+
+    /**
+     * The point of the feature: every day still owed this week arrives in ONE
+     * message, because the same-day dedupe means there is no second send.
+     */
+    public function test_every_missing_day_of_the_week_arrives_in_a_single_message(): void
+    {
+        Notification::fake();
+        $this->travelTo(Carbon::parse(self::DUE_WEDNESDAY));
+
+        $student = $this->enrolledStudent();
+
+        $this->artisan('journal:send-missing-entry-reminders')->assertSuccessful();
+
+        Notification::assertSentTimes(MissingJournalEntryReminder::class, 1);
+        Notification::assertSentTo($student, MissingJournalEntryReminder::class, function ($notification) use ($student) {
+            $mail = $notification->toMail($student);
+            $body = implode("\n", $mail->introLines);
+
+            return $mail->subject === '[InternTrack] You have 3 missing journal entries this week'
+                && str_contains($body, 'today, Wednesday, July 8, 2026')
+                && str_contains($body, '2 earlier days this week are also still missing')
+                && str_contains($body, '• Monday, July 6, 2026')
+                && str_contains($body, '• Tuesday, July 7, 2026');
+        });
+
+        // The in-app bell row names the same days.
+        $this->assertDatabaseHas('notifications', [
+            'user_id' => $student->id,
+            'message' => 'You have 3 missing journal entries this week: Jul 6, Jul 7, Jul 8.',
+        ]);
+    }
+
+    public function test_a_single_missing_day_reads_in_the_singular(): void
+    {
+        Notification::fake();
+        $this->travelTo(Carbon::parse(self::DUE_WEDNESDAY));
+
+        $student = $this->enrolledStudent();
+        $this->submitEntry($student, '2026-07-06');
+        $this->submitEntry($student, '2026-07-07');
+
+        $this->artisan('journal:send-missing-entry-reminders')->assertSuccessful();
+
+        Notification::assertSentTo($student, MissingJournalEntryReminder::class, function ($notification) use ($student) {
+            $mail = $notification->toMail($student);
+            $body = implode("\n", $mail->introLines);
+
+            return $mail->subject === '[InternTrack] Missing journal entry for today'
+                && str_contains($body, 'today, Wednesday, July 8, 2026')
+                && ! str_contains($body, 'earlier day')
+                && str_contains($body, 'Please write it up');
+        });
+
+        $this->assertDatabaseHas('notifications', [
+            'user_id' => $student->id,
+            'message' => 'You have not submitted your daily journal entry for Jul 8, 2026.',
+        ]);
+    }
+
+    /**
+     * Today submitted but earlier days blank. The old command skipped this
+     * student outright, so the backlog was never mentioned at all.
+     */
+    public function test_a_student_up_to_date_today_is_still_reminded_about_earlier_days(): void
+    {
+        Notification::fake();
+        $this->travelTo(Carbon::parse(self::DUE_WEDNESDAY));
+
+        $student = $this->enrolledStudent();
+        $this->submitEntry($student, '2026-07-08');
+
+        $this->artisan('journal:send-missing-entry-reminders')->assertSuccessful();
+
+        Notification::assertSentTo($student, MissingJournalEntryReminder::class, function ($notification) use ($student) {
+            $mail = $notification->toMail($student);
+            $body = implode("\n", $mail->introLines);
+
+            return $mail->subject === '[InternTrack] You have 2 missing journal entries this week'
+                && str_contains($body, 'You are up to date for today, but 2 earlier days this week are still missing')
+                && str_contains($body, '• Monday, July 6, 2026')
+                && str_contains($body, '• Tuesday, July 7, 2026')
+                && ! str_contains($body, 'July 8');
+        });
+    }
+
+    /**
+     * Reminder preferences decide WHEN a student is nudged, never what counts
+     * as missing — otherwise narrowing reminder_days would quietly shrink the
+     * backlog a student owes. The yardstick stays the batch's working days.
+     */
+    public function test_narrowing_reminder_days_does_not_shrink_the_missing_list(): void
+    {
+        Notification::fake();
+        $this->travelTo(Carbon::parse(self::DUE_WEDNESDAY));
+
+        $student = $this->enrolledStudent();
+        // Wednesday only — yet Monday and Tuesday are still owed.
+        $student->studentProfile()->update(['reminder_days' => '3']);
+
+        $this->artisan('journal:send-missing-entry-reminders')->assertSuccessful();
+
+        Notification::assertSentTo($student, MissingJournalEntryReminder::class, function ($notification) use ($student) {
+            return $notification->toMail($student)->subject === '[InternTrack] You have 3 missing journal entries this week';
+        });
+    }
+
+    /**
+     * A non-working day is never owed, so it can never appear in the backlog —
+     * even for a student who opted into being reminded on it.
+     */
+    public function test_a_weekend_is_never_counted_as_a_missing_day(): void
+    {
+        Notification::fake();
+        $this->travelTo(Carbon::parse(self::SATURDAY));
+
+        $student = $this->enrolledStudent(['working_days_per_week' => 5]);
+        $student->studentProfile()->update(['reminder_days' => '1,2,3,4,5,6']);
+
+        $this->artisan('journal:send-missing-entry-reminders')->assertSuccessful();
+
+        // Mon 27 Jul .. Fri 31 Jul are owed; Saturday 1 Aug itself is not.
+        Notification::assertSentTo($student, MissingJournalEntryReminder::class, function ($notification) use ($student) {
+            $mail = $notification->toMail($student);
+
+            return $mail->subject === '[InternTrack] You have 5 missing journal entries this week'
+                && ! str_contains(implode("\n", $mail->introLines), 'August 1');
+        });
+    }
+
+    private function submitEntry(User $student, string $date): void
+    {
+        JournalEntry::create([
+            'student_id' => $student->id,
+            'batch_id' => $student->batchEnrollment->batch_id,
+            'entry_date' => $date,
+            'content' => ['Tasks Performed' => 'Submitted.'],
+            'status' => 'submitted',
+            'submitted_at' => now(),
         ]);
     }
 }

@@ -7,12 +7,16 @@ use App\Models\JournalEntry;
 use App\Models\Notification as NotificationRecord;
 use App\Models\User;
 use App\Notifications\MissingJournalEntryReminder;
+use App\Support\BatchWorkingDays;
 use App\Support\ReminderSchedule;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 
 /**
- * Nudges enrolled students who have not submitted today's daily journal entry.
+ * Nudges enrolled students about every daily journal entry they still owe for
+ * the CURRENT WEEK — one message per trigger listing all missing days, not one
+ * message per day. The dedupe below allows at most one contact per student per
+ * day, so the message has to carry the whole backlog or the rest goes unsaid.
  *
  * Scheduled HOURLY (routes/console.php) rather than once a day, because each
  * student may choose their own reminder hour — the command itself decides whose
@@ -74,14 +78,14 @@ class SendMissingJournalEntryReminders extends Command
                     continue;
                 }
 
-                $hasSubmitted = JournalEntry::where('student_id', $student->id)
-                    ->whereDate('entry_date', $today->toDateString())
-                    ->where('status', 'submitted')
-                    ->exists();
+                // The whole week's backlog, not just today — one trigger sends
+                // one message covering every day still owed (the dedupe below
+                // means there is no second chance to mention the rest).
+                $missingDates = $this->missingDatesThisWeek($student->id, $batch, $today);
 
-                if ($hasSubmitted) {
+                if ($missingDates === []) {
                     $skippedSubmitted++;
-                    $this->line("Skipped {$this->label($student)}: already submitted for {$today->toDateString()}.");
+                    $this->line("Skipped {$this->label($student)}: nothing missing this week.");
 
                     continue;
                 }
@@ -101,14 +105,14 @@ class SendMissingJournalEntryReminders extends Command
                 $canEmail = $student->email !== null && $student->email_verified_at !== null;
 
                 if ($canEmail) {
-                    $student->notify(new MissingJournalEntryReminder($today->toDateString()));
+                    $student->notify(new MissingJournalEntryReminder($missingDates, $today->toDateString()));
                     $emailed++;
                 }
 
                 NotificationRecord::create([
                     'user_id' => $student->id,
                     'title' => self::TITLE,
-                    'message' => "You have not submitted your daily journal entry for {$today->toDateString()}.",
+                    'message' => MissingJournalEntryReminder::inAppMessage($missingDates, $today->toDateString()),
                     // Report what actually happened. This used to always say
                     // 'email' even when nothing was sent and the student had no
                     // address on file.
@@ -121,16 +125,74 @@ class SendMissingJournalEntryReminders extends Command
                 ]);
 
                 $reminded++;
-                $this->line("Reminded {$this->label($student)} for {$today->toDateString()} (".($canEmail ? 'email + in-app' : 'in-app only').').');
+                $this->line(
+                    "Reminded {$this->label($student)} about ".count($missingDates).' missing day(s) '.
+                    '['.implode(', ', $missingDates).'] ('.($canEmail ? 'email + in-app' : 'in-app only').').'
+                );
             }
         }
 
         $this->info(
-            "Done. Reminded: {$reminded} (emailed: {$emailed}), already submitted: {$skippedSubmitted}, ".
+            "Done. Reminded: {$reminded} (emailed: {$emailed}), nothing missing this week: {$skippedSubmitted}, ".
             "not a reminder day: {$notScheduled}, not their hour: {$notTheirHour}, already reminded today: {$alreadyReminded}."
         );
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Every working day from the later of (this week's Monday, the batch start)
+     * through today with no submitted entry.
+     *
+     * Derived, never queried: journal_entries.status only ever holds draft or
+     * submitted, so a "missing" row does not exist. This mirrors exactly how
+     * StudentDashboardController::countMissingWorkingDays() and
+     * JournalCalendarController::statusFor() decide the same question, so the
+     * reminder can never disagree with the number on the student's dashboard.
+     *
+     * The yardstick is BatchWorkingDays — deliberately NOT ReminderSchedule.
+     * A student narrowing their reminder_days must not thereby shrink the list
+     * of entries they owe; reminder preferences decide when we nudge, never
+     * what counts as missing.
+     *
+     * @return list<string> Y-m-d, ascending
+     */
+    private function missingDatesThisWeek(int $studentId, Batch $batch, Carbon $today): array
+    {
+        $weekStart = $today->copy()->startOfWeek();
+        $batchStart = $batch->start_date->copy()->startOfDay();
+        $cursor = $batchStart->greaterThan($weekStart) ? $batchStart : $weekStart;
+
+        if ($cursor->gt($today)) {
+            return [];
+        }
+
+        $submitted = JournalEntry::where('student_id', $studentId)
+            ->where('batch_id', $batch->id)
+            ->where('status', 'submitted')
+            // whereDate on both bounds, never whereBetween: entry_date is a
+            // date-cast column and SQLite stores it with a time component,
+            // which sorts after a bare upper bound and drops the last day.
+            ->whereDate('entry_date', '>=', $cursor->toDateString())
+            ->whereDate('entry_date', '<=', $today->toDateString())
+            ->pluck('entry_date')
+            ->map(fn ($date) => $date->toDateString())
+            ->all();
+
+        $missing = [];
+
+        while ($cursor->lte($today)) {
+            $date = $cursor->toDateString();
+
+            if (BatchWorkingDays::isWorkingDay($cursor, $batch->working_days_per_week)
+                && ! in_array($date, $submitted, true)) {
+                $missing[] = $date;
+            }
+
+            $cursor->addDay();
+        }
+
+        return $missing;
     }
 
     private function alreadyRemindedToday(int $studentId, Carbon $today): bool
