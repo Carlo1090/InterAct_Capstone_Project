@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import type { JournalActivityDetail, JournalActivityResponse, JournalActivityRow } from '@/types/api'
@@ -55,6 +55,20 @@ const resetToToday = () => {
   status.value = ''
   load()
 }
+
+/**
+ * Whether anything has been narrowed away from the page's default view (today,
+ * all companies/programs/statuses). The date defaults to today rather than
+ * blank, so a non-today date counts as a filter here.
+ */
+const hasFilters = computed(
+  () =>
+    from.value !== today ||
+    to.value !== today ||
+    companyId.value !== null ||
+    programId.value !== null ||
+    status.value !== '',
+)
 
 const formatTime = (iso: string | null): string => {
   if (!iso) return '—'
@@ -168,7 +182,17 @@ onMounted(load)
         </thead>
         <tbody class="divide-y divide-slate-100">
           <tr v-if="rows.length === 0">
-            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="6">No interns match these filters.</td>
+            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="6">
+              {{ hasFilters ? 'No interns match these filters.' : 'No active interns in your programs yet.' }}
+              <button
+                v-if="hasFilters"
+                type="button"
+                class="mt-2 block w-full text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+                @click="resetToToday"
+              >
+                Reset to today
+              </button>
+            </td>
           </tr>
           <tr v-for="row in rows" :key="row.student_id">
             <td class="px-4 py-3 text-sm font-semibold text-slate-900">{{ row.student_name }}</td>
@@ -231,7 +255,10 @@ onMounted(load)
             {{ detail.status === 'submitted' ? 'Submitted' : 'Missing' }}
           </span>
 
-          <p v-if="detail.sections.length === 0" class="text-sm text-slate-500">This batch has no journal template configured.</p>
+          <p v-if="detail.sections.length === 0" class="text-sm text-slate-500">
+            This batch has no journal template configured. Assign one on the Journal Templates page so its interns have
+            fields to write in.
+          </p>
 
           <div v-for="section in detail.sections" :key="section.key" class="rounded-md border border-slate-200 p-3">
             <p class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ section.label }}</p>

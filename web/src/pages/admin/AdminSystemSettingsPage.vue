@@ -130,9 +130,13 @@ watch(studentSearch, () => {
 })
 
 const issueTemporaryPassword = async (student: User) => {
-  if (!(await confirmAction(`Issue a temporary password for ${student.name}? Their current password will stop working immediately.`))) {
-    return
-  }
+  const confirmed = await confirmAction({
+    title: 'Issue a temporary password?',
+    message: `Issue a temporary password for ${student.name}? Their current password will stop working immediately.`,
+    confirmLabel: 'Issue Password',
+    tone: 'danger',
+  })
+  if (!confirmed) return
 
   issuingForId.value = student.id
   issueError.value = ''

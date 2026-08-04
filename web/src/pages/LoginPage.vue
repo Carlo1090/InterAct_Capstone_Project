@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
+import { ensureCsrfCookie, useAuthStore } from '@/stores/auth'
 import { roleRedirect } from '@/router/index.ts'
 import { consumeQueryParam, googleErrorMessage, googleLoginUrl } from '@/lib/googleAuth'
 
@@ -143,6 +143,14 @@ const signInWithGoogle = () => {
 }
 
 onMounted(() => {
+  // Warm Sanctum's XSRF cookie NOW, while the user is still typing, so it is no
+  // longer one of the calls blocking the Login button. Fire-and-forget with the
+  // error swallowed on purpose — login() awaits the same memoised promise, so a
+  // failed prime just means it is fetched then, exactly as it used to be. This
+  // must never break the form, matching the try/catch posture used for
+  // sessionStorage above.
+  void ensureCsrfCookie().catch(() => {})
+
   // The OAuth callback bounces failures back here as ?google_error=<code>.
   errorMessage.value = googleErrorMessage(consumeQueryParam('google_error'))
 
@@ -165,7 +173,11 @@ const login = async () => {
     // storage for the rest of the session. A FAILED login deliberately keeps
     // both, since that is the case where retyping is the actual annoyance.
     clearStoredCredentials()
-    router.push(roleRedirect(auth.role))
+    // Awaited so `isLoading` stays true until the destination is actually on
+    // screen. router.push resolves only after the guard passes AND the lazy
+    // layout + page chunks have loaded; leaving it unawaited flipped the button
+    // back to "Login" while the page was still visibly stationary.
+    await router.push(roleRedirect(auth.role))
   } catch {
     errorMessage.value = 'Invalid credentials. Please try again.'
   } finally {

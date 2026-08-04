@@ -109,9 +109,24 @@ watch(internsProgramFilter, () => {
   })
 })
 
+// An empty table means either "no students in scope" or "the filter hid them
+// all", and only the second one has a way out.
+const hasInternsFilter = computed(() => internsProgramFilter.value !== null)
+const clearInternsFilter = () => {
+  internsProgramFilter.value = null
+}
+
 // --- Supervisors tab: company + batch filters (client-side) -----------------
 const supervisorCompanyFilter = ref<number | null>(null)
 const supervisorBatchFilter = ref<number | null>(null)
+
+const hasSupervisorFilters = computed(
+  () => supervisorCompanyFilter.value !== null || supervisorBatchFilter.value !== null,
+)
+const clearSupervisorFilters = () => {
+  supervisorCompanyFilter.value = null
+  supervisorBatchFilter.value = null
+}
 
 const loadSupervisors = async () => {
   const { data } = await api.get<CoordinatorSupervisorUser[]>('/api/coordinator/users/supervisors')
@@ -637,7 +652,21 @@ onMounted(() => {
           </thead>
           <tbody class="divide-y divide-slate-100">
             <tr v-if="interns.length === 0">
-              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="7">No students match this filter.</td>
+              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="7">
+                {{
+                  hasInternsFilter
+                    ? 'No students match this filter.'
+                    : 'No students in your programs yet. Use "Create Student Account" to add one.'
+                }}
+                <button
+                  v-if="hasInternsFilter"
+                  type="button"
+                  class="mt-2 block w-full text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+                  @click="clearInternsFilter"
+                >
+                  Clear filter
+                </button>
+              </td>
             </tr>
             <tr v-for="student in interns" :key="student.id">
               <td class="px-4 py-3">
@@ -704,7 +733,21 @@ onMounted(() => {
           </thead>
           <tbody class="divide-y divide-slate-100">
             <tr v-if="filteredSupervisors.length === 0">
-              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="5">No supervisors match these filters.</td>
+              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="5">
+                {{
+                  hasSupervisorFilters
+                    ? 'No supervisors match these filters.'
+                    : 'No supervisors on your companies yet. Use "Create Supervisor" to add one.'
+                }}
+                <button
+                  v-if="hasSupervisorFilters"
+                  type="button"
+                  class="mt-2 block w-full text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+                  @click="clearSupervisorFilters"
+                >
+                  Clear filters
+                </button>
+              </td>
             </tr>
             <tr v-for="supervisor in filteredSupervisors" :key="supervisor.id">
               <td class="px-4 py-3 text-sm font-semibold text-slate-900">{{ supervisor.name }}</td>
@@ -781,7 +824,12 @@ onMounted(() => {
             <p class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
               <template v-if="!enrollForm.company_id">Select a company first.</template>
               <template v-else-if="enrollResolvedSupervisor">{{ enrollResolvedSupervisor.name }} ({{ enrollResolvedSupervisor.email }})</template>
-              <template v-else><span class="text-amber-600">This company has no supervisor account yet.</span></template>
+              <template v-else
+                ><span class="text-amber-600"
+                  >This company has no supervisor account yet. Attach one on Partner Companies before enrolling interns
+                  here.</span
+                ></template
+              >
             </p>
             <p class="mt-1 text-xs text-slate-500">Assigned automatically from the company — every supervisor is a Company Supervisor.</p>
           </div>
@@ -908,7 +956,9 @@ onMounted(() => {
                   </select>
                   <p v-if="accountFieldError('batch_id')" class="mt-1 text-xs text-red-600">{{ accountFieldError('batch_id') }}</p>
                   <p v-else-if="!accountForm.program_id" class="mt-1 text-xs text-slate-500">Select a program first.</p>
-                  <p v-else-if="accountBatchOptions.length === 0" class="mt-1 text-xs text-amber-600">You have no batches for this program yet.</p>
+                  <p v-else-if="accountBatchOptions.length === 0" class="mt-1 text-xs text-amber-600">
+                    You have no batches for this program yet. Create one on the Batches page first.
+                  </p>
                 </div>
               </div>
             </div>

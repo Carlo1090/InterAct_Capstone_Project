@@ -104,7 +104,13 @@ const assignCoordinator = async () => {
 
 const removeCoordinator = async (coordinatorId: number, coordinatorName: string) => {
   if (!viewedDepartment.value) return
-  if (!(await confirmAction(`Remove ${coordinatorName} as coordinator of "${viewedDepartment.value.name}"?`))) return
+  const confirmed = await confirmAction({
+    title: 'Remove this coordinator?',
+    message: `Remove ${coordinatorName} as coordinator of "${viewedDepartment.value.name}"? They will lose access to this department's batches, interns, and reports.`,
+    confirmLabel: 'Remove Coordinator',
+    tone: 'danger',
+  })
+  if (!confirmed) return
 
   removingCoordinatorId.value = coordinatorId
   coordinatorError.value = ''
@@ -263,7 +269,7 @@ onMounted(() => {
             Cancel
           </button>
           <button type="button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50" :disabled="isSaving" @click="saveDepartment">
-            {{ isSaving ? 'Saving...' : 'Save' }}
+            {{ isSaving ? 'Saving...' : editingDepartmentId ? 'Save Department' : 'Add Department' }}
           </button>
         </div>
       </section>

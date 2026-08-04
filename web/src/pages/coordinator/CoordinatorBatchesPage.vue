@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { categorizeError } from '@/lib/apiError'
-import { confirmAction, showToast } from '@/lib/toast'
+import { confirmAction, showToast, type ConfirmTone } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
 import LoadStatus from '@/components/LoadStatus.vue'
 import ValidationErrorList from '@/components/ui/ValidationErrorList.vue'
@@ -161,10 +161,14 @@ const save = async () => {
   // Deactivating a batch is a critical action — confirm with the truthful
   // consequence before it goes out. Reactivating needs no confirm.
   if (editingBatchId.value && originalIsActive.value && !form.is_active) {
-    const confirmed = await confirmAction(
-      `Mark "${form.name}" as Inactive? Interns in this batch will stop receiving daily journal reminder emails. ` +
+    const confirmed = await confirmAction({
+      title: 'Deactivate this batch?',
+      message:
+        `Mark "${form.name}" as Inactive? Interns in this batch will stop receiving daily journal reminder emails. ` +
         'Enrollment, journal writing, and reports keep working as normal. You can reactivate it later.',
-    )
+      confirmLabel: 'Deactivate Batch',
+      tone: 'danger',
+    })
     if (!confirmed) return
   }
 
@@ -297,12 +301,16 @@ const addIntern = async () => {
 
   // Enrolled elsewhere -> this is a MOVE. Confirm first (guards a wrong-batch pick).
   if (candidate?.enrolled && candidate.enrollment && candidate.enrollment.batch.id !== rosterBatch.value.id) {
-    const confirmed = await confirmAction(
-      `${candidate.name} is currently enrolled in "${candidate.enrollment.batch.name}". ` +
+    const confirmed = await confirmAction({
+      title: 'Move this intern to another batch?',
+      message:
+        `${candidate.name} is currently enrolled in "${candidate.enrollment.batch.name}". ` +
         `Adding them to "${rosterBatch.value.name}" will MOVE them: their "${candidate.enrollment.batch.name}" ` +
         `enrollment will be marked dropped and a new active one created here. ` +
-        `Make sure "${rosterBatch.value.name}" is the correct batch. Continue?`,
-    )
+        `Make sure "${rosterBatch.value.name}" is the correct batch.`,
+      confirmLabel: 'Move Intern',
+      tone: 'danger',
+    })
     if (!confirmed) return
   }
 
@@ -337,7 +345,13 @@ const addIntern = async () => {
 }
 
 type RosterActionOptions = {
+  /** Names the outcome as a question, e.g. "Remove this intern?" */
+  confirmTitle: string
   confirmMessage: string
+  /** Must match the button the user clicked to get here. */
+  confirmLabel: string
+  /** Only for actions that drop, archive, or destroy a record. */
+  confirmTone?: ConfirmTone
   request: () => Promise<unknown>
   successMessage: string
   errorFallback: string
@@ -352,7 +366,10 @@ type RosterActionOptions = {
  * copy-pasted per action.
  */
 const runRosterAction = async ({
+  confirmTitle,
   confirmMessage,
+  confirmLabel,
+  confirmTone,
   request,
   successMessage,
   errorFallback,
@@ -360,7 +377,14 @@ const runRosterAction = async ({
   refetchCandidates,
 }: RosterActionOptions) => {
   if (!rosterBatch.value) return
-  if (!(await confirmAction(confirmMessage))) return
+
+  const confirmed = await confirmAction({
+    title: confirmTitle,
+    message: confirmMessage,
+    confirmLabel,
+    tone: confirmTone,
+  })
+  if (!confirmed) return
 
   rosterMessage.value = ''
   try {
@@ -378,7 +402,10 @@ const runRosterAction = async ({
 
 const removeIntern = (row: BatchRosterRow) =>
   runRosterAction({
+    confirmTitle: 'Remove this intern from the batch?',
     confirmMessage: `Remove ${row.student.name} from "${rosterBatch.value?.name}"? Their record will be marked dropped (history is kept).`,
+    confirmLabel: 'Remove Intern',
+    confirmTone: 'danger',
     request: () => api.patch(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}/drop`),
     successMessage: 'Intern removed (dropped).',
     errorFallback: 'Unable to remove this intern.',
@@ -387,7 +414,10 @@ const removeIntern = (row: BatchRosterRow) =>
 
 const archiveIntern = (row: BatchRosterRow) =>
   runRosterAction({
+    confirmTitle: 'Archive this record?',
     confirmMessage: `Archive ${row.student.name}'s record from this batch? It moves to Archived and can be restored anytime within 30 days, after which it is permanently deleted automatically.`,
+    confirmLabel: 'Archive Record',
+    confirmTone: 'danger',
     request: () => api.patch(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}/archive`),
     successMessage: 'Record archived.',
     errorFallback: 'Unable to archive this record.',
@@ -395,7 +425,9 @@ const archiveIntern = (row: BatchRosterRow) =>
 
 const restoreIntern = (row: BatchRosterRow) =>
   runRosterAction({
-    confirmMessage: `Restore ${row.student.name}'s archived record?`,
+    confirmTitle: 'Restore this record?',
+    confirmMessage: `Restore ${row.student.name}'s archived record? It returns to its previous status and stops counting down to automatic deletion.`,
+    confirmLabel: 'Restore Record',
     request: () => api.patch(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}/restore`),
     successMessage: 'Record restored.',
     errorFallback: 'Unable to restore this record.',
@@ -403,7 +435,10 @@ const restoreIntern = (row: BatchRosterRow) =>
 
 const deleteForeverIntern = (row: BatchRosterRow) =>
   runRosterAction({
+    confirmTitle: 'Delete this record forever?',
     confirmMessage: `Permanently delete ${row.student.name}'s archived record from this batch? This cannot be undone.`,
+    confirmLabel: 'Delete Forever',
+    confirmTone: 'danger',
     request: () => api.delete(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}`),
     successMessage: 'Record deleted.',
     errorFallback: 'Unable to delete this record.',
@@ -411,9 +446,11 @@ const deleteForeverIntern = (row: BatchRosterRow) =>
 
 const completeIntern = (row: BatchRosterRow) =>
   runRosterAction({
+    confirmTitle: "Mark this intern's OJT completed?",
     confirmMessage:
       `Mark ${row.student.name}'s OJT as COMPLETED? Their journal window freezes today: ` +
       `they can still view and download everything, but new journal dates will be locked. You can reopen this later.`,
+    confirmLabel: 'Mark Completed',
     request: () => api.patch(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}/complete`),
     successMessage: 'Intern marked completed.',
     errorFallback: 'Unable to mark this intern completed.',
@@ -422,9 +459,11 @@ const completeIntern = (row: BatchRosterRow) =>
 
 const reopenIntern = (row: BatchRosterRow) =>
   runRosterAction({
+    confirmTitle: 'Reopen this completed OJT?',
     confirmMessage:
       `Reopen ${row.student.name}'s completed OJT in "${rosterBatch.value?.name}"? ` +
       `They'll be active again and their journal window resumes rolling forward.`,
+    confirmLabel: 'Reopen OJT',
     request: () => api.patch(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}/reopen`),
     successMessage: 'Intern reopened (active again).',
     errorFallback: 'Unable to reopen this record.',
@@ -433,7 +472,9 @@ const reopenIntern = (row: BatchRosterRow) =>
 
 const reactivateIntern = (row: BatchRosterRow) =>
   runRosterAction({
+    confirmTitle: 'Reactivate this intern?',
     confirmMessage: `Reactivate ${row.student.name} in "${rosterBatch.value?.name}"? They'll be marked active again with their previous company and supervisor.`,
+    confirmLabel: 'Reactivate Intern',
     request: () => api.patch(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}/reactivate`),
     successMessage: 'Intern reactivated.',
     errorFallback: 'Unable to reactivate this intern.',
@@ -463,7 +504,7 @@ onMounted(load)
 
     <LoadStatus :loading="isLoading" :error="errorMessage" :retry="load">
     <p v-if="programs.length === 0" class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-      You are not currently assigned to a program, so there are no batches to manage yet.
+      You have no programs assigned yet. Ask an admin to assign you to a department.
     </p>
 
     <div v-else class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
@@ -717,7 +758,12 @@ onMounted(load)
               <p class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 <template v-if="!addForm.company_id">Select a company first.</template>
                 <template v-else-if="addResolvedSupervisor">{{ addResolvedSupervisor.name }}</template>
-                <template v-else><span class="text-amber-600">This company has no supervisor account yet.</span></template>
+                <template v-else
+                  ><span class="text-amber-600"
+                    >This company has no supervisor account yet. Attach one on Partner Companies before enrolling interns
+                    here.</span
+                  ></template
+                >
               </p>
               <p class="mt-1 text-xs text-slate-500">Assigned automatically from the company.</p>
             </div>

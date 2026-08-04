@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { confirmAction, showToast } from '@/lib/toast'
@@ -30,6 +30,16 @@ const roleFilter = ref('')
 const departmentFilter = ref('')
 
 const viewingUser = ref<User | null>(null)
+
+// An empty table means two different things — nothing exists, or the filters
+// excluded everything — and only the second one has a way out. See clearFilters.
+const hasFilters = computed(() => search.value !== '' || roleFilter.value !== '' || departmentFilter.value !== '')
+
+const clearFilters = () => {
+  search.value = ''
+  roleFilter.value = ''
+  departmentFilter.value = ''
+}
 
 /**
  * The password is revealed only while the control is actively held — a click
@@ -158,7 +168,13 @@ const createUser = async () => {
 }
 
 const deactivateUser = async (user: User) => {
-  if (!(await confirmAction(`Deactivate ${user.name}'s account? They won't be able to log in until reactivated.`))) return
+  const confirmed = await confirmAction({
+    title: 'Deactivate this account?',
+    message: `Deactivate ${user.name}'s account? They won't be able to log in until reactivated.`,
+    confirmLabel: 'Deactivate Account',
+    tone: 'danger',
+  })
+  if (!confirmed) return
 
   try {
     await api.patch(`/api/admin/users/${user.id}/deactivate`)
@@ -170,7 +186,12 @@ const deactivateUser = async (user: User) => {
 }
 
 const reactivateUser = async (user: User) => {
-  if (!(await confirmAction(`Reactivate ${user.name}'s account?`))) return
+  const confirmed = await confirmAction({
+    title: 'Reactivate this account?',
+    message: `Reactivate ${user.name}'s account? They will be able to log in again immediately.`,
+    confirmLabel: 'Reactivate Account',
+  })
+  if (!confirmed) return
 
   try {
     await api.patch(`/api/admin/users/${user.id}/activate`)
@@ -233,9 +254,19 @@ onMounted(() => {
     </p>
 
     <template v-else>
-      <p v-if="users.length === 0" class="mt-6 rounded-xl bg-white px-6 py-8 text-center text-sm text-slate-500 shadow-sm ring-1 ring-slate-200/70">
-        No users found.
-      </p>
+      <div v-if="users.length === 0" class="mt-6 rounded-xl bg-white px-6 py-8 text-center shadow-sm ring-1 ring-slate-200/70">
+        <p class="text-sm text-slate-500">
+          {{ hasFilters ? 'No users match these filters.' : 'No users yet. Use "Create User" to add a coordinator.' }}
+        </p>
+        <button
+          v-if="hasFilters"
+          type="button"
+          class="mt-2 text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+          @click="clearFilters"
+        >
+          Clear filters
+        </button>
+      </div>
 
       <template v-else>
         <!--
@@ -480,7 +511,7 @@ onMounted(() => {
             Cancel
           </button>
           <button type="button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50" :disabled="isSaving" @click="createUser">
-            {{ isSaving ? 'Saving...' : 'Save' }}
+            {{ isSaving ? 'Creating...' : 'Create Coordinator' }}
           </button>
         </div>
       </section>
