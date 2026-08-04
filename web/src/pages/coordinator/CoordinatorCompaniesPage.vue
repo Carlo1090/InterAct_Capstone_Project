@@ -70,6 +70,37 @@ watch(statusChoice, (choice) => {
  */
 const OTHER_DEPARTMENT = '__other__'
 
+/**
+ * Built-in departments, so the control is a real dropdown from the very first
+ * company onward. Previously the option list was derived ONLY from companies
+ * that already existed, which meant an empty scope offered nothing but
+ * "Other…" — the select fell straight through to the free-text box and behaved
+ * exactly like the plain text input it was meant to replace.
+ *
+ * The value is informational (it prints on reports, it gates nothing), so this
+ * is a convenience list and NOT a constraint — "Other…" stays, and any value
+ * already stored keeps working whether or not it appears here.
+ */
+const BUILT_IN_DEPARTMENTS = [
+  'Accounting & Finance',
+  'Administration',
+  'Banking',
+  'Customer Service',
+  'Education & Training',
+  'Engineering',
+  'Government Service',
+  'Healthcare',
+  'Hospitality & Tourism',
+  'Human Resources',
+  'Information Technology',
+  'Legal',
+  'Logistics & Supply Chain',
+  'Manufacturing',
+  'Marketing & Sales',
+  'Operations',
+  'Retail',
+]
+
 /** The department exactly as loaded, so it survives even when no other company shares it. */
 const loadedIndustry = ref('')
 
@@ -92,6 +123,10 @@ const departmentOptions = computed(() => {
 
   remember(loadedIndustry.value)
   for (const company of companies.value) remember(company.industry ?? '')
+  // Merged, not replaced: a department already in use stays on the list with
+  // its original casing (it was remembered first), and the built-ins fill the
+  // gap that made an empty scope offer nothing to pick.
+  for (const department of BUILT_IN_DEPARTMENTS) remember(department)
 
   return [...seen.values()].sort((a, b) => a.trim().localeCompare(b.trim()))
 })
@@ -253,14 +288,19 @@ const saveCompany = async () => {
     if (editingId.value) {
       const { data } = await api.put<CoordinatorCompany>(`/api/coordinator/companies/${editingId.value}`, payload)
       applyCompanyToForm(data)
+      await loadCompanies()
       showToast('Company updated.')
     } else {
       const { data } = await api.post<CoordinatorCompany>('/api/coordinator/companies', payload)
-      editingId.value = data.id
-      applyCompanyToForm(data)
-      showToast('Company created.')
+      await loadCompanies()
+      // Creating LEAVES the modal — it used to flip into edit mode and stay
+      // open, so there was no signal the create had finished. The
+      // representatives / supervisor-login panels are edit-only, so the toast
+      // names that next step rather than silently dropping it: a company with
+      // no supervisor login cannot take enrolments at all.
+      closeModal()
+      showToast(`${data.name} added. Open Manage on its row to attach a supervisor login.`)
     }
-    await loadCompanies()
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 422) {
       modalErrors.value = error.response.data.errors ?? {}

@@ -259,11 +259,24 @@ onMounted(loadWeeks)
           <div>
             <h3 class="text-xs font-bold uppercase tracking-wide text-slate-500">Daily Entries (Reference)</h3>
             <div class="overflow-x-auto">
-              <table class="mt-2 min-w-full divide-y divide-slate-200">
+              <!--
+                Every cell used to carry vertical padding only (py-2 / py-3) and
+                no horizontal padding at all, so Date, Status and Summary ran
+                straight into each other. Widths live in the colgroup and are
+                enforced by `table-fixed` — without it a browser treats them as
+                hints and a long summary squeezes the first two columns back
+                into the same collision.
+              -->
+              <table class="mt-2 w-full table-fixed divide-y divide-slate-200">
+                <colgroup>
+                  <col class="w-28" />
+                  <col class="w-28" />
+                  <col />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th class="whitespace-nowrap py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Date</th>
-                    <th class="whitespace-nowrap py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+                    <th class="whitespace-nowrap py-2 pr-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Date</th>
+                    <th class="whitespace-nowrap py-2 pr-4 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
                     <th class="whitespace-nowrap py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Summary</th>
                   </tr>
                 </thead>
@@ -272,9 +285,9 @@ onMounted(loadWeeks)
                     <td colspan="3" class="py-3 text-sm text-slate-400">No daily entries this week.</td>
                   </tr>
                   <tr v-for="entry in details[week.week_start].daily_entries" :key="entry.entry_date">
-                    <td class="whitespace-nowrap py-3 text-sm text-slate-600">{{ formatDate(entry.entry_date) }}</td>
-                    <td class="py-3 text-sm capitalize text-slate-600">{{ entry.status }}</td>
-                    <td class="py-3 text-sm text-slate-800">{{ Object.values(entry.content)[0] ?? '' }}</td>
+                    <td class="whitespace-nowrap py-3 pr-4 align-top text-sm text-slate-600">{{ formatDate(entry.entry_date) }}</td>
+                    <td class="py-3 pr-4 align-top text-sm capitalize text-slate-600">{{ entry.status }}</td>
+                    <td class="py-3 align-top text-sm text-slate-800">{{ Object.values(entry.content)[0] ?? '' }}</td>
                   </tr>
                 </tbody>
               </table>
