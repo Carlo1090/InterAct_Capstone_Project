@@ -9,9 +9,25 @@ import { isNotEnrolledError } from '@/lib/enrollment'
 import { useAuthStore } from '@/stores/auth'
 import { consumeQueryParam, googleErrorMessage, googleVerifyUrl } from '@/lib/googleAuth'
 import TooltipWrap from '@/components/ui/TooltipWrap.vue'
-import type { StudentDashboard } from '@/types/api'
+import type { CalendarDayStatus, JournalCalendar, StudentDashboard } from '@/types/api'
 
 type StatIcon = 'document' | 'check' | 'clock' | 'alert'
+
+/**
+ * `neutral` covers both a non-duty day and a day outside the OJT window — the
+ * calendar endpoint returns `no_entry` for both and cannot tell them apart.
+ * Neither is the student's fault, so both render slate.
+ */
+type WeekDayState = 'logged' | 'missed' | 'today' | 'draft' | 'upcoming' | 'neutral'
+
+type WeekDay = {
+  date: string
+  initial: string
+  weekday: string
+  tooltip: string
+  state: WeekDayState
+  segmentClass: string
+}
 
 type StatCard = {
   label: string
@@ -53,6 +69,27 @@ const notEnrolled = ref(false)
 // Flipped once the data is on screen, so the arcs animate from empty.
 const drawn = ref(false)
 
+/**
+ * Per-day statuses for the current week, keyed by YYYY-MM-DD.
+ *
+ * The dashboard endpoint only returns a COUNT (`missing_this_week`), which
+ * cannot say which days were missed, so the week strip reads its per-day detail
+ * from the journal calendar instead. That endpoint is the right source for more
+ * than convenience: its `status` already applies the batch's working-day rule
+ * and the "today is not over yet" rule server-side, so `missing` is only ever
+ * returned for a past DUTY day. Deriving red days here from dates alone would
+ * mean re-implementing `BatchWorkingDays` on the client without the
+ * `working_days_per_week` field, which is not exposed.
+ *
+ * Its own loading/error state, so a failure degrades the strip to the
+ * count-based bar rather than blanking the panel.
+ */
+const calendarStatuses = ref(new Map<string, CalendarDayStatus>())
+const isWeekLoading = ref(true)
+const weekError = ref('')
+
+const hasPerDayData = computed(() => !weekError.value && calendarStatuses.value.size > 0)
+
 const load = async () => {
   isLoading.value = true
   errorMessage.value = ''
@@ -61,6 +98,9 @@ const load = async () => {
   try {
     const { data } = await api.get<StudentDashboard>('/api/student/dashboard')
     dashboard.value = data
+    // Deliberately not awaited: the rest of the dashboard paints immediately
+    // and the strip upgrades from its skeleton when this lands.
+    void loadWeekDays(data.week)
   } catch (error) {
     if (isNotEnrolledError(error)) {
       notEnrolled.value = true
@@ -118,6 +158,193 @@ const parseDateString = (value: string | undefined): number | null => {
   if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null
 
   return Date.UTC(year, month - 1, day)
+}
+
+/**
+ * Format a UTC millisecond value back to YYYY-MM-DD.
+ *
+ * Every read is `getUTC*`, matching `parseDateString`'s `Date.UTC` — the pair
+ * round-trips a calendar date with no timezone involved at any point. Using
+ * `getFullYear`/`getDate` here would re-introduce exactly the UTC+8 off-by-one
+ * the parser exists to avoid.
+ */
+const toIsoDate = (utcMs: number): string => {
+  const date = new Date(utcMs)
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+
+  return `${date.getUTCFullYear()}-${month}-${day}`
+}
+
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const DAY_INITIALS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+const WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+// The strip is built as Monday + N, so the weekday of each index is fixed by
+// construction — no need to read it back off a Date and risk a locale surprise.
+const shortDate = (iso: string): string => {
+  const [, month, day] = iso.split('-').map(Number)
+
+  return `${MONTH_ABBR[month - 1] ?? '?'} ${day}`
+}
+
+const STATE_TEXT: Record<WeekDayState, string> = {
+  logged: 'entry submitted',
+  missed: 'no entry',
+  today: 'no entry yet (today)',
+  draft: 'draft not submitted',
+  upcoming: 'upcoming',
+  neutral: 'no entry expected',
+}
+
+const STATE_SEGMENT: Record<WeekDayState, string> = {
+  logged: 'bg-emerald-500',
+  missed: 'bg-rose-500',
+  today: 'bg-amber-400 ring-2 ring-amber-200',
+  draft: 'bg-amber-400',
+  upcoming: 'bg-slate-200',
+  neutral: 'bg-slate-200',
+}
+
+/**
+ * Rose is reserved EXCLUSIVELY for the server's own `missing`. That status is
+ * only produced for a past day that passed `BatchWorkingDays::isWorkingDay()`,
+ * so both hard rules — today is never red, a non-duty day is never red — hold
+ * by construction rather than by a client-side date check that could drift.
+ *
+ * `draft` is returned both for today with nothing written yet and for a past
+ * day carrying an unsubmitted draft; only the first is `today`.
+ */
+const stateFor = (status: CalendarDayStatus | undefined, date: string, todayIso: string): WeekDayState => {
+  if (status === 'submitted') return 'logged'
+  if (status === 'missing') return 'missed'
+  if (status === 'draft') return date === todayIso ? 'today' : 'draft'
+  if (status === 'future') return 'upcoming'
+  if (status === 'no_entry') return 'neutral'
+
+  // No calendar row for this date (request failed, or the month was not
+  // covered). Fall back to position alone — never invent a missed day.
+  return date > todayIso ? 'upcoming' : 'neutral'
+}
+
+// The full Mon–Sun week, so the seven segments line up with their M T W T F S S
+// initials and future days have something to represent. `week.end` is TODAY,
+// not Sunday, so it is used only to locate today — never as the strip's end.
+const weekDays = computed<WeekDay[]>(() => {
+  const week = dashboard.value?.week
+  const startMs = parseDateString(week?.start)
+  if (startMs === null || !week) return []
+
+  const todayIso = week.end
+
+  return Array.from({ length: 7 }, (_, index): WeekDay => {
+    const date = toIsoDate(startMs + index * MS_PER_DAY)
+    const state = stateFor(calendarStatuses.value.get(date), date, todayIso)
+
+    return {
+      date,
+      initial: DAY_INITIALS[index] ?? '',
+      weekday: WEEKDAY_NAMES[index] ?? '',
+      tooltip: `${WEEKDAY_SHORT[index]}, ${shortDate(date)} — ${STATE_TEXT[state]}`,
+      state,
+      segmentClass: STATE_SEGMENT[state],
+    }
+  })
+})
+
+const weekSummary = computed(() => {
+  const days = weekDays.value
+
+  return {
+    logged: days.filter((day) => day.state === 'logged').length,
+    // Days that have counted so far: an entry exists, or one was expected and
+    // is now due. Upcoming and non-duty days are excluded from the denominator.
+    counted: days.filter((day) => day.state !== 'upcoming' && day.state !== 'neutral').length,
+    missed: days.filter((day) => day.state === 'missed'),
+    todayPending: days.some((day) => day.state === 'today'),
+  }
+})
+
+const missedMessage = computed<string | null>(() => {
+  const missed = weekSummary.value.missed
+  if (missed.length === 0) return null
+
+  if (missed.length === 1) {
+    const day = missed[0]
+    const todayMs = parseDateString(dashboard.value?.week.end)
+    const isYesterday = todayMs !== null && day.date === toIsoDate(todayMs - MS_PER_DAY)
+
+    return isYesterday
+      ? `You have no entry for yesterday (${day.weekday}).`
+      : `You have no entry for ${day.weekday}.`
+  }
+
+  const names = missed.map((day) => day.weekday)
+  const last = names.pop()
+
+  return `You have no entries for ${names.join(', ')} and ${last}.`
+})
+
+/**
+ * A colour KEY, not a state list — which is why one entry can cover more than
+ * one state: `today` and `draft` are both amber-400, `upcoming` and `neutral`
+ * are both slate-200. Grouping them is what keeps a swatch from being shown at
+ * half opacity while that exact colour is on screen.
+ *
+ * All four always render, in this fixed order. Filtering to the states present
+ * meant a student with a blank week — precisely the one who needs the key —
+ * never learned what green meant. Absent states dim to `opacity-50` instead.
+ */
+const LEGEND: { key: string; label: string; dot: string; states: WeekDayState[] }[] = [
+  { key: 'logged', label: 'Logged', dot: 'bg-emerald-500', states: ['logged'] },
+  { key: 'missed', label: 'Missed', dot: 'bg-rose-500', states: ['missed'] },
+  { key: 'today', label: 'Today', dot: 'bg-amber-400', states: ['today', 'draft'] },
+  { key: 'neutral', label: 'No entry expected', dot: 'bg-slate-200', states: ['neutral', 'upcoming'] },
+]
+
+const weekLegend = computed(() =>
+  LEGEND.map((item) => ({
+    ...item,
+    present: weekDays.value.some((day) => item.states.includes(day.state)),
+  })),
+)
+
+/**
+ * A Mon–Sun week can straddle two months, and the calendar endpoint is scoped
+ * to one month per request — so fetch every month the week touches (one call
+ * most weeks, two at a month boundary) and merge them.
+ */
+const loadWeekDays = async (week: { start: string; end: string }): Promise<void> => {
+  isWeekLoading.value = true
+  weekError.value = ''
+
+  const startMs = parseDateString(week.start)
+  if (startMs === null) {
+    isWeekLoading.value = false
+
+    return
+  }
+
+  const months = [
+    ...new Set(Array.from({ length: 7 }, (_, index) => toIsoDate(startMs + index * MS_PER_DAY).slice(0, 7))),
+  ]
+
+  try {
+    const responses = await Promise.all(
+      months.map((month) => api.get<JournalCalendar>('/api/student/journal-calendar', { params: { month } })),
+    )
+
+    const next = new Map<string, CalendarDayStatus>()
+    for (const { data } of responses) {
+      for (const day of data.days) next.set(day.date, day.status)
+    }
+    calendarStatuses.value = next
+  } catch (error) {
+    weekError.value = categorizeError(error, 'Unable to load this week’s entries.').message
+  } finally {
+    isWeekLoading.value = false
+  }
 }
 
 // week.end is TODAY, not Sunday, so this spans Monday→today: 1-7 days. Zero
@@ -549,19 +776,91 @@ onMounted(async () => {
             class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70"
           >
             <h2 class="text-sm font-semibold text-slate-900">This Week</h2>
-            <p class="mt-1 text-xs text-slate-400">Days logged since Monday.</p>
-            <p class="mt-5 text-sm text-slate-600">
-              <span class="font-semibold text-slate-900">{{ weekStrip.logged }}</span>
-              of {{ weekStrip.days }} days logged
-            </p>
-            <div class="mt-3 flex gap-1.5">
-              <span
-                v-for="day in weekStrip.days"
-                :key="day"
-                class="h-2.5 flex-1 rounded-full"
-                :class="day <= weekStrip.logged ? 'bg-emerald-500' : 'bg-slate-200'"
-              />
-            </div>
+            <p class="mt-1 text-xs text-slate-400">Your entries from Monday to Sunday.</p>
+
+            <!--
+              Per-day detail comes from the journal calendar. If that request
+              fails the panel degrades to the original count-based bar rather
+              than blanking, since the dashboard already knows the total.
+            -->
+            <template v-if="hasPerDayData">
+              <p class="mt-5 text-sm text-slate-600">
+                <span class="font-semibold text-slate-900">{{ weekSummary.logged }}</span>
+                of {{ weekSummary.counted }} days logged
+              </p>
+
+              <div class="mt-3 flex gap-1.5">
+                <TooltipWrap
+                  v-for="day in weekDays"
+                  :key="day.date"
+                  :label="day.tooltip"
+                  placement="top"
+                  class="flex-1"
+                >
+                  <span
+                    class="block h-2.5 w-full rounded-full"
+                    :class="day.segmentClass"
+                    role="img"
+                    :aria-label="day.tooltip"
+                  />
+                </TooltipWrap>
+              </div>
+
+              <div class="mt-1.5 flex gap-1.5" aria-hidden="true">
+                <span
+                  v-for="day in weekDays"
+                  :key="day.date"
+                  class="flex-1 text-center text-[10px] text-slate-400"
+                >
+                  {{ day.initial }}
+                </span>
+              </div>
+
+              <p v-if="missedMessage" class="mt-4 text-sm text-rose-700">{{ missedMessage }}</p>
+              <p v-else class="mt-4 text-sm text-emerald-700">You're on track this week.</p>
+
+              <p v-if="weekSummary.todayPending" class="mt-1.5 text-sm text-amber-700">
+                Today's entry isn't written yet.
+                <RouterLink :to="WRITE_JOURNAL_ROUTE" class="font-medium underline underline-offset-2 hover:text-amber-900">
+                  Write today's entry →
+                </RouterLink>
+              </p>
+
+              <!-- Always all four, in a fixed order; absent ones dim rather than vanish. -->
+              <ul class="mt-4 flex flex-wrap gap-x-4 gap-y-1.5">
+                <li
+                  v-for="item in weekLegend"
+                  :key="item.key"
+                  class="flex items-center gap-1.5 text-xs text-slate-500"
+                  :class="!item.present && 'opacity-50'"
+                >
+                  <span class="h-2 w-2 shrink-0 rounded-full" :class="item.dot" />
+                  {{ item.label }}
+                </li>
+              </ul>
+            </template>
+
+            <template v-else>
+              <p class="mt-5 text-sm text-slate-600">
+                <span class="font-semibold text-slate-900">{{ weekStrip.logged }}</span>
+                of {{ weekStrip.days }} days logged
+              </p>
+              <div class="mt-3 flex gap-1.5">
+                <span
+                  v-for="day in weekStrip.days"
+                  :key="day"
+                  class="h-2.5 flex-1 rounded-full"
+                  :class="[
+                    day <= weekStrip.logged ? 'bg-emerald-500' : 'bg-slate-200',
+                    isWeekLoading && 'animate-pulse',
+                  ]"
+                />
+              </div>
+              <p v-if="weekError" class="mt-4 text-sm text-slate-500">
+                Day-by-day detail is unavailable right now.
+              </p>
+            </template>
+
             <p class="mt-3 text-xs text-slate-400">
               {{ dashboard.week.start }} – {{ dashboard.week.end }}
             </p>
