@@ -36,6 +36,19 @@ const statusClass = (status: SupervisorReviewStatus): string => {
 }
 
 /**
+ * This pill used to render the raw DB enum ("pending") relying on CSS
+ * `capitalize`. Wording is kept identical to CoordinatorWeeklyJournalsPage —
+ * both are staff reading someone else's journal, so they must agree. The
+ * student's page deliberately says more ("Approved by Supervisor"), which is
+ * right for them and would read oddly to the supervisor who did the approving.
+ */
+const statusLabel = (status: SupervisorReviewStatus): string => {
+  if (status === 'approved') return 'Approved'
+  if (status === 'returned') return 'Returned'
+  return 'Pending Review'
+}
+
+/**
  * `submitted_at` / `reviewed_at` are genuine instants carrying a timezone
  * marker ("2026-07-20T21:00:00+00:00"), so parsing and formatting locally is
  * correct — the exact moment is what matters. The untouched original stays in a
@@ -161,7 +174,13 @@ const submitReturn = async () => {
     reviewError.value = 'Please explain what the student needs to fix.'
     return
   }
-  if (!(await confirmAction('Return this weekly journal to the student for revision?'))) return
+  const confirmed = await confirmAction({
+    title: 'Return this journal for revision?',
+    message:
+      'Return this weekly journal to the student for revision? They will see your comment and can edit and resubmit it.',
+    confirmLabel: 'Return Journal',
+  })
+  if (!confirmed) return
 
   isSubmitting.value = true
   try {
@@ -303,7 +322,7 @@ onMounted(load)
             </button>
           </div>
           <div v-if="detail" class="mt-3 flex flex-wrap items-center gap-2">
-            <span class="rounded-full px-3 py-1 text-xs font-bold capitalize" :class="statusClass(detail.status)">{{ detail.status }}</span>
+            <span class="rounded-full px-3 py-1 text-xs font-bold" :class="statusClass(detail.status)">{{ statusLabel(detail.status) }}</span>
             <span class="text-xs text-slate-400">
               Submitted
               <TooltipWrap v-if="formatInstant(detail.submitted_at)" :label="detail.submitted_at ?? ''" placement="bottom">

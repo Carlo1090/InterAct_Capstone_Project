@@ -94,7 +94,7 @@ const sheetDraft = useFormDraft(
   },
   { autoRestore: false },
 )
-const submitLabel = computed(() => (isRejected.value ? 'Resubmit' : 'Submit'))
+const submitLabel = computed(() => (isRejected.value ? 'Resubmit' : 'Submit for Review'))
 
 // ---------------------------------------------------------- duty schedule
 //
@@ -346,9 +346,12 @@ const save = async (status: 'draft' | 'submitted') => {
     }
 
     if (!isApproved.value) {
-      const confirmed = await confirmAction(
-        'Submit your Information Sheet for coordinator review? You can still edit it until they act on it.',
-      )
+      const confirmed = await confirmAction({
+        title: 'Submit for coordinator review?',
+        message:
+          'Submit your Information Sheet for coordinator review? You can still edit it until they act on it.',
+        confirmLabel: 'Submit for Review',
+      })
       if (!confirmed) return
     }
   }

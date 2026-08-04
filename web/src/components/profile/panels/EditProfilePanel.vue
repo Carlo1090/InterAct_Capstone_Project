@@ -160,7 +160,7 @@ const removePhoto = async () => {
             :disabled="isUploadingPhoto"
             @click="removePhoto"
           >
-            Remove
+            Remove Photo
           </button>
         </div>
         <input ref="fileInput" type="file" accept="image/jpeg,image/png,image/webp" class="hidden" @change="onPhotoSelected" />

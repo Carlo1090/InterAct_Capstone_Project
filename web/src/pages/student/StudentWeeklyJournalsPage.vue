@@ -165,11 +165,15 @@ const saveNarrative = async (weekStart: string) => {
 
 const submitWeek = async (week: WeeklyLogSummary) => {
   const isResubmit = weekState(week) === 'returned'
-  const confirmMessage = isResubmit
-    ? 'Resubmit this weekly narrative to your supervisor for review?'
-    : 'Submit this weekly narrative to your supervisor for review? You will not be able to edit it until it is returned.'
 
-  if (!(await confirmAction(confirmMessage))) return
+  const confirmed = await confirmAction({
+    title: isResubmit ? 'Resubmit to your supervisor?' : 'Send to your supervisor?',
+    message: isResubmit
+      ? 'Resubmit this weekly narrative to your supervisor for review? You will not be able to edit it again until they return it.'
+      : 'Submit this weekly narrative to your supervisor for review? You will not be able to edit it until it is returned.',
+    confirmLabel: isResubmit ? 'Resubmit' : 'Send to Supervisor',
+  })
+  if (!confirmed) return
 
   submittingDetail[week.week_start] = true
   saveMessage[week.week_start] = ''
@@ -372,7 +376,7 @@ onMounted(loadWeeks)
               :disabled="submittingDetail[week.week_start] || !details[week.week_start].narrative?.trim() || isNarrativeOverLimit(week.week_start)"
               @click="submitWeek(week)"
             >
-              {{ submittingDetail[week.week_start] ? 'Submitting...' : (weekState(week) === 'returned' ? 'Resubmit' : 'Submit') }}
+              {{ submittingDetail[week.week_start] ? 'Submitting...' : (weekState(week) === 'returned' ? 'Resubmit' : 'Send to Supervisor') }}
             </button>
           </div>
         </template>

@@ -223,10 +223,14 @@ const saveCompany = async () => {
   // Deactivating a company is a critical action — confirm with the truthful
   // consequence before it goes out. Reactivating needs no confirm.
   if (editingId.value && originalIsActive.value && !form.is_active) {
-    const confirmed = await confirmAction(
-      `Mark "${form.name}" as Inactive? It will no longer be selectable when enrolling students or adding interns to a batch. ` +
+    const confirmed = await confirmAction({
+      title: 'Deactivate this company?',
+      message:
+        `Mark "${form.name}" as Inactive? It will no longer be selectable when enrolling students or adding interns to a batch. ` +
         'Existing enrollments at this company are unaffected. You can reactivate it later.',
-    )
+      confirmLabel: 'Deactivate Company',
+      tone: 'danger',
+    })
     if (!confirmed) return
   }
 

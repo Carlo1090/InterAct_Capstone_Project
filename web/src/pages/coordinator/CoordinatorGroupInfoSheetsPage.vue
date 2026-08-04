@@ -171,7 +171,13 @@ const addManualRow = () => {
 }
 
 const deleteRow = async (row: GroupInfoSheetRow) => {
-  if (!(await confirmAction('Remove this intern from the sheet? They will be excluded when you save.'))) return
+  const confirmed = await confirmAction({
+    title: 'Remove this intern from the sheet?',
+    message: 'Remove this intern from the sheet? They will be excluded when you save. Their own information sheet is not affected.',
+    confirmLabel: 'Remove Intern',
+    tone: 'danger',
+  })
+  if (!confirmed) return
 
   if (!row.is_manual && typeof row.id === 'number' && !deletedIds.value.includes(row.id)) {
     deletedIds.value.push(row.id)
@@ -307,7 +313,8 @@ onMounted(loadIndex)
       <p v-if="errorMessage" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ errorMessage }}</p>
 
       <p v-if="!companyId" class="rounded-md bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-        No company hosts interns from your program(s) for this academic year yet.
+        No company hosts interns from your program(s) for this academic year yet. Try another academic year, or enroll
+        interns into a batch first.
       </p>
 
       <p v-else-if="isLoadingSheet" class="text-sm text-slate-500">Loading sheet...</p>
