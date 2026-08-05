@@ -16,6 +16,7 @@ class StoreDepartmentRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:150', 'unique:departments,name'],
             'code' => ['required', 'string', 'max:20', 'unique:departments,code'],
+            'dean_name' => ['nullable', 'string', 'max:150'],
             'is_active' => ['boolean'],
         ];
     }

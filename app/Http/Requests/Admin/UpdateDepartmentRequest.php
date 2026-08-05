@@ -16,6 +16,7 @@ class UpdateDepartmentRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:150', Rule::unique('departments', 'name')->ignore($this->route('department'))],
+            'dean_name' => ['sometimes', 'nullable', 'string', 'max:150'],
             'is_active' => ['sometimes', 'boolean'],
         ];
     }

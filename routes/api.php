@@ -110,6 +110,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])
 
         Route::get('info-sheets', [AdminStudentInfoSheetController::class, 'index']);
         Route::get('info-sheets/{student}', [AdminStudentInfoSheetController::class, 'show']);
+        Route::get('info-sheets/{student}/pdf', [AdminStudentInfoSheetController::class, 'pdf']);
 
         Route::get('system-settings', [SystemSettingController::class, 'index']);
         Route::put('system-settings', [SystemSettingController::class, 'update']);

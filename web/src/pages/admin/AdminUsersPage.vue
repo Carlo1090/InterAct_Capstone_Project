@@ -220,7 +220,7 @@ onMounted(() => {
   <section>
     <ToastHost />
     <div class="flex flex-wrap items-center justify-end gap-4">
-      <button type="button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700" @click="openModal">Create User</button>
+      <button type="button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700" @click="openModal">Create Coordinator</button>
     </div>
 
     <div class="mt-6 grid gap-3 sm:grid-cols-3 xl:max-w-3xl">
@@ -256,7 +256,7 @@ onMounted(() => {
     <template v-else>
       <div v-if="users.length === 0" class="mt-6 rounded-xl bg-white px-6 py-8 text-center shadow-sm ring-1 ring-slate-200/70">
         <p class="text-sm text-slate-500">
-          {{ hasFilters ? 'No users match these filters.' : 'No users yet. Use "Create User" to add a coordinator.' }}
+          {{ hasFilters ? 'No users match these filters.' : 'No users yet. Use "Create Coordinator" to add one.' }}
         </p>
         <button
           v-if="hasFilters"

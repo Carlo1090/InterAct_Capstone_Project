@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Concerns\BuildsInfoSheetPdf;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Student\Concerns\ResolvesStudentEnrollment;
 use App\Models\BatchStudent;
@@ -9,9 +10,11 @@ use App\Models\StudentInformationSheet;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class StudentInfoSheetController extends Controller
 {
+    use BuildsInfoSheetPdf;
     use ResolvesStudentEnrollment;
 
     public function index(Request $request): JsonResponse
@@ -84,6 +87,21 @@ class StudentInfoSheetController extends Controller
             ...$this->defaultInfoSheetPayload($student, $enrollment),
             'student' => $studentSummary,
         ]);
+    }
+
+    /**
+     * Download a student's info sheet as the official MDC PDF. Admin has no
+     * department scope (it manages every student), unlike the coordinator's
+     * in-scope-only equivalent this mirrors.
+     */
+    public function pdf(User $student): Response
+    {
+        abort_unless($student->role === 'student', 404);
+
+        $sheet = StudentInformationSheet::where('student_id', $student->id)->latest('id')->first();
+        abort_if($sheet === null, 404, 'This student has no information sheet yet.');
+
+        return $this->renderInfoSheetPdf($sheet, $student);
     }
 
     /**

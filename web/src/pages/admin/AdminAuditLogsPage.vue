@@ -9,7 +9,6 @@ const logs = ref<SystemLogRecord[]>([])
 const actionOptions = ref<string[]>([])
 const isLoading = ref(true)
 const errorMessage = ref('')
-const isExporting = ref(false)
 
 const search = ref('')
 const actionFilter = ref('')
@@ -61,29 +60,6 @@ const loadActions = async () => {
   }
 }
 
-const exportLogs = async () => {
-  isExporting.value = true
-
-  try {
-    const response = await api.get('/api/admin/audit-logs/export', {
-      params: filterParams(),
-      responseType: 'blob',
-    })
-    const url = URL.createObjectURL(response.data as Blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = 'audit-logs.csv'
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
-  } catch {
-    errorMessage.value = 'Unable to export audit logs.'
-  } finally {
-    isExporting.value = false
-  }
-}
-
 watch(search, () => {
   clearTimeout(searchDebounce)
   searchDebounce = setTimeout(loadLogs, 300)
@@ -111,14 +87,6 @@ onMounted(() => {
         <option value="student">Student</option>
       </select>
       <input v-model="dateFilter" type="date" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" />
-      <button
-        type="button"
-        class="ml-auto rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
-        :disabled="isExporting"
-        @click="exportLogs"
-      >
-        {{ isExporting ? 'Exporting...' : 'Export Logs' }}
-      </button>
     </div>
 
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
