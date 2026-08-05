@@ -1,0 +1,146 @@
+InternTrack — Pre-Oral Defense Demo Guide (2026-08-06)
+========================================================
+
+This is a walkthrough cheat sheet for tomorrow's defense, built by
+PreOralDefenseDemoSeeder on the LOCAL dev database (intertrack, MySQL).
+Nothing here touches migrate:fresh, the test suite (which runs on an
+isolated in-memory SQLite DB), or your production/deploy database.
+
+A full backup of the database as it stood before this seeding pass is at:
+  <scratchpad>/intertrack_backup_2026-08-05.sql
+Restore with:
+  mysql -h127.0.0.1 -uroot intertrack < intertrack_backup_2026-08-05.sql
+
+
+CREDENTIALS TO USE
+-------------------
+All passwords are: password
+
+  Admin        username: mdcadmin           (Test Admin)
+  Coordinator  username: mdcbalbero         (Maria Antonnette Balbero, CABM-B)
+  Supervisor (primary)    username: demosupervisor  (Mr. Dennis Chua, Metrobank - Tagbilaran Branch)
+  Supervisor (secondary)  username: mdcsupervisor   (Engr. Ramon Villanueva, TechPH Inc. / CAST-BSIT)
+  Student (scripted demo)  username: mdcbalberostudent   (Renz Adrian Corvera, BSBA-FM)
+  Student (your own, live/practical)  username: 16982    (Mark Lloyd Lupas Aleria, BSA — this
+                                                            is YOUR real account; email is
+                                                            verified via Google already)
+
+Coordinator Balbero is the client-facing account for the main walkthrough —
+every batch, company, and student in that story sits in her CABM-B scope
+(BSA / BSBA-FM / BSBA-MM / BSBA-OM). mdcsupervisor is a SEPARATE supervisor
+under a different coordinator (Prof. Alicia Montoya, CAST/BSIT) — use it if
+you want a second, independent supervisor module to show side by side with
+demosupervisor's.
+
+
+WHAT WAS SEEDED, AND WHY
+-------------------------
+
+1. Weekly Journals now have real content in Coordinator Balbero's scope.
+   Before this pass, all 32 weekly-log rows in her scope were unsubmitted
+   drafts, so her "Weekly Journals" page and every CABM-B supervisor's
+   review queue were empty. Now there are 7 submitted rows spanning all
+   four programs, with a deliberate mix of statuses:
+
+     Student              Program  Week        Status     Notes
+     -------------------  -------  ----------  ---------  -----------------------------
+     Renz Adrian Corvera   FM      2026-07-13  approved   reviewed by demosupervisor
+     Karlo Mendoza         FM      2026-07-13  pending    sits in demosupervisor's queue
+     Patricia Cruz         MM      2026-07-13  approved   reviewed by Grace Lim
+     Sophia Reyes          OM      2026-07-13  pending    sits in Paolo Reyes's queue
+     Andrea Villanueva     BSA     2026-07-13  returned   has a real supervisor comment
+     Miguel Torres         BSA     2026-07-13  approved   reviewed by Carmela Uy
+     Carlos Diaz           BSA     2026-07-20  approved   reviewed by Carmela Uy
+
+   Good pages to show this on: Coordinator > Weekly Journals (read-only,
+   all 7 visible with program/status filters), and logging in as
+   demosupervisor to show his Pending queue (Karlo Mendoza) and Approved
+   tab (Renz).
+
+2. Your own account (16982 / Mark Lloyd Aleria) has real narrative text
+   waiting in BOTH of his draft weeks (2026-07-20 and 2026-07-27, BSA at
+   Dunkin' Bohol) — but they are DELIBERATELY left unsubmitted. Log in as
+   yourself, open Weekly Journals, use Edit/Preview to show the written
+   narrative, then press Submit live on stage. His 3 daily journal entries,
+   approved info sheet, and verified email were untouched — that's your
+   live/practical proof that the system works with real data, not just
+   seeded demo accounts.
+
+3. Weekly Bundling — live terminal demo.
+   Renz Corvera (mdcbalberostudent) has a full Mon-Fri set of SUBMITTED
+   daily journal entries for 2026-07-27 to 2026-07-31, PLUS one extra
+   submitted Saturday entry (2026-08-01) to show off the "weekends are
+   never penalized, only ever added" behavior. His WeeklyLog row for that
+   week is intentionally left BLANK and unsubmitted right now.
+
+   As of today (2026-08-05) and tomorrow (2026-08-06),
+   WeeklyBundlingService::mostRecentlyCompletedWeekStart() resolves to
+   exactly this week (2026-07-27), so running the command with NO
+   arguments targets it automatically:
+
+       php artisan journal:run-weekly-bundling
+
+   This was test-run once already to confirm it works (it compiled Renz's
+   week into a real Mon-Sat narrative including the bonus Saturday block),
+   then reset back to blank afterward specifically so you can run it again
+   live and have the panel watch it go from empty to filled. It is
+   idempotent — safe to run more than once if you need a second take, or
+   as a dry run beforehand; re-running just recomputes the identical
+   result from the same source entries.
+
+   After running it, log in as mdcbalberostudent to show the freshly
+   compiled (still-draft) narrative in Weekly Journals, or log in as
+   Coordinator Balbero / demosupervisor to show it's visible read-only
+   there too (as a draft, not yet submitted).
+
+4. Supervisor login renamed. The CABM-B/Metrobank login-supervisor account
+   (previously username cabmb.sup.fm) is now username demosupervisor, per
+   your request — same person (Mr. Dennis Chua), same company attachment,
+   same password. Nothing else about that account changed; other seeders
+   that reference it by email (cabmb.sup.fm@gmail.com) are unaffected.
+
+5. Second supervisor module enriched (mdcsupervisor / Engr. Ramon
+   Villanueva, TechPH Inc.). This account previously had only two
+   already-actioned historical weeks and nothing left to review — his
+   Pending queue was empty. Now:
+     - Juan Dela Cruz, week 2026-07-13: returned (pre-existing, untouched)
+     - Maria Santos, week 2026-07-13: approved (pre-existing, untouched)
+     - Juan Dela Cruz, week 2026-07-20: submitted, PENDING — a fresh,
+       live-actionable item for you to approve or return on stage
+     - Maria Santos, week 2026-07-20: submitted, approved (adds a second
+       entry to his Recently Reviewed / Approved history)
+   Dashboard counts for this account are now pending=1, approved=2,
+   returned=1 — was approved=1, returned=1, pending=0 before. Maria
+   Santos's student profile (contact number, date of birth, home address)
+   was also filled in, since it was blank and made the Intern Detail modal
+   look empty on his My Interns page.
+
+
+SUGGESTED DEMO FLOW
+--------------------
+  1. Admin (mdcadmin) — Users, Departments, Programs, Batches, System
+     Settings. Whatever admin-side structure you want to show first.
+
+  2. Coordinator (mdcbalbero) — Users > Interns/Supervisors, Batches,
+     Student Info Sheets, Journal Templates, Weekly Journals (now has the
+     7 rows above), Annual SIPP / HTE / Group Info Sheets if wanted.
+
+  3. Terminal — run `php artisan journal:run-weekly-bundling` to bundle
+     Renz's 2026-07-27 week live. Point out it pulled from 5 weekday
+     entries + 1 bonus Saturday entry.
+
+  4. Student — your own account (16982) to show a real, practical,
+     email-verified account: submit one of the two pre-written weekly
+     narratives live. Then switch to mdcbalberostudent to show the
+     just-bundled week and the already-approved 07-13 week.
+
+  5. Supervisor (demosupervisor) — show the Pending queue (Karlo Mendoza),
+     approve or return it live, then show the Approved tab (Renz's 07-13).
+
+  6. Supervisor (mdcsupervisor), optional second supervisor walkthrough —
+     show Juan Dela Cruz's fresh Pending item (week of 07-20), approve or
+     return it live, then show the fuller My Interns detail on Maria
+     Santos now that her profile is filled in.
+
+  7. Wrap on Coordinator (mdcbalbero) — refresh Weekly Journals to show
+     the new pending → approved change picked up in real time.
