@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Coordinator\StoreBatchRequest;
 use App\Http\Requests\Coordinator\UpdateBatchRequest;
 use App\Models\Batch;
+use App\Models\SystemLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -29,12 +30,16 @@ class BatchController extends Controller
             'is_active' => true,
         ]);
 
+        SystemLog::record('Batch Created', "Created batch {$batch->name}");
+
         return response()->json($batch->load(['program.department', 'journalTemplate']), 201);
     }
 
     public function update(UpdateBatchRequest $request, Batch $batch): JsonResponse
     {
         $batch->update($request->validated());
+
+        SystemLog::record('Batch Updated', "Updated batch {$batch->name}");
 
         return response()->json($batch->fresh(['program.department', 'journalTemplate']));
     }

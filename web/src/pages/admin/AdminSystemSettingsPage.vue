@@ -230,38 +230,6 @@ onMounted(loadSettings)
 
       <div class="space-y-5">
         <div class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <h2 class="text-sm font-bold text-slate-900">Journal Settings</h2>
-          <div class="mt-5 space-y-4">
-            <label class="block">
-              <span class="text-xs font-bold text-slate-600">Weekly Compilation Day</span>
-              <select class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
-                <option>Sunday</option>
-                <option>Saturday</option>
-                <option>Monday</option>
-              </select>
-              <p class="mt-1 text-xs text-slate-500">
-                Weekly journals are automatically compiled and forwarded to company supervisors on this day.
-              </p>
-            </label>
-            <label class="block">
-              <span class="text-xs font-bold text-slate-600">Minimum Word Count</span>
-              <input class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" type="number" value="250" />
-            </label>
-            <label class="block">
-              <span class="text-xs font-bold text-slate-600">Submission Deadline</span>
-              <select class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
-                <option>11:59 PM (Same Day)</option>
-                <option>9:00 AM (Next Day)</option>
-              </select>
-            </label>
-            <label class="flex items-center gap-2 text-sm text-slate-700">
-              <input type="checkbox" />
-              Exclude late/overdue entries
-            </label>
-          </div>
-        </div>
-
-        <div class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
           <h2 class="text-sm font-bold text-slate-900">System Information</h2>
           <div class="mt-4 divide-y divide-slate-100">
             <div v-for="[label, value] in systemInfo" :key="label" class="flex items-center justify-between py-2">

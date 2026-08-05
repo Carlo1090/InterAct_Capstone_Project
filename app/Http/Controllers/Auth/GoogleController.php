@@ -165,8 +165,6 @@ class GoogleController extends Controller
         // Against session fixation — the pre-login session id must not survive.
         $request->session()->regenerate();
 
-        $this->log($user, 'Logged In', "{$user->name} signed in with Google");
-
         // Straight to their dashboard, NOT "/". The SPA's "/" route is an
         // unconditional `redirect: '/login'`, and its router guard only calls
         // fetchUser() for routes marked requiresAuth — so landing on "/" with a
