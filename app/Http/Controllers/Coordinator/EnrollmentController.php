@@ -12,17 +12,18 @@ use App\Models\Company;
 use App\Models\CompanySupervisor;
 use App\Models\JournalEntry;
 use App\Models\Program;
-use App\Models\StudentInformationSheet;
 use App\Models\StudentProfile;
 use App\Models\SystemLog;
 use App\Models\User;
 use App\Models\WeeklyActivityLog;
 use App\Models\WeeklyLog;
+use App\Notifications\NewAccountCredentials;
 use App\Services\EnrollmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class EnrollmentController extends Controller
 {
@@ -286,7 +287,7 @@ class EnrollmentController extends Controller
      * placement is realized only when the coordinator ACCEPTS the student's
      * submitted sheet — so a freshly-created student is NOT-ENROLLED.
      */
-    public function createAccount(CreateAccountRequest $request): JsonResponse
+    public function createAccount(CreateAccountRequest $request, EnrollmentService $enrollments): JsonResponse
     {
         $validated = $request->validated();
 
@@ -336,7 +337,7 @@ class EnrollmentController extends Controller
             );
             $profile->update(['middle_name' => $validated['middle_name'] ?? null]);
 
-            $this->scaffoldIntendedSheet($user, $intendedBatch, [
+            $enrollments->scaffoldIntendedSheet($user, $intendedBatch, [
                 'first_name' => $validated['first_name'],
                 'middle_name' => $validated['middle_name'] ?? null,
                 'last_name' => $validated['last_name'],
@@ -347,36 +348,44 @@ class EnrollmentController extends Controller
     }
 
     /**
-     * Record the coordinator's intended placement as a DRAFT info sheet whose
-     * batch_id is the intended batch — the single home for "intended batch
-     * before Accept". Program/department/coordinator are pre-filled from the
-     * batch so the student's gated info-sheet form opens partly populated; the
-     * student supplies the rest and chooses their company from the dropdown.
+     * "Student says they never got the welcome email" — generates a fresh
+     * temporary password (same generation as
+     * Admin\UserController::issueTemporaryPassword) and re-sends the
+     * credentials notification, rather than requiring a whole new bulk-import
+     * re-upload for one student. Coordinator-scoped like showIntern/
+     * destroyAccount; the admin equivalent lives in Admin\UserController.
      */
-    private function scaffoldIntendedSheet(User $student, Batch $batch, array $name): void
+    public function resendCredentials(Request $request, User $student): JsonResponse
     {
-        $batch->loadMissing(['program.department', 'coordinator']);
+        abort_unless($student->role === 'student', 404);
+        abort_unless(
+            $request->user()->coordinatorProgramIds()->contains($student->program_id),
+            403,
+            'That student is outside your assigned department(s).'
+        );
+        abort_if($student->email === null, 422, 'This student has no email on file to send credentials to.');
 
-        StudentInformationSheet::create([
-            'student_id' => $student->id,
-            'batch_id' => $batch->id,
-            'submission_status' => 'draft',
-            'personal_info' => [
-                // Stored from the discrete First/Middle/Family fields the
-                // coordinator typed — never re-split from the joined users.name
-                // (which would fold the middle name into the family name).
-                'last_name' => $name['last_name'],
-                'first_name' => $name['first_name'],
-                'middle_name' => $name['middle_name'] ?? null,
-                'student_id_number' => $student->student_id_number,
-            ],
-            'academic_info' => [
-                'program_course' => $batch->program?->name,
-                'department' => $batch->program?->department?->name,
-                'internship_coordinator' => $batch->coordinator?->name,
-            ],
-            'ojt_info' => [],
-            'emergency_contact' => null,
+        $temporaryPassword = Str::password(12);
+
+        $student->update([
+            'password' => $temporaryPassword,
+            'must_change_password' => true,
+        ]);
+
+        $emailed = true;
+
+        try {
+            $student->notify(new NewAccountCredentials($student->username, $temporaryPassword));
+        } catch (\Throwable $e) {
+            report($e);
+            $emailed = false;
+        }
+
+        SystemLog::record('Credentials Resent', "Resent login credentials to {$student->name}");
+
+        return response()->json([
+            'emailed' => $emailed,
+            'temporary_password' => $temporaryPassword,
         ]);
     }
 

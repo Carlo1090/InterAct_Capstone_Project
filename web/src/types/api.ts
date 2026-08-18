@@ -163,6 +163,36 @@ export type CoordinatorInternUser = {
   } | null
 }
 
+export type BulkImportOutcome = 'created_and_emailed' | 'created_email_failed' | 'skipped_invalid'
+
+export type BulkImportRow = {
+  row: number
+  first_name: string
+  middle_name: string | null
+  last_name: string
+  sex: 'male' | 'female' | null
+  student_id_number: string
+  email: string
+  valid: boolean
+  errors: string[]
+}
+
+export type BulkImportResultRow = BulkImportRow & {
+  outcome: BulkImportOutcome
+  temporary_password: string | null
+}
+
+export type BulkImportPreviewResponse = {
+  rows: BulkImportRow[]
+  valid_count: number
+  invalid_count: number
+}
+
+export type BulkImportConfirmResponse = {
+  results: BulkImportResultRow[]
+  created_count: number
+}
+
 export type CoordinatorSupervisorUser = {
   id: number
   name: string
