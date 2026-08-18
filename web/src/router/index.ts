@@ -202,6 +202,11 @@ const router = createRouter({
           meta: { title: 'Weekly Journals' },
         },
         {
+          path: 'weekly-time-log',
+          component: () => import('@/pages/student/StudentWeeklyTimeLogPage.vue'),
+          meta: { title: 'Weekly and Time Log Summary' },
+        },
+        {
           path: 'info-sheet',
           component: () => import('@/pages/student/StudentInfoSheetPage.vue'),
           meta: { title: 'Student Info Sheet' },

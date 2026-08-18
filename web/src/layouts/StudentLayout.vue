@@ -13,6 +13,7 @@ const allNavItems = [
   { label: 'My Journals', to: '/student/journals', badge: '', icon: 'journals' },
   { label: 'Write Daily Journal', to: '/student/write-journal', badge: '', icon: 'pencil' },
   { label: 'Weekly Journals', to: '/student/weekly-journals', badge: '', icon: 'stack' },
+  { label: 'Weekly and Time Log Summary', to: '/student/weekly-time-log', badge: '', icon: 'clock' },
   { label: 'Student Info Sheet', to: '/student/info-sheet', badge: '', icon: 'id-card' },
 ]
 
@@ -115,6 +116,9 @@ const department = computed(() => auth.user?.program?.department?.name ?? 'CAST'
               stroke-linejoin="round"
             />
             <path v-if="item.icon === 'stack'" d="m4 13.5 8 4.5 8-4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+
+            <circle v-if="item.icon === 'clock'" cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.6" />
+            <path v-if="item.icon === 'clock'" d="M12 7.5V12l3 1.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
 
             <rect v-if="item.icon === 'id-card'" x="3.5" y="5.5" width="17" height="13" rx="2" stroke="currentColor" stroke-width="1.6" />
             <circle v-if="item.icon === 'id-card'" cx="9" cy="11.5" r="2" stroke="currentColor" stroke-width="1.6" />
