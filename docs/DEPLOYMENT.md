@@ -61,7 +61,7 @@ copy-paste:
 | Aiven MySQL credentials | From step 3 below: host, port, database, user, password. |
 
 > **Why `DEMO_PASSWORD` is mandatory.** This repository is **public**, and
-> `CLAUDE.md` documents both the seeded demo usernames (`mdcadmin`, `mdccore`,
+> `PROJECT.md` documents both the seeded demo usernames (`mdcadmin`, `mdccore`,
 > `mdcbalbero`, `mdcstudent`, …) and the fact that they all use `password`.
 > Deploying the demo dataset as-is hands anyone who finds the repo an **admin
 > login**. The deploy pipeline refuses to seed demo data without a replacement
@@ -353,5 +353,5 @@ Then in a browser:
 - [`web/vercel.json`](../web/vercel.json) — SPA build + proxy rewrites
 - [`Dockerfile`](../Dockerfile) / [`docker/entrypoint.sh`](../docker/entrypoint.sh)
   — image build and boot sequence
-- [`CLAUDE.md`](../CLAUDE.md) — architecture, domain rules, and the full
-  deployment decision record (search for **DECIDED STACK**)
+- [`PROJECT.md`](../PROJECT.md) — architecture, domain rules, and the full
+  deployment decision record (see its **Deployment** section)

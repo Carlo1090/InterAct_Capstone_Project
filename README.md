@@ -76,10 +76,15 @@ npx expo start
 
 ## Documentation
 
-- `CLAUDE.md` — the single source of truth for current architecture,
-  conventions, and domain rules; kept up to date as the project changes
+- **`PROJECT.md`** — the single source of truth for current architecture,
+  conventions, domain rules, and gotchas; kept up to date as the project changes.
+  (`CLAUDE.md` is a one-line stub that imports it, so Claude Code auto-loads it.)
 - `docs/DEPLOYMENT.md` — how to deploy this project, start to finish
-- `docs/PROJECT_HISTORY.md` — condensed historical log of earlier build phases
-- `docs/` also holds the database schema doc, development roadmap, and SIPP
-  report annex references
-- Database baseline: 20-table schema, v2.0 (see `docs/InternTrack_Database_Schema_v2.docx`)
+- `docs/CRON-AND-EMAIL-SETUP.txt` — operator setup for scheduled jobs and mail
+- `docs/PRE-ORAL-DEFENSE-DEMO-GUIDE.txt` — demo walkthrough and credentials
+- `docs/PROJECT_HISTORY.md` — historical log: earlier build phases, plus an
+  archived copy of the full pre-condensation notes
+- `docs/reference/` — client-supplied source documents (SIPP annexes, the group
+  Student Information Sheet, the development roadmap)
+
+Database baseline: the 20-table InternTrack_Database_Schema_v2.

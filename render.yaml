@@ -82,7 +82,7 @@ services:
         sync: false
       # Required when SEED_ON_BOOT=demo. The entrypoint refuses to seed the demo
       # dataset without it, because the seeded default password is published in
-      # this repo's CLAUDE.md.
+      # this repo's PROJECT.md.
       - key: DEMO_PASSWORD
         sync: false
 
