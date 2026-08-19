@@ -268,6 +268,76 @@ enrollment.
    the coordinator (in-scope), and the admin (no scope check — that page is
    explicitly all-departments).
 
+**Bulk-importing students (Excel/CSV) is an alternative entry to step 1
+above, not a different flow.** `Coordinator/BulkStudentImportController`
+(`preview`/`confirm`, routes under `coordinator/accounts/bulk-import/*`)
+creates the exact same shape of account + draft info sheet `createAccount`
+does, just for many rows from one uploaded spreadsheet instead of one
+coordinator-typed form. Columns: First Name, Middle Name (optional), Family
+Name, Sex, Student ID Number, Email — Program and Batch are picked once on
+the upload form, not per row (kept out of free-typed cells on purpose, same
+reasoning as everywhere else foreign keys meet user input). Row
+parsing/validation lives in `App\Services\StudentBulkImportService`, shared
+by both `preview` and `confirm` so the two can never disagree — **`confirm`
+re-uploads and re-parses the same file from scratch rather than trusting a
+client-supplied "these rows are valid" list**, since another import could
+have consumed an ID number between the two calls. Duplicate ID numbers/
+emails **within the same file** are flagged (a DB-uniqueness check alone
+can't catch that, since neither row exists yet). Capped at
+`StudentBulkImportService::MAX_ROWS` (100) rows per file, rejected upfront —
+there is no queue worker in this deployment, so the whole request runs
+synchronously and needs a bound on worst-case duration.
+
+Two things distinguish a bulk-imported account from a manually-created one:
+
+- **`username` is always the Student ID Number**, and the temporary password
+  is a genuinely random `Str::password(12)` — a deliberate security choice.
+  The pre-existing manual Create Student Account form
+  (`CoordinatorInternsPage.vue`'s `derivedPassword`) still suggests
+  `{first 3 letters of first name}_{student ID number}`, which is
+  predictable from public-ish information. Left as-is for now since changing
+  it wasn't part of this feature's scope, but it's the same "first 3
+  letters" pattern this feature was deliberately built to move away from —
+  worth revisiting for consistency.
+- **The student is emailed their credentials immediately**
+  (`App\Notifications\NewAccountCredentials`: username, temp password, and a
+  link to the SPA login page), which is a deliberate, scoped exception to
+  the "only mail a Google-verified address" rule
+  (`SendMissingJournalEntryReminders`'s `$canEmail` gate) — the coordinator's
+  uploaded roster is trusted directly, since there is no verified address to
+  wait for at creation time. Consequence: a bulk-imported student's
+  `email_verified_at` stays null like any coordinator-entered email, so they
+  will **not** receive missing-journal-entry reminder emails until they
+  separately verify that address via Google — matches existing behavior
+  everywhere else, not a bug.
+
+Each row's outcome in the `confirm` response is one of `created_and_emailed`
+/ `created_email_failed` / `skipped_invalid` — a mail failure never undoes
+the account it belongs to (each row is created independently, not inside one
+shared transaction across the whole file). The response also carries a
+one-time credentials table (ID number, email, temp password) that the
+frontend renders and offers as a client-side CSV download — never persisted
+server-side, and never run through `useFormDraft`/sessionStorage, matching
+the project's existing "never persist a credential" rule
+(`lib/formDraft.ts`).
+
+**"Resend Credentials"** is the fix for "a student says they never got their
+welcome email," without needing a whole spreadsheet re-upload for one
+person: `EnrollmentController::resendCredentials` (coordinator-scoped like
+`destroyAccount`, on the Interns tab) and
+`Admin\UserController::resendCredentials` (on the System Settings
+student-search panel) both generate a fresh temp password and re-send
+`NewAccountCredentials`. Distinct from the pre-existing
+`Admin\UserController::issueTemporaryPassword`, which only surfaces the
+password in the response for the admin to relay themselves and sends no
+email — that action is untouched.
+
+MOBILE NOTE (Phase 7): a bulk-imported or credentials-resent account has
+`must_change_password = true` on first login, exactly like every other
+coordinator-provisioned account. The mobile app's future auth flow needs to
+force a password change the same way the web popover does (no dismissal, no
+back navigation) rather than treating it as an edge case.
+
 **An approved sheet is NOT permanently read-only.** A fresh gate submission
 cannot replace it, but partial post-enrollment editing is allowed: **Program &
 Year and the assigned Company stay locked** (re-derived server-side, ignoring
@@ -619,8 +689,17 @@ notification row's `type` reports what actually happened (`'email'` vs
 `'in_app'`). Everyone else still gets the in-app bell row silently, which is the
 normal case for a coordinator-created student.
 
+This gate is specific to `MissingJournalEntryReminder` — `NewAccountCredentials`
+(bulk import / Resend Credentials, see Intake & Enrollment above) is a
+deliberate, narrower exception that mails an unverified coordinator-supplied
+address directly, since account-creation time has no verified address to wait
+for. Do not read this section as a blanket rule for every notification.
+
 `toMail()` sends **from** the admin's System Settings `system_email` when set and
-valid, falling back to `MAIL_FROM_ADDRESS`.
+valid, falling back to `MAIL_FROM_ADDRESS` — both `MissingJournalEntryReminder`
+and `NewAccountCredentials` resolve this identically via the shared
+`App\Support\SystemMailFrom::resolve()` helper, so the two notifications can
+never disagree about the sending address.
 
 **`users.email_verified_at` is set by exactly ONE thing — the Google verification
 flow.** A `migrate:fresh --seed` yields users with emails and **zero** verified,
@@ -653,6 +732,47 @@ address, not a personal one.
 
 **No queue worker is needed** — nothing implements `ShouldQueue`; the
 notification sends inline. Deployments set `QUEUE_CONNECTION=sync`.
+
+#### `php artisan mail:test <address>` — verify BEFORE importing a roster
+
+`App\Console\Commands\TestMailConfiguration` sends exactly one message and
+interprets the failure. It exists because the alternative way to discover dead
+SMTP credentials is to bulk-import 40 students, have all 40 come back
+`created_email_failed`, and then Resend each one individually.
+
+- It deliberately sends the **real `NewAccountCredentials` notification**, not a
+  throwaway string, so the test exercises the actual template, resolved from
+  address and login link a student receives.
+- It prints the resolved transport, host, SMTP user, from address (flagging
+  whether it came from System Settings or `MAIL_FROM_ADDRESS`) and login link
+  before sending — most misconfigurations are visible in that header alone.
+- It maps the common failures to the actual fix rather than echoing Symfony's
+  authenticator wall: SMTP **535 / BadCredentials** → regenerate the Google App
+  Password; connection refused → host/port/firewall; **cURL error 60** → the
+  Windows missing-CA-bundle gotcha; a scheme rejection → `MAIL_SCHEME` must be
+  `null`, not `tls`, on port 587. `--raw` shows the unabridged exception.
+
+**GOTCHA — a Google App Password silently dies.** SMTP 535 with a
+*correctly-shaped* password (16 lowercase chars, unquoted, no spaces) does not
+mean it was typed wrong: Google invalidates every app password when 2-Step
+Verification is switched off, when the account password changes, or when the app
+password is revoked. Regenerate at `myaccount.google.com/apppasswords`. The
+symptom is indistinguishable from a typo, which is why `mail:test` names this
+cause explicitly.
+
+**Gmail SMTP can send to ANY recipient** — there is no allowlist and no
+"only my own address works" restriction (that limitation belongs to Resend's
+shared `onboarding@resend.dev` sender, which genuinely only delivers to the
+account owner). If mail reaches you but not students, the cause is spam
+filtering or dead credentials, not the recipient address. Free Gmail caps at
+~500 recipients/day, which bounds a single bulk import. To prove
+arbitrary-recipient delivery without mailing a third party, send to a
+**plus-addressed** variant of your own inbox (`you+test@gmail.com`) — a
+different recipient string that still lands in your own mail.
+
+`NewAccountCredentials::toMail()` falls back to `'there'` when the notifiable
+has no `name`, since `mail:test` routes it to a bare address
+(`AnonymousNotifiable`) rather than a `User`.
 
 ## Google OAuth — email verification + link-only sign-in
 
@@ -888,7 +1008,9 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
   `users`, "supervisors the coordinator created" is realized as supervisors
   attached to any company in the coordinator's company-scope. Header actions are
   tab-contextual. "Create Supervisor" **requires a company first** — a supervisor
-  is always a Company Supervisor.
+  is always a Company Supervisor. The Interns tab also has **"Bulk Import
+  (Excel)"** (see Intake & Enrollment above) and a per-row **"Resend"** action
+  for reissuing/re-emailing a student's login credentials.
 - **Batch roster management** is separate from the enroll flow, scoped by batch
   program. Adding a student who is already active in another batch **MOVES** them
   (old row dropped, new active row, behind a wrong-batch-guard confirm).
@@ -1617,6 +1739,9 @@ composer run dev
 php artisan journal:run-weekly-bundling                    # optional --week-start=
 php artisan journal:send-missing-entry-reminders --ignore-time
 php artisan roster:purge-archived                          # optional --now=
+
+# Verify outbound mail works before relying on it for a roster import
+php artisan mail:test you@example.com                      # optional --raw
 
 # Web SPA (run inside web/)
 npm install

@@ -6,11 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\StudentProfile;
 use App\Models\SystemLog;
 use App\Models\User;
+use App\Notifications\NewAccountCredentials;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Throwable;
 
 class UserController extends Controller
 {
@@ -150,6 +152,42 @@ class UserController extends Controller
 
         return response()->json([
             'message' => 'Temporary password issued.',
+            'temporary_password' => $temporaryPassword,
+        ]);
+    }
+
+    /**
+     * "Student says they never got the welcome email" — generates a fresh
+     * temporary password and re-sends the credentials notification, rather
+     * than the admin needing to relay a password manually. Distinct from
+     * issueTemporaryPassword() above (which only surfaces the password in
+     * the response for the admin to hand over themselves) — this one emails
+     * it directly to the account's address.
+     */
+    public function resendCredentials(User $user): JsonResponse
+    {
+        abort_if($user->email === null, 422, 'This account has no email on file to send credentials to.');
+
+        $temporaryPassword = Str::password(10);
+
+        $user->update([
+            'password' => $temporaryPassword,
+            'must_change_password' => true,
+        ]);
+
+        $emailed = true;
+
+        try {
+            $user->notify(new NewAccountCredentials($user->username, $temporaryPassword));
+        } catch (Throwable $e) {
+            report($e);
+            $emailed = false;
+        }
+
+        SystemLog::record('Credentials Resent', "Resent login credentials to {$user->name}");
+
+        return response()->json([
+            'emailed' => $emailed,
             'temporary_password' => $temporaryPassword,
         ]);
     }

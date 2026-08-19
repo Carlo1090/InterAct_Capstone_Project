@@ -2,7 +2,7 @@
 
 namespace App\Notifications;
 
-use App\Models\SystemSetting;
+use App\Support\SystemMailFrom;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -76,10 +76,10 @@ class MissingJournalEntryReminder extends Notification
             ->action('Write my journal', rtrim((string) config('app.frontend_url'), '/').'/student/write-journal')
             ->line('You are receiving this because your email is verified and reminders are switched on. You can change your reminder days and time, or turn reminders off, under Reminder Settings in your profile menu.');
 
-        // The admin's System Settings page has always collected a "System Email"
-        // and nothing has ever read it. Use it as the from address when set, so
-        // reminders come from the institution rather than MAIL_FROM_ADDRESS.
-        $systemEmail = $this->systemEmail();
+        // The admin's System Settings page has always collected a "System Email".
+        // Use it as the from address when set, so reminders come from the
+        // institution rather than MAIL_FROM_ADDRESS.
+        $systemEmail = SystemMailFrom::resolve();
 
         if ($systemEmail !== null) {
             $message->from($systemEmail, config('app.name'));
@@ -124,14 +124,5 @@ class MissingJournalEntryReminder extends Notification
     private function longDate(string $date): string
     {
         return Carbon::parse($date)->format('l, F j, Y');
-    }
-
-    private function systemEmail(): ?string
-    {
-        $value = trim((string) SystemSetting::cached()->get('system_email'));
-
-        // Stored free-form and validated only on write, so re-check here rather
-        // than handing a malformed address to the transport.
-        return filter_var($value, FILTER_VALIDATE_EMAIL) ? $value : null;
     }
 }

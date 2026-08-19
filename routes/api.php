@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\WeeklyBundlingController;
 use App\Http\Controllers\Coordinator\AnnualSippReportController;
 use App\Http\Controllers\Coordinator\BatchController as CoordinatorBatchController;
 use App\Http\Controllers\Coordinator\BatchRosterController;
+use App\Http\Controllers\Coordinator\BulkStudentImportController;
 use App\Http\Controllers\Coordinator\CoordinatorCompanyController;
 use App\Http\Controllers\Coordinator\CoordinatorDashboardController;
 use App\Http\Controllers\Coordinator\CoordinatorInfoSheetController;
@@ -94,6 +95,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])
         Route::patch('users/{user}/deactivate', [UserController::class, 'deactivate']);
         Route::patch('users/{user}/activate', [UserController::class, 'activate']);
         Route::patch('users/{user}/temporary-password', [UserController::class, 'issueTemporaryPassword']);
+        Route::post('users/{user}/resend-credentials', [UserController::class, 'resendCredentials']);
 
         Route::get('departments', [DepartmentController::class, 'index']);
         Route::get('departments/{department}', [DepartmentController::class, 'show']);
@@ -180,11 +182,14 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::get('users/interns', [EnrollmentController::class, 'interns']);
         Route::get('users/interns/{student}', [EnrollmentController::class, 'showIntern']);
         Route::delete('users/interns/{student}', [EnrollmentController::class, 'destroyAccount']);
+        Route::post('users/interns/{student}/resend-credentials', [EnrollmentController::class, 'resendCredentials']);
         Route::get('users/supervisors', [EnrollmentController::class, 'supervisors']);
 
         Route::get('students/enrollable', [EnrollmentController::class, 'enrollableStudents']);
         Route::get('enrollment-options', [EnrollmentController::class, 'options']);
         Route::post('accounts', [EnrollmentController::class, 'createAccount']);
+        Route::post('accounts/bulk-import/preview', [BulkStudentImportController::class, 'preview']);
+        Route::post('accounts/bulk-import/confirm', [BulkStudentImportController::class, 'confirm']);
         Route::get('roster', [EnrollmentController::class, 'roster']);
         Route::post('enrollments', [EnrollmentController::class, 'store']);
         Route::put('enrollments/{batchStudent}', [EnrollmentController::class, 'update']);

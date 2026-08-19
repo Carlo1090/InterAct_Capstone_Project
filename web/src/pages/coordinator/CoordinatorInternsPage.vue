@@ -2,13 +2,17 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
-import { showToast } from '@/lib/toast'
+import { showToast, confirmAction } from '@/lib/toast'
 import { useFormDraft } from '@/lib/formDraft'
 import { categorizeError } from '@/lib/apiError'
 import ToastHost from '@/components/ToastHost.vue'
 import InternDetailModal from '@/components/interns/InternDetailModal.vue'
 import DangerCountdownModal from '@/components/ui/DangerCountdownModal.vue'
 import type {
+  BulkImportConfirmResponse,
+  BulkImportPreviewResponse,
+  BulkImportResultRow,
+  BulkImportRow,
   CoordinatorCompany,
   CoordinatorInternUser,
   CoordinatorSupervisorUser,
@@ -88,6 +92,42 @@ const confirmDeleteAccount = async () => {
     showToast(message, 'error')
   } finally {
     isDeleting.value = false
+  }
+}
+
+// --- Resend Credentials ("student never got their welcome email") -----------
+const resendingId = ref<number | null>(null)
+
+const resendCredentials = async (student: CoordinatorInternUser) => {
+  if (!student.email) {
+    showToast(`${student.name} has no email on file to resend credentials to.`, 'error')
+    return
+  }
+
+  const proceed = await confirmAction({
+    title: 'Resend login credentials?',
+    message: `This generates a new temporary password for ${student.name} and emails it to ${student.email}. Their current password will stop working.`,
+    confirmLabel: 'Resend',
+  })
+  if (!proceed) return
+
+  resendingId.value = student.id
+
+  try {
+    const { data } = await api.post<{ emailed: boolean; temporary_password: string }>(
+      `/api/coordinator/users/interns/${student.id}/resend-credentials`,
+    )
+    showToast(
+      data.emailed
+        ? `Credentials resent to ${student.email}.`
+        : `Email delivery failed. New temporary password: ${data.temporary_password}`,
+      data.emailed ? 'success' : 'error',
+    )
+  } catch (error) {
+    const { message } = categorizeError(error, 'Unable to resend credentials.')
+    showToast(message, 'error')
+  } finally {
+    resendingId.value = null
   }
 }
 
@@ -222,6 +262,167 @@ watch(
     }
   },
 )
+
+// --- Bulk Import Students (Excel/CSV) — replaces typing accounts one at a time,
+// but is still ACCOUNT CREATION ONLY: each row goes through the same DRAFT
+// info-sheet scaffold as the manual flow above and stays NOT-ENROLLED until
+// the student submits their sheet and a coordinator Accepts it. -------------
+type BulkStep = 'upload' | 'preview' | 'results'
+
+const isBulkModalOpen = ref(false)
+const bulkStep = ref<BulkStep>('upload')
+const bulkFile = ref<File | null>(null)
+const bulkFileInput = ref<HTMLInputElement | null>(null)
+const bulkForm = reactive({ program_id: null as number | null, batch_id: null as number | null })
+const isBulkPreviewing = ref(false)
+const isBulkConfirming = ref(false)
+const bulkMessage = ref('')
+const bulkPreviewRows = ref<BulkImportRow[]>([])
+const bulkValidCount = ref(0)
+const bulkInvalidCount = ref(0)
+const bulkResults = ref<BulkImportResultRow[]>([])
+const bulkCreatedCount = ref(0)
+
+// Same scoping as the manual Create Student Account form: batch is filtered
+// to the chosen program, from the coordinator's own batches.
+const bulkBatchOptions = computed(() =>
+  bulkForm.program_id
+    ? (enrollmentOptions.value.batches ?? []).filter((batch) => batch.program_id === bulkForm.program_id)
+    : [],
+)
+
+watch(
+  () => bulkForm.program_id,
+  () => {
+    if (!bulkBatchOptions.value.some((batch) => batch.id === bulkForm.batch_id)) {
+      bulkForm.batch_id = null
+    }
+  },
+)
+
+const canPreviewBulk = computed(() => bulkFile.value !== null && bulkForm.program_id !== null && bulkForm.batch_id !== null)
+
+const openBulkModal = async () => {
+  bulkStep.value = 'upload'
+  bulkFile.value = null
+  bulkForm.program_id = null
+  bulkForm.batch_id = null
+  bulkMessage.value = ''
+  bulkPreviewRows.value = []
+  bulkResults.value = []
+  isBulkModalOpen.value = true
+  await loadEnrollmentData()
+}
+
+const closeBulkModal = () => {
+  isBulkModalOpen.value = false
+}
+
+const onBulkFileChange = (event: Event) => {
+  bulkFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
+}
+
+const bulkFormData = (): FormData => {
+  const formData = new FormData()
+  formData.append('file', bulkFile.value as File)
+  formData.append('program_id', String(bulkForm.program_id))
+  formData.append('batch_id', String(bulkForm.batch_id))
+  return formData
+}
+
+const previewBulkImport = async () => {
+  if (!canPreviewBulk.value) return
+  isBulkPreviewing.value = true
+  bulkMessage.value = ''
+
+  try {
+    const { data } = await api.post<BulkImportPreviewResponse>('/api/coordinator/accounts/bulk-import/preview', bulkFormData())
+    bulkPreviewRows.value = data.rows
+    bulkValidCount.value = data.valid_count
+    bulkInvalidCount.value = data.invalid_count
+    bulkStep.value = 'preview'
+  } catch (error) {
+    const { message } = categorizeError(error, 'Unable to read this file. Check that it matches the template and try again.')
+    bulkMessage.value = message
+  } finally {
+    isBulkPreviewing.value = false
+  }
+}
+
+const backToBulkUpload = () => {
+  bulkStep.value = 'upload'
+}
+
+const confirmBulkImport = async () => {
+  if (bulkValidCount.value === 0) return
+
+  const proceed = await confirmAction({
+    title: `Create ${bulkValidCount.value} student account${bulkValidCount.value === 1 ? '' : 's'}?`,
+    message: `This creates ${bulkValidCount.value} student account(s) and emails each student their username and a temporary password. Rows still marked invalid are skipped, not created.`,
+    confirmLabel: 'Create Accounts',
+  })
+  if (!proceed) return
+
+  isBulkConfirming.value = true
+  bulkMessage.value = ''
+
+  try {
+    const { data } = await api.post<BulkImportConfirmResponse>('/api/coordinator/accounts/bulk-import/confirm', bulkFormData())
+    bulkResults.value = data.results
+    bulkCreatedCount.value = data.created_count
+    bulkStep.value = 'results'
+    await loadInterns()
+    showToast(`Created ${data.created_count} student account${data.created_count === 1 ? '' : 's'}.`)
+  } catch (error) {
+    const { message } = categorizeError(error, 'Unable to create these accounts.')
+    bulkMessage.value = message
+  } finally {
+    isBulkConfirming.value = false
+  }
+}
+
+const bulkOutcomeLabel = (outcome: BulkImportResultRow['outcome']): string => {
+  if (outcome === 'created_and_emailed') return 'Created — emailed'
+  if (outcome === 'created_email_failed') return 'Created — email failed'
+  return 'Skipped'
+}
+
+const bulkOutcomeClass = (outcome: BulkImportResultRow['outcome']): string => {
+  if (outcome === 'created_and_emailed') return 'bg-green-50 text-green-700'
+  if (outcome === 'created_email_failed') return 'bg-amber-50 text-amber-700'
+  return 'bg-red-50 text-red-700'
+}
+
+/**
+ * The one-time credentials backup for this import — never persisted (no
+ * sessionStorage, no logging), generated and downloaded entirely client-side
+ * from the confirm response, gone once the modal is closed.
+ */
+const downloadBulkCredentials = () => {
+  const rows = bulkResults.value.filter((row) => row.temporary_password)
+  if (rows.length === 0) return
+
+  const escape = (value: string) => `"${value.replace(/"/g, '""')}"`
+  const header = ['Student ID Number', 'Name', 'Email', 'Temporary Password', 'Status']
+  const lines = [header.join(',')]
+
+  rows.forEach((row) => {
+    const name = [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' ')
+    lines.push(
+      [row.student_id_number, name, row.email, row.temporary_password ?? '', bulkOutcomeLabel(row.outcome)]
+        .map((value) => escape(String(value)))
+        .join(','),
+    )
+  })
+
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `bulk-import-credentials-${Date.now()}.csv`
+  link.click()
+  URL.revokeObjectURL(url)
+}
 
 // --- Create Supervisor (Supervisors tab only — REQUIRES a company) ----------
 const isSupervisorModalOpen = ref(false)
@@ -586,6 +787,9 @@ onMounted(() => {
       </div>
       <!-- Header actions are tab-contextual: only what belongs to the active tab. -->
       <div v-if="activeTab === 'interns'" class="flex items-center gap-2">
+        <button type="button" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50" @click="openBulkModal">
+          Bulk Import (Excel)
+        </button>
         <button type="button" class="rounded-md border border-blue-600 bg-white px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-50" @click="openAccountModal">
           + Create Student Account
         </button>
@@ -686,9 +890,17 @@ onMounted(() => {
               <td class="px-4 py-3 text-sm text-slate-500">{{ student.enrollment?.company?.name ?? '—' }}</td>
               <td class="px-4 py-3 text-sm text-slate-500">{{ student.enrollment?.supervisor?.name ?? '—' }}</td>
               <td class="px-4 py-3">
-                <div class="flex gap-2">
+                <div class="flex items-center justify-end gap-2 whitespace-nowrap">
                   <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="viewIntern(student.id)">
                     View
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    :disabled="resendingId === student.id"
+                    @click="resendCredentials(student)"
+                  >
+                    {{ resendingId === student.id ? 'Sending...' : 'Resend' }}
                   </button>
                   <button
                     type="button"
@@ -1086,6 +1298,172 @@ onMounted(() => {
           >
             {{ isCreatingAccount ? 'Creating...' : 'Create Account' }}
           </button>
+        </div>
+      </section>
+    </div>
+
+    <!-- Bulk Import Students modal — upload → preview → results, three steps in one shell -->
+    <div v-if="isBulkModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+      <section class="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+        <div class="flex shrink-0 items-center justify-between border-b border-slate-200 px-6 py-4">
+          <div>
+            <h3 class="text-lg font-semibold text-slate-950">Bulk Import Students</h3>
+            <p class="mt-0.5 text-xs text-slate-500">
+              Creates login accounts from a spreadsheet — the ID number becomes the username, and each student is emailed a temporary password. Same as Create Student Account, this does not enroll them: they still submit their Info Sheet and you Accept it.
+            </p>
+          </div>
+          <button type="button" class="shrink-0 text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeBulkModal">Close</button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto px-6 py-5">
+          <!-- Step 1: Upload -->
+          <div v-if="bulkStep === 'upload'" class="space-y-5">
+            <div class="grid gap-4 md:grid-cols-2">
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="bulk-program">Program</label>
+                <select id="bulk-program" v-model.number="bulkForm.program_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                  <option :value="null">Select Program</option>
+                  <option v-for="program in enrollmentOptions.programs ?? []" :key="program.id" :value="program.id">
+                    {{ program.code ?? program.name }}
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="bulk-batch">Batch</label>
+                <select
+                  id="bulk-batch"
+                  v-model.number="bulkForm.batch_id"
+                  class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
+                  :disabled="!bulkForm.program_id"
+                >
+                  <option :value="null">Select Batch</option>
+                  <option v-for="batch in bulkBatchOptions" :key="batch.id" :value="batch.id">{{ batch.name }}</option>
+                </select>
+                <p v-if="!bulkForm.program_id" class="mt-1 text-xs text-slate-500">Select a program first.</p>
+              </div>
+            </div>
+
+            <div>
+              <label class="mb-2 block text-sm font-medium text-slate-700" for="bulk-file">Spreadsheet (.xlsx, .xls or .csv)</label>
+              <input
+                id="bulk-file"
+                ref="bulkFileInput"
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                class="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold"
+                @change="onBulkFileChange"
+              />
+              <p class="mt-1 text-xs text-slate-500">
+                Columns: First Name, Middle Name (optional), Family Name, Sex, Student ID Number, Email. Up to 100 rows per file.
+                <a href="/templates/student-bulk-import-template.csv" download class="font-semibold text-blue-600 hover:text-blue-700">Download template</a>
+              </p>
+            </div>
+
+            <p v-if="bulkMessage" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ bulkMessage }}</p>
+          </div>
+
+          <!-- Step 2: Preview -->
+          <div v-else-if="bulkStep === 'preview'" class="space-y-4">
+            <p class="text-sm text-slate-600">
+              <span class="font-semibold text-green-700">{{ bulkValidCount }}</span> ready to create ·
+              <span class="font-semibold text-red-700">{{ bulkInvalidCount }}</span> will be skipped
+            </p>
+            <div class="overflow-x-auto rounded-lg ring-1 ring-slate-200">
+              <table class="min-w-full divide-y divide-slate-200 text-sm">
+                <thead class="bg-slate-50">
+                  <tr>
+                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Row</th>
+                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
+                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">ID Number</th>
+                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Email</th>
+                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr v-for="row in bulkPreviewRows" :key="row.row">
+                    <td class="px-3 py-2 text-slate-500">{{ row.row }}</td>
+                    <td class="px-3 py-2 text-slate-900">{{ [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' ') || '—' }}</td>
+                    <td class="px-3 py-2 font-mono text-xs text-slate-700">{{ row.student_id_number || '—' }}</td>
+                    <td class="px-3 py-2 text-slate-700">{{ row.email || '—' }}</td>
+                    <td class="px-3 py-2">
+                      <span v-if="row.valid" class="rounded-full bg-green-50 px-2 py-1 text-xs font-bold text-green-700">Ready</span>
+                      <span v-else class="text-xs text-red-700">{{ row.errors.join(' ') }}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p v-if="bulkMessage" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ bulkMessage }}</p>
+          </div>
+
+          <!-- Step 3: Results -->
+          <div v-else class="space-y-4">
+            <div class="flex items-center justify-between gap-3">
+              <p class="text-sm text-slate-600">
+                Created <span class="font-semibold text-green-700">{{ bulkCreatedCount }}</span> account{{ bulkCreatedCount === 1 ? '' : 's' }}.
+              </p>
+              <button
+                type="button"
+                class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                @click="downloadBulkCredentials"
+              >
+                Download credentials (.csv)
+              </button>
+            </div>
+            <p class="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              This is the only time these passwords are shown. Download the backup now if you need one — closing this window discards it.
+            </p>
+            <div class="overflow-x-auto rounded-lg ring-1 ring-slate-200">
+              <table class="min-w-full divide-y divide-slate-200 text-sm">
+                <thead class="bg-slate-50">
+                  <tr>
+                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
+                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">ID Number</th>
+                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Temporary Password</th>
+                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr v-for="row in bulkResults" :key="row.row">
+                    <td class="px-3 py-2 text-slate-900">{{ [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' ') || '—' }}</td>
+                    <td class="px-3 py-2 font-mono text-xs text-slate-700">{{ row.student_id_number || '—' }}</td>
+                    <td class="px-3 py-2 font-mono text-xs text-slate-900">{{ row.temporary_password ?? '—' }}</td>
+                    <td class="px-3 py-2">
+                      <span class="rounded-full px-2 py-1 text-xs font-bold" :class="bulkOutcomeClass(row.outcome)">{{ bulkOutcomeLabel(row.outcome) }}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex shrink-0 justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
+          <template v-if="bulkStep === 'upload'">
+            <button type="button" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" @click="closeBulkModal">Cancel</button>
+            <button
+              type="button"
+              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-blue-300"
+              :disabled="!canPreviewBulk || isBulkPreviewing"
+              @click="previewBulkImport"
+            >
+              {{ isBulkPreviewing ? 'Reading file...' : 'Preview' }}
+            </button>
+          </template>
+          <template v-else-if="bulkStep === 'preview'">
+            <button type="button" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" @click="backToBulkUpload">Back</button>
+            <button
+              type="button"
+              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-blue-300"
+              :disabled="bulkValidCount === 0 || isBulkConfirming"
+              @click="confirmBulkImport"
+            >
+              {{ isBulkConfirming ? 'Creating...' : `Create ${bulkValidCount} Account${bulkValidCount === 1 ? '' : 's'}` }}
+            </button>
+          </template>
+          <template v-else>
+            <button type="button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white" @click="closeBulkModal">Done</button>
+          </template>
         </div>
       </section>
     </div>
