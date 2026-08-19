@@ -16,11 +16,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../src/hooks/useAuth';
 import { colors } from '../src/constants/colors';
+import { apiGet } from '../src/services/api';
+import { endpoints } from '../src/services/endpoints';
+import { CurrentUser } from '../src/types/api';
 
 export default function Login() {
   const { isAuthenticated, login } = useAuth();
   const { width } = useWindowDimensions();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,12 +34,33 @@ export default function Login() {
   async function onSubmit() {
     setError(null);
     setSubmitting(true);
-    const result = await login(email.trim(), password);
-    setSubmitting(false);
+    const result = await login(identifier.trim(), password);
     if (result.ok) {
-      router.replace('/(tabs)');
+      // The login response's `user` doesn't carry student_gated/
+      // student_paused — those are computed only by GET /api/user (the
+      // single source of truth the tab layout's own guard also reads from).
+      // Fetch it once here so we route correctly on the first navigation
+      // instead of flashing the dashboard before the tab layout redirects.
+      let gated = false;
+      let paused = false;
+      try {
+        const me = await apiGet<CurrentUser>(endpoints.me);
+        gated = me.student_gated ?? false;
+        paused = me.student_paused ?? false;
+      } catch {
+        // Fall through to /(tabs) — its own guard will re-check and redirect.
+      }
+      setSubmitting(false);
+      if (gated) {
+        router.replace('/infosheet');
+      } else if (paused) {
+        router.replace('/paused');
+      } else {
+        router.replace('/(tabs)');
+      }
     } else {
-      setError(result.error ?? 'Something went wrong.');
+      setSubmitting(false);
+      setError(result.error);
     }
   }
 
@@ -104,15 +128,13 @@ export default function Login() {
                   <Ionicons name="person-outline" size={16} color="white" />
                 </View>
                 <TextInput
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="Enter your student email"
+                  value={identifier}
+                  onChangeText={setIdentifier}
+                  placeholder="Username or email"
                   placeholderTextColor={colors.gray400}
                   autoCapitalize="none"
-                  keyboardType="email-address"
-                  autoComplete="off"
-                  textContentType="none"
-                  importantForAutofill="no"
+                  autoComplete="username"
+                  textContentType="username"
                   style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 13.5 }}
                 />
               </View>
@@ -129,14 +151,13 @@ export default function Login() {
                   secureTextEntry
                   autoCapitalize="none"
                   autoCorrect={false}
-                  autoComplete="off"
-                  textContentType="none"
-                  importantForAutofill="no"
+                  autoComplete="password"
+                  textContentType="password"
                   style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 13.5 }}
                 />
               </View>
 
-              <Pressable onPress={onSubmit} disabled={submitting || !email || !password}>
+              <Pressable onPress={onSubmit} disabled={submitting || !identifier || !password}>
                 <LinearGradient
                   colors={[colors.blue600, colors.blue500]}
                   start={{ x: 0, y: 0 }}
@@ -148,7 +169,7 @@ export default function Login() {
                     flexDirection: 'row',
                     justifyContent: 'center',
                     gap: 8,
-                    opacity: submitting || !email || !password ? 0.6 : 1,
+                    opacity: submitting || !identifier || !password ? 0.6 : 1,
                   }}
                 >
                   {submitting ? (
@@ -162,12 +183,6 @@ export default function Login() {
                 </LinearGradient>
               </Pressable>
 
-              <Pressable onPress={() => router.push('/signup')} style={{ marginTop: 16, alignItems: 'center' }}>
-                <Text style={{ fontSize: 12.5, color: colors.gray600 }}>
-                  New OJT student? <Text style={{ color: colors.blue600, fontWeight: '600' }}>Create an Account</Text>
-                </Text>
-              </Pressable>
-
               <View
                 style={{
                   marginTop: 18,
@@ -179,8 +194,8 @@ export default function Login() {
                 }}
               >
                 <Text style={{ fontSize: 11.5, color: colors.blue700, lineHeight: 17, textAlign: 'center' }}>
-                  If you do not know your account credentials, or if you have forgotten your password, please contact
-                  the Systems Development & Administration Office.
+                  Accounts are created by your coordinator. If you do not know your account credentials, or if you
+                  have forgotten your password, please contact the Systems Development & Administration Office.
                 </Text>
               </View>
             </View>

@@ -1,38 +1,18 @@
-import { useEffect, useState } from 'react';
 import { View, Text, Pressable, Image } from 'react-native';
 import { router } from 'expo-router';
 import { colors } from '../constants/colors';
-import { getAccountKind } from '../services/accountKind';
-import { getCurrentLocalProfile } from '../services/localAccounts';
+import { useCurrentUser } from '../hooks/useCurrentUser';
+import { NotificationBell } from './NotificationBell';
 
-function initialsFor(name: string) {
+function initialsFor(name: string | undefined) {
+  if (!name) return '?';
   const parts = name.trim().split(' ').filter(Boolean);
   if (parts.length === 0) return '?';
   return parts.slice(0, 2).map((p) => p[0]?.toUpperCase()).join('');
 }
 
-/**
- * initials can still be passed explicitly if a screen already knows them,
- * but by default TopBar looks up the actual signed-in account so it never
- * shows the demo account's "JD" for someone else's account again.
- */
-export function TopBar({ initials }: { initials?: string }) {
-  const [resolved, setResolved] = useState(initials ?? '');
-
-  useEffect(() => {
-    if (initials) return; // explicit override wins, skip lookup
-    (async () => {
-      const kind = await getAccountKind();
-      if (kind === 'new') {
-        const profile = await getCurrentLocalProfile();
-        setResolved(profile ? initialsFor(profile.name) : '?');
-      } else if (kind === 'demo') {
-        setResolved('JD');
-      } else {
-        setResolved('ST');
-      }
-    })();
-  }, [initials]);
+export function TopBar() {
+  const { user } = useCurrentUser();
 
   return (
     <View
@@ -69,21 +49,24 @@ export function TopBar({ initials }: { initials?: string }) {
           <Text style={{ color: colors.blue200, fontSize: 10 }}>Journal & Monitoring</Text>
         </View>
       </View>
-      <Pressable
-        onPress={() => router.push('/write')}
-        style={{
-          width: 34,
-          height: 34,
-          borderRadius: 17,
-          backgroundColor: colors.blue600,
-          borderWidth: 2,
-          borderColor: colors.blue400,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600' }}>{resolved}</Text>
-      </Pressable>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <NotificationBell />
+        <Pressable
+          onPress={() => router.push('/profile')}
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            backgroundColor: colors.blue600,
+            borderWidth: 2,
+            borderColor: colors.blue400,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Text style={{ color: 'white', fontSize: 13, fontWeight: '600' }}>{initialsFor(user?.name)}</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }

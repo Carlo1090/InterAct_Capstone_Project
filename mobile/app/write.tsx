@@ -1,32 +1,14 @@
-import { useState, useMemo, useEffect } from 'react';
-import { ScrollView, View, Text, TextInput, Pressable, ActivityIndicator } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ScrollView, View, Text, TextInput, Pressable, ActivityIndicator, Alert } from 'react-native';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Banner } from '../src/components/Banner';
 import { Card } from '../src/components/Card';
+import { ErrorState, LoadingState } from '../src/components/ErrorState';
 import { colors } from '../src/constants/colors';
-import { api } from '../src/services/api';
+import { apiGet, apiPost, downloadAndSharePdf, ApiError } from '../src/services/api';
 import { endpoints } from '../src/services/endpoints';
-import { getAccountKind } from '../src/services/accountKind';
-import { getCurrentLocalProfile } from '../src/services/localAccounts';
-import {
-  addEntry,
-  saveDraft,
-  getDraft,
-  deleteDraft,
-  getEntryById,
-  updateEntry,
-  JournalSections,
-} from '../src/services/localData';
-
-const DEMO_SEED_ACCOMPLISHMENT =
-  "Today, I was assigned to work on the UI component library for the InternTrack project. My tasks included designing and testing reusable components such as data tables, modal dialogs, badge indicators, and form elements following the established design system specifications.\n\nI collaborated with senior developer Engr. Beltran to review the component naming conventions and ensure consistency across all pages. We identified three accessibility issues in the form elements and filed them as tasks for tomorrow's sprint.\n\nIn the afternoon, I worked on integrating the Google Fonts API for the typography system and validated the responsive behavior of the sidebar layout across different screen sizes.";
-
-// Matches the real backend exactly: a fixed 1500-character cap on the whole
-// entry's combined content (not a word count, and there is no minimum), plus
-// a 300-character cap on each individual SIPP field.
-const TOTAL_CHAR_LIMIT = 1500;
-const SIPP_FIELD_LIMIT = 300;
+import { JournalEntryDetail } from '../src/types/api';
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -37,161 +19,134 @@ function dateLabelFor(iso: string) {
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 }
 
-/** Flattens whichever fields are filled into one readable block of text —
- * this is what gets stored in `body`, so anything that just needs a
- * plain-text summary (Dashboard activity feed, etc.) doesn't need to know
- * about the section structure at all. */
-function flattenSections(sections: JournalSections): { body: string; charCount: number } {
-  const parts: string[] = [];
-  if (sections.dailyAccomplishment.trim()) parts.push(`Daily Accomplishment\n${sections.dailyAccomplishment.trim()}`);
-  if (sections.sipp && (sections.sipp.issues || sections.sipp.solutions || sections.sipp.recommendations)) {
-    const sippParts: string[] = [];
-    if (sections.sipp.issues?.trim()) sippParts.push(`Issues and Concerns Encountered\n${sections.sipp.issues.trim()}`);
-    if (sections.sipp.solutions?.trim()) sippParts.push(`Solutions\n${sections.sipp.solutions.trim()}`);
-    if (sections.sipp.recommendations?.trim())
-      sippParts.push(`Recommendations\n${sections.sipp.recommendations.trim()}`);
-    parts.push(`SIPP Report\n\n${sippParts.join('\n\n')}`);
-  }
-  const body = parts.join('\n\n');
-
-  // The real cap is on the SUM of every field's own characters, not the
-  // flattened display string (which adds headings/newlines the backend never
-  // counts) — mirror that exactly so the on-screen counter matches what the
-  // server would actually enforce.
-  const charCount =
-    sections.dailyAccomplishment.length +
-    (sections.sipp?.issues?.length ?? 0) +
-    (sections.sipp?.solutions?.length ?? 0) +
-    (sections.sipp?.recommendations?.length ?? 0);
-
-  return { body, charCount };
-}
+const LOCKED_REASON_COPY: Record<string, string> = {
+  not_active: 'Your enrollment for this batch is not currently active, so this entry is read-only.',
+  range: 'This date is outside your OJT range or is a future date, so it cannot be edited.',
+  bundled: 'This week has already been compiled into your Weekly Log and can no longer be edited.',
+};
 
 export default function Write() {
-  const { draftId, entryId } = useLocalSearchParams<{ draftId?: string; entryId?: string }>();
-  const [date, setDate] = useState(todayISO());
-  const [title, setTitle] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(!!draftId || !!entryId);
-  const [localEmail, setLocalEmail] = useState<string | null>(null);
+  const { date: dateParam } = useLocalSearchParams<{ date?: string }>();
+  const date = dateParam ?? todayISO();
 
+  const [entry, setEntry] = useState<JournalEntryDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<ApiError | null>(null);
+  const [content, setContent] = useState<Record<string, string>>({});
+  const [optionalKeysShown, setOptionalKeysShown] = useState<string[]>([]);
   const [sippEnabled, setSippEnabled] = useState(false);
-  const [dailyAccomplishment, setDailyAccomplishment] = useState('');
-  const [sippTexts, setSippTexts] = useState({ issues: '', solutions: '', recommendations: '' });
+  const [saving, setSaving] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
-  function loadSections(sections?: JournalSections) {
-    if (!sections) return;
-    setDailyAccomplishment(sections.dailyAccomplishment ?? '');
-    setSippEnabled(!!(sections.sipp && (sections.sipp.issues || sections.sipp.solutions || sections.sipp.recommendations)));
-    setSippTexts({
-      issues: sections.sipp?.issues ?? '',
-      solutions: sections.sipp?.solutions ?? '',
-      recommendations: sections.sipp?.recommendations ?? '',
-    });
-  }
-
-  useEffect(() => {
-    (async () => {
-      const kind = await getAccountKind();
-
-      if (kind === 'demo') {
-        // Demo account keeps its rich seeded example so the presentation
-        // screens still look populated — it's never persisted anywhere.
-        setTitle('UI Component Design & Testing');
-        setDailyAccomplishment(DEMO_SEED_ACCOMPLISHMENT);
-        setLoading(false);
-        return;
-      }
-
-      if (kind === 'new') {
-        const profile = await getCurrentLocalProfile();
-        const email = profile?.email ?? null;
-        setLocalEmail(email);
-
-        if (draftId && email) {
-          const draft = await getDraft(email, draftId);
-          if (draft) {
-            setDate(draft.dateISO);
-            setTitle(draft.title);
-            loadSections(draft.sections);
-          }
-        }
-
-        if (entryId && email) {
-          const existing = await getEntryById(email, entryId);
-          if (existing) {
-            setDate(existing.dateISO);
-            setTitle(existing.title);
-            loadSections(existing.sections);
-          }
-        }
-      }
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiGet<JournalEntryDetail>(endpoints.journalEntry(date));
+      setEntry(res);
+      setContent(res.content ?? {});
+      setOptionalKeysShown(
+        res.sections.filter((s) => !s.required && !s.sipp && (res.content?.[s.key] ?? '') !== '').map((s) => s.key)
+      );
+      setSippEnabled(res.sections.some((s) => s.sipp && (res.content?.[s.key] ?? '') !== ''));
+    } catch (err) {
+      setError(err as ApiError);
+    } finally {
       setLoading(false);
-    })();
-  }, [draftId, entryId]);
+    }
+  }, [date]);
 
-  const sections: JournalSections = useMemo(
-    () => ({
-      dailyAccomplishment,
-      sipp: sippEnabled
-        ? { issues: sippTexts.issues, solutions: sippTexts.solutions, recommendations: sippTexts.recommendations }
-        : undefined,
-    }),
-    [dailyAccomplishment, sippEnabled, sippTexts]
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
   );
 
-  const { body, charCount } = useMemo(() => flattenSections(sections), [sections]);
-  const overLimit = charCount > TOTAL_CHAR_LIMIT;
-  const hasAccomplishment = dailyAccomplishment.trim().length > 0;
-  const canSubmit = hasAccomplishment && !overLimit;
+  const requiredSections = useMemo(() => entry?.sections.filter((s) => s.required && !s.sipp) ?? [], [entry]);
+  const optionalSections = useMemo(() => entry?.sections.filter((s) => !s.required && !s.sipp) ?? [], [entry]);
+  const sippSections = useMemo(() => entry?.sections.filter((s) => s.sipp) ?? [], [entry]);
+  const addableOptional = optionalSections.filter((s) => !optionalKeysShown.includes(s.key));
 
-  async function saveDraftAndExit() {
+  const activeKeys = useMemo(() => {
+    const keys = [...requiredSections.map((s) => s.key), ...optionalKeysShown];
+    if (sippEnabled) keys.push(...sippSections.map((s) => s.key));
+    return keys;
+  }, [requiredSections, optionalKeysShown, sippEnabled, sippSections]);
+
+  const charLimit = entry?.char_limit ?? 1500;
+  const charCount = activeKeys.reduce((sum, key) => sum + (content[key]?.length ?? 0), 0);
+  const overLimit = charCount > charLimit;
+  const requiredFilled = requiredSections.every((s) => (content[s.key] ?? '').trim().length > 0);
+  const canSubmit = requiredFilled && !overLimit;
+  const editable = entry?.editable ?? false;
+
+  function setField(key: string, value: string) {
+    setContent((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function addOptional(key: string) {
+    setOptionalKeysShown((prev) => [...prev, key]);
+  }
+
+  function removeOptional(key: string) {
+    setOptionalKeysShown((prev) => prev.filter((k) => k !== key));
+    setContent((prev) => ({ ...prev, [key]: '' }));
+  }
+
+  function buildPayload(): Record<string, string> {
+    const payload: Record<string, string> = {};
+    for (const key of activeKeys) {
+      payload[key] = content[key] ?? '';
+    }
+    return payload;
+  }
+
+  async function saveDraft() {
     setSaving(true);
     try {
-      await api.post(endpoints.journalDraft, { date, title, body, sections });
-    } catch {
-      if (localEmail) {
-        await saveDraft(localEmail, draftId ?? null, { dateISO: date, title: title.trim(), body, charCount, sections });
-      }
+      await apiPost(endpoints.journalEntries, { entry_date: date, status: 'draft', content: buildPayload() });
+      router.back();
+    } catch (err) {
+      Alert.alert('Could not save draft', (err as ApiError).message);
     } finally {
       setSaving(false);
-      router.back();
     }
+  }
+
+  function confirmSubmit() {
+    if (!canSubmit) return;
+    Alert.alert('Submit this entry?', 'Once submitted you can still edit it until your week is compiled.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Submit', onPress: submitEntry },
+    ]);
   }
 
   async function submitEntry() {
-    if (!canSubmit) return;
     setSaving(true);
     try {
-      if (entryId) {
-        await api.put(`${endpoints.journalEntries}/${entryId}`, { date, title, body, sections, status: 'submitted' });
-      } else {
-        await api.post(endpoints.journalEntries, { date, title, body, sections, status: 'submitted' });
-      }
-    } catch {
-      if (localEmail) {
-        if (entryId) {
-          await updateEntry(localEmail, entryId, { dateISO: date, title: title.trim(), body, charCount, sections });
-        } else {
-          await addEntry(localEmail, { dateISO: date, title: title.trim(), body, charCount, sections });
-        }
-        if (draftId) {
-          await deleteDraft(localEmail, draftId);
-        }
-      }
+      await apiPost(endpoints.journalEntries, { entry_date: date, status: 'submitted', content: buildPayload() });
+      router.back();
+    } catch (err) {
+      Alert.alert('Could not submit entry', (err as ApiError).message);
     } finally {
       setSaving(false);
-      router.back();
     }
   }
 
-  if (loading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.gray50, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={colors.blue600} />
-      </View>
-    );
+  async function onDownloadPdf() {
+    setDownloading(true);
+    try {
+      await downloadAndSharePdf(endpoints.journalEntryPdf(date), `daily-journal-${date}.pdf`);
+    } catch (err) {
+      Alert.alert('Could not download PDF', (err as ApiError).message);
+    } finally {
+      setDownloading(false);
+    }
   }
+
+  if (loading && !entry) return <LoadingState />;
+  if (error && !entry) return <ErrorState message={error.message} onRetry={load} />;
+  if (!entry) return null;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.gray50 }}>
@@ -222,182 +177,222 @@ export default function Write() {
         >
           <Ionicons name="chevron-back" size={18} color={colors.gray600} />
         </Pressable>
-        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.black, flex: 1 }}>
-          {draftId ? 'Edit Draft' : entryId ? 'Edit Journal Entry' : 'Write Daily Journal'}
+        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.black, flex: 1 }} numberOfLines={1}>
+          {entry.day_label} ({date})
         </Text>
-        {entryId ? null : (
-          <Pressable
-            onPress={saveDraftAndExit}
-            disabled={saving}
-            style={{
-              paddingVertical: 8,
-              paddingHorizontal: 14,
-              borderRadius: 8,
-              borderWidth: 1.5,
-              borderColor: colors.gray200,
-            }}
-          >
-            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.gray600 }}>Save Draft</Text>
+        {editable ? (
+          <>
+            <Pressable
+              onPress={saveDraft}
+              disabled={saving}
+              style={{
+                paddingVertical: 8,
+                paddingHorizontal: 14,
+                borderRadius: 8,
+                borderWidth: 1.5,
+                borderColor: colors.gray200,
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.gray600 }}>Save Draft</Text>
+            </Pressable>
+            <Pressable
+              onPress={confirmSubmit}
+              disabled={saving || !canSubmit}
+              style={{
+                paddingVertical: 8,
+                paddingHorizontal: 14,
+                borderRadius: 8,
+                backgroundColor: canSubmit ? colors.blue600 : colors.gray300,
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '600', color: 'white' }}>{'✓ Submit'}</Text>
+            </Pressable>
+          </>
+        ) : (
+          <Pressable onPress={onDownloadPdf} disabled={downloading} hitSlop={8}>
+            {downloading ? (
+              <ActivityIndicator size="small" color={colors.blue600} />
+            ) : (
+              <Ionicons name="download-outline" size={20} color={colors.blue600} />
+            )}
           </Pressable>
         )}
-        <Pressable
-          onPress={submitEntry}
-          disabled={saving || !canSubmit}
-          style={{
-            paddingVertical: 8,
-            paddingHorizontal: 14,
-            borderRadius: 8,
-            backgroundColor: canSubmit ? colors.blue600 : colors.gray300,
-          }}
-        >
-          <Text style={{ fontSize: 12, fontWeight: '600', color: 'white' }}>
-            {entryId ? '✓ Save Changes' : '✓ Submit'}
-          </Text>
-        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
-        <Banner variant={entryId || draftId ? 'info' : 'warn'}>
-          {entryId
-            ? `You're editing your entry for ${dateLabelFor(date)}. Fix any mistakes and save your changes.`
-            : draftId
-            ? `You're continuing a draft saved for ${dateLabelFor(date)}.`
-            : `Today is ${dateLabelFor(date)}. This entry stays editable until your week is compiled (every Monday at 12:00 AM).`}
+        <Banner variant={editable ? 'info' : 'warn'}>
+          {editable
+            ? `${entry.status === 'submitted' ? "You've submitted this entry — it" : 'This entry'} stays editable until your week is compiled (every Monday at 12:00 AM).`
+            : LOCKED_REASON_COPY[entry.locked_reason ?? ''] ?? 'This entry is read-only.'}
         </Banner>
 
-        <Card title="Entry Details">
-          <Text style={{ fontSize: 10, fontWeight: '600', color: colors.gray600, marginBottom: 6 }}>Date & Day</Text>
-          <View
-            style={{
-              borderWidth: 1.5,
-              borderColor: colors.gray200,
-              borderRadius: 10,
-              padding: 10,
-              marginBottom: 12,
-              backgroundColor: colors.gray50,
-            }}
-          >
-            <Text style={{ fontSize: 13, color: colors.gray600 }}>{dateLabelFor(date)}</Text>
-          </View>
-          <Text style={{ fontSize: 10, fontWeight: '600', color: colors.gray600, marginBottom: 6 }}>Title</Text>
-          <TextInput
-            value={title}
-            onChangeText={setTitle}
-            placeholder="e.g. Reviewed onboarding documentation"
-            style={{ borderWidth: 1.5, borderColor: colors.gray200, borderRadius: 10, padding: 10, fontSize: 13 }}
-          />
-        </Card>
-
-        <Card title="Daily Accomplishment">
-          <TextInput
-            value={dailyAccomplishment}
-            onChangeText={setDailyAccomplishment}
-            placeholder="Describe what you worked on today..."
-            multiline
-            textAlignVertical="top"
-            style={{
-              borderWidth: 1.5,
-              borderColor: colors.gray200,
-              borderRadius: 10,
-              padding: 12,
-              minHeight: 140,
-              fontSize: 13,
-              lineHeight: 19,
-            }}
-          />
-        </Card>
-
-        <Pressable
-          onPress={() => setSippEnabled((e) => !e)}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 10,
-            marginHorizontal: 20,
-            marginTop: 14,
-            paddingHorizontal: 14,
-            paddingVertical: 10,
-            borderRadius: 10,
-            borderWidth: 1.5,
-            borderColor: colors.gray200,
-            backgroundColor: colors.white,
-          }}
-        >
-          <Ionicons
-            name={sippEnabled ? 'checkbox' : 'square-outline'}
-            size={19}
-            color={sippEnabled ? colors.blue500 : colors.gray400}
-          />
-          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.black, flex: 1 }}>
-            Include SIPP Report (Annex C)
-          </Text>
-        </Pressable>
-
-        {sippEnabled ? (
-          <Card title="SIPP Report (Annex C)">
-            <SectionField
-              label="Issues and Concerns Encountered"
-              placeholder="Any issues or concerns encountered..."
-              value={sippTexts.issues}
-              onChangeText={(v) => setSippTexts((t) => ({ ...t, issues: v }))}
-              maxLength={SIPP_FIELD_LIMIT}
-            />
-            <SectionField
-              label="Solutions"
-              placeholder="How were they addressed..."
-              value={sippTexts.solutions}
-              onChangeText={(v) => setSippTexts((t) => ({ ...t, solutions: v }))}
-              maxLength={SIPP_FIELD_LIMIT}
-            />
-            <SectionField
-              label="Recommendations"
-              placeholder="Any recommendations..."
-              value={sippTexts.recommendations}
-              onChangeText={(v) => setSippTexts((t) => ({ ...t, recommendations: v }))}
-              maxLength={SIPP_FIELD_LIMIT}
-              last
-            />
-          </Card>
-        ) : null}
-
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: 20, marginTop: 14, gap: 10 }}>
-          <View style={{ flex: 1, height: 4, backgroundColor: colors.gray100, borderRadius: 999, overflow: 'hidden' }}>
-            <View
+        {requiredSections.map((section) => (
+          <Card key={section.key} title={section.label}>
+            <TextInput
+              value={content[section.key] ?? ''}
+              onChangeText={(v) => setField(section.key, v)}
+              editable={editable}
+              placeholder={section.prompt ?? `Describe your ${section.label.toLowerCase()}...`}
+              multiline
+              textAlignVertical="top"
               style={{
-                width: `${Math.min(100, Math.round((charCount / TOTAL_CHAR_LIMIT) * 100))}%`,
-                height: '100%',
-                backgroundColor: overLimit ? colors.red : colors.blue500,
+                borderWidth: 1.5,
+                borderColor: colors.gray200,
+                borderRadius: 10,
+                padding: 12,
+                minHeight: 140,
+                fontSize: 13,
+                lineHeight: 19,
+                backgroundColor: editable ? colors.white : colors.gray50,
+                color: colors.black,
               }}
             />
-          </View>
-          <Text style={{ fontSize: 11, fontWeight: '600', color: overLimit ? colors.red : colors.blue600 }}>
-            {charCount} / {TOTAL_CHAR_LIMIT} characters
-          </Text>
-        </View>
+          </Card>
+        ))}
 
-        <View style={{ marginHorizontal: 20, marginTop: 14 }}>
-          <View style={{ backgroundColor: colors.white, borderWidth: 1.5, borderColor: colors.gray200, borderRadius: 12, padding: 14 }}>
-            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.black, marginBottom: 10 }}>Checklist</Text>
-            <ChecklistRow label="Title provided" checked={!!title} />
-            <ChecklistRow label="Daily Accomplishment written" checked={hasAccomplishment} />
-            <ChecklistRow label="Within the 1,500-character limit" checked={!overLimit} />
-          </View>
-        </View>
+        {optionalKeysShown.map((key) => {
+          const section = optionalSections.find((s) => s.key === key);
+          if (!section) return null;
+          return (
+            <Card key={key} title={section.label}>
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 6 }}>
+                {editable ? (
+                  <Pressable onPress={() => removeOptional(key)}>
+                    <Text style={{ fontSize: 11, color: colors.redDark, fontWeight: '600' }}>Remove</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              <TextInput
+                value={content[key] ?? ''}
+                onChangeText={(v) => setField(key, v)}
+                editable={editable}
+                multiline
+                textAlignVertical="top"
+                style={{
+                  borderWidth: 1.5,
+                  borderColor: colors.gray200,
+                  borderRadius: 10,
+                  padding: 12,
+                  minHeight: 100,
+                  fontSize: 13,
+                  lineHeight: 19,
+                  backgroundColor: editable ? colors.white : colors.gray50,
+                }}
+              />
+            </Card>
+          );
+        })}
 
-        <Card title="Guidelines" style={{ marginBottom: 8 }}>
-          {[
-            'Every entry needs a Daily Accomplishment',
-            'Up to 1,500 characters total per entry — no minimum',
-            'Describe specific tasks completed',
-            'Note any challenges encountered',
-            'Editable until your week is compiled (Monday 12:00 AM)',
-          ].map((g, i) => (
-            <Text key={i} style={{ fontSize: 12, color: colors.gray600, lineHeight: 18 }}>
-              {'· '}
-              {g}
+        {editable && addableOptional.length > 0 ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginHorizontal: 20, marginTop: 14 }}>
+            {addableOptional.map((s) => (
+              <Pressable
+                key={s.key}
+                onPress={() => addOptional(s.key)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  paddingHorizontal: 12,
+                  paddingVertical: 7,
+                  borderRadius: 20,
+                  borderWidth: 1.5,
+                  borderColor: colors.blue200,
+                  backgroundColor: colors.blue50,
+                }}
+              >
+                <Ionicons name="add" size={14} color={colors.blue600} />
+                <Text style={{ fontSize: 11.5, fontWeight: '600', color: colors.blue600 }}>{s.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+
+        {sippSections.length > 0 ? (
+          <>
+            {editable ? (
+              <Pressable
+                onPress={() => setSippEnabled((e) => !e)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                  marginHorizontal: 20,
+                  marginTop: 14,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  borderRadius: 10,
+                  borderWidth: 1.5,
+                  borderColor: colors.gray200,
+                  backgroundColor: colors.white,
+                }}
+              >
+                <Ionicons
+                  name={sippEnabled ? 'checkbox' : 'square-outline'}
+                  size={19}
+                  color={sippEnabled ? colors.blue500 : colors.gray400}
+                />
+                <Text style={{ fontSize: 13, fontWeight: '600', color: colors.black, flex: 1 }}>
+                  Include SIPP Report (Annex C)
+                </Text>
+              </Pressable>
+            ) : null}
+
+            {sippEnabled ? (
+              <Card title="SIPP Report (Annex C)">
+                {sippSections.map((section, i) => (
+                  <SectionField
+                    key={section.key}
+                    label={section.label}
+                    placeholder={section.prompt ?? '...'}
+                    value={content[section.key] ?? ''}
+                    onChangeText={(v) => setField(section.key, v)}
+                    editable={editable}
+                    maxLength={300}
+                    last={i === sippSections.length - 1}
+                  />
+                ))}
+              </Card>
+            ) : null}
+          </>
+        ) : null}
+
+        {editable ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: 20, marginTop: 14, gap: 10 }}>
+            <View style={{ flex: 1, height: 4, backgroundColor: colors.gray100, borderRadius: 999, overflow: 'hidden' }}>
+              <View
+                style={{
+                  width: `${Math.min(100, Math.round((charCount / charLimit) * 100))}%`,
+                  height: '100%',
+                  backgroundColor: overLimit ? colors.red : colors.blue500,
+                }}
+              />
+            </View>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: overLimit ? colors.red : colors.blue600 }}>
+              {charCount} / {charLimit} characters
             </Text>
-          ))}
-        </Card>
+          </View>
+        ) : (
+          <Pressable
+            onPress={onDownloadPdf}
+            disabled={downloading}
+            style={{
+              marginHorizontal: 20,
+              marginTop: 16,
+              paddingVertical: 12,
+              borderRadius: 10,
+              borderWidth: 1.5,
+              borderColor: colors.blue200,
+              alignItems: 'center',
+              flexDirection: 'row',
+              justifyContent: 'center',
+              gap: 8,
+            }}
+          >
+            {downloading ? <ActivityIndicator size="small" color={colors.blue600} /> : <Ionicons name="download-outline" size={16} color={colors.blue600} />}
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.blue600 }}>Download PDF</Text>
+          </Pressable>
+        )}
       </ScrollView>
     </View>
   );
@@ -408,6 +403,7 @@ function SectionField({
   placeholder,
   value,
   onChangeText,
+  editable,
   maxLength,
   last,
 }: {
@@ -415,6 +411,7 @@ function SectionField({
   placeholder: string;
   value: string;
   onChangeText: (v: string) => void;
+  editable: boolean;
   maxLength?: number;
   last?: boolean;
 }) {
@@ -431,6 +428,7 @@ function SectionField({
       <TextInput
         value={value}
         onChangeText={onChangeText}
+        editable={editable}
         placeholder={placeholder}
         multiline
         textAlignVertical="top"
@@ -443,21 +441,9 @@ function SectionField({
           minHeight: 100,
           fontSize: 13,
           lineHeight: 19,
+          backgroundColor: editable ? colors.white : colors.gray50,
         }}
       />
-    </View>
-  );
-}
-
-function ChecklistRow({ label, checked }: { label: string; checked: boolean }) {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-      <Ionicons
-        name={checked ? 'checkbox' : 'square-outline'}
-        size={15}
-        color={checked ? colors.blue500 : colors.gray400}
-      />
-      <Text style={{ fontSize: 11.5, color: colors.gray600 }}>{label}</Text>
     </View>
   );
 }

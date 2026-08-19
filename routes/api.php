@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AuditLogController;
+use App\Http\Controllers\Auth\MobileAuthController;
 use App\Http\Controllers\Admin\BatchController;
 use App\Http\Controllers\Admin\BatchStudentPurgeController;
 use App\Http\Controllers\Admin\DepartmentController;
@@ -52,6 +53,14 @@ Route::pattern('weekStart', '\d{4}-\d{2}-\d{2}');
 // a plain GET. Throttled tightly since it is public-facing and does real work.
 Route::match(['get', 'post'], 'cron/run', [CronController::class, 'run'])
     ->middleware('throttle:12,1');
+
+// Bearer-token auth for the mobile app (student-only), distinct from the web
+// SPA's session-cookie login at POST /login. Sanctum's auth:sanctum guard
+// checks a bearer token before falling back to the stateful-cookie check, so
+// every existing role:student route below works unchanged once a token
+// exists — no other route/middleware change was needed for mobile.
+Route::post('mobile/login', [MobileAuthController::class, 'store']);
+Route::middleware('auth:sanctum')->post('mobile/logout', [MobileAuthController::class, 'destroy']);
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     $user = $request->user()->load('program.department');

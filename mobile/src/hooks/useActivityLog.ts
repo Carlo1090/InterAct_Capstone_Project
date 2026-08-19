@@ -2,10 +2,11 @@ import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { apiGet, ApiError } from '../services/api';
 import { endpoints } from '../services/endpoints';
-import { DashboardResponse } from '../types/api';
+import { Paginated, SystemLogEntry } from '../types/api';
 
-export function useDashboard() {
-  const [data, setData] = useState<DashboardResponse | null>(null);
+/** Mirrors web's ActivityLogPanel.vue — the student's own SystemLog rows. */
+export function useActivityLog() {
+  const [entries, setEntries] = useState<SystemLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<ApiError | null>(null);
 
@@ -13,8 +14,8 @@ export function useDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiGet<DashboardResponse>(endpoints.dashboard);
-      setData(res);
+      const res = await apiGet<Paginated<SystemLogEntry>>(endpoints.profileActivity);
+      setEntries(res.data);
     } catch (err) {
       setError(err as ApiError);
     } finally {
@@ -28,5 +29,5 @@ export function useDashboard() {
     }, [load])
   );
 
-  return { data, loading, error, reload: load };
+  return { entries, loading, error, reload: load };
 }

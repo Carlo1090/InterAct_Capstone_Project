@@ -1,14 +1,15 @@
 import { View, Text } from 'react-native';
 import { colors } from '../constants/colors';
-import { ActivityDot } from '../services/mock/dashboard';
+import { ActivityTone } from '../types/api';
 
-const dotColor: Record<ActivityDot, string> = {
+const dotColor: Record<ActivityTone, string> = {
   green: colors.green,
   blue: colors.blue500,
-  orange: colors.orange,
+  amber: colors.orange,
+  slate: colors.gray300,
 };
 
-export function ActivityItem({ dot, text, time }: { dot: ActivityDot; text: string; time: string }) {
+export function ActivityItem({ tone, text, time }: { tone: ActivityTone; text: string; time: string | null }) {
   return (
     <View
       style={{
@@ -24,13 +25,13 @@ export function ActivityItem({ dot, text, time }: { dot: ActivityDot; text: stri
           width: 8,
           height: 8,
           borderRadius: 4,
-          backgroundColor: dotColor[dot],
+          backgroundColor: dotColor[tone],
           marginTop: 5,
         }}
       />
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 12.5, color: colors.gray800, lineHeight: 17 }}>{text}</Text>
-        <Text style={{ fontSize: 11, color: colors.gray400, marginTop: 2 }}>{time}</Text>
+        {time ? <Text style={{ fontSize: 11, color: colors.gray400, marginTop: 2 }}>{time}</Text> : null}
       </View>
     </View>
   );

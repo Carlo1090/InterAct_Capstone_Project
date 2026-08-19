@@ -1,15 +1,36 @@
-// Centralized Laravel routes. Fields marked UNVERIFIED must be confirmed
-// against the real backend controllers before switching off mock data —
-// the roadmap defines the tables/phases but not exact JSON response shapes.
+// Centralized Laravel routes — verified directly against routes/api.php and
+// each controller, not guessed. mobile/login + mobile/logout are the
+// mobile-only bearer-token endpoints (see MobileAuthController); every
+// student/* route below is the exact same contract the web SPA uses.
 export const endpoints = {
-  login: '/api/login', // UNVERIFIED — confirm token field name (token vs access_token)
-  register: '/api/register', // UNVERIFIED — confirm required fields on the Laravel side
-  logout: '/api/logout',
-  dashboard: '/api/student/dashboard', // UNVERIFIED — aggregate endpoint may not exist until Phase 6/7
-  journalEntries: '/api/journal-entries',
-  journalDraft: '/api/journal-entries/draft',
-  weeklyLogs: '/api/weekly-logs',
-  studentInfoSheet: '/api/student-information-sheets', // GET + PATCH (UNVERIFIED — confirm PATCH is the right verb for updates)
-  reportExport: '/api/reports/journal',
-  registerDevice: '/api/devices', // UNVERIFIED — not named explicitly in Phase 6/7 backend bullets
+  login: '/api/mobile/login',
+  logout: '/api/mobile/logout',
+  me: '/api/user',
+
+  dashboard: '/api/student/dashboard',
+
+  journalEntries: '/api/student/journal-entries',
+  journalEntry: (date: string) => `/api/student/journal-entries/${date}`,
+  journalEntryPdf: (date: string) => `/api/student/journal-entries/${date}/pdf`,
+  journalCalendar: '/api/student/journal-calendar',
+
+  weeklyLogs: '/api/student/weekly-logs',
+  weeklyLog: (weekStart: string) => `/api/student/weekly-logs/${weekStart}`,
+  weeklyLogSubmit: (weekStart: string) => `/api/student/weekly-logs/${weekStart}/submit`,
+  weeklyLogPdf: (weekStart: string) => `/api/student/weekly-logs/${weekStart}/pdf`,
+
+  infoSheet: '/api/student/info-sheet',
+  infoSheetPdf: '/api/student/info-sheet/pdf',
+  companies: '/api/student/companies',
+
+  reminderPreferences: '/api/student/reminder-preferences',
+
+  profile: '/api/profile',
+  profilePassword: '/api/profile/password',
+  profilePhoto: '/api/profile/photo',
+  profileActivity: '/api/profile/activity',
+
+  notifications: '/api/notifications',
+  notificationsReadAll: '/api/notifications/read-all',
+  notificationRead: (id: number) => `/api/notifications/${id}/read`,
 };

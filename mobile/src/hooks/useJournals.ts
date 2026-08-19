@@ -1,93 +1,71 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { fetchWithFallback } from '../services/api';
+import { apiGet, ApiError } from '../services/api';
 import { endpoints } from '../services/endpoints';
-import { mockJournals, mockCalendarMay2025, JournalEntry, CalDay } from '../services/mock/journals';
-import { getAccountKind } from '../services/accountKind';
-import { getCurrentLocalProfile } from '../services/localAccounts';
-import { computeJournalListFromEntries, computeCalendarFromEntries } from '../services/localData';
+import { JournalEntrySummary, Paginated, CalendarDay, CalendarResponse } from '../types/api';
+
+function currentMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
 
 export function useJournalList() {
-  const [entries, setEntries] = useState<JournalEntry[]>([]);
+  const [entries, setEntries] = useState<JournalEntrySummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [kind, setKind] = useState<'demo' | 'new' | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiGet<Paginated<JournalEntrySummary>>(endpoints.journalEntries);
+      setEntries(res.data);
+    } catch (err) {
+      setError(err as ApiError);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      let mounted = true;
-      (async () => {
-        const accountKind = await getAccountKind();
-        if (mounted) setKind(accountKind);
-        if (accountKind === 'new') {
-          const profile = await getCurrentLocalProfile();
-          const computed = profile ? await computeJournalListFromEntries(profile.email) : [];
-          if (mounted) {
-            setEntries(computed as JournalEntry[]);
-            setLoading(false);
-          }
-          return;
-        }
-        if (accountKind === 'demo') {
-          if (mounted) {
-            setEntries(mockJournals);
-            setLoading(false);
-          }
-          return;
-        }
-        const r = await fetchWithFallback(endpoints.journalEntries, mockJournals);
-        if (mounted) {
-          setEntries(r.data);
-          setLoading(false);
-        }
-      })();
-      return () => {
-        mounted = false;
-      };
-    }, [])
+      load();
+    }, [load])
   );
 
-  return { entries, loading, kind };
+  return { entries, loading, error, reload: load };
 }
 
 export function useJournalCalendar() {
-  const [days, setDays] = useState<CalDay[]>([]);
+  const [month, setMonth] = useState(currentMonth());
+  const [days, setDays] = useState<CalendarDay[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<ApiError | null>(null);
+
+  const load = useCallback(async (targetMonth: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiGet<CalendarResponse>(endpoints.journalCalendar, { month: targetMonth });
+      setDays(res.days);
+    } catch (err) {
+      setError(err as ApiError);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      let mounted = true;
-      (async () => {
-        const kind = await getAccountKind();
-        if (kind === 'new') {
-          const profile = await getCurrentLocalProfile();
-          const now = new Date();
-          const computed = profile
-            ? await computeCalendarFromEntries(profile.email, now.getFullYear(), now.getMonth())
-            : [];
-          if (mounted) {
-            setDays(computed as CalDay[]);
-            setLoading(false);
-          }
-          return;
-        }
-        if (kind === 'demo') {
-          if (mounted) {
-            setDays(mockCalendarMay2025);
-            setLoading(false);
-          }
-          return;
-        }
-        const r = await fetchWithFallback(`${endpoints.journalEntries}/calendar`, mockCalendarMay2025);
-        if (mounted) {
-          setDays(r.data);
-          setLoading(false);
-        }
-      })();
-      return () => {
-        mounted = false;
-      };
-    }, [])
+      load(month);
+    }, [load, month])
   );
 
-  return { days, loading };
+  function shiftMonth(delta: number) {
+    const [y, m] = month.split('-').map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+
+  return { days, loading, error, month, shiftMonth, reload: () => load(month) };
 }

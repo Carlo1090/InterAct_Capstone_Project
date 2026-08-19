@@ -1,4 +1,6 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import * as SecureStore from 'expo-secure-store';
 
 // 10.0.2.2 = Android emulator alias for the host machine's localhost.
@@ -10,7 +12,7 @@ export const TOKEN_KEY = 'interntrack_token';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 4000,
+  timeout: 10000,
 });
 
 api.interceptors.request.use(async (config) => {
@@ -23,32 +25,100 @@ api.interceptors.request.use(async (config) => {
 });
 
 /**
- * Calls the real endpoint; if it fails for any reason (backend not running
- * yet, that Phase isn't built, network error, 404/500), silently falls back
- * to the provided mock data so the screen still renders something useful.
+ * A real, typed error thrown by apiGet/apiPost/etc — carries the HTTP
+ * status and whatever Laravel's error body contained, so a screen can show
+ * an honest message instead of a generic one. There is no mock-data
+ * fallback here: a real error must always surface as a real error, since a
+ * silently-substituted fake value could show stale/wrong data (e.g. the
+ * wrong coordinator/supervisor) without the student ever knowing.
  */
-export async function fetchWithFallback<T>(
-  path: string,
-  mockData: T,
-  params?: Record<string, unknown>
-): Promise<{ data: T; isMock: boolean }> {
-  try {
-    const res = await api.get<T>(path, { params });
-    return { data: res.data, isMock: false };
-  } catch {
-    return { data: mockData, isMock: true };
+export class ApiError extends Error {
+  status: number | null;
+  fieldErrors?: Record<string, string[]>;
+
+  constructor(message: string, status: number | null, fieldErrors?: Record<string, string[]>) {
+    super(message);
+    this.status = status;
+    this.fieldErrors = fieldErrors;
   }
 }
 
-export async function postWithFallback<T>(
-  path: string,
-  body: Record<string, unknown>,
-  mockResponse: T
-): Promise<{ data: T; isMock: boolean }> {
+export function toApiError(err: unknown): ApiError {
+  if (err instanceof ApiError) return err;
+  if (axios.isAxiosError(err)) {
+    const axiosErr = err as AxiosError<{ message?: string; errors?: Record<string, string[]> }>;
+    if (!axiosErr.response) {
+      // No response at all — device offline, DNS failure, request timeout.
+      return new ApiError('Cannot reach the InternTrack server. Check your connection and try again.', null);
+    }
+    const body = axiosErr.response.data;
+    const message = body?.message ?? `Request failed (${axiosErr.response.status}).`;
+    return new ApiError(message, axiosErr.response.status, body?.errors);
+  }
+  return new ApiError('Something went wrong. Please try again.', null);
+}
+
+export async function apiGet<T>(path: string, params?: Record<string, unknown>): Promise<T> {
+  try {
+    const res = await api.get<T>(path, { params });
+    return res.data;
+  } catch (err) {
+    throw toApiError(err);
+  }
+}
+
+export async function apiPost<T>(path: string, body?: Record<string, unknown>): Promise<T> {
   try {
     const res = await api.post<T>(path, body);
-    return { data: res.data, isMock: false };
-  } catch {
-    return { data: mockResponse, isMock: true };
+    return res.data;
+  } catch (err) {
+    throw toApiError(err);
+  }
+}
+
+export async function apiPut<T>(path: string, body?: Record<string, unknown>): Promise<T> {
+  try {
+    const res = await api.put<T>(path, body);
+    return res.data;
+  } catch (err) {
+    throw toApiError(err);
+  }
+}
+
+export async function apiDelete<T>(path: string): Promise<T> {
+  try {
+    const res = await api.delete<T>(path);
+    return res.data;
+  } catch (err) {
+    throw toApiError(err);
+  }
+}
+
+/**
+ * Downloads a PDF from an auth:sanctum-protected endpoint and hands it to
+ * the OS share sheet. Linking.openURL can't be used here — it wouldn't carry
+ * the Authorization bearer header the backend requires, so the request would
+ * 401. Fetched as base64 and written to the app's cache dir instead.
+ */
+export async function downloadAndSharePdf(path: string, filename: string): Promise<void> {
+  const token = await SecureStore.getItemAsync(TOKEN_KEY);
+  const url = `${API_BASE_URL}${path}`;
+
+  const cacheDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
+  if (!cacheDir) {
+    throw new ApiError('This device has no writable storage available for downloads.', null);
+  }
+
+  const target = `${cacheDir}${filename}`;
+  const result = await FileSystem.downloadAsync(url, target, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+
+  if (result.status !== 200) {
+    throw new ApiError('Could not download the PDF. Please try again.', result.status);
+  }
+
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(result.uri, { mimeType: 'application/pdf' });
   }
 }

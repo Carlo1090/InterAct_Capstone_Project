@@ -1,8 +1,9 @@
-# InternTrack Mobile (`mobileee/`)
+# InternTrack Mobile
 
 Student-facing mobile app for InternTrack, built with React Native + Expo Router
-(SDK 54), matching `InternTrack-Mobile.html` and Phase 7 of
-`InternTrack_Development_Roadmap.docx`.
+(SDK 54). This is Phase 7 of the roadmap. As of 2026-08-18, it is wired to the
+**real** Laravel backend for authentication and every student-facing feature —
+there is no mock/demo/local-only data path anymore.
 
 ## Run it
 
@@ -14,83 +15,81 @@ npx expo start
 Then press `a` for Android emulator, `i` for iOS simulator, or scan the QR
 code with Expo Go on your phone.
 
-## Sign In vs Sign Up
+## Signing in
 
-**New OJT students:** tap "Create an Account" on the login screen. Sign up
-with your name, student ID, email, and a password (6+ characters). You'll
-land on a genuinely empty dashboard — no seeded numbers — and every daily
-journal you write through the app actually updates your Dashboard stats,
-Calendar, Journals list, and Weekly bundles in real time. This is stored
-locally on your device (via `AsyncStorage`) until the real backend is wired
-up; nothing here is faked or hardcoded to look busy.
+There is no sign-up flow — accounts are staff-provisioned (created by a
+coordinator), exactly like the web SPA. Log in with the same username/email
++ password a student already uses on the web portal. A wrong password
+always shows a real error from the server; nothing silently substitutes
+fake data.
 
-**Returning/demo testing:** the app still recognizes one fixed test account
-for quickly seeing what a populated account looks like (defined in
-`src/hooks/useAuth.ts`):
+**Only student accounts can sign in here.** Mobile is deliberately
+student-only scope — a coordinator/supervisor/admin account is rejected at
+login with "This app is for students only. Please use the web portal.",
+even with correct credentials.
 
-```
-email:    student@interntrack.test
-password: interntrack123
-```
+Auth is bearer-token based (`POST /api/mobile/login`, distinct from the web
+SPA's session-cookie login), backed by Laravel Sanctum's personal access
+tokens — see `App\Http\Controllers\Auth\MobileAuthController` on the
+backend. The token is stored via `expo-secure-store` and attached as
+`Authorization: Bearer <token>` on every request (`src/services/api.ts`).
 
-There's no button for this anymore — type it manually on the login screen.
-Any other email/password combination that isn't a registered account will
-correctly fail with "Unable to sign in."
-
-Both paths only ever activate when the real `/api/login` or `/api/register`
-call can't reach a backend — a real network response always takes priority
-over any local fallback (see `fetchWithFallback` in `src/services/api.ts`).
-
-## Responsive layout
-
-Login and Sign Up cap their card width (`maxWidth: 420`) and center on
-screen, so they look intentional on tablets instead of stretching
-edge-to-edge. `app.json` has `ios.supportsTablet: true`. The rest of the
-screens use flexible/percentage-based layouts already, but if you want the
-same tablet-safe max-width treatment on Dashboard/Journals/etc., wrap their
-content the same way (see the `cardMaxWidth` pattern in `app/login.tsx`).
+The app replicates the same student state machine the web SPA's router
+guard enforces, read from `GET /api/user` (`src/hooks/useCurrentUser.ts`):
+- **Gated** (info sheet not yet approved by a coordinator) — only the
+  Student Info Sheet is reachable.
+- **Paused** (dropped from a batch) — a calm "enrollment inactive" screen
+  (`app/paused.tsx`), with Info Sheet still reachable.
+- **Must change password** — force-routes to `app/change-password.tsx`
+  regardless of gate state, for a temporary password issued by an admin.
 
 ## Wiring the real backend
 
 1. Set `EXPO_PUBLIC_API_URL` (e.g. in a `.env` file) to your Laravel API's
    base URL. On the Android emulator, `10.0.2.2` maps to your host machine's
    `localhost`; on a physical device, use your machine's LAN IP instead.
-2. Open `src/services/endpoints.ts` — every route the app calls is listed
-   there, including the new `register` endpoint. Anything marked
-   `UNVERIFIED` needs a quick check against the actual controller before you
-   trust the response shape.
-3. `src/hooks/useAuth.ts` assumes both `/api/login` and `/api/register`
-   responses have a `token` or `access_token` field — confirm which one
-   Sanctum actually returns and adjust if needed.
-4. Once the backend is live and reachable, `src/services/localData.ts` (the
-   on-device journal storage for locally-registered accounts) stops being
-   read from — every hook tries the real endpoint first, every time.
+2. `src/services/endpoints.ts` lists every route the app calls — all
+   verified directly against `routes/api.php` and the corresponding
+   `App\Http\Controllers\Student\*` controllers, not guessed.
+3. Run `php artisan migrate` once on the backend if you haven't already —
+   the mobile login endpoint needs Sanctum's `personal_access_tokens` table.
 
 ## What's implemented
 
 - Full navigation shell: tab bar (Dashboard / Calendar / Journals / Weekly / More)
-  plus modal/stack screens (Write, More sheet, Guide, Info Sheet, Reports, Drafts, Profile)
-- Sign Up flow for new students with real, working local persistence — not a
-  static empty placeholder
+  plus modal/stack screens (Write, More sheet, Guide, Info Sheet, Profile,
+  Reminder Settings, Change Password, Paused)
 - Every screen styled from shared color/spacing tokens
   (`src/constants/colors.ts`, `src/constants/layout.ts`) — no inline hex codes
-- Secure token storage via `expo-secure-store`, login/logout/register flow
-  with route-level auth gating (`Redirect` in `app/(tabs)/_layout.tsx`)
-- Dashboard/Calendar/Journals/Weekly refetch on tab focus (`useFocusEffect`),
-  so writing a new entry and navigating back shows it immediately
+- Secure token storage via `expo-secure-store`, login/logout with
+  route-level auth + gate-state guarding (`app/(tabs)/_layout.tsx`)
+- Dashboard/Calendar/Journals/Weekly refetch on tab focus (`useFocusEffect`)
+- Write Daily Journal renders whatever sections the student's actual batch
+  journal template defines (not a hardcoded field set) — required section(s)
+  always shown, optional sections addable via chips, SIPP trio behind one
+  checkbox, matching the real 1500-char total / 300-char-per-SIPP-field caps
+- Weekly journal status is derived the same way the web SPA derives it: the
+  database only ever stores `pending|approved|returned` (never `draft`) —
+  `submitted_at` is what actually distinguishes "still drafting" from
+  "submitted, awaiting review" (`deriveWeekState()` in `src/types/api.ts`)
+- PDF download (daily entry, weekly log, info sheet) via
+  `expo-file-system` + `expo-sharing`, since the download endpoints require
+  a bearer-auth header a plain `Linking.openURL` can't carry
+- A failed request always shows a real error with a Retry action
+  (`src/components/ErrorState.tsx`) — no mock-data fallback exists anywhere
+  in the app, on the principle that a silently-substituted fake value could
+  show the wrong data (e.g. the wrong coordinator/supervisor) without the
+  student ever knowing
 
 ## What's intentionally excluded
 
-Per the roadmap's own notes:
-- **Exit Interview Summary** — flagged as an open item; the v2.0 schema has
-  no supporting table, so it isn't built here either.
+- **Google Sign-In** — the web SPA's flow is a full-page browser redirect
+  onto a cookie session; porting it to a bearer-token native client needs
+  real deep-linking + a new backend OAuth branch. Deferred as a separate task.
+- **Weekly Activity Log (SIPP tabular form)** — the backend routes still
+  exist but the *web* student portal already removed this UI (nobody ever
+  reviewed it); mobile matches the web's current UI, not the full backend
+  surface.
+- **Exit Interview Summary** — no supporting table in the v2.0 schema.
 - **Geofence / rotating QR clock-in** — confirmed out of scope by the team.
-
-## Not yet wired (next steps)
-
-- Push notifications: helper is stubbed — add `registerForPushAsync()` using
-  `expo-notifications` and POST the token to `endpoints.registerDevice` once
-  that route is confirmed
-- Real PDF download on the Reports screen — currently posts params and
-  no-ops on the file itself; wire `expo-file-system`/`expo-sharing` once the
-  export endpoint's response format is confirmed
+- Coordinator/supervisor/admin interfaces — mobile is student-only by design.

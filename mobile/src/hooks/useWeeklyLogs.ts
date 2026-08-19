@@ -1,134 +1,85 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { fetchWithFallback, postWithFallback } from '../services/api';
+import { apiGet, apiPost, ApiError } from '../services/api';
 import { endpoints } from '../services/endpoints';
-import { mockWeeklyLogs, WeeklyLog } from '../services/mock/weekly';
-import { getAccountKind } from '../services/accountKind';
-import { getCurrentLocalProfile } from '../services/localAccounts';
-import {
-  computeWeeklyLogsFromEntries,
-  computeWeeklyLogDetailFromEntries,
-  saveWeeklyNarrative,
-  submitWeeklyNarrative,
-} from '../services/localData';
+import { WeeklyLogsResponse, WeeklyLogSummary, WeeklyLogDetail } from '../types/api';
 
 export function useWeeklyLogs() {
-  const [logs, setLogs] = useState<WeeklyLog[]>([]);
+  const [logs, setLogs] = useState<WeeklyLogSummary[]>([]);
   const [loading, setLoading] = useState(true);
-
-  useFocusEffect(
-    useCallback(() => {
-      let mounted = true;
-      (async () => {
-        const kind = await getAccountKind();
-        if (kind === 'new') {
-          const profile = await getCurrentLocalProfile();
-          const computed = profile ? await computeWeeklyLogsFromEntries(profile.email) : [];
-          if (mounted) {
-            setLogs(computed as WeeklyLog[]);
-            setLoading(false);
-          }
-          return;
-        }
-        if (kind === 'demo') {
-          if (mounted) {
-            setLogs(mockWeeklyLogs);
-            setLoading(false);
-          }
-          return;
-        }
-        const r = await fetchWithFallback(endpoints.weeklyLogs, mockWeeklyLogs);
-        if (mounted) {
-          setLogs(r.data);
-          setLoading(false);
-        }
-      })();
-      return () => {
-        mounted = false;
-      };
-    }, [])
-  );
-
-  return { logs, loading };
-}
-
-/**
- * Detail + save/submit for a single week's narrative. Follows the same
- * kind-branch shape as useWeeklyLogs: a locally-registered "new" account
- * reads/writes real AsyncStorage state via localData.ts; the fixed demo
- * account only updates in-memory state (nothing it does is ever persisted,
- * matching every other demo-account write path in this app); otherwise a
- * real backend call is tried first via postWithFallback.
- */
-export function useWeeklyLogDetail(id: string) {
-  const [log, setLog] = useState<WeeklyLog | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<ApiError | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const kind = await getAccountKind();
-
-    if (kind === 'new') {
-      const profile = await getCurrentLocalProfile();
-      const detail = profile ? await computeWeeklyLogDetailFromEntries(profile.email, id) : null;
-      setLog(detail as WeeklyLog | null);
+    setError(null);
+    try {
+      const res = await apiGet<WeeklyLogsResponse>(endpoints.weeklyLogs);
+      setLogs(res.weeks);
+    } catch (err) {
+      setError(err as ApiError);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    if (kind === 'demo') {
-      setLog(mockWeeklyLogs.find((w) => w.id === id) ?? null);
-      setLoading(false);
-      return;
-    }
-
-    const r = await fetchWithFallback(`${endpoints.weeklyLogs}/${id}`, mockWeeklyLogs.find((w) => w.id === id) ?? null);
-    setLog(r.data);
-    setLoading(false);
-  }, [id]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      let mounted = true;
-      (async () => {
-        await load();
-        if (!mounted) return;
-      })();
-      return () => {
-        mounted = false;
-      };
+      load();
     }, [load])
   );
 
-  async function saveNarrative(narrative: string) {
-    const kind = await getAccountKind();
+  return { logs, loading, error, reload: load };
+}
 
-    if (kind === 'new') {
-      const profile = await getCurrentLocalProfile();
-      if (profile) await saveWeeklyNarrative(profile.email, id, narrative);
-    } else if (kind === 'demo') {
-      setLog((prev) => (prev ? { ...prev, narrative } : prev));
-    } else {
-      await postWithFallback(`${endpoints.weeklyLogs}/${id}`, { narrative }, { ok: true });
+/**
+ * Detail + save/submit for a single week's narrative, addressed by its
+ * Monday date (week_start) — the real backend's only identifier for a week,
+ * not an opaque id.
+ */
+export function useWeeklyLogDetail(weekStart: string) {
+  const [log, setLog] = useState<WeeklyLogDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<ApiError | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiGet<WeeklyLogDetail>(endpoints.weeklyLog(weekStart));
+      setLog(res);
+    } catch (err) {
+      setError(err as ApiError);
+    } finally {
+      setLoading(false);
     }
+  }, [weekStart]);
 
-    await load();
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  async function saveNarrative(narrative: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    try {
+      await apiPost(endpoints.weeklyLogs, { week_start: weekStart, narrative });
+      await load();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: (err as ApiError).message };
+    }
   }
 
-  async function submitNarrative(narrative: string) {
-    const kind = await getAccountKind();
-
-    if (kind === 'new') {
-      const profile = await getCurrentLocalProfile();
-      if (profile) await submitWeeklyNarrative(profile.email, id, narrative);
-    } else if (kind === 'demo') {
-      setLog((prev) => (prev ? { ...prev, narrative, status: 'pending' } : prev));
-    } else {
-      await postWithFallback(`${endpoints.weeklyLogs}/${id}/submit`, { narrative }, { ok: true });
+  async function submitNarrative(narrative: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    try {
+      await apiPost(endpoints.weeklyLogs, { week_start: weekStart, narrative });
+      await apiPost(endpoints.weeklyLogSubmit(weekStart));
+      await load();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: (err as ApiError).message };
     }
-
-    await load();
   }
 
-  return { log, loading, saveNarrative, submitNarrative };
+  return { log, loading, error, reload: load, saveNarrative, submitNarrative };
 }

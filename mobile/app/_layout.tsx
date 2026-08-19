@@ -9,14 +9,15 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="login" />
-        <Stack.Screen name="signup" />
         <Stack.Screen name="write" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="more" options={{ presentation: 'modal' }} />
         <Stack.Screen name="guide" />
         <Stack.Screen name="infosheet" />
-        <Stack.Screen name="reports" />
-        <Stack.Screen name="drafts" />
         <Stack.Screen name="profile" />
+        <Stack.Screen name="notifications" />
+        <Stack.Screen name="activity-log" />
+        <Stack.Screen name="reminder-settings" />
+        <Stack.Screen name="change-password" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="paused" />
       </Stack>
     </SafeAreaProvider>
   );

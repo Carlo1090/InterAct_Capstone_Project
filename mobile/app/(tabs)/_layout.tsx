@@ -1,12 +1,35 @@
 import { Tabs, router, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { View, ActivityIndicator } from 'react-native';
 import { useAuth } from '../../src/hooks/useAuth';
+import { useCurrentUser } from '../../src/hooks/useCurrentUser';
 import { colors } from '../../src/constants/colors';
 
+/**
+ * Mobile's analogue of the web SPA router's beforeEach guard: a gated
+ * student (info sheet not yet approved) can only reach the Info Sheet; a
+ * paused student (dropped from their batch) can only reach Paused/Info
+ * Sheet; must_change_password force-routes to the Change Password screen
+ * regardless of gate state. Every other authenticated student sees the
+ * normal 5-tab shell.
+ */
 export default function TabsLayout() {
   const { isAuthenticated } = useAuth();
+  const { user, loading, studentGated, studentPaused, mustChangePassword } = useCurrentUser();
 
   if (isAuthenticated === false) return <Redirect href="/login" />;
+
+  if (isAuthenticated === null || (isAuthenticated && loading && !user)) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.gray50 }}>
+        <ActivityIndicator color={colors.blue600} />
+      </View>
+    );
+  }
+
+  if (mustChangePassword) return <Redirect href="/change-password" />;
+  if (studentGated) return <Redirect href="/infosheet" />;
+  if (!studentGated && studentPaused) return <Redirect href="/paused" />;
 
   return (
     <Tabs
@@ -47,15 +70,15 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="_more-placeholder"
+        name="_infosheet-placeholder"
         options={{
-          title: 'More',
-          tabBarIcon: ({ color }) => <Ionicons name="ellipsis-horizontal" size={20} color={color} />,
+          title: 'Info Sheet',
+          tabBarIcon: ({ color }) => <Ionicons name="clipboard-outline" size={20} color={color} />,
         }}
         listeners={{
           tabPress: (e) => {
             e.preventDefault();
-            router.push('/more');
+            router.push('/infosheet');
           },
         }}
       />

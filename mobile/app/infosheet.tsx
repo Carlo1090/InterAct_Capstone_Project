@@ -4,89 +4,95 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Banner } from '../src/components/Banner';
 import { InfoSectionTitle, InfoField } from '../src/components/InfoField';
+import { ErrorState, LoadingState } from '../src/components/ErrorState';
 import { useStudentInfo } from '../src/hooks/useStudentInfo';
-import { StudentInfo, mockCompanies } from '../src/services/mock/studentInfo';
-import { saveStudentInfo } from '../src/services/localData';
-import { api } from '../src/services/api';
+import { downloadAndSharePdf, ApiError } from '../src/services/api';
 import { endpoints } from '../src/services/endpoints';
+import { InfoSheet, InfoSheetPersonal, InfoSheetAcademic, InfoSheetOjt } from '../src/types/api';
 import { colors } from '../src/constants/colors';
 
-const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
+const YEAR_LEVELS: { value: string; label: string }[] = [
+  { value: '1st-year', label: '1st Year' },
+  { value: '2nd-year', label: '2nd Year' },
+  { value: '3rd-year', label: '3rd Year' },
+  { value: '4th-year', label: '4th Year' },
+];
 
-function findMissingRequired(info: StudentInfo): string[] {
+function findMissingRequired(personal: InfoSheetPersonal, academic: InfoSheetAcademic, ojt: InfoSheetOjt): string[] {
   const missing: string[] = [];
-  if (!info.personal.lastName.trim()) missing.push('Last Name');
-  if (!info.personal.firstName.trim()) missing.push('First Name');
-  if (!info.personal.parentGuardianName.trim()) missing.push("Parent's/Guardian's Name");
-  if (!YEAR_LEVELS.includes(info.academic.yearLevel)) missing.push('Year Level');
-  if (!mockCompanies.some((c) => c.name === info.ojt.hostCompany)) missing.push('Host Company');
+  if (!personal.last_name.trim()) missing.push('Family Name');
+  if (!personal.first_name.trim()) missing.push('First Name');
+  if (!personal.parent_guardian_name.trim()) missing.push("Parent's / Guardian's Name");
+  if (!academic.year_level) missing.push('Year Level');
+  if (!ojt.company_id) missing.push('Host Company');
   return missing;
 }
 
-export default function InfoSheet() {
-  const { data, loading, storageEmail, reload } = useStudentInfo();
+export default function InfoSheetScreen() {
+  const { data, companies, loading, error, reload, save } = useStudentInfo();
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<StudentInfo | null>(null);
+  const [personal, setPersonal] = useState<InfoSheetPersonal | null>(null);
+  const [academic, setAcademic] = useState<InfoSheetAcademic | null>(null);
+  const [ojt, setOjt] = useState<InfoSheetOjt | null>(null);
   const [saving, setSaving] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
-    if (data) setDraft(data);
+    if (data) {
+      setPersonal(data.personal_info);
+      setAcademic(data.academic_info);
+      setOjt(data.ojt_info);
+    }
   }, [data]);
 
-  if (loading || !draft) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.gray50, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={colors.blue600} />
-      </View>
-    );
+  if (loading && !data) return <LoadingState />;
+  if (error && !data) return <ErrorState message={error.message} onRetry={reload} />;
+  if (!data || !personal || !academic || !ojt) return null;
+
+  function updatePersonal<K extends keyof InfoSheetPersonal>(field: K, value: InfoSheetPersonal[K]) {
+    setPersonal((prev) => (prev ? { ...prev, [field]: value } : prev));
   }
 
-  function update<S extends 'personal' | 'academic' | 'ojt'>(section: S, field: keyof StudentInfo[S], value: string) {
-    setDraft((prev) => (prev ? { ...prev, [section]: { ...prev[section], [field]: value } } : prev));
+  function updateOjt<K extends keyof InfoSheetOjt>(field: K, value: InfoSheetOjt[K]) {
+    setOjt((prev) => (prev ? { ...prev, [field]: value } : prev));
   }
 
-  function selectCompany(name: string) {
-    const company = mockCompanies.find((c) => c.name === name);
-    setDraft((prev) =>
-      prev ? { ...prev, ojt: { ...prev.ojt, hostCompany: name, companyAddress: company?.address ?? prev.ojt.companyAddress } } : prev
-    );
+  function selectCompany(companyId: number, name: string) {
+    setOjt((prev) => (prev ? { ...prev, company_id: companyId, host_company: name } : prev));
   }
 
-  async function persist(next: StudentInfo) {
+  function selectYearLevel(value: string) {
+    setAcademic((prev) => (prev ? { ...prev, year_level: value } : prev));
+  }
+
+  async function persist(status: 'draft' | 'submitted') {
     setSaving(true);
-    try {
-      await api.patch(endpoints.studentInfoSheet, next);
-    } catch {
-      // Real backend unreachable — persist locally so edits actually stick.
-      if (storageEmail) {
-        await saveStudentInfo(storageEmail, next);
-      }
-    } finally {
-      setSaving(false);
+    const result = await save({ status, personal_info: personal!, academic_info: academic!, ojt_info: ojt!, emergency_contact: data!.emergency_contact ?? undefined });
+    setSaving(false);
+    if (result.ok) {
       setEditing(false);
-      await reload();
+    } else {
+      Alert.alert('Could not save', result.error);
     }
   }
 
-  // A routine save never changes submission_status — matching the real
-  // backend, which never lets an ordinary edit re-trip an approved sheet
-  // back to draft/submitted, or a submitted sheet's queue position.
   async function onSaveChanges() {
-    if (draft) await persist(draft);
+    await persist(data!.submission_status === null || data!.submission_status === 'draft' || data!.submission_status === 'rejected' ? 'draft' : 'submitted');
   }
 
   async function onSubmit() {
-    if (!draft) return;
-    const missing = findMissingRequired(draft);
+    const missing = findMissingRequired(personal!, academic!, ojt!);
     if (missing.length > 0) {
       Alert.alert('Missing required fields', `Please complete: ${missing.join(', ')}`);
       return;
     }
-    await persist({ ...draft, submissionStatus: 'submitted', rejectionReason: undefined });
+    await persist('submitted');
   }
 
   function onCancel() {
-    setDraft(data);
+    setPersonal(data!.personal_info);
+    setAcademic(data!.academic_info);
+    setOjt(data!.ojt_info);
     setEditing(false);
   }
 
@@ -97,12 +103,24 @@ export default function InfoSheet() {
     ]);
   }
 
-  const canSubmit = draft.submissionStatus === 'draft' || draft.submissionStatus === 'rejected';
-  // Program/Department/Coordinator are always locked (never student-typed —
-  // the real backend derives them from the assigned batch). Year Level and
-  // Host Company lock only once approved, matching the real "Program & Year
-  // and the assigned Company stay locked" post-approval rule.
-  const fieldsLocked = draft.submissionStatus === 'approved';
+  async function onDownloadPdf() {
+    setDownloading(true);
+    try {
+      await downloadAndSharePdf(endpoints.infoSheetPdf, 'student-information-sheet.pdf');
+    } catch (err) {
+      Alert.alert('Could not download PDF', (err as ApiError).message);
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  const canSubmit = data.submission_status === null || data.submission_status === 'draft' || data.submission_status === 'rejected';
+  // Program/Department/Coordinator are always locked (server-derived from
+  // the assigned batch). Year Level and Host Company lock only once
+  // approved, matching the real "Program & Year and the assigned Company
+  // stay locked" post-approval rule.
+  const fieldsLocked = data.submission_status === 'approved';
+  const yearLevelLabel = YEAR_LEVELS.find((y) => y.value === academic.year_level)?.label ?? 'Not yet set';
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.gray50 }} contentContainerStyle={{ paddingBottom: 24 }}>
@@ -122,53 +140,69 @@ export default function InfoSheet() {
           <Text style={{ fontSize: 20, fontWeight: '700', color: colors.black }}>Student Info Sheet</Text>
         </View>
         {!editing && (
-          <Pressable onPress={() => setEditing(true)}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.blue500 }}>Edit</Text>
-          </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+            {data.submission_status ? (
+              <Pressable onPress={onDownloadPdf} disabled={downloading} hitSlop={8}>
+                {downloading ? (
+                  <ActivityIndicator size="small" color={colors.blue600} />
+                ) : (
+                  <Ionicons name="download-outline" size={20} color={colors.blue600} />
+                )}
+              </Pressable>
+            ) : null}
+            <Pressable onPress={() => setEditing(true)}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.blue500 }}>Edit</Text>
+            </Pressable>
+          </View>
         )}
       </View>
 
-      <StatusBanner status={draft.submissionStatus} rejectionReason={draft.rejectionReason} editing={editing} />
+      <StatusBanner status={data.submission_status} rejectionReason={data.rejection_reason} editing={editing} />
 
       <InfoSectionTitle>I. Personal Information</InfoSectionTitle>
-      <EditableField label="Last Name" value={draft.personal.lastName} editing={editing} onChangeText={(v) => update('personal', 'lastName', v)} />
-      <EditableField label="First Name" value={draft.personal.firstName} editing={editing} onChangeText={(v) => update('personal', 'firstName', v)} />
-      <EditableField label="Middle Name" value={draft.personal.middleName} editing={editing} onChangeText={(v) => update('personal', 'middleName', v)} />
-      <EditableField label="Student ID" value={draft.personal.studentId} editing={editing} onChangeText={(v) => update('personal', 'studentId', v)} />
-      <EditableField label="Date of Birth" value={draft.personal.dob} editing={editing} onChangeText={(v) => update('personal', 'dob', v)} />
-      <EditableField label="Sex" value={draft.personal.sex} editing={editing} onChangeText={(v) => update('personal', 'sex', v)} />
-      <EditableField label="Home Address" value={draft.personal.address} editing={editing} onChangeText={(v) => update('personal', 'address', v)} />
-      <EditableField label="Contact Number" value={draft.personal.contact} editing={editing} onChangeText={(v) => update('personal', 'contact', v)} keyboardType="phone-pad" />
-      <EditableField label="Email Address" value={draft.personal.email} editing={editing} onChangeText={(v) => update('personal', 'email', v)} keyboardType="email-address" />
-      <EditableField label="Parent's / Guardian's Name *" value={draft.personal.parentGuardianName} editing={editing} onChangeText={(v) => update('personal', 'parentGuardianName', v)} />
-      <EditableField label="Parent's / Guardian's Contact" value={draft.personal.parentGuardianContact} editing={editing} onChangeText={(v) => update('personal', 'parentGuardianContact', v)} keyboardType="phone-pad" />
+      <EditableField label="Last Name" value={personal.last_name} editing={editing} onChangeText={(v) => updatePersonal('last_name', v)} />
+      <EditableField label="First Name" value={personal.first_name} editing={editing} onChangeText={(v) => updatePersonal('first_name', v)} />
+      <EditableField label="Middle Name" value={personal.middle_name ?? ''} editing={editing} onChangeText={(v) => updatePersonal('middle_name', v)} />
+      <EditableField label="Date of Birth" value={personal.date_of_birth ?? ''} editing={editing} onChangeText={(v) => updatePersonal('date_of_birth', v)} />
+      <EditableField label="Sex" value={personal.sex ?? ''} editing={editing} onChangeText={(v) => updatePersonal('sex', v)} />
+      <EditableField label="Home Address" value={personal.home_address ?? ''} editing={editing} onChangeText={(v) => updatePersonal('home_address', v)} />
+      <EditableField label="Contact Number" value={personal.contact_number ?? ''} editing={editing} onChangeText={(v) => updatePersonal('contact_number', v)} keyboardType="phone-pad" />
+      <EditableField label="Email Address" value={personal.email ?? ''} editing={editing} onChangeText={(v) => updatePersonal('email', v)} keyboardType="email-address" />
+      <EditableField label="Parent's / Guardian's Name *" value={personal.parent_guardian_name} editing={editing} onChangeText={(v) => updatePersonal('parent_guardian_name', v)} />
+      <EditableField label="Parent's / Guardian's Contact" value={personal.parent_guardian_contact ?? ''} editing={editing} onChangeText={(v) => updatePersonal('parent_guardian_contact', v)} keyboardType="phone-pad" />
 
       <InfoSectionTitle>II. Academic Information</InfoSectionTitle>
-      <InfoField label="Program / Course (assigned by your coordinator)" value={draft.academic.program || 'Not yet set'} />
+      <InfoField label="Program / Course (assigned by your coordinator)" value={academic.program_course || 'Not yet set'} />
       <PickerField
-        label="Year Level"
-        value={draft.academic.yearLevel}
-        options={YEAR_LEVELS}
+        label="Year Level *"
+        value={yearLevelLabel}
+        options={YEAR_LEVELS.map((y) => y.label)}
         editable={editing && !fieldsLocked}
-        onSelect={(v) => update('academic', 'yearLevel', v)}
+        onSelect={(label) => selectYearLevel(YEAR_LEVELS.find((y) => y.label === label)?.value ?? YEAR_LEVELS[0].value)}
       />
-      <InfoField label="Department (assigned by your coordinator)" value={draft.academic.department || 'Not yet set'} />
-      <InfoField label="OJT Coordinator (assigned by your coordinator)" value={draft.academic.coordinator || 'Not yet assigned'} />
+      <InfoField label="Department (assigned by your coordinator)" value={academic.department || 'Not yet set'} />
+      <InfoField label="OJT Coordinator (assigned by your coordinator)" value={academic.internship_coordinator || 'Not yet assigned'} />
 
       <InfoSectionTitle>III. OJT / Internship Information</InfoSectionTitle>
       <PickerField
-        label="Host Company"
-        value={draft.ojt.hostCompany}
-        options={mockCompanies.map((c) => c.name)}
+        label="Host Company *"
+        value={ojt.host_company || 'Select a company'}
+        options={companies.map((c) => c.name)}
         editable={editing && !fieldsLocked}
-        onSelect={selectCompany}
+        onSelect={(name) => {
+          const company = companies.find((c) => c.name === name);
+          if (company) selectCompany(company.id, company.name);
+        }}
       />
-      <EditableField label="Company Address" value={draft.ojt.companyAddress} editing={editing} onChangeText={(v) => update('ojt', 'companyAddress', v)} />
-      <EditableField label="Supervisor Name" value={draft.ojt.supervisorName} editing={editing} onChangeText={(v) => update('ojt', 'supervisorName', v)} />
-      <EditableField label="Supervisor Email" value={draft.ojt.supervisorEmail} editing={editing} onChangeText={(v) => update('ojt', 'supervisorEmail', v)} keyboardType="email-address" />
-      <EditableField label="OJT Start Date" value={draft.ojt.startDate} editing={editing} onChangeText={(v) => update('ojt', 'startDate', v)} />
-      <EditableField label="OJT End Date" value={draft.ojt.endDate} editing={editing} onChangeText={(v) => update('ojt', 'endDate', v)} />
-      <EditableField label="Division Assigned" value={draft.ojt.division} editing={editing} onChangeText={(v) => update('ojt', 'division', v)} />
+      <EditableField label="Company Address" value={ojt.company_address ?? ''} editing={editing} onChangeText={(v) => updateOjt('company_address', v)} />
+      <EditableField label="Company Signatory (for MOA)" value={ojt.company_signatory_moa ?? ''} editing={editing} onChangeText={(v) => updateOjt('company_signatory_moa', v)} />
+      <EditableField label="Office Designation" value={ojt.office_designation ?? ''} editing={editing} onChangeText={(v) => updateOjt('office_designation', v)} />
+      <EditableField label="Supervisor Name" value={ojt.supervisor_name ?? ''} editing={editing} onChangeText={(v) => updateOjt('supervisor_name', v)} />
+      <EditableField label="Supervisor Contact" value={ojt.supervisor_contact ?? ''} editing={editing} onChangeText={(v) => updateOjt('supervisor_contact', v)} keyboardType="phone-pad" />
+      <EditableField label="Area Assigned" value={ojt.area_assigned ?? ''} editing={editing} onChangeText={(v) => updateOjt('area_assigned', v)} />
+      <EditableField label="Duty Schedule" value={ojt.intern_duty_schedule ?? ''} editing={editing} onChangeText={(v) => updateOjt('intern_duty_schedule', v)} />
+      <EditableField label="OJT Start Date" value={ojt.ojt_start_date ?? ''} editing={editing} onChangeText={(v) => updateOjt('ojt_start_date', v)} />
+      <EditableField label="OJT End Date" value={ojt.ojt_end_date ?? ''} editing={editing} onChangeText={(v) => updateOjt('ojt_end_date', v)} />
 
       {editing && (
         <View style={{ paddingHorizontal: 20, paddingTop: 16, gap: 10 }}>
@@ -209,23 +243,15 @@ function StatusBanner({
   rejectionReason,
   editing,
 }: {
-  status: StudentInfo['submissionStatus'];
-  rejectionReason?: string;
+  status: InfoSheet['submission_status'];
+  rejectionReason: string | null;
   editing: boolean;
 }) {
   if (editing) {
-    return (
-      <Banner variant="info">
-        You are editing your SIPP information. Save your changes, or go back to discard them.
-      </Banner>
-    );
+    return <Banner variant="info">You are editing your information sheet. Save your changes, or go back to discard them.</Banner>;
   }
   if (status === 'rejected') {
-    return (
-      <Banner variant="warn">
-        Returned for changes: {rejectionReason || 'Please review and resubmit.'}
-      </Banner>
-    );
+    return <Banner variant="warn">Returned for changes: {rejectionReason || 'Please review and resubmit.'}</Banner>;
   }
   if (status === 'submitted') {
     return <Banner variant="info">Submitted — awaiting your coordinator's review.</Banner>;
@@ -329,6 +355,7 @@ function PickerField({
       {editable ? (
         <Pressable
           onPress={() => {
+            if (options.length === 0) return;
             const i = options.indexOf(value);
             onSelect(options[(i + 1) % options.length] ?? options[0]);
           }}
@@ -344,8 +371,8 @@ function PickerField({
             backgroundColor: colors.blue50,
           }}
         >
-          <Text style={{ fontSize: 13.5, color: colors.black }}>{value || options[0]}</Text>
-          <Text style={{ color: colors.gray400 }}>▾</Text>
+          <Text style={{ fontSize: 13.5, color: colors.black }}>{value || options[0] || 'None available'}</Text>
+          <Text style={{ color: colors.gray400 }}>{'▾'}</Text>
         </Pressable>
       ) : (
         <Text style={{ fontSize: 14, color: value ? colors.black : colors.gray400, fontWeight: '500' }}>
