@@ -2,6 +2,8 @@
 import { computed, ref } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import SidebarCollapseToggle from '@/components/layout/SidebarCollapseToggle.vue'
+import TooltipWrap from '@/components/ui/TooltipWrap.vue'
 import NotificationBell from '@/components/notifications/NotificationBell.vue'
 import ProfileMenuPopover from '@/components/profile/ProfileMenuPopover.vue'
 
@@ -12,7 +14,6 @@ const navItems = [
   { label: 'Programs', to: '/admin/programs', badge: '', icon: 'book' },
   { label: 'Batches', to: '/admin/batches', badge: '', icon: 'briefcase' },
   { label: 'Student Info Sheet', to: '/admin/info-sheets', badge: '', icon: 'id-card' },
-  { label: 'Annual SIPP Report', to: '/admin/annual-sipp', badge: '', icon: 'chart' },
   { label: 'Audit Logs', to: '/admin/audit-logs', badge: '', icon: 'clipboard' },
   { label: 'System Settings', to: '/admin/settings', badge: '', icon: 'gear' },
 ]
@@ -20,7 +21,10 @@ const navItems = [
 const auth = useAuthStore()
 const route = useRoute()
 
+// Desktop-only rail collapse (the circular chevron). On phones the sidebar is
+// instead an off-canvas drawer driven by `mobileOpen`.
 const collapsed = ref(false)
+const mobileOpen = ref(false)
 
 const pageTitle = computed(() => (typeof route.meta.title === 'string' ? route.meta.title : 'Dashboard'))
 const userName = computed(() => auth.user?.name ?? 'Test Admin')
@@ -30,9 +34,19 @@ const userName = computed(() => auth.user?.name ?? 'Test Admin')
   <div class="min-h-screen bg-slate-100 text-slate-800">
     <div class="fixed inset-x-0 top-0 z-30 h-1.5 bg-slate-900" />
 
+    <!-- Mobile drawer backdrop -->
+    <div
+      v-if="mobileOpen"
+      class="fixed inset-0 z-30 bg-black/40 md:hidden"
+      @click="mobileOpen = false"
+    />
+
     <aside
-      class="fixed inset-y-0 left-0 z-20 flex flex-col overflow-visible bg-linear-to-b from-blue-600 to-indigo-700 text-white transition-all duration-200"
-      :class="collapsed ? 'w-20' : 'w-64'"
+      class="fixed inset-y-0 left-0 z-40 flex w-64 flex-col overflow-visible bg-linear-to-b from-blue-600 to-indigo-700 text-white transition-all duration-300 ease-in-out md:z-20 md:translate-x-0"
+      :class="[
+        collapsed ? 'md:w-20' : 'md:w-64',
+        mobileOpen ? 'translate-x-0' : '-translate-x-full',
+      ]"
     >
       <div class="flex items-center gap-3 px-5 py-5" :class="collapsed && 'justify-center px-0'">
         <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white shadow">
@@ -44,13 +58,19 @@ const userName = computed(() => auth.user?.name ?? 'Test Admin')
       <div class="mx-3 mb-2 border-t border-white/20" />
 
       <nav class="flex-1 space-y-1 overflow-y-auto px-3 py-2">
-        <RouterLink
+        <component
+          :is="collapsed ? TooltipWrap : 'div'"
           v-for="item in navItems"
           :key="item.to"
+          v-bind="collapsed ? { label: item.label, placement: 'right' } : {}"
+          class="w-full"
+        >
+        <RouterLink
           :to="item.to"
           class="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-blue-100 transition hover:bg-white/10 hover:text-white"
-          :class="collapsed && 'justify-center px-0'"
+          :class="collapsed && 'md:justify-center md:px-0'"
           active-class="bg-white/15 text-white"
+          @click="mobileOpen = false"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5 shrink-0">
             <rect v-if="item.icon === 'dashboard'" x="3.5" y="3.5" width="7" height="7" rx="1.5" fill="currentColor" />
@@ -77,7 +97,6 @@ const userName = computed(() => auth.user?.name ?? 'Test Admin')
             <circle v-if="item.icon === 'id-card'" cx="9" cy="11.5" r="2" stroke="currentColor" stroke-width="1.6" />
             <path v-if="item.icon === 'id-card'" d="M6.5 15.5c.6-1.4 1.8-2 2.5-2s1.9.6 2.5 2M14 10h4M14 13h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
 
-            <path v-if="item.icon === 'chart'" d="M4 20V9M10 20V4M16 20v-7M4 20h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
 
             <rect v-if="item.icon === 'clipboard'" x="5.5" y="5" width="13" height="15" rx="1.5" stroke="currentColor" stroke-width="1.6" />
             <path v-if="item.icon === 'clipboard'" d="M9 5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1.2H9V5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
@@ -101,26 +120,38 @@ const userName = computed(() => auth.user?.name ?? 'Test Admin')
             class="rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white"
           >{{ item.badge }}</span>
         </RouterLink>
+        </component>
       </nav>
 
-      <button
-        type="button"
-        class="absolute -right-3.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-indigo-700 text-white shadow-md ring-2 ring-white transition hover:bg-indigo-800"
-        :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
-        @click="collapsed = !collapsed"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4 transition-transform" :class="collapsed && 'rotate-180'">
-          <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-      </button>
+      <SidebarCollapseToggle :collapsed="collapsed" @toggle="collapsed = !collapsed" />
     </aside>
 
-    <div class="min-h-screen transition-all duration-200" :class="collapsed ? 'ml-20' : 'ml-64'">
-      <header class="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-8">
-        <h1 class="text-lg font-bold text-slate-950">{{ pageTitle }}</h1>
+    <div class="min-h-screen transition-[margin] duration-300 ease-in-out" :class="collapsed ? 'md:ml-20' : 'md:ml-64'">
+      <header class="sticky top-0 z-10 flex h-16 items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 md:px-8">
+        <div class="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            class="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 md:hidden"
+            aria-label="Open menu"
+            @click="mobileOpen = true"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-6 w-6">
+              <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            </svg>
+          </button>
+          <!--
+            THE page title, and the only one. Pages must not print their own
+            copy in the body: this renders `route.meta.title`, which is the same
+            string as the active sidebar label, so a body heading repeating it
+            put the same word on screen three times. The 11 pages that used to
+            do that had their duplicate <h2> removed (subtitles and action
+            buttons kept) — don't reintroduce one.
+          -->
+          <h1 class="truncate text-base font-bold text-slate-950 md:text-lg">{{ pageTitle }}</h1>
+        </div>
 
-        <div class="flex items-center gap-3">
-          <div class="text-right leading-tight">
+        <div class="flex shrink-0 items-center gap-3">
+          <div class="hidden text-right leading-tight sm:block">
             <p class="text-sm font-bold uppercase tracking-wide text-slate-700">{{ userName }}</p>
             <p class="text-xs text-slate-400">System Administrator</p>
           </div>
@@ -129,7 +160,7 @@ const userName = computed(() => auth.user?.name ?? 'Test Admin')
         </div>
       </header>
 
-      <main class="p-8">
+      <main class="p-4 md:p-8">
         <RouterView />
       </main>
     </div>

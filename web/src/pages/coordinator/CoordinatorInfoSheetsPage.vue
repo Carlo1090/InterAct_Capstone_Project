@@ -19,6 +19,18 @@ const detail = ref<CoordinatorInfoSheetDetail | null>(null)
 const isDetailOpen = ref(false)
 const isDetailLoading = ref(false)
 
+// Separates "no sheets on file" from "your filters excluded them all" — only the
+// second has a recovery, so only the second gets a Clear filters button.
+const hasFilters = computed(
+  () => search.value !== '' || statusFilter.value !== '' || programFilter.value !== null,
+)
+
+const clearFilters = () => {
+  search.value = ''
+  statusFilter.value = ''
+  programFilter.value = null
+}
+
 const statusClass = (status: string | null): string => {
   if (status === 'submitted') return 'bg-blue-50 text-blue-700'
   if (status === 'approved') return 'bg-green-50 text-green-700'
@@ -89,7 +101,12 @@ const downloadPdf = () => {
 const accept = async () => {
   const student = detail.value?.student
   if (!student) return
-  if (!(await confirmAction(`Accept ${student.name}'s information sheet? This enrolls them into their batch.`))) return
+  const confirmed = await confirmAction({
+    title: 'Accept and enroll this student?',
+    message: `Accept ${student.name}'s information sheet? This enrolls them into their batch and gives them full access.`,
+    confirmLabel: 'Accept & Enroll',
+  })
+  if (!confirmed) return
 
   isActing.value = true
   try {
@@ -158,7 +175,7 @@ onMounted(load)
     <div class="flex flex-wrap gap-3">
       <input
         v-model="search"
-        class="min-w-60 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+        class="w-full sm:w-auto sm:min-w-60 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
         placeholder="Search student..."
         @keyup.enter="load"
       />
@@ -181,20 +198,30 @@ onMounted(load)
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
     <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
 
-    <div v-else class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+    <div v-else class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
       <table class="min-w-full divide-y divide-slate-200">
         <thead class="bg-slate-50">
           <tr>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Student</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Chosen Company</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Info Sheet</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Student</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Chosen Company</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Info Sheet</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
           <tr v-if="students.length === 0">
-            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="5">No sheets match this filter.</td>
+            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="5">
+              {{ hasFilters ? 'No sheets match these filters.' : 'No students in your programs yet.' }}
+              <button
+                v-if="hasFilters"
+                type="button"
+                class="mt-2 block w-full text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+                @click="clearFilters"
+              >
+                Clear filters
+              </button>
+            </td>
           </tr>
           <tr v-for="row in students" :key="row.student_id">
             <td class="px-4 py-3">

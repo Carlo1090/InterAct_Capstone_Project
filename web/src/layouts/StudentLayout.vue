@@ -2,15 +2,18 @@
 import { computed, ref } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import SidebarCollapseToggle from '@/components/layout/SidebarCollapseToggle.vue'
+import TooltipWrap from '@/components/ui/TooltipWrap.vue'
 import NotificationBell from '@/components/notifications/NotificationBell.vue'
 import ProfileMenuPopover from '@/components/profile/ProfileMenuPopover.vue'
 
 const allNavItems = [
   { label: 'Dashboard', to: '/student/dashboard', badge: '', icon: 'dashboard' },
   { label: 'My Journal Calendar', to: '/student/calendar', badge: '', icon: 'calendar' },
-  { label: 'My Journals', to: '/student/journals', badge: '2', icon: 'journals' },
+  { label: 'My Journals', to: '/student/journals', badge: '', icon: 'journals' },
   { label: 'Write Daily Journal', to: '/student/write-journal', badge: '', icon: 'pencil' },
   { label: 'Weekly Journals', to: '/student/weekly-journals', badge: '', icon: 'stack' },
+  { label: 'Weekly and Time Log Summary', to: '/student/weekly-time-log', badge: '', icon: 'clock' },
   { label: 'Student Info Sheet', to: '/student/info-sheet', badge: '', icon: 'id-card' },
 ]
 
@@ -70,10 +73,15 @@ const department = computed(() => auth.user?.program?.department?.name ?? 'CAST'
 
       <div class="mx-3 mb-2 border-t border-white/20" />
 
-      <nav class="flex-1 space-y-1 px-3 py-2">
-        <RouterLink
+      <nav class="flex-1 space-y-1 overflow-y-auto px-3 py-2">
+        <component
+          :is="collapsed ? TooltipWrap : 'div'"
           v-for="item in navItems"
           :key="item.to"
+          v-bind="collapsed ? { label: item.label, placement: 'right' } : {}"
+          class="w-full"
+        >
+        <RouterLink
           :to="item.to"
           class="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-blue-100 transition hover:bg-white/10 hover:text-white"
           :class="collapsed && 'md:justify-center md:px-0'"
@@ -109,6 +117,9 @@ const department = computed(() => auth.user?.program?.department?.name ?? 'CAST'
             />
             <path v-if="item.icon === 'stack'" d="m4 13.5 8 4.5 8-4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
 
+            <circle v-if="item.icon === 'clock'" cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.6" />
+            <path v-if="item.icon === 'clock'" d="M12 7.5V12l3 1.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+
             <rect v-if="item.icon === 'id-card'" x="3.5" y="5.5" width="17" height="13" rx="2" stroke="currentColor" stroke-width="1.6" />
             <circle v-if="item.icon === 'id-card'" cx="9" cy="11.5" r="2" stroke="currentColor" stroke-width="1.6" />
             <path v-if="item.icon === 'id-card'" d="M6.5 15.5c.6-1.4 1.8-2 2.5-2s1.9.6 2.5 2M14 10h4M14 13h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
@@ -122,18 +133,10 @@ const department = computed(() => auth.user?.program?.department?.name ?? 'CAST'
             class="rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white"
           >{{ item.badge }}</span>
         </RouterLink>
+        </component>
       </nav>
 
-      <button
-        type="button"
-        class="absolute -right-3.5 top-1/2 hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-indigo-700 text-white shadow-md ring-2 ring-white transition hover:bg-indigo-800 md:flex"
-        :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
-        @click="collapsed = !collapsed"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4 transition-transform" :class="collapsed && 'rotate-180'">
-          <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-      </button>
+      <SidebarCollapseToggle :collapsed="collapsed" @toggle="collapsed = !collapsed" />
     </aside>
 
     <div class="min-h-screen transition-[margin] duration-300 ease-in-out" :class="collapsed ? 'md:ml-20' : 'md:ml-64'">
@@ -149,11 +152,20 @@ const department = computed(() => auth.user?.program?.department?.name ?? 'CAST'
               <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
             </svg>
           </button>
+          <!--
+            THE page title, and the only one. Pages must not print their own
+            copy in the body: this renders `route.meta.title`, which is the same
+            string as the active sidebar label, so a body heading repeating it
+            put the same word on screen three times. The 11 pages that used to
+            do that had their duplicate <h2> removed (subtitles and action
+            buttons kept) — don't reintroduce one.
+          -->
           <h1 class="truncate text-base font-bold text-slate-950 md:text-lg">{{ pageTitle }}</h1>
         </div>
 
-        <div class="flex items-center gap-3">
-          <div class="text-right leading-tight">
+        <div class="flex shrink-0 items-center gap-3">
+          <!-- Hidden on phones: a long name wraps and collides with the page title. -->
+          <div class="hidden text-right leading-tight sm:block">
             <p class="text-sm font-bold uppercase tracking-wide text-slate-700">{{ userName }}</p>
             <p class="text-xs text-slate-400">Student &middot; {{ department }}</p>
           </div>

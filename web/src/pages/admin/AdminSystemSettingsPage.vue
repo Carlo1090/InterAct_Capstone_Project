@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { nextTick, onMounted, reactive, ref, watch } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { categorizeError } from '@/lib/apiError'
-import { confirmAction, showToast } from '@/lib/toast'
+import { confirmAction } from '@/lib/toast'
+import { useFormDraft } from '@/lib/formDraft'
 import ToastHost from '@/components/ToastHost.vue'
 import LoadStatus from '@/components/LoadStatus.vue'
-import type { ArchivePurgeResult, PaginatedResponse, SystemSettingsMap, User, WeeklyBundlingResult } from '@/types/api'
+import type { PaginatedResponse, SystemSettingsMap, User } from '@/types/api'
 
 const systemInfo = [
   ['System Version', 'v1.0.0 (Phase 2)'],
@@ -29,6 +30,21 @@ const settingsError = ref('')
 const saveError = ref('')
 const settingsSaved = ref(false)
 
+/**
+ * Keep unsaved settings edits across a refresh. `autoRestore: false` because
+ * loadSettings() overwrites generalForm from the API on mount.
+ *
+ * Cleared on a successful save AND on Cancel — Cancel explicitly means "discard
+ * what I typed and reload the stored values", so leaving a draft behind would
+ * resurrect the very edits the admin just abandoned.
+ */
+const settingsDraft = useFormDraft(
+  'admin:system-settings',
+  () => ({ ...generalForm }),
+  (draft) => Object.assign(generalForm, draft),
+  { autoRestore: false },
+)
+
 const loadSettings = async () => {
   isLoadingSettings.value = true
   settingsError.value = ''
@@ -41,6 +57,7 @@ const loadSettings = async () => {
       institution_address: response.data.institution_address ?? '',
       system_email: response.data.system_email ?? '',
     })
+    settingsDraft.restore()
   } catch (error) {
     settingsError.value = categorizeError(error, 'Unable to load system settings.').message
   } finally {
@@ -56,6 +73,7 @@ const saveSettings = async () => {
   try {
     await api.put('/api/admin/system-settings', generalForm)
     settingsSaved.value = true
+    settingsDraft.clear()
   } catch (error) {
     saveError.value = categorizeError(error, 'Unable to save settings.').message
   } finally {
@@ -63,10 +81,18 @@ const saveSettings = async () => {
   }
 }
 
-const cancelSettings = () => {
+const cancelSettings = async () => {
   settingsSaved.value = false
   saveError.value = ''
-  loadSettings()
+  // Cancel means "discard my edits". Clear twice, deliberately: once BEFORE the
+  // reload so loadSettings()'s restore() finds nothing to put back, and once
+  // after (post-nextTick) to cancel the write that repopulating the form has
+  // just queued on the watcher. Without the second clear the draft key returns,
+  // mirroring server state, and would later override genuinely newer settings.
+  settingsDraft.clear()
+  await loadSettings()
+  await nextTick()
+  settingsDraft.clear()
 }
 
 const studentSearch = ref('')
@@ -104,9 +130,13 @@ watch(studentSearch, () => {
 })
 
 const issueTemporaryPassword = async (student: User) => {
-  if (!(await confirmAction(`Issue a temporary password for ${student.name}? Their current password will stop working immediately.`))) {
-    return
-  }
+  const confirmed = await confirmAction({
+    title: 'Issue a temporary password?',
+    message: `Issue a temporary password for ${student.name}? Their current password will stop working immediately.`,
+    confirmLabel: 'Issue Password',
+    tone: 'danger',
+  })
+  if (!confirmed) return
 
   issuingForId.value = student.id
   issueError.value = ''
@@ -119,62 +149,6 @@ const issueTemporaryPassword = async (student: User) => {
     issueError.value = data?.message ?? 'Unable to issue a temporary password.'
   } finally {
     issuingForId.value = null
-  }
-}
-
-// --- Weekly Bundling demo trigger --------------------------------------
-const weeklyBundlingWeekStart = ref('')
-const isRunningWeeklyBundling = ref(false)
-const weeklyBundlingError = ref('')
-const weeklyBundlingResult = ref<WeeklyBundlingResult | null>(null)
-
-const runWeeklyBundlingNow = async () => {
-  const weekLabel = weeklyBundlingWeekStart.value || 'the most recently completed Mon–Fri week'
-  if (!(await confirmAction(`Run Weekly Bundling now for ${weekLabel}? This compiles Daily Accomplishment entries into each active student's Weekly Log narrative (drafts only — already-submitted logs are left untouched).`))) {
-    return
-  }
-
-  isRunningWeeklyBundling.value = true
-  weeklyBundlingError.value = ''
-
-  try {
-    const { data } = await api.post<WeeklyBundlingResult>('/api/admin/weekly-bundling/run', {
-      week_start: weeklyBundlingWeekStart.value || undefined,
-    })
-    weeklyBundlingResult.value = data
-    showToast(`Weekly Bundling complete: ${data.compiled} compiled, ${data.skipped_submitted} already submitted.`)
-  } catch (error) {
-    const data = axios.isAxiosError(error) ? error.response?.data : null
-    weeklyBundlingError.value = data?.message ?? 'Unable to run Weekly Bundling.'
-  } finally {
-    isRunningWeeklyBundling.value = false
-  }
-}
-
-// --- Archive Purge demo trigger -----------------------------------------
-const isRunningPurge = ref(false)
-const purgeError = ref('')
-const purgeResult = ref<ArchivePurgeResult | null>(null)
-const purgeAsOf = ref('')
-
-const runPurgeNow = async () => {
-  if (!(await confirmAction('Run the archive purge now? This permanently deletes every batch roster record archived 30+ days ago (unless purging it would re-gate a legacy student). This cannot be undone.'))) {
-    return
-  }
-
-  isRunningPurge.value = true
-  purgeError.value = ''
-
-  try {
-    const { data } = await api.post<ArchivePurgeResult>('/api/admin/roster/purge-archived/run', {
-      now: purgeAsOf.value || undefined,
-    })
-    purgeResult.value = data
-    showToast(`Archive purge complete: ${data.purged} record${data.purged === 1 ? '' : 's'} purged, ${data.protected} protected.`)
-  } catch (error) {
-    purgeError.value = categorizeError(error, 'Unable to run the archive purge.').message
-  } finally {
-    isRunningPurge.value = false
   }
 }
 
@@ -255,106 +229,6 @@ onMounted(loadSettings)
       </div>
 
       <div class="space-y-5">
-        <div class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <h2 class="text-sm font-bold text-slate-900">Journal Settings</h2>
-          <div class="mt-5 space-y-4">
-            <label class="block">
-              <span class="text-xs font-bold text-slate-600">Weekly Compilation Day</span>
-              <select class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
-                <option>Sunday</option>
-                <option>Saturday</option>
-                <option>Monday</option>
-              </select>
-              <p class="mt-1 text-xs text-slate-500">
-                Weekly journals are automatically compiled and forwarded to company supervisors on this day.
-              </p>
-            </label>
-            <label class="block">
-              <span class="text-xs font-bold text-slate-600">Minimum Word Count</span>
-              <input class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" type="number" value="250" />
-            </label>
-            <label class="block">
-              <span class="text-xs font-bold text-slate-600">Submission Deadline</span>
-              <select class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
-                <option>11:59 PM (Same Day)</option>
-                <option>9:00 AM (Next Day)</option>
-              </select>
-            </label>
-            <label class="flex items-center gap-2 text-sm text-slate-700">
-              <input type="checkbox" />
-              Exclude late/overdue entries
-            </label>
-          </div>
-        </div>
-
-        <div class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <h2 class="text-sm font-bold text-slate-900">Weekly Bundling</h2>
-          <p class="mt-1 text-xs text-slate-500">
-            Compiles each active student's submitted Daily Accomplishment entries (Mon–Fri) into their Weekly Log narrative.
-            Runs automatically every Saturday at 00:00 for the week that just ended — use this to trigger it on demand.
-          </p>
-
-          <label class="mt-4 block">
-            <span class="text-xs font-bold text-slate-600">Week (optional)</span>
-            <input v-model="weeklyBundlingWeekStart" type="date" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-            <p class="mt-1 text-xs text-slate-400">Any date within the target week. Leave blank for the most recently completed Mon–Fri.</p>
-          </label>
-
-          <button
-            type="button"
-            class="mt-3 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:grayscale disabled:cursor-not-allowed"
-            :disabled="isRunningWeeklyBundling"
-            @click="runWeeklyBundlingNow"
-          >
-            {{ isRunningWeeklyBundling ? 'Running...' : 'Run Weekly Bundling Now' }}
-          </button>
-
-          <p v-if="weeklyBundlingError" class="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ weeklyBundlingError }}</p>
-
-          <div v-if="weeklyBundlingResult" class="mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
-            <p class="font-semibold">{{ weeklyBundlingResult.week_start }} to {{ weeklyBundlingResult.week_end }}</p>
-            <p class="mt-1 text-xs">
-              {{ weeklyBundlingResult.compiled }} weekly log{{ weeklyBundlingResult.compiled === 1 ? '' : 's' }} compiled ·
-              {{ weeklyBundlingResult.skipped_submitted }} already submitted (untouched)
-            </p>
-          </div>
-        </div>
-
-        <div class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <h2 class="text-sm font-bold text-slate-900">Archive Purge</h2>
-          <p class="mt-1 text-xs text-slate-500">
-            Permanently deletes batch roster records that coordinators archived 30+ days ago —
-            unless deleting one would re-gate an already-graduated legacy student with no info sheet on file, in
-            which case it's skipped and re-checked next run. Runs automatically every night at 02:00 — use this to
-            trigger it on demand.
-          </p>
-
-          <label class="mt-4 block">
-            <span class="text-xs font-bold text-slate-600">As of (optional)</span>
-            <input v-model="purgeAsOf" type="date" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-            <p class="mt-1 text-xs text-slate-400">Treat this date as "now" for the 30-day cutoff. Leave blank to use the real current time.</p>
-          </label>
-
-          <button
-            type="button"
-            class="mt-3 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:grayscale disabled:cursor-not-allowed"
-            :disabled="isRunningPurge"
-            @click="runPurgeNow"
-          >
-            {{ isRunningPurge ? 'Running...' : 'Run Purge Now' }}
-          </button>
-
-          <p v-if="purgeError" class="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ purgeError }}</p>
-
-          <div v-if="purgeResult" class="mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
-            <p class="font-semibold">
-              {{ purgeResult.purged }} record{{ purgeResult.purged === 1 ? '' : 's' }} purged ·
-              {{ purgeResult.protected }} protected
-            </p>
-            <p class="mt-1 text-xs">Cutoff: records archived before {{ purgeResult.cutoff }}.</p>
-          </div>
-        </div>
-
         <div class="rounded-lg bg-white p-5 shadow-sm ring-1 ring-slate-200">
           <h2 class="text-sm font-bold text-slate-900">System Information</h2>
           <div class="mt-4 divide-y divide-slate-100">

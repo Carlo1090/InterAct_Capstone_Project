@@ -47,13 +47,13 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
     >
       <div
         v-if="dialog.open"
-        class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 px-4"
+        class="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-8"
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-title"
         @click.self="cancelDialog"
       >
-        <div class="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl ring-1 ring-slate-200">
+        <div class="max-h-[calc(100vh-4rem)] w-full max-w-md overflow-y-auto rounded-xl bg-white p-6 shadow-2xl ring-1 ring-slate-200">
           <div class="flex items-start gap-3">
             <span
               class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full"

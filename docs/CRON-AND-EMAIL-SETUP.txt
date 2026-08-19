@@ -1,0 +1,290 @@
+================================================================================
+INTERNTRACK - SCHEDULED JOBS (CRON) AND EMAIL SETUP
+For: Carlo (Render deployment)
+Last updated: 2026-08-02
+================================================================================
+
+WHAT THIS IS ABOUT
+------------------
+
+InternTrack has three background jobs. On our Render free plan they have NEVER
+run, because Render's cron is a paid feature, so nothing has ever triggered
+them:
+
+  1. Missing-journal reminders  - hourly. Emails/notifies students who have
+                                  not written their daily journal.
+  2. Weekly bundling            - Mondays. Compiles each student's daily
+                                  entries into their Weekly Log narrative.
+  3. Archive purge              - nightly. Deletes roster records archived
+                                  more than 30 days ago.
+
+There is now an HTTP endpoint that runs them, so a FREE external scheduler can
+trigger the work by simply visiting a URL every hour.
+
+  GET or POST   https://YOUR-API.onrender.com/api/cron/run?key=YOUR_SECRET
+
+Nothing about how the app works has changed. This only adds a way to trigger
+the existing jobs from outside.
+
+Total time to set up: about 15 minutes. Cost: nothing.
+
+
+================================================================================
+DO THESE IN ORDER
+================================================================================
+
+--------------------------------------------------------------------------------
+STEP 1 - SHIP THE CODE TO THE DEPLOY BRANCH
+--------------------------------------------------------------------------------
+
+IMPORTANT: pushing to "main" deploys NOTHING. Render tracks the "deploy"
+branch. The new code is on main right now, so it is not live yet.
+
+    git checkout deploy
+    git merge main
+    git push origin deploy
+    git checkout main
+
+Render and Vercel both rebuild automatically after that push. Wait for the
+Render build to finish and go green before continuing.
+
+
+--------------------------------------------------------------------------------
+STEP 2 - CREATE THE CRON SECRET
+--------------------------------------------------------------------------------
+
+The endpoint is public (an external scheduler has no login), so it is
+protected by a shared secret instead. Generate your own - do NOT reuse one
+from any chat or document:
+
+    php -r "echo bin2hex(random_bytes(24));"
+
+That prints 48 characters. Copy it.
+
+In Render:  your service -> Environment -> Add Environment Variable
+
+    Key:    CRON_SECRET
+    Value:  <the 48 characters you just generated>
+
+Save. Render redeploys.
+
+SAFETY NOTE: if CRON_SECRET is blank or missing, the endpoint returns 404 and
+does nothing. That is intentional - it means a misconfigured deploy cannot
+accidentally expose a public trigger that sends real email. So if you skip
+this step, nothing will work, and that is by design.
+
+
+--------------------------------------------------------------------------------
+STEP 3 - TURN ON REAL EMAIL (optional but see the warning below)
+--------------------------------------------------------------------------------
+
+By default the app has MAIL_MAILER=log, which means it WRITES emails to a log
+file and sends nothing. That is deliberate so nobody accidentally emails real
+students during development.
+
+To actually send, we use Gmail with an "App Password". This needs no domain
+and costs nothing (500 emails/day, far more than we need).
+
+  a) Use a DEDICATED Gmail account for the system, not anyone's personal one.
+     Gmail forcibly rewrites the "From" address to whichever account
+     authenticates, so every reminder will visibly come from this address.
+     Something like interntrack.mdc@gmail.com.
+
+  b) On that account, turn ON 2-Step Verification:
+        https://myaccount.google.com/security
+     App Passwords do not exist without it. This is the #1 reason people
+     cannot find the option.
+
+  c) Create the App Password:
+        https://myaccount.google.com/apppasswords
+     Name it "InternTrack", click Create. Google shows 16 letters in four
+     groups, like:  abcd efgh ijkl mnop
+
+  d) In Render -> Environment, add these SIX variables. Remove the spaces
+     from the app password - paste all 16 characters together:
+
+        MAIL_MAILER         smtp
+        MAIL_HOST           smtp.gmail.com
+        MAIL_PORT           587
+        MAIL_SCHEME         null
+        MAIL_USERNAME       interntrack.mdc@gmail.com
+        MAIL_PASSWORD       abcdefghijklmnop
+        MAIL_FROM_ADDRESS   interntrack.mdc@gmail.com
+
+     MAIL_SCHEME must be the word "null", NOT "tls". Setting it to "tls"
+     crashes with "The tls scheme is not supported". Port 587 negotiates
+     encryption on its own.
+
+  e) Also confirm APP_NAME is set to  InternTrack  (not "Laravel"), otherwise
+     emails arrive signed "Laravel".
+
+
+--------------------------------------------------------------------------------
+STEP 4 - CREATE THE SCHEDULED PING
+--------------------------------------------------------------------------------
+
+Sign up free at https://cron-job.org (no card). Then Create cronjob:
+
+    Title:     InternTrack hourly
+    URL:       https://YOUR-API.onrender.com/api/cron/run?key=YOUR_SECRET
+    Schedule:  Every hour  (any minute is fine - see note below)
+    Timeout:   raise it to 60 seconds if the option is available
+
+Save and enable it.
+
+BONUS: this also keeps the API awake. Render's free plan sleeps the service
+after 15 minutes idle, and the first request afterwards takes 30-60 seconds.
+An hourly ping does not fully prevent sleeping, but if you want the site
+instantly responsive during the defense, add a SECOND cron-job.org job hitting
+    https://YOUR-API.onrender.com/up
+every 10 minutes. That URL needs no secret.
+
+NOTE ON THE MINUTE: it genuinely does not matter what minute the job fires,
+and it does not matter if it fires late or twice. The app works out what is
+actually due. You do not need to line it up with anything.
+
+
+--------------------------------------------------------------------------------
+STEP 5 - VERIFY IT WORKS
+--------------------------------------------------------------------------------
+
+Paste these into a terminal, replacing the host and key.
+
+  1. Wrong key must be refused (expect 404):
+
+     curl -s -o /dev/null -w "%{http_code}\n" \
+       "https://YOUR-API.onrender.com/api/cron/run?key=wrong"
+
+     Expect:  404
+
+  2. Correct key must work (expect 200 and a JSON summary):
+
+     curl -s "https://YOUR-API.onrender.com/api/cron/run?key=YOUR_SECRET"
+
+     Expect something like:
+
+     {"ran_at":"2026-08-02T18:00:04+08:00","tasks":{
+        "reminders":{"exit_code":0,"summary":"Done. Reminded: 3 (emailed: 1),
+        ..."},
+        "purge":{"exit_code":0,"summary":"Archive purge complete..."},
+        "bundling":{"exit_code":0,"summary":"Weekly bundling complete..."}}}
+
+  3. Run it a SECOND time straight away. This time you should see only
+     "reminders" and NOT "purge" or "bundling". That is correct - those two
+     are capped so they cannot run repeatedly (see the warning section).
+
+  4. After it has been running an hour or two, check cron-job.org's history
+     tab. Every execution should be 200.
+
+
+================================================================================
+IMPORTANT THINGS TO KNOW
+================================================================================
+
+EMAIL WILL LOOK "BROKEN" ON FRESH DEMO DATA - IT IS NOT
+-------------------------------------------------------
+
+The app only emails a student whose email address has been VERIFIED. And
+there is exactly one way an address becomes verified: the student signs in and
+uses "Verify with Google" in their profile.
+
+A freshly seeded database has 30 users with email addresses and ZERO verified.
+So on a brand-new deploy, NOBODY receives reminder email. Everyone still gets
+the in-app notification (the bell icon), which is the normal case.
+
+Consequence for you: if you want to DEMO reminder email, you must first
+finish the Google sign-in setup (section 7 of DEPLOYMENT.md), then log in as
+a student and click "Verify with Google". Without Google configured, no
+address can ever be verified, and therefore no reminder email will ever send.
+
+This is a safety feature, not a bug. Our seed data uses real-looking Gmail
+addresses, and the verification gate is the only thing stopping a demo run
+from emailing actual strangers.
+
+
+WHY THE SECOND PING SKIPS TWO JOBS
+-----------------------------------
+
+Reminders run on every ping. That is safe: the app already checks each
+student's chosen reminder hour and refuses to contact the same student twice
+in one day.
+
+Weekly bundling is capped at once per week ON PURPOSE, and this one matters.
+Bundling overwrites a student's unsubmitted weekly narrative draft, and it
+cannot tell "the app auto-filled this" from "the student typed this". If it
+ran every hour it would erase a student's work in progress once an hour. Do
+not remove that cap or try to force bundling to run more often.
+
+The archive purge is capped at once per day simply to avoid pointless work.
+
+
+DO NOT
+------
+
+- Do not put CRON_SECRET anywhere public (chat, screenshots, the repo).
+  If it leaks, generate a new one and update Render + cron-job.org.
+- Do not set MAIL_SCHEME=tls. It crashes. Use null.
+- Do not use a personal Gmail as MAIL_USERNAME - every student will see that
+  address as the sender.
+- Do not set the cron job to run every minute. Hourly is what the reminder
+  feature expects, and more often achieves nothing.
+
+
+================================================================================
+IF SOMETHING IS WRONG
+================================================================================
+
+SYMPTOM                          CAUSE / FIX
+--------------------------------------------------------------------------------
+404 even with the correct key    CRON_SECRET not set on Render, or the
+                                 service has not redeployed since you set it.
+                                 Check Environment, then Manual Deploy.
+
+404 and you just added the var   Render redeploys on env change - wait for
+                                 it to go green, then retry.
+
+502 / timeout on the first call  The free service was asleep. Cold start is
+                                 30-60s. Call it again.
+
+200 but "emailed: 0"             Normal. Either nobody has a verified email
+                                 (see above), or it is not currently any
+                                 student's chosen reminder hour, or they have
+                                 already been reminded today.
+
+200 but nothing ever emails      Google sign-in is not configured, so no
+                                 address can be verified. See DEPLOYMENT.md
+                                 section 7.
+
+"Failed to authenticate on       Wrong MAIL_PASSWORD. It must be the 16-char
+SMTP server"                     App Password with spaces removed, NOT the
+                                 account's normal password.
+
+"The tls scheme is not           MAIL_SCHEME is set to "tls". Change it to
+supported"                       "null".
+
+Emails arrive signed "Laravel"   APP_NAME is not set to InternTrack.
+
+Reminders arrive at the wrong    APP_TIMEZONE must be Asia/Manila. It is
+hour                             already in render.yaml, so only check this
+                                 if someone overrode it.
+
+
+================================================================================
+QUICK REFERENCE - ALL NEW ENVIRONMENT VARIABLES
+================================================================================
+
+    CRON_SECRET          <48 random characters>       required for cron
+    MAIL_MAILER          smtp                         required for email
+    MAIL_HOST            smtp.gmail.com
+    MAIL_PORT            587
+    MAIL_SCHEME          null
+    MAIL_USERNAME        interntrack.mdc@gmail.com
+    MAIL_PASSWORD        <16-char Gmail App Password, no spaces>
+    MAIL_FROM_ADDRESS    interntrack.mdc@gmail.com
+    APP_NAME             InternTrack                  confirm, not "Laravel"
+
+Cron URL to schedule hourly:
+
+    https://YOUR-API.onrender.com/api/cron/run?key=YOUR_SECRET
+
+================================================================================

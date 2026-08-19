@@ -50,4 +50,14 @@ return [
         'redirect' => env('GOOGLE_REDIRECT_URI', env('APP_URL').'/auth/google/callback'),
     ],
 
+    /*
+     * Shared secret for POST|GET /api/cron/run, which lets an external scheduler
+     * run the jobs in routes/console.php on a host with no cron. Leaving it
+     * unset disables the endpoint (it 404s) rather than leaving it open — see
+     * App\Http\Controllers\CronController.
+     */
+    'cron' => [
+        'secret' => env('CRON_SECRET'),
+    ],
+
 ];

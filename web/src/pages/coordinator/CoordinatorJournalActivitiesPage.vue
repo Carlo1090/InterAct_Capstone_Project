@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import type { JournalActivityDetail, JournalActivityResponse, JournalActivityRow } from '@/types/api'
@@ -55,6 +55,20 @@ const resetToToday = () => {
   status.value = ''
   load()
 }
+
+/**
+ * Whether anything has been narrowed away from the page's default view (today,
+ * all companies/programs/statuses). The date defaults to today rather than
+ * blank, so a non-today date counts as a filter here.
+ */
+const hasFilters = computed(
+  () =>
+    from.value !== today ||
+    to.value !== today ||
+    companyId.value !== null ||
+    programId.value !== null ||
+    status.value !== '',
+)
 
 const formatTime = (iso: string | null): string => {
   if (!iso) return '—'
@@ -141,7 +155,7 @@ onMounted(load)
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
     <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
 
-    <div v-else class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+    <div v-else class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
       <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
         <p class="text-sm font-semibold text-slate-700">
           {{ isSingleDay ? `Journals for ${from}` : `Range: ${from} → ${to}` }}
@@ -152,30 +166,40 @@ onMounted(load)
       <table class="min-w-full divide-y divide-slate-200">
         <thead class="bg-slate-50">
           <tr>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Student</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Company</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Student</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Company</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
             <template v-if="isSingleDay">
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Submitted At</th>
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Submitted At</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
             </template>
             <template v-else>
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Submitted</th>
-              <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Missing</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Submitted</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Missing</th>
             </template>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Entry</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Entry</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
           <tr v-if="rows.length === 0">
-            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="6">No interns match these filters.</td>
+            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="6">
+              {{ hasFilters ? 'No interns match these filters.' : 'No active interns in your programs yet.' }}
+              <button
+                v-if="hasFilters"
+                type="button"
+                class="mt-2 block w-full text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+                @click="resetToToday"
+              >
+                Reset to today
+              </button>
+            </td>
           </tr>
           <tr v-for="row in rows" :key="row.student_id">
             <td class="px-4 py-3 text-sm font-semibold text-slate-900">{{ row.student_name }}</td>
             <td class="px-4 py-3 text-sm text-slate-500">{{ row.company || '—' }}</td>
             <td class="px-4 py-3 text-sm text-slate-500">{{ row.program || '—' }}</td>
             <template v-if="isSingleDay">
-              <td class="px-4 py-3 font-mono text-sm text-slate-700">{{ formatTime(row.submitted_at) }}</td>
+              <td class="whitespace-nowrap px-4 py-3 font-mono text-sm text-slate-700">{{ formatTime(row.submitted_at) }}</td>
               <td class="px-4 py-3">
                 <span
                   class="rounded-full px-3 py-1 text-xs font-bold"
@@ -231,7 +255,10 @@ onMounted(load)
             {{ detail.status === 'submitted' ? 'Submitted' : 'Missing' }}
           </span>
 
-          <p v-if="detail.sections.length === 0" class="text-sm text-slate-500">This batch has no journal template configured.</p>
+          <p v-if="detail.sections.length === 0" class="text-sm text-slate-500">
+            This batch has no journal template configured. Assign one on the Journal Templates page so its interns have
+            fields to write in.
+          </p>
 
           <div v-for="section in detail.sections" :key="section.key" class="rounded-md border border-slate-200 p-3">
             <p class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ section.label }}</p>

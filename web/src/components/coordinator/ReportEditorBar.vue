@@ -88,7 +88,7 @@ const emit = defineEmits<{
 
       <button
         type="button"
-        class="inline-flex items-center gap-1.5 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:grayscale disabled:cursor-not-allowed"
+        class="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:grayscale disabled:cursor-not-allowed"
         :disabled="saving || disabled"
         @click="emit('finalize')"
       >

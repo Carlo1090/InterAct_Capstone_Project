@@ -75,15 +75,15 @@ onMounted(load)
     <NotEnrolledNotice v-else-if="notEnrolled" />
     <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
 
-    <div v-else class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+    <div v-else class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
       <table class="min-w-full divide-y divide-slate-200">
         <thead class="bg-slate-50">
           <tr>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Date</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Day</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Word Count</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Actions</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Date</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Day</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Word Count</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Actions</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
@@ -91,8 +91,8 @@ onMounted(load)
             <td colspan="5" class="px-4 py-6 text-center text-sm text-slate-500">No journal entries found.</td>
           </tr>
           <tr v-for="journal in journals" :key="journal.id">
-            <td class="px-4 py-3 text-sm text-slate-700">{{ formatEntryDate(journal.entry_date) }}</td>
-            <td class="px-4 py-3 text-sm text-slate-500">{{ dayName(journal.entry_date) }}</td>
+            <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-700">{{ formatEntryDate(journal.entry_date) }}</td>
+            <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-500">{{ dayName(journal.entry_date) }}</td>
             <td class="px-4 py-3 text-sm font-mono text-slate-700">{{ journal.word_count }}</td>
             <td class="px-4 py-3 text-sm">
               <span

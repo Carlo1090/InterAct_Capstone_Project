@@ -5,7 +5,15 @@ const toasts = useToasts()
 </script>
 
 <template>
-  <div class="pointer-events-none fixed right-4 top-4 z-[100] flex w-full max-w-sm flex-col gap-2.5">
+  <!--
+    `top-20` (5rem), NOT `top-4`: every role layout's header is a `sticky top-0`
+    `h-16` bar (4rem) whose right side holds the notification bell and the
+    profile avatar. At `top-4` a toast landed on top of both — it outranks the
+    header on z-index (100 vs 10), so it covered the very controls the user
+    might be reaching for. 5rem clears the 4rem header with a 1rem gap, so the
+    toast is anchored just below the nav bar on all four layouts.
+  -->
+  <div class="pointer-events-none fixed right-4 top-20 z-[100] flex w-full max-w-sm flex-col gap-2.5">
     <TransitionGroup
       enter-active-class="transition duration-200 ease-out"
       enter-from-class="opacity-0 -translate-y-2 scale-95"

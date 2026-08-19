@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Coordinator\AddRosterStudentRequest;
 use App\Models\Batch;
 use App\Models\BatchStudent;
+use App\Models\SystemLog;
 use App\Models\User;
 use App\Services\EnrollmentService;
 use Illuminate\Http\JsonResponse;
@@ -95,6 +96,11 @@ class BatchRosterController extends Controller
             $request->input('assigned_division'),
         );
 
+        SystemLog::record(
+            $moved ? 'Student Moved to Batch' : 'Student Added to Batch',
+            "{$student->name} ".($moved ? 'moved into' : 'added to')." {$batch->name}"
+        );
+
         return response()->json([
             'moved' => $moved,
             'enrollment' => $enrollment->load(['student:id,name,email,student_id_number', 'company:id,name', 'supervisor:id,name,email']),
@@ -111,6 +117,8 @@ class BatchRosterController extends Controller
 
         $batchStudent->update(['status' => 'dropped']);
 
+        SystemLog::record('Student Removed from Batch', "{$batchStudent->student?->name} removed from {$batch->name}");
+
         return response()->json($batchStudent->fresh(['student:id,name,email,student_id_number', 'company:id,name', 'supervisor:id,name,email']));
     }
 
@@ -126,7 +134,10 @@ class BatchRosterController extends Controller
 
         abort_if($batchStudent->archived_at === null, 422, 'Archive this record before deleting it permanently.');
 
+        $studentName = $batchStudent->student?->name;
         $batchStudent->delete();
+
+        SystemLog::record('Batch Roster Record Deleted', "Permanently deleted {$studentName}'s roster record from {$batch->name}");
 
         return response()->json(['deleted' => true]);
     }
@@ -150,6 +161,8 @@ class BatchRosterController extends Controller
         $batchStudent->archived_at = now();
         $batchStudent->save();
 
+        SystemLog::record('Batch Roster Record Archived', "Archived {$batchStudent->student?->name}'s record in {$batch->name}");
+
         // Cheap response, matching destroy() — the only caller (the roster
         // modal) discards this and immediately re-fetches the whole roster
         // via interns(), so eager-loading relations here would be wasted.
@@ -170,6 +183,8 @@ class BatchRosterController extends Controller
 
         $batchStudent->archived_at = null;
         $batchStudent->save();
+
+        SystemLog::record('Batch Roster Record Restored', "Restored {$batchStudent->student?->name}'s record in {$batch->name}");
 
         return response()->json(['restored' => true]);
     }
@@ -203,6 +218,8 @@ class BatchRosterController extends Controller
 
         $batchStudent->update(['status' => 'active']);
 
+        SystemLog::record('Student Reactivated in Batch', "Reactivated {$batchStudent->student?->name} in {$batch->name}");
+
         return response()->json($batchStudent->fresh(['student:id,name,email,student_id_number', 'company:id,name', 'supervisor:id,name,email']));
     }
 
@@ -220,6 +237,8 @@ class BatchRosterController extends Controller
         abort_unless($batchStudent->status === 'active', 422, 'Only an active intern can be marked completed.');
 
         $batchStudent->update(['status' => 'completed']);
+
+        SystemLog::record('Student Marked Completed', "Marked {$batchStudent->student?->name} completed in {$batch->name}");
 
         return response()->json($batchStudent->fresh(['student:id,name,email,student_id_number', 'company:id,name', 'supervisor:id,name,email']));
     }
@@ -250,6 +269,8 @@ class BatchRosterController extends Controller
         }
 
         $batchStudent->update(['status' => 'active']);
+
+        SystemLog::record('Student Completion Reopened', "Reopened completion for {$batchStudent->student?->name} in {$batch->name}");
 
         return response()->json($batchStudent->fresh(['student:id,name,email,student_id_number', 'company:id,name', 'supervisor:id,name,email']));
     }

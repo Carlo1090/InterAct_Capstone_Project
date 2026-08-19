@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { showToast } from '@/lib/toast'
@@ -72,6 +72,12 @@ const resetFilters = () => {
   to.value = ''
   applyFilters()
 }
+
+// Distinguishes "nothing submitted yet" from "your filters excluded everything",
+// so the empty state can offer a way back only when there is one.
+const hasFilters = computed(
+  () => programId.value !== null || status.value !== '' || from.value !== '' || to.value !== '',
+)
 
 const goToPage = (target: number) => {
   if (target < 1 || target > lastPage.value || target === page.value) return
@@ -160,7 +166,7 @@ onMounted(load)
 
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
 
-    <div v-else class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+    <div v-else class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
       <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
         <p class="text-sm font-semibold text-slate-700">Submitted weekly journals</p>
         <span class="text-xs text-slate-400">{{ total }} {{ total === 1 ? 'journal' : 'journals' }}</span>
@@ -169,17 +175,31 @@ onMounted(load)
       <table class="min-w-full divide-y divide-slate-200">
         <thead class="bg-slate-50">
           <tr>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Student</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Week</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Submitted</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Journal</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Student</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Week</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Submitted</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Journal</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
           <tr v-if="rows.length === 0">
-            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="6">No weekly journals match these filters.</td>
+            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="6">
+              {{
+                hasFilters
+                  ? 'No weekly journals match these filters.'
+                  : 'No interns have submitted a weekly journal yet.'
+              }}
+              <button
+                v-if="hasFilters"
+                type="button"
+                class="mt-2 block w-full text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+                @click="resetFilters"
+              >
+                Clear filters
+              </button>
+            </td>
           </tr>
           <tr v-for="row in rows" :key="row.id">
             <td class="px-4 py-3">
@@ -187,11 +207,11 @@ onMounted(load)
               <p class="font-mono text-xs text-slate-400">{{ row.student_id_number ?? '—' }}</p>
             </td>
             <td class="px-4 py-3 text-sm text-slate-500">{{ row.program || '—' }}</td>
-            <td class="px-4 py-3 font-mono text-sm text-slate-700">{{ row.week_start }} – {{ row.week_end }}</td>
+            <td class="whitespace-nowrap px-4 py-3 font-mono text-sm text-slate-700">{{ row.week_start }} – {{ row.week_end }}</td>
             <td class="px-4 py-3">
               <span class="rounded-full px-3 py-1 text-xs font-bold" :class="statusClass(row.status)">{{ statusLabel(row.status) }}</span>
             </td>
-            <td class="px-4 py-3 font-mono text-sm text-slate-700">{{ formatDateTime(row.submitted_at) }}</td>
+            <td class="whitespace-nowrap px-4 py-3 font-mono text-sm text-slate-700">{{ formatDateTime(row.submitted_at) }}</td>
             <td class="px-4 py-3">
               <button
                 type="button"

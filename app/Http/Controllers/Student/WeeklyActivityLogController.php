@@ -21,6 +21,23 @@ class WeeklyActivityLogController extends Controller
 {
     use ResolvesStudentEnrollment;
 
+    /**
+     * The paper form is the CABM/Business Department edition, and these two
+     * lines are printed on it verbatim. Deliberately literal rather than
+     * derived from `departments.name`, which is seeded to the short code
+     * ("CABM-B") and would print wrongly — the same call already made for the
+     * GROUP Student Information Sheet.
+     */
+    private const DEFAULT_DEPARTMENT_LINE = 'College of Accountancy, Business and Management';
+
+    private const DEFAULT_UNIT_LINE = 'Business Department';
+
+    /**
+     * The blank form carries pre-printed rows. Pad to this many so a sparse log
+     * still prints like the paper form; the table itself GROWS past it.
+     */
+    private const MIN_FORM_ROWS = 5;
+
     public function index(Request $request): JsonResponse
     {
         $logs = WeeklyActivityLog::where('student_id', $request->user()->id)
@@ -127,9 +144,69 @@ class WeeklyActivityLogController extends Controller
         $pdf = Pdf::loadView('pdf.weekly-activity-log', [
             'log' => $weeklyActivityLog,
             'header' => $this->displayHeader($request->user()),
-        ]);
+            'periodCovered' => $this->formatRange($weeklyActivityLog->week_start, $weeklyActivityLog->week_end),
+            'hours' => $this->formatHours($weeklyActivityLog->no_of_hours),
+            'rows' => $this->formRows($weeklyActivityLog),
+            // dompdf defaults to A4, which silently narrows every measured column.
+        ])->setPaper('letter', 'portrait');
 
-        return $pdf->download("weekly-activity-log-{$weeklyActivityLog->id}.pdf");
+        $slug = str($weeklyActivityLog->week_start?->toDateString() ?? (string) $weeklyActivityLog->id)->slug();
+
+        return $pdf->download("weekly-activity-log-{$slug}.pdf");
+    }
+
+    /**
+     * One row per entry, padded out to the blank form's pre-printed row count.
+     */
+    private function formRows(WeeklyActivityLog $log): array
+    {
+        $rows = $log->entries->map(fn (WeeklyActivityEntry $entry) => [
+            'dates' => $this->formatRange($entry->inclusive_date_start, $entry->inclusive_date_end),
+            'activities' => $entry->activities,
+            'documents_records' => $entry->documents_records,
+            'objectives' => $entry->objectives,
+            'supervisor_name' => $entry->supervisor_name,
+            'supervisor_position' => $entry->supervisor_position,
+        ])->all();
+
+        $blank = [
+            'dates' => '', 'activities' => '', 'documents_records' => '',
+            'objectives' => '', 'supervisor_name' => '', 'supervisor_position' => '',
+        ];
+
+        while (count($rows) < self::MIN_FORM_ROWS) {
+            $rows[] = $blank;
+        }
+
+        return $rows;
+    }
+
+    private function formatRange(mixed $start, mixed $end): string
+    {
+        if (! $start && ! $end) {
+            return '';
+        }
+
+        if (! $start || ! $end) {
+            return ($start ?? $end)->format('M j, Y');
+        }
+
+        // Same year and month reads as "Jan 1 - 5, 2026"; otherwise spell both out.
+        if ($start->isSameMonth($end)) {
+            return $start->format('M j').' - '.$end->format('j, Y');
+        }
+
+        return $start->format('M j').' - '.$end->format('M j, Y');
+    }
+
+    private function formatHours(mixed $hours): string
+    {
+        if ($hours === null || $hours === '') {
+            return '';
+        }
+
+        // decimal(5,1) comes back as "40.0" — drop a pointless trailing zero.
+        return rtrim(rtrim(number_format((float) $hours, 1, '.', ''), '0'), '.');
     }
 
     private function authorizeOwnership(WeeklyActivityLog $log, int $userId): void
@@ -147,13 +224,25 @@ class WeeklyActivityLogController extends Controller
         $enrollment = $this->activeEnrollment($user->id);
         $profile = $user->studentProfile;
 
+        $program = $user->program?->code ?? $user->program?->name;
+        $year = $profile?->year_level;
+
         return [
             'student_name' => $user->name,
             'program' => $user->program?->name,
-            'year_level' => $profile?->year_level,
+            'year_level' => $year,
             'coordinator_name' => $enrollment?->batch?->coordinator?->name,
             'company_name' => $enrollment?->company?->name,
             'supervisor_name' => $enrollment?->supervisor?->name,
+            'area_assigned' => $enrollment?->assigned_division,
+
+            // Composed for the paper form's own field labels.
+            'department_line' => self::DEFAULT_DEPARTMENT_LINE,
+            'unit_line' => self::DEFAULT_UNIT_LINE,
+            'program_and_year' => trim(collect([$program, $year])->filter()->implode(' ')),
+            // The form says "Faculty Adviser"; this system has no adviser role,
+            // so the batch coordinator is the person that field means.
+            'faculty_adviser' => $enrollment?->batch?->coordinator?->name,
         ];
     }
 }

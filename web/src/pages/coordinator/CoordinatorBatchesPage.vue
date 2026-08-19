@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { categorizeError } from '@/lib/apiError'
-import { confirmAction, showToast } from '@/lib/toast'
+import { confirmAction, showToast, type ConfirmTone } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
 import LoadStatus from '@/components/LoadStatus.vue'
 import ValidationErrorList from '@/components/ui/ValidationErrorList.vue'
@@ -74,6 +74,16 @@ const form = reactive<BatchForm>(emptyForm())
 // `after:start_date` rule) — checked client-side so the mistake is caught
 // before a round trip, not just surfaced as a raw server error afterward.
 const endDateInvalid = computed(() => Boolean(form.start_date && form.end_date && form.end_date <= form.start_date))
+
+// Client-side guards only — the server rules are unchanged and still authoritative.
+// `v-model.number` yields '' for a cleared input, which Number.isInteger rejects,
+// so an emptied field is caught the same way an out-of-range one is.
+const workingDaysInvalid = computed(
+  () => !Number.isInteger(form.working_days_per_week) || form.working_days_per_week < 1 || form.working_days_per_week > 7,
+)
+const requiredHoursInvalid = computed(() => !Number.isInteger(form.required_hours) || form.required_hours < 1)
+
+const hasFieldErrors = computed(() => endDateInvalid.value || workingDaysInvalid.value || requiredHoursInvalid.value)
 
 // Templates are many-programs-per-template now — filter on membership, not a
 // single program_id (which no longer exists on the template).
@@ -151,10 +161,14 @@ const save = async () => {
   // Deactivating a batch is a critical action — confirm with the truthful
   // consequence before it goes out. Reactivating needs no confirm.
   if (editingBatchId.value && originalIsActive.value && !form.is_active) {
-    const confirmed = await confirmAction(
-      `Mark "${form.name}" as Inactive? Interns in this batch will stop receiving daily journal reminder emails. ` +
+    const confirmed = await confirmAction({
+      title: 'Deactivate this batch?',
+      message:
+        `Mark "${form.name}" as Inactive? Interns in this batch will stop receiving daily journal reminder emails. ` +
         'Enrollment, journal writing, and reports keep working as normal. You can reactivate it later.',
-    )
+      confirmLabel: 'Deactivate Batch',
+      tone: 'danger',
+    })
     if (!confirmed) return
   }
 
@@ -287,12 +301,16 @@ const addIntern = async () => {
 
   // Enrolled elsewhere -> this is a MOVE. Confirm first (guards a wrong-batch pick).
   if (candidate?.enrolled && candidate.enrollment && candidate.enrollment.batch.id !== rosterBatch.value.id) {
-    const confirmed = await confirmAction(
-      `${candidate.name} is currently enrolled in "${candidate.enrollment.batch.name}". ` +
+    const confirmed = await confirmAction({
+      title: 'Move this intern to another batch?',
+      message:
+        `${candidate.name} is currently enrolled in "${candidate.enrollment.batch.name}". ` +
         `Adding them to "${rosterBatch.value.name}" will MOVE them: their "${candidate.enrollment.batch.name}" ` +
         `enrollment will be marked dropped and a new active one created here. ` +
-        `Make sure "${rosterBatch.value.name}" is the correct batch. Continue?`,
-    )
+        `Make sure "${rosterBatch.value.name}" is the correct batch.`,
+      confirmLabel: 'Move Intern',
+      tone: 'danger',
+    })
     if (!confirmed) return
   }
 
@@ -327,7 +345,13 @@ const addIntern = async () => {
 }
 
 type RosterActionOptions = {
+  /** Names the outcome as a question, e.g. "Remove this intern?" */
+  confirmTitle: string
   confirmMessage: string
+  /** Must match the button the user clicked to get here. */
+  confirmLabel: string
+  /** Only for actions that drop, archive, or destroy a record. */
+  confirmTone?: ConfirmTone
   request: () => Promise<unknown>
   successMessage: string
   errorFallback: string
@@ -342,7 +366,10 @@ type RosterActionOptions = {
  * copy-pasted per action.
  */
 const runRosterAction = async ({
+  confirmTitle,
   confirmMessage,
+  confirmLabel,
+  confirmTone,
   request,
   successMessage,
   errorFallback,
@@ -350,7 +377,14 @@ const runRosterAction = async ({
   refetchCandidates,
 }: RosterActionOptions) => {
   if (!rosterBatch.value) return
-  if (!(await confirmAction(confirmMessage))) return
+
+  const confirmed = await confirmAction({
+    title: confirmTitle,
+    message: confirmMessage,
+    confirmLabel,
+    tone: confirmTone,
+  })
+  if (!confirmed) return
 
   rosterMessage.value = ''
   try {
@@ -368,7 +402,10 @@ const runRosterAction = async ({
 
 const removeIntern = (row: BatchRosterRow) =>
   runRosterAction({
+    confirmTitle: 'Remove this intern from the batch?',
     confirmMessage: `Remove ${row.student.name} from "${rosterBatch.value?.name}"? Their record will be marked dropped (history is kept).`,
+    confirmLabel: 'Remove Intern',
+    confirmTone: 'danger',
     request: () => api.patch(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}/drop`),
     successMessage: 'Intern removed (dropped).',
     errorFallback: 'Unable to remove this intern.',
@@ -377,7 +414,10 @@ const removeIntern = (row: BatchRosterRow) =>
 
 const archiveIntern = (row: BatchRosterRow) =>
   runRosterAction({
+    confirmTitle: 'Archive this record?',
     confirmMessage: `Archive ${row.student.name}'s record from this batch? It moves to Archived and can be restored anytime within 30 days, after which it is permanently deleted automatically.`,
+    confirmLabel: 'Archive Record',
+    confirmTone: 'danger',
     request: () => api.patch(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}/archive`),
     successMessage: 'Record archived.',
     errorFallback: 'Unable to archive this record.',
@@ -385,7 +425,9 @@ const archiveIntern = (row: BatchRosterRow) =>
 
 const restoreIntern = (row: BatchRosterRow) =>
   runRosterAction({
-    confirmMessage: `Restore ${row.student.name}'s archived record?`,
+    confirmTitle: 'Restore this record?',
+    confirmMessage: `Restore ${row.student.name}'s archived record? It returns to its previous status and stops counting down to automatic deletion.`,
+    confirmLabel: 'Restore Record',
     request: () => api.patch(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}/restore`),
     successMessage: 'Record restored.',
     errorFallback: 'Unable to restore this record.',
@@ -393,7 +435,10 @@ const restoreIntern = (row: BatchRosterRow) =>
 
 const deleteForeverIntern = (row: BatchRosterRow) =>
   runRosterAction({
+    confirmTitle: 'Delete this record forever?',
     confirmMessage: `Permanently delete ${row.student.name}'s archived record from this batch? This cannot be undone.`,
+    confirmLabel: 'Delete Forever',
+    confirmTone: 'danger',
     request: () => api.delete(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}`),
     successMessage: 'Record deleted.',
     errorFallback: 'Unable to delete this record.',
@@ -401,9 +446,11 @@ const deleteForeverIntern = (row: BatchRosterRow) =>
 
 const completeIntern = (row: BatchRosterRow) =>
   runRosterAction({
+    confirmTitle: "Mark this intern's OJT completed?",
     confirmMessage:
       `Mark ${row.student.name}'s OJT as COMPLETED? Their journal window freezes today: ` +
       `they can still view and download everything, but new journal dates will be locked. You can reopen this later.`,
+    confirmLabel: 'Mark Completed',
     request: () => api.patch(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}/complete`),
     successMessage: 'Intern marked completed.',
     errorFallback: 'Unable to mark this intern completed.',
@@ -412,9 +459,11 @@ const completeIntern = (row: BatchRosterRow) =>
 
 const reopenIntern = (row: BatchRosterRow) =>
   runRosterAction({
+    confirmTitle: 'Reopen this completed OJT?',
     confirmMessage:
       `Reopen ${row.student.name}'s completed OJT in "${rosterBatch.value?.name}"? ` +
       `They'll be active again and their journal window resumes rolling forward.`,
+    confirmLabel: 'Reopen OJT',
     request: () => api.patch(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}/reopen`),
     successMessage: 'Intern reopened (active again).',
     errorFallback: 'Unable to reopen this record.',
@@ -423,7 +472,9 @@ const reopenIntern = (row: BatchRosterRow) =>
 
 const reactivateIntern = (row: BatchRosterRow) =>
   runRosterAction({
+    confirmTitle: 'Reactivate this intern?',
     confirmMessage: `Reactivate ${row.student.name} in "${rosterBatch.value?.name}"? They'll be marked active again with their previous company and supervisor.`,
+    confirmLabel: 'Reactivate Intern',
     request: () => api.patch(`/api/coordinator/batches/${rosterBatch.value!.id}/roster/${row.id}/reactivate`),
     successMessage: 'Intern reactivated.',
     errorFallback: 'Unable to reactivate this intern.',
@@ -437,14 +488,13 @@ onMounted(load)
 <template>
   <section class="space-y-5">
     <ToastHost />
-    <div class="flex items-center justify-between gap-4">
+    <div class="flex flex-wrap items-center justify-between gap-4">
       <div>
-        <h2 class="text-2xl font-bold text-slate-950">Batches</h2>
-        <p class="mt-1 text-sm text-slate-500">Create and manage OJT cohorts for your program(s).</p>
+        <p class="text-sm text-slate-500">Create and manage OJT cohorts for your program(s).</p>
       </div>
       <button
         type="button"
-        class="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
+        class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:grayscale disabled:cursor-not-allowed"
         :disabled="programs.length === 0"
         @click="openCreateModal"
       >
@@ -454,20 +504,20 @@ onMounted(load)
 
     <LoadStatus :loading="isLoading" :error="errorMessage" :retry="load">
     <p v-if="programs.length === 0" class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-      You are not currently assigned to a program, so there are no batches to manage yet.
+      You have no programs assigned yet. Ask an admin to assign you to a department.
     </p>
 
-    <div v-else class="overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+    <div v-else class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
       <table class="min-w-full divide-y divide-slate-200">
         <thead class="bg-slate-50">
           <tr>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Batch</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">AY / Semester</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Start</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">End</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
-            <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Batch</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">AY / Semester</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Start</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">End</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
@@ -478,8 +528,8 @@ onMounted(load)
             <td class="px-4 py-3 text-sm font-semibold text-slate-900">{{ batch.name }}</td>
             <td class="px-4 py-3 text-sm text-slate-700">{{ batch.program?.name ?? '—' }}</td>
             <td class="px-4 py-3 text-sm text-slate-500">{{ batch.academic_year }} · {{ batch.semester }}</td>
-            <td class="px-4 py-3 text-sm text-slate-500">{{ formatDate(batch.start_date) }}</td>
-            <td class="px-4 py-3 text-sm text-slate-500">{{ formatDate(batch.end_date) }}</td>
+            <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-500">{{ formatDate(batch.start_date) }}</td>
+            <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-500">{{ formatDate(batch.end_date) }}</td>
             <td class="px-4 py-3">
               <span
                 class="rounded-full px-3 py-1 text-xs font-bold"
@@ -504,98 +554,164 @@ onMounted(load)
     </div>
     </LoadStatus>
 
-    <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
-      <section class="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl">
-        <div class="flex items-center justify-between">
+    <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+      <!-- Three-part flex shell, matching the Manage Company modal: the body is the only scroller. -->
+      <section class="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+        <div class="flex shrink-0 items-center justify-between border-b border-slate-200 px-6 py-4">
           <h3 class="text-lg font-semibold text-slate-950">{{ editingBatchId ? 'Edit Batch' : 'Create Batch' }}</h3>
           <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeModal">Cancel</button>
         </div>
 
-        <div class="mt-5 grid gap-4 md:grid-cols-2">
-          <div class="md:col-span-2">
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-name">Batch Name</label>
-            <input id="batch-name" v-model="form.name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+        <div class="flex-1 overflow-y-auto px-6 py-5">
+          <section class="space-y-4">
+            <h4 class="text-xs font-medium uppercase tracking-wide text-slate-400">Batch Details</h4>
+            <div>
+              <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-name">Batch Name</label>
+              <input id="batch-name" v-model="form.name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            </div>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-program">Program</label>
+                <select
+                  id="batch-program"
+                  v-model.number="form.program_id"
+                  class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+                  :disabled="!!editingBatchId"
+                >
+                  <option v-for="program in programs" :key="program.id" :value="program.id">{{ program.name }}</option>
+                </select>
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-template">Journal Template</label>
+                <select id="batch-template" v-model.number="form.journal_template_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+                  <option :value="null">None yet</option>
+                  <option v-for="template in templatesForSelectedProgram" :key="template.id" :value="template.id">{{ template.name }}</option>
+                </select>
+              </div>
+            </div>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-ay">Academic Year</label>
+                <input id="batch-ay" v-model="form.academic_year" type="text" placeholder="2026" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-semester">Semester</label>
+                <input id="batch-semester" v-model="form.semester" type="text" placeholder="Internship" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+            </div>
+          </section>
+
+          <section class="mt-5 border-t border-slate-100 pt-5 space-y-4">
+            <h4 class="text-xs font-medium uppercase tracking-wide text-slate-400">Schedule</h4>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-start">Start Date</label>
+                <input id="batch-start" v-model="form.start_date" type="date" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-end">End Date</label>
+                <input
+                  id="batch-end"
+                  v-model="form.end_date"
+                  type="date"
+                  :min="form.start_date || undefined"
+                  class="w-full rounded-md border px-3 py-2 text-sm"
+                  :class="endDateInvalid ? 'border-red-400' : 'border-slate-300'"
+                />
+                <p v-if="endDateInvalid" class="mt-1 text-xs text-red-600">End date must be after the start date.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="mt-5 border-t border-slate-100 pt-5 space-y-4">
+            <h4 class="text-xs font-medium uppercase tracking-wide text-slate-400">Requirements</h4>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-hours">Required Hours</label>
+                <input
+                  id="batch-hours"
+                  v-model.number="form.required_hours"
+                  type="number"
+                  min="1"
+                  step="1"
+                  class="w-full rounded-md border px-3 py-2 text-sm tabular-nums"
+                  :class="requiredHoursInvalid ? 'border-red-400' : 'border-slate-300'"
+                />
+                <p v-if="requiredHoursInvalid" class="mt-1 text-xs text-red-600">Required hours must be a whole number of 1 or more.</p>
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-days">Working Days / Week</label>
+                <input
+                  id="batch-days"
+                  v-model.number="form.working_days_per_week"
+                  type="number"
+                  min="1"
+                  max="7"
+                  step="1"
+                  class="w-full rounded-md border px-3 py-2 text-sm tabular-nums"
+                  :class="workingDaysInvalid ? 'border-red-400' : 'border-slate-300'"
+                />
+                <p v-if="workingDaysInvalid" class="mt-1 text-xs text-red-600">Working days must be a whole number between 1 and 7.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="mt-5 border-t border-slate-100 pt-5 space-y-4">
+            <h4 class="text-xs font-medium uppercase tracking-wide text-slate-400">Reminders</h4>
+            <div>
+              <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-reminder">Daily Reminder Time</label>
+              <input id="batch-reminder" v-model="form.daily_reminder_time" type="time" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            </div>
+          </section>
+
+          <section v-if="editingBatchId" class="mt-5 border-t border-slate-100 pt-5">
+            <div class="rounded-md border border-slate-200 p-4">
+              <p class="text-xs font-medium uppercase tracking-wide text-slate-400">Batch Status</p>
+              <div class="mt-3 flex flex-wrap items-center gap-6">
+                <label class="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <input v-model="form.is_active" type="radio" :value="true" name="batch-status" />
+                  <span>Active</span>
+                </label>
+                <label class="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <input v-model="form.is_active" type="radio" :value="false" name="batch-status" />
+                  <span>Inactive</span>
+                </label>
+              </div>
+              <!--
+                Wording checked against the code, not assumed: `batches.is_active` is
+                read in exactly two places app-wide — the daily reminder command, which
+                skips inactive batches, and the coordinator dashboard's active-batch
+                count. Enrollment never consults it, so an inactive batch does still
+                accept new enrollments.
+              -->
+              <p class="mt-2 text-xs text-slate-400">
+                Inactive batches stop daily journal reminders to their interns. Enrollment, journal writing, and reports keep
+                working as normal.
+              </p>
+            </div>
+          </section>
+
+          <div
+            v-if="editingBatchId && originalIsActive && !form.is_active"
+            class="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700"
+          >
+            Deactivating this batch stops daily journal reminder emails to its interns. Enrollment, journal writing, and reports
+            keep working as normal.
           </div>
-          <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-program">Program</label>
-            <select
-              id="batch-program"
-              v-model.number="form.program_id"
-              class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
-              :disabled="!!editingBatchId"
-            >
-              <option v-for="program in programs" :key="program.id" :value="program.id">{{ program.name }}</option>
-            </select>
-          </div>
-          <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-template">Journal Template</label>
-            <select id="batch-template" v-model.number="form.journal_template_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
-              <option :value="null">None yet</option>
-              <option v-for="template in templatesForSelectedProgram" :key="template.id" :value="template.id">{{ template.name }}</option>
-            </select>
-          </div>
-          <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-ay">Academic Year</label>
-            <input id="batch-ay" v-model="form.academic_year" type="text" placeholder="2026" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-semester">Semester</label>
-            <input id="batch-semester" v-model="form.semester" type="text" placeholder="Internship" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-start">Start Date</label>
-            <input id="batch-start" v-model="form.start_date" type="date" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-end">End Date</label>
-            <input
-              id="batch-end"
-              v-model="form.end_date"
-              type="date"
-              :min="form.start_date || undefined"
-              class="w-full rounded-md border px-3 py-2 text-sm"
-              :class="endDateInvalid ? 'border-red-400' : 'border-slate-300'"
-            />
-            <p v-if="endDateInvalid" class="mt-1 text-xs text-red-600">End date must be after the start date.</p>
-          </div>
-          <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-hours">Required Hours</label>
-            <input id="batch-hours" v-model.number="form.required_hours" type="number" min="1" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-days">Working Days / Week</label>
-            <input id="batch-days" v-model.number="form.working_days_per_week" type="number" min="1" max="7" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-reminder">Daily Reminder Time</label>
-            <input id="batch-reminder" v-model="form.daily_reminder_time" type="time" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-          </div>
-          <label v-if="editingBatchId" class="mt-7 flex items-center gap-2 text-sm font-medium" :class="form.is_active ? 'text-slate-700' : 'text-red-700'">
-            <input v-model="form.is_active" type="checkbox" />
-            Active
-          </label>
+
+          <ValidationErrorList :errors="modalErrors" class="mt-4" />
+          <p v-if="modalMessage" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ modalMessage }}</p>
         </div>
 
-        <div
-          v-if="editingBatchId && originalIsActive && !form.is_active"
-          class="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700"
-        >
-          Deactivating this batch stops daily journal reminder emails to its interns. Enrollment, journal writing, and reports
-          keep working as normal.
-        </div>
-
-        <ValidationErrorList :errors="modalErrors" class="mt-4" />
-        <p v-if="modalMessage" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ modalMessage }}</p>
-
-        <div class="mt-6 flex justify-end gap-3">
+        <div class="flex shrink-0 justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
           <button type="button" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" @click="closeModal">
             Cancel
           </button>
           <button
             type="button"
             class="rounded-md px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed disabled:bg-slate-400"
-            :class="editingBatchId && originalIsActive && !form.is_active ? 'bg-red-600' : 'bg-slate-950'"
-            :disabled="isSaving || endDateInvalid"
+            :class="editingBatchId && originalIsActive && !form.is_active ? 'bg-red-600' : 'bg-blue-600'"
+            :disabled="isSaving || hasFieldErrors"
             @click="save"
           >
             {{ isSaving ? 'Saving...' : editingBatchId && originalIsActive && !form.is_active ? 'Deactivate & Save' : 'Save' }}
@@ -642,7 +758,12 @@ onMounted(load)
               <p class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 <template v-if="!addForm.company_id">Select a company first.</template>
                 <template v-else-if="addResolvedSupervisor">{{ addResolvedSupervisor.name }}</template>
-                <template v-else><span class="text-amber-600">This company has no supervisor account yet.</span></template>
+                <template v-else
+                  ><span class="text-amber-600"
+                    >This company has no supervisor account yet. Attach one on Partner Companies before enrolling interns
+                    here.</span
+                  ></template
+                >
               </p>
               <p class="mt-1 text-xs text-slate-500">Assigned automatically from the company.</p>
             </div>
@@ -669,7 +790,7 @@ onMounted(load)
         <div v-else class="mt-5 space-y-5">
           <div>
             <p class="mb-2 text-sm font-semibold text-slate-800">Active interns ({{ activeRoster.length }})</p>
-            <div class="overflow-hidden rounded-md ring-1 ring-slate-200">
+            <div class="overflow-x-auto rounded-md ring-1 ring-slate-200">
               <table class="min-w-full divide-y divide-slate-200 text-sm">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
@@ -707,7 +828,7 @@ onMounted(load)
           <!-- Completed interns (journal window frozen; can be reopened) -->
           <div v-if="completedRoster.length">
             <p class="mb-2 text-sm font-semibold text-slate-800">Completed ({{ completedRoster.length }})</p>
-            <div class="overflow-hidden rounded-md ring-1 ring-slate-200">
+            <div class="overflow-x-auto rounded-md ring-1 ring-slate-200">
               <table class="min-w-full divide-y divide-slate-200 text-sm">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
@@ -744,7 +865,7 @@ onMounted(load)
           <!-- Dropped interns (can be archived) -->
           <div v-if="droppedRoster.length">
             <p class="mb-2 text-sm font-semibold text-slate-800">Dropped ({{ droppedRoster.length }})</p>
-            <div class="overflow-hidden rounded-md ring-1 ring-slate-200">
+            <div class="overflow-x-auto rounded-md ring-1 ring-slate-200">
               <table class="min-w-full divide-y divide-slate-200 text-sm">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
@@ -774,7 +895,7 @@ onMounted(load)
           <!-- Archived interns (reversible for 30 days, then auto-purged) -->
           <div v-if="archivedRoster.length">
             <p class="mb-2 text-sm font-semibold text-slate-800">Archived ({{ archivedRoster.length }})</p>
-            <div class="overflow-hidden rounded-md ring-1 ring-slate-200">
+            <div class="overflow-x-auto rounded-md ring-1 ring-slate-200">
               <table class="min-w-full divide-y divide-slate-200 text-sm">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>

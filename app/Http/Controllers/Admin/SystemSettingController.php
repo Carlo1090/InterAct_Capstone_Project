@@ -14,11 +14,9 @@ class SystemSettingController extends Controller
 
     public function index(): JsonResponse
     {
-        $settings = SystemSetting::whereIn('key', self::KEYS)->pluck('value', 'key');
-
         return response()->json([
             ...array_fill_keys(self::KEYS, null),
-            ...$settings->all(),
+            ...SystemSetting::cached()->only(self::KEYS)->all(),
         ]);
     }
 
@@ -30,11 +28,11 @@ class SystemSettingController extends Controller
 
         SystemLog::record('Settings Changed', 'Updated system settings');
 
-        $settings = SystemSetting::whereIn('key', self::KEYS)->pluck('value', 'key');
+        SystemSetting::forgetCache();
 
         return response()->json([
             ...array_fill_keys(self::KEYS, null),
-            ...$settings->all(),
+            ...SystemSetting::cached()->only(self::KEYS)->all(),
         ]);
     }
 }

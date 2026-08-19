@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
@@ -243,12 +244,24 @@ class User extends Authenticatable
      */
     public function coordinatorProgramIds(): Collection
     {
-        $departmentIds = $this->departmentsCoordinated()->pluck('departments.id');
+        // Cache a plain array, never the Collection itself: config/cache.php sets
+        // `serializable_classes => false` (Laravel's default hardening against
+        // gadget-chain attacks), so ANY object read back out of a serializing
+        // store — database, file, redis — comes back as __PHP_Incomplete_Class
+        // and blows up this method's `: Collection` return type. Arrays are
+        // exempt because there is no class to rebuild. Re-wrap on the way out so
+        // every caller still gets the Collection it expects.
+        $ids = Cache::remember("coordinator-program-ids:{$this->id}", now()->addDay(), function () {
+            $departmentIds = $this->departmentsCoordinated()->pluck('departments.id');
 
-        return Program::whereIn('department_id', $departmentIds)->pluck('id')
-            ->merge($this->batchesCoordinated()->pluck('program_id'))
-            ->unique()
-            ->values();
+            return Program::whereIn('department_id', $departmentIds)->pluck('id')
+                ->merge($this->batchesCoordinated()->pluck('program_id'))
+                ->unique()
+                ->values()
+                ->all();
+        });
+
+        return collect($ids);
     }
 
     public function companySupervisorAssignments(): HasMany

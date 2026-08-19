@@ -7,6 +7,7 @@ import JournalPaperView from '@/components/journal/JournalPaperView.vue'
 import NotEnrolledNotice from '@/components/student/NotEnrolledNotice.vue'
 import { confirmAction } from '@/lib/toast'
 import { isNotEnrolledError } from '@/lib/enrollment'
+import { useFormDraft } from '@/lib/formDraft'
 import type { JournalEntryDetail, JournalTemplateSection } from '@/types/api'
 
 const route = useRoute()
@@ -36,6 +37,35 @@ const isViewMode = ref(false)
 
 const sippCharLimit = 300
 const sippEnabled = ref(false)
+
+/**
+ * Keep an unsaved entry alive across a refresh.
+ *
+ * The stored draft carries its own `date` and is only re-applied when it matches
+ * the entry currently open — otherwise switching days (the date input pushes a
+ * new ?date= query, which re-runs load() without remounting) could spill one
+ * day's writing into another. Only the most recently edited day is kept, which
+ * is enough: the date lives in the URL, so a refresh returns to the same day.
+ *
+ * `autoRestore: false` because load() rebuilds `content`/`enabledSections` from
+ * the API and would overwrite an eager restore.
+ */
+const journalDraft = useFormDraft(
+  'student:journal-entry',
+  () => ({
+    date: entryDate.value,
+    content: { ...content },
+    enabled: { ...enabledSections },
+    sipp: sippEnabled.value,
+  }),
+  (draft) => {
+    if (draft.date !== entryDate.value) return
+    if (draft.content) Object.assign(content, draft.content)
+    if (draft.enabled) Object.assign(enabledSections, draft.enabled)
+    if (typeof draft.sipp === 'boolean') sippEnabled.value = draft.sipp
+  },
+  { autoRestore: false },
+)
 
 const nonSippSections = computed(() => sections.value.filter((section) => !section.sipp))
 const sippSections = computed(() => sections.value.filter((section) => section.sipp))
@@ -134,6 +164,11 @@ const load = async () => {
     // A locked entry (bundled / out of range) or an explicit ?view=1 opens
     // straight to the read-only paper; an editable entry lands in the editor.
     isViewMode.value = route.query.view === '1' || !data.editable
+
+    // Layer any unsaved work back on top, now that the server copy is in place.
+    // Never into a locked entry — it can't be saved, so restoring would only
+    // show text the student is unable to keep.
+    if (data.editable) journalDraft.restore()
   } catch (error) {
     if (isNotEnrolledError(error)) {
       notEnrolled.value = true
@@ -148,11 +183,14 @@ const load = async () => {
 const save = async (nextStatus: 'draft' | 'submitted') => {
   // Submitting still locks the entry once its week is bundled, so it keeps
   // the confirm-first treatment even though it's no longer immediately final.
-  if (
-    nextStatus === 'submitted' &&
-    !(await confirmAction('Submit this journal entry? You can still edit it until this week is compiled into your Weekly Log.'))
-  ) {
-    return
+  if (nextStatus === 'submitted') {
+    const confirmed = await confirmAction({
+      title: 'Submit this journal entry?',
+      message:
+        'Submit this journal entry? You can still edit it until this week is compiled into your Weekly Log.',
+      confirmLabel: 'Submit Entry',
+    })
+    if (!confirmed) return
   }
 
   isSaving.value = true
@@ -168,6 +206,8 @@ const save = async (nextStatus: 'draft' | 'submitted') => {
     })
     status.value = data.status
     statusMessage.value = nextStatus === 'submitted' ? 'Entry submitted.' : 'Draft saved.'
+    // Persisted server-side now; drop the local copy.
+    journalDraft.clear()
 
     // A submitted entry stays on the paper (the review surface it was sent
     // from); a saved draft returns the student to the editor to keep writing.
@@ -252,7 +292,8 @@ onMounted(load)
         v-else-if="!editable"
         class="rounded-md border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700"
       >
-        This date can no longer be edited (future date or outside your OJT range).
+        This date is outside the range you can write in — it is either in the future or outside your OJT period. Pick a
+        date within your OJT range using the date picker above.
       </div>
       <div
         v-else-if="status === 'submitted'"
@@ -264,7 +305,8 @@ onMounted(load)
       <!-- EDIT MODE — clean writing surface, no checkboxes inline -->
       <template v-if="!isViewMode">
         <p v-if="sections.length === 0" class="rounded-lg bg-white p-5 text-sm text-slate-500 shadow-sm ring-1 ring-slate-200">
-          No journal template sections are configured for your batch yet.
+          No journal template sections are configured for your batch yet. Ask your coordinator to assign a journal
+          template so you can start writing.
         </p>
 
         <article
