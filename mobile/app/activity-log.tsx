@@ -6,10 +6,23 @@ import { useActivityLog } from '../src/hooks/useActivityLog';
 import { SystemLogEntry } from '../src/types/api';
 import { colors } from '../src/constants/colors';
 
-function formatLoggedAt(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * `logged_at` has no Eloquent cast, so the API returns it as a bare
+ * "Y-m-d H:i:s" string with no timezone marker — matching web's
+ * ActivityLogPanel.vue, which prints it raw rather than risk a `new Date()`
+ * misinterpreting a marker-less string as the device's local time. Parsed
+ * by splitting instead, never by constructing a Date from it.
+ */
+function formatLoggedAt(raw: string) {
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!match) return raw;
+  const [, year, month, day, hour, minute] = match;
+  const h = Number(hour);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${MONTHS[Number(month) - 1]} ${Number(day)}, ${year}, ${hour12}:${minute} ${period}`;
 }
 
 export default function ActivityLog() {

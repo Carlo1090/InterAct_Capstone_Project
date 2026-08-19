@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['user_id', 'action', 'description', 'ip_address'])]
+#[Fillable(['user_id', 'action', 'description', 'ip_address', 'logged_at'])]
 class SystemLog extends Model
 {
     public $timestamps = false;
@@ -27,6 +27,14 @@ class SystemLog extends Model
             'action' => $action,
             'description' => $description,
             'ip_address' => request()->ip(),
+            // Not the column's useCurrent() default — that stamps using the
+            // DB server's own clock/timezone (MySQL's local dev default is
+            // `time_zone=SYSTEM`, i.e. the machine's local time), while every
+            // read of this column goes through Carbon in app.timezone (UTC).
+            // A mismatched server timezone made every "X ago" read as "X from
+            // now". Explicit now() keeps this column consistent with the app's
+            // own clock regardless of what the DB server's timezone is set to.
+            'logged_at' => now(),
         ]);
     }
 }
