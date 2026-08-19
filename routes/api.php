@@ -35,6 +35,7 @@ use App\Http\Controllers\Student\WeeklyLogController;
 use App\Http\Controllers\Supervisor\SupervisorDashboardController;
 use App\Http\Controllers\Supervisor\SupervisorInternController;
 use App\Http\Controllers\Supervisor\SupervisorJournalController;
+use App\Support\AuthUserPayload;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -62,18 +63,11 @@ Route::match(['get', 'post'], 'cron/run', [CronController::class, 'run'])
 Route::post('mobile/login', [MobileAuthController::class, 'store']);
 Route::middleware('auth:sanctum')->post('mobile/logout', [MobileAuthController::class, 'destroy']);
 
+// Shares its payload builder with POST /login so the SPA gets an identical user
+// object however it authenticated — see App\Support\AuthUserPayload. That is
+// what lets the login flow skip a follow-up call to this route.
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
-    $user = $request->user()->load('program.department');
-
-    // Drives the frontend info-sheet gate for students (backend enforces it too).
-    if ($user->isStudent()) {
-        $user->setAttribute('student_gated', $user->isInfoSheetGated());
-        // Cleared intake but no active/completed enrollment (dropped) — the SPA
-        // shows a calm "enrollment inactive" state instead of erroring pages.
-        $user->setAttribute('student_paused', $user->isEnrollmentPaused());
-    }
-
-    return response()->json($user);
+    return response()->json(AuthUserPayload::build($request->user()));
 });
 
 // Self-service account settings shared by every role — profile fields,
@@ -125,6 +119,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])
 
         Route::get('info-sheets', [AdminStudentInfoSheetController::class, 'index']);
         Route::get('info-sheets/{student}', [AdminStudentInfoSheetController::class, 'show']);
+        Route::get('info-sheets/{student}/pdf', [AdminStudentInfoSheetController::class, 'pdf']);
 
         Route::get('system-settings', [SystemSettingController::class, 'index']);
         Route::put('system-settings', [SystemSettingController::class, 'update']);

@@ -178,4 +178,54 @@ class StudentInfoSheetControllerTest extends TestCase
 
         $this->getJson('/api/admin/info-sheets')->assertStatus(403);
     }
+
+    public function test_admin_can_download_any_students_info_sheet_pdf(): void
+    {
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        $department = Department::create(['code' => 'CAST', 'name' => 'College of Arts, Sciences and Technology', 'is_active' => true]);
+        [$student, $batch] = $this->studentWithBatch($department);
+
+        StudentInformationSheet::create([
+            'student_id' => $student->id,
+            'batch_id' => $batch->id,
+            ...$this->minimalSheetPayload(),
+            'submission_status' => 'submitted',
+            'submitted_at' => now(),
+        ]);
+
+        $response = $this->get("/api/admin/info-sheets/{$student->id}/pdf");
+
+        $response->assertOk();
+        $this->assertSame('application/pdf', $response->headers->get('content-type'));
+    }
+
+    public function test_pdf_404s_when_the_student_has_no_sheet_yet(): void
+    {
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        $department = Department::create(['code' => 'CAST', 'name' => 'College of Arts, Sciences and Technology', 'is_active' => true]);
+        [$student] = $this->studentWithBatch($department);
+
+        $this->get("/api/admin/info-sheets/{$student->id}/pdf")->assertStatus(404);
+    }
+
+    public function test_pdf_404s_for_a_non_student_user(): void
+    {
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        $coordinator = User::factory()->create(['role' => 'coordinator']);
+
+        $this->get("/api/admin/info-sheets/{$coordinator->id}/pdf")->assertStatus(404);
+    }
+
+    public function test_non_admin_cannot_download_info_sheet_pdf(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'student']), ['*']);
+
+        $department = Department::create(['code' => 'CAST', 'name' => 'College of Arts, Sciences and Technology', 'is_active' => true]);
+        [$student] = $this->studentWithBatch($department);
+
+        $this->get("/api/admin/info-sheets/{$student->id}/pdf")->assertStatus(403);
+    }
 }

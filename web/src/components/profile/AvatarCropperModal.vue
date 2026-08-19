@@ -205,7 +205,7 @@ onBeforeUnmount(() => {
           :disabled="!isReady"
           @click="confirmCrop"
         >
-          Save
+          Use This Photo
         </button>
       </div>
     </section>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\MobileLoginRequest;
 use App\Models\SystemLog;
+use App\Support\AuthUserPayload;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -45,7 +46,11 @@ class MobileAuthController extends Controller
 
         return response()->json([
             'token' => $token,
-            'user' => $user->load('program.department'),
+            // Same builder GET /api/user and POST /login use, so the mobile
+            // app's login response already carries student_gated/
+            // student_paused — matches AuthUserPayload's whole point: one
+            // shape regardless of how the caller authenticated.
+            'user' => AuthUserPayload::build($user),
         ]);
     }
 

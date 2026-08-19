@@ -9,6 +9,7 @@ import type { Department, DepartmentDetail, PaginatedResponse, User } from '@/ty
 type DepartmentForm = {
   code: string
   name: string
+  dean_name: string
   is_active: boolean
 }
 
@@ -31,7 +32,7 @@ const isModalOpen = ref(false)
 const editingDepartmentId = ref<number | null>(null)
 const isSaving = ref(false)
 const modalError = ref('')
-const departmentForm = ref<DepartmentForm>({ code: '', name: '', is_active: true })
+const departmentForm = ref<DepartmentForm>({ code: '', name: '', dean_name: '', is_active: true })
 
 const loadDepartments = async () => {
   isLoading.value = true
@@ -104,7 +105,13 @@ const assignCoordinator = async () => {
 
 const removeCoordinator = async (coordinatorId: number, coordinatorName: string) => {
   if (!viewedDepartment.value) return
-  if (!(await confirmAction(`Remove ${coordinatorName} as coordinator of "${viewedDepartment.value.name}"?`))) return
+  const confirmed = await confirmAction({
+    title: 'Remove this coordinator?',
+    message: `Remove ${coordinatorName} as coordinator of "${viewedDepartment.value.name}"? They will lose access to this department's batches, interns, and reports.`,
+    confirmLabel: 'Remove Coordinator',
+    tone: 'danger',
+  })
+  if (!confirmed) return
 
   removingCoordinatorId.value = coordinatorId
   coordinatorError.value = ''
@@ -124,7 +131,7 @@ const removeCoordinator = async (coordinatorId: number, coordinatorName: string)
 }
 
 const resetForm = () => {
-  departmentForm.value = { code: '', name: '', is_active: true }
+  departmentForm.value = { code: '', name: '', dean_name: '', is_active: true }
   modalError.value = ''
 }
 
@@ -139,6 +146,7 @@ const openEditModal = (department: Department) => {
   departmentForm.value = {
     code: department.code,
     name: department.name,
+    dean_name: department.dean_name ?? '',
     is_active: department.is_active,
   }
   modalError.value = ''
@@ -158,12 +166,14 @@ const saveDepartment = async () => {
     if (editingDepartmentId.value) {
       await api.put(`/api/admin/departments/${editingDepartmentId.value}`, {
         name: departmentForm.value.name,
+        dean_name: departmentForm.value.dean_name || null,
         is_active: departmentForm.value.is_active,
       })
     } else {
       await api.post('/api/admin/departments', {
         code: departmentForm.value.code,
         name: departmentForm.value.name,
+        dean_name: departmentForm.value.dean_name || null,
       })
     }
     closeModal()
@@ -216,6 +226,7 @@ onMounted(() => {
         </div>
 
         <h3 class="mt-4 text-lg font-semibold text-slate-900">{{ department.name }}</h3>
+        <p v-if="department.dean_name" class="mt-1 text-sm text-slate-500">Dean: {{ department.dean_name }}</p>
         <p class="mt-1 text-sm text-slate-500">
           {{ department.programs_count ?? 0 }} program{{ (department.programs_count ?? 0) === 1 ? '' : 's' }}
         </p>
@@ -248,6 +259,10 @@ onMounted(() => {
             <label class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400" for="department-name">Name</label>
             <input id="department-name" v-model="departmentForm.name" type="text" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm" />
           </div>
+          <div>
+            <label class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400" for="department-dean-name">Dean's Name (optional)</label>
+            <input id="department-dean-name" v-model="departmentForm.dean_name" type="text" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm" />
+          </div>
           <div v-if="editingDepartmentId">
             <label class="flex items-center gap-2 text-sm font-medium text-slate-700">
               <input v-model="departmentForm.is_active" type="checkbox" />
@@ -263,7 +278,7 @@ onMounted(() => {
             Cancel
           </button>
           <button type="button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50" :disabled="isSaving" @click="saveDepartment">
-            {{ isSaving ? 'Saving...' : 'Save' }}
+            {{ isSaving ? 'Saving...' : editingDepartmentId ? 'Save Department' : 'Add Department' }}
           </button>
         </div>
       </section>
@@ -289,6 +304,10 @@ onMounted(() => {
           </div>
 
           <div class="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+            <div>
+              <span class="block text-xs font-semibold uppercase tracking-wide text-slate-400">Dean</span>
+              {{ viewedDepartment.dean_name ?? '—' }}
+            </div>
             <div>
               <span class="block text-xs font-semibold uppercase tracking-wide text-slate-400">Programs</span>
               {{ viewedDepartment.programs.length }}

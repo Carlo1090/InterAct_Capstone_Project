@@ -17,7 +17,7 @@
  *
  * (An earlier revision of this comment said the opposite. That was written for a
  * cross-domain deployment model which was rejected in favour of the proxy; see
- * the DECIDED STACK bullet in CLAUDE.md.)
+ * the Deployment section in PROJECT.md.)
  */
 const apiOrigin = (import.meta.env.VITE_BACKEND_URL ?? '').replace(/\/$/, '')
 

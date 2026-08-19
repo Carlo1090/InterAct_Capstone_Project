@@ -2,6 +2,7 @@ export type Department = {
   id: number
   code: string
   name: string
+  dean_name: string | null
   is_active: boolean
   programs_count?: number
 }

@@ -8,7 +8,7 @@ use Illuminate\Console\Command;
 /**
  * Rotates the shared password on every seeded demo account.
  *
- * Needed because this repo is public and its CLAUDE.md documents both the demo
+ * Needed because this repo is public and its PROJECT.md documents both the demo
  * usernames (mdcadmin, mdccore, mdcbalbero, mdcstudent, mdcsupervisor, ...) and
  * the fact that they all use "password". A demo deployment seeded with
  * DatabaseSeeder is therefore trivially takeover-able by anyone who finds the

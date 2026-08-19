@@ -123,7 +123,13 @@ const userName = computed(() => auth.user?.name ?? 'Engr. Ramon Villanueva')
         <div class="flex shrink-0 items-center gap-3">
           <div class="hidden text-right leading-tight sm:block">
             <p class="text-sm font-bold uppercase tracking-wide text-slate-700">{{ userName }}</p>
-            <p class="text-xs text-slate-400">Company Supervisor - TechPH Inc.</p>
+            <!--
+              Deliberately just the role, like AdminLayout's "System Administrator".
+              This used to hardcode "Company Supervisor - TechPH Inc." — a fake
+              company shown to every real supervisor. AuthUser carries no company,
+              so naming one here would need a new fetch or an /api/user change.
+            -->
+            <p class="text-xs text-slate-400">Company Supervisor</p>
           </div>
           <NotificationBell />
           <ProfileMenuPopover />

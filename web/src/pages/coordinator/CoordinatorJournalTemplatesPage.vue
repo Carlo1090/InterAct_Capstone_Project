@@ -307,7 +307,15 @@ const toggleActive = async (template: JournalTemplateRecord) => {
   errorMessage.value = ''
 
   // Deactivating is the crucial action — confirm first.
-  if (template.is_active && !(await confirmAction(`Turn off "${template.name}" for use in batches?`))) return
+  if (template.is_active) {
+    const confirmed = await confirmAction({
+      title: 'Turn off this template?',
+      message: `Turn off "${template.name}" for use in batches? Batches already using it keep working — it just stops being offered for new ones.`,
+      confirmLabel: 'Turn Off Template',
+      tone: 'danger',
+    })
+    if (!confirmed) return
+  }
 
   try {
     await api.patch(`/api/coordinator/journal-templates/${template.id}/toggle-active`)
@@ -345,7 +353,7 @@ onMounted(load)
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
     <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
     <p v-else-if="programs.length === 0" class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-      You are not currently assigned as coordinator of any batch, so there are no programs to author templates for.
+      You have no programs assigned yet. Ask an admin to assign you to a department.
     </p>
 
     <div v-else class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
@@ -581,7 +589,7 @@ onMounted(load)
             :disabled="isSaving || !canSave"
             @click="save"
           >
-            {{ isSaving ? 'Saving...' : 'Save' }}
+            {{ isSaving ? 'Saving...' : editingTemplateId ? 'Save Template' : 'Create Template' }}
           </button>
         </div>
       </section>

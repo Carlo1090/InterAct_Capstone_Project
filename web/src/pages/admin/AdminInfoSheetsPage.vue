@@ -87,6 +87,11 @@ const closeViewModal = () => {
   viewedSheet.value = null
 }
 
+const downloadPdf = () => {
+  if (!viewedSheet.value?.id) return
+  window.open(`/api/admin/info-sheets/${viewedSheet.value.student.id}/pdf`, '_blank')
+}
+
 onMounted(() => {
   loadDepartments()
   loadStudents()
@@ -113,9 +118,6 @@ onMounted(() => {
         <option value="draft">Draft</option>
         <option value="not-started">Not Started</option>
       </select>
-      <button type="button" class="ml-auto rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700">
-        Export All
-      </button>
     </div>
 
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
@@ -172,7 +174,10 @@ onMounted(() => {
       <section class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
         <div class="flex items-center justify-between">
           <h3 class="text-lg font-semibold text-slate-950">Student Information Sheet</h3>
-          <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeViewModal">Close</button>
+          <div class="flex items-center gap-3">
+            <button v-if="viewedSheet?.id" type="button" class="text-sm font-semibold text-blue-700 hover:text-blue-900" @click="downloadPdf">Download PDF</button>
+            <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeViewModal">Close</button>
+          </div>
         </div>
 
         <p v-if="isViewLoading" class="mt-6 text-sm text-slate-500">Loading...</p>

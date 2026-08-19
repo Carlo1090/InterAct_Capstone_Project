@@ -143,7 +143,13 @@ const onYearChange = async () => {
 }
 
 const deleteRow = async (row: AnnualSippRow) => {
-  if (!(await confirmAction('Remove this row from the report? It will be excluded when you save.'))) return
+  const confirmed = await confirmAction({
+    title: 'Remove this row?',
+    message: 'Remove this row from the report? It will be excluded when you save. The student\'s own journal entry is not affected.',
+    confirmLabel: 'Remove Row',
+    tone: 'danger',
+  })
+  if (!confirmed) return
   rows.value = rows.value.filter((candidate) => candidate.id !== row.id)
   if (!deletedIds.value.includes(row.id)) {
     deletedIds.value.push(row.id)
@@ -311,7 +317,9 @@ onMounted(loadIndex)
           </h3>
 
           <p v-if="rows.length === 0" class="mt-4 text-sm text-slate-400">
-            No journal entries with SIPP content were found for this program and academic year.
+            No journal entries with SIPP content were found for this program and academic year. Check the academic year
+            and program above, or wait until interns have filled in their SIPP sections. You can also use "Add Row" to
+            enter one manually.
           </p>
 
           <div v-else class="mt-4 overflow-x-auto">

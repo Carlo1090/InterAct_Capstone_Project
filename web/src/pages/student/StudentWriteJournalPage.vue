@@ -183,11 +183,14 @@ const load = async () => {
 const save = async (nextStatus: 'draft' | 'submitted') => {
   // Submitting still locks the entry once its week is bundled, so it keeps
   // the confirm-first treatment even though it's no longer immediately final.
-  if (
-    nextStatus === 'submitted' &&
-    !(await confirmAction('Submit this journal entry? You can still edit it until this week is compiled into your Weekly Log.'))
-  ) {
-    return
+  if (nextStatus === 'submitted') {
+    const confirmed = await confirmAction({
+      title: 'Submit this journal entry?',
+      message:
+        'Submit this journal entry? You can still edit it until this week is compiled into your Weekly Log.',
+      confirmLabel: 'Submit Entry',
+    })
+    if (!confirmed) return
   }
 
   isSaving.value = true
@@ -289,7 +292,8 @@ onMounted(load)
         v-else-if="!editable"
         class="rounded-md border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700"
       >
-        This date can no longer be edited (future date or outside your OJT range).
+        This date is outside the range you can write in — it is either in the future or outside your OJT period. Pick a
+        date within your OJT range using the date picker above.
       </div>
       <div
         v-else-if="status === 'submitted'"
@@ -301,7 +305,8 @@ onMounted(load)
       <!-- EDIT MODE — clean writing surface, no checkboxes inline -->
       <template v-if="!isViewMode">
         <p v-if="sections.length === 0" class="rounded-lg bg-white p-5 text-sm text-slate-500 shadow-sm ring-1 ring-slate-200">
-          No journal template sections are configured for your batch yet.
+          No journal template sections are configured for your batch yet. Ask your coordinator to assign a journal
+          template so you can start writing.
         </p>
 
         <article

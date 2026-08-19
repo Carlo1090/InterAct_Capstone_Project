@@ -19,6 +19,18 @@ const detail = ref<CoordinatorInfoSheetDetail | null>(null)
 const isDetailOpen = ref(false)
 const isDetailLoading = ref(false)
 
+// Separates "no sheets on file" from "your filters excluded them all" — only the
+// second has a recovery, so only the second gets a Clear filters button.
+const hasFilters = computed(
+  () => search.value !== '' || statusFilter.value !== '' || programFilter.value !== null,
+)
+
+const clearFilters = () => {
+  search.value = ''
+  statusFilter.value = ''
+  programFilter.value = null
+}
+
 const statusClass = (status: string | null): string => {
   if (status === 'submitted') return 'bg-blue-50 text-blue-700'
   if (status === 'approved') return 'bg-green-50 text-green-700'
@@ -89,7 +101,12 @@ const downloadPdf = () => {
 const accept = async () => {
   const student = detail.value?.student
   if (!student) return
-  if (!(await confirmAction(`Accept ${student.name}'s information sheet? This enrolls them into their batch.`))) return
+  const confirmed = await confirmAction({
+    title: 'Accept and enroll this student?',
+    message: `Accept ${student.name}'s information sheet? This enrolls them into their batch and gives them full access.`,
+    confirmLabel: 'Accept & Enroll',
+  })
+  if (!confirmed) return
 
   isActing.value = true
   try {
@@ -194,7 +211,17 @@ onMounted(load)
         </thead>
         <tbody class="divide-y divide-slate-100">
           <tr v-if="students.length === 0">
-            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="5">No sheets match this filter.</td>
+            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="5">
+              {{ hasFilters ? 'No sheets match these filters.' : 'No students in your programs yet.' }}
+              <button
+                v-if="hasFilters"
+                type="button"
+                class="mt-2 block w-full text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+                @click="clearFilters"
+              >
+                Clear filters
+              </button>
+            </td>
           </tr>
           <tr v-for="row in students" :key="row.student_id">
             <td class="px-4 py-3">

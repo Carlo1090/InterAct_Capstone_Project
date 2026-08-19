@@ -10,7 +10,7 @@ use RuntimeException;
 /**
  * The seeder a real deployment runs. DatabaseSeeder is NOT it — that one calls
  * twelve demo seeders and creates ~30 fictional users whose shared password is
- * documented in this repo's CLAUDE.md, which is public. Running `db:seed` with
+ * documented in this repo's PROJECT.md, which is public. Running `db:seed` with
  * no --class on a public deployment therefore hands anyone who finds both the
  * repo and the URL an admin login.
  *

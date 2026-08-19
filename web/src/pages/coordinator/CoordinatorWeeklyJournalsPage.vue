@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { showToast } from '@/lib/toast'
@@ -72,6 +72,12 @@ const resetFilters = () => {
   to.value = ''
   applyFilters()
 }
+
+// Distinguishes "nothing submitted yet" from "your filters excluded everything",
+// so the empty state can offer a way back only when there is one.
+const hasFilters = computed(
+  () => programId.value !== null || status.value !== '' || from.value !== '' || to.value !== '',
+)
 
 const goToPage = (target: number) => {
   if (target < 1 || target > lastPage.value || target === page.value) return
@@ -179,7 +185,21 @@ onMounted(load)
         </thead>
         <tbody class="divide-y divide-slate-100">
           <tr v-if="rows.length === 0">
-            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="6">No weekly journals match these filters.</td>
+            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="6">
+              {{
+                hasFilters
+                  ? 'No weekly journals match these filters.'
+                  : 'No interns have submitted a weekly journal yet.'
+              }}
+              <button
+                v-if="hasFilters"
+                type="button"
+                class="mt-2 block w-full text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+                @click="resetFilters"
+              >
+                Clear filters
+              </button>
+            </td>
           </tr>
           <tr v-for="row in rows" :key="row.id">
             <td class="px-4 py-3">
