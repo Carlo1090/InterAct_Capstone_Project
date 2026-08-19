@@ -733,6 +733,47 @@ address, not a personal one.
 **No queue worker is needed** — nothing implements `ShouldQueue`; the
 notification sends inline. Deployments set `QUEUE_CONNECTION=sync`.
 
+#### `php artisan mail:test <address>` — verify BEFORE importing a roster
+
+`App\Console\Commands\TestMailConfiguration` sends exactly one message and
+interprets the failure. It exists because the alternative way to discover dead
+SMTP credentials is to bulk-import 40 students, have all 40 come back
+`created_email_failed`, and then Resend each one individually.
+
+- It deliberately sends the **real `NewAccountCredentials` notification**, not a
+  throwaway string, so the test exercises the actual template, resolved from
+  address and login link a student receives.
+- It prints the resolved transport, host, SMTP user, from address (flagging
+  whether it came from System Settings or `MAIL_FROM_ADDRESS`) and login link
+  before sending — most misconfigurations are visible in that header alone.
+- It maps the common failures to the actual fix rather than echoing Symfony's
+  authenticator wall: SMTP **535 / BadCredentials** → regenerate the Google App
+  Password; connection refused → host/port/firewall; **cURL error 60** → the
+  Windows missing-CA-bundle gotcha; a scheme rejection → `MAIL_SCHEME` must be
+  `null`, not `tls`, on port 587. `--raw` shows the unabridged exception.
+
+**GOTCHA — a Google App Password silently dies.** SMTP 535 with a
+*correctly-shaped* password (16 lowercase chars, unquoted, no spaces) does not
+mean it was typed wrong: Google invalidates every app password when 2-Step
+Verification is switched off, when the account password changes, or when the app
+password is revoked. Regenerate at `myaccount.google.com/apppasswords`. The
+symptom is indistinguishable from a typo, which is why `mail:test` names this
+cause explicitly.
+
+**Gmail SMTP can send to ANY recipient** — there is no allowlist and no
+"only my own address works" restriction (that limitation belongs to Resend's
+shared `onboarding@resend.dev` sender, which genuinely only delivers to the
+account owner). If mail reaches you but not students, the cause is spam
+filtering or dead credentials, not the recipient address. Free Gmail caps at
+~500 recipients/day, which bounds a single bulk import. To prove
+arbitrary-recipient delivery without mailing a third party, send to a
+**plus-addressed** variant of your own inbox (`you+test@gmail.com`) — a
+different recipient string that still lands in your own mail.
+
+`NewAccountCredentials::toMail()` falls back to `'there'` when the notifiable
+has no `name`, since `mail:test` routes it to a bare address
+(`AnonymousNotifiable`) rather than a `User`.
+
 ## Google OAuth — email verification + link-only sign-in
 
 `laravel/socialite`, via `App\Http\Controllers\Auth\GoogleController`. Two
@@ -1698,6 +1739,9 @@ composer run dev
 php artisan journal:run-weekly-bundling                    # optional --week-start=
 php artisan journal:send-missing-entry-reminders --ignore-time
 php artisan roster:purge-archived                          # optional --now=
+
+# Verify outbound mail works before relying on it for a roster import
+php artisan mail:test you@example.com                      # optional --raw
 
 # Web SPA (run inside web/)
 npm install

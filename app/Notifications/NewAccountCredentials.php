@@ -38,9 +38,15 @@ class NewAccountCredentials extends Notification
     {
         $loginUrl = rtrim((string) config('app.frontend_url'), '/').'/login';
 
+        // Normally a User model, but `mail:test` routes this notification to a
+        // bare address (AnonymousNotifiable), which carries no name — so fall
+        // back rather than emitting an undefined-property warning into the
+        // rendered mail.
+        $name = $notifiable->name ?? 'there';
+
         $message = (new MailMessage)
             ->subject('[InternTrack] Your account is ready')
-            ->greeting("Hi {$notifiable->name},")
+            ->greeting("Hi {$name},")
             ->line('An InternTrack account has been created for you. Use the credentials below to sign in.')
             ->line("Username: {$this->username}")
             ->line("Temporary password: {$this->temporaryPassword}")

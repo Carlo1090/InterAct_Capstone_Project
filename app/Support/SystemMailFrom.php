@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\SystemSetting;
+use Throwable;
 
 /**
  * The admin's System Settings page collects a "System Email" that every
@@ -14,7 +15,15 @@ class SystemMailFrom
 {
     public static function resolve(): ?string
     {
-        $value = trim((string) SystemSetting::cached()->get('system_email'));
+        try {
+            $value = trim((string) SystemSetting::cached()->get('system_email'));
+        } catch (Throwable) {
+            // This lookup reads the DB (and the DB-backed cache store). A
+            // settings read failing must never take an outgoing message down
+            // with it — fall back to MAIL_FROM_ADDRESS, which is exactly what
+            // a null return means to every caller.
+            return null;
+        }
 
         // Stored free-form and validated only on write, so re-check here
         // rather than handing a malformed address to the transport.
