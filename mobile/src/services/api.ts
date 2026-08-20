@@ -49,10 +49,13 @@ export function toApiError(err: unknown): ApiError {
     const axiosErr = err as AxiosError<{ message?: string; errors?: Record<string, string[]> }>;
     if (!axiosErr.response) {
       // No response at all — device offline, DNS failure, request timeout.
-      return new ApiError('Cannot reach the InternTrack server. Check your connection and try again.', null);
+      // Deliberately avoids the word "server" — reads as a scary/technical
+      // system fault to a non-technical user rather than what it almost
+      // always actually is: their own Wi-Fi/mobile data being off.
+      return new ApiError("We couldn't connect to InternTrack. Please check your internet connection and try again.", null);
     }
     const body = axiosErr.response.data;
-    const message = body?.message ?? `Request failed (${axiosErr.response.status}).`;
+    const message = body?.message ?? `Something went wrong (error ${axiosErr.response.status}). Please try again.`;
     return new ApiError(message, axiosErr.response.status, body?.errors);
   }
   return new ApiError('Something went wrong. Please try again.', null);

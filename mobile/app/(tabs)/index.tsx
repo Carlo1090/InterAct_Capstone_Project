@@ -11,7 +11,7 @@ import { useDashboard } from '../../src/hooks/useDashboard';
 import { colors } from '../../src/constants/colors';
 
 export default function Dashboard() {
-  const { data, loading, error, reload } = useDashboard();
+  const { data, loading, error, isOffline, reload } = useDashboard();
 
   if (loading && !data) {
     return (
@@ -53,6 +53,10 @@ export default function Dashboard() {
           <Text style={{ color: 'white', fontSize: 12, fontWeight: '600' }}>+ Write Today</Text>
         </Pressable>
       </View>
+
+      {isOffline ? (
+        <Banner variant="neutral">You're offline — showing your last saved data. It'll refresh automatically once you're back online.</Banner>
+      ) : null}
 
       {data.stats.missing_this_week > 0 ? (
         <Banner variant="warn">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ScrollView, View, Text, TextInput, Pressable, ActivityIndicator, Alert } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,6 +8,8 @@ import { ErrorState, LoadingState } from '../src/components/ErrorState';
 import { colors } from '../src/constants/colors';
 import { apiGet, apiPost, downloadAndSharePdf, ApiError } from '../src/services/api';
 import { endpoints } from '../src/services/endpoints';
+import { getCached, setCached } from '../src/services/offlineCache';
+import { queueEntry, getQueuedEntry, removeQueued } from '../src/services/journalOutbox';
 import { JournalEntryDetail } from '../src/types/api';
 
 function todayISO() {
@@ -37,20 +39,46 @@ export default function Write() {
   const [sippEnabled, setSippEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  // True when what's currently shown came from the local offline queue
+  // rather than the server — i.e. this device has an edit that hasn't been
+  // sent yet. Must never be visually indistinguishable from a genuinely
+  // server-confirmed draft/submission.
+  const [fromQueue, setFromQueue] = useState(false);
+
+  function hydrateFromContent(res: JournalEntryDetail, overrideContent?: Record<string, string>) {
+    const effectiveContent = overrideContent ?? res.content ?? {};
+    setEntry(res);
+    setContent(effectiveContent);
+    setOptionalKeysShown(
+      res.sections.filter((s) => !s.required && !s.sipp && (effectiveContent[s.key] ?? '') !== '').map((s) => s.key)
+    );
+    setSippEnabled(res.sections.some((s) => s.sipp && (effectiveContent[s.key] ?? '') !== ''));
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    const cacheKey = `journal_entry_${date}`;
+    const queued = await getQueuedEntry(date);
+
     try {
       const res = await apiGet<JournalEntryDetail>(endpoints.journalEntry(date));
-      setEntry(res);
-      setContent(res.content ?? {});
-      setOptionalKeysShown(
-        res.sections.filter((s) => !s.required && !s.sipp && (res.content?.[s.key] ?? '') !== '').map((s) => s.key)
-      );
-      setSippEnabled(res.sections.some((s) => s.sipp && (res.content?.[s.key] ?? '') !== ''));
+      await setCached(cacheKey, res);
+      hydrateFromContent(res, queued?.content);
+      setFromQueue(queued !== null);
     } catch (err) {
-      setError(err as ApiError);
+      // Offline (or a real error) — fall back to whatever template we last
+      // saw for this date. A queued entry can only exist if this date was
+      // already opened successfully at least once before, so the cached
+      // template should be present whenever the queue has something for it.
+      const cachedTemplate = await getCached<JournalEntryDetail>(cacheKey);
+      if (cachedTemplate) {
+        hydrateFromContent(cachedTemplate, queued?.content);
+        setFromQueue(queued !== null);
+      } else {
+        // Never touched this date while online — nothing to render offline.
+        setError(err as ApiError);
+      }
     } finally {
       setLoading(false);
     }
@@ -101,36 +129,43 @@ export default function Write() {
     return payload;
   }
 
-  async function saveDraft() {
+  async function persist(status: 'draft' | 'submitted') {
     setSaving(true);
+    const payload = buildPayload();
     try {
-      await apiPost(endpoints.journalEntries, { entry_date: date, status: 'draft', content: buildPayload() });
+      await apiPost(endpoints.journalEntries, { entry_date: date, status, content: payload });
+      await removeQueued(date);
       router.back();
     } catch (err) {
-      Alert.alert('Could not save draft', (err as ApiError).message);
+      const apiErr = err as ApiError;
+      if (apiErr.status === null) {
+        // No network at all — this is a success path from the student's
+        // perspective, not a failure: save locally and send automatically
+        // once connectivity returns, rather than losing the writing.
+        await queueEntry({ entry_date: date, status, content: payload });
+        Alert.alert(
+          'Saved on this device',
+          "You're offline right now. This entry will be sent automatically once you're back online.",
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+      } else {
+        Alert.alert(status === 'draft' ? 'Could not save draft' : 'Could not submit entry', apiErr.message);
+      }
     } finally {
       setSaving(false);
     }
+  }
+
+  function saveDraft() {
+    persist('draft');
   }
 
   function confirmSubmit() {
     if (!canSubmit) return;
     Alert.alert('Submit this entry?', 'Once submitted you can still edit it until your week is compiled.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Submit', onPress: submitEntry },
+      { text: 'Submit', onPress: () => persist('submitted') },
     ]);
-  }
-
-  async function submitEntry() {
-    setSaving(true);
-    try {
-      await apiPost(endpoints.journalEntries, { entry_date: date, status: 'submitted', content: buildPayload() });
-      router.back();
-    } catch (err) {
-      Alert.alert('Could not submit entry', (err as ApiError).message);
-    } finally {
-      setSaving(false);
-    }
   }
 
   async function onDownloadPdf() {
@@ -220,6 +255,12 @@ export default function Write() {
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+        {fromQueue ? (
+          <Banner variant="neutral">
+            Not yet synced — this entry is saved on your device and will be sent automatically once you're back online.
+          </Banner>
+        ) : null}
+
         <Banner variant={editable ? 'info' : 'warn'}>
           {editable
             ? `${entry.status === 'submitted' ? "You've submitted this entry — it" : 'This entry'} stays editable until your week is compiled (every Monday at 12:00 AM).`

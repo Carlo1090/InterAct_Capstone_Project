@@ -9,6 +9,7 @@
     "assetBundlePatterns": [
       "**/*"
     ],
+    "icon": "./assets/mater-dei-logo.png",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.mdc.interntrack"
@@ -16,8 +17,14 @@
     "android": {
       "package": "com.mdc.interntrack",
       "adaptiveIcon": {
-        "backgroundColor": "#0a1628"
+        "backgroundColor": "#0a1628",
+        "foregroundImage": "./assets/mater-dei-logo.png"
       }
+    },
+    "splash": {
+      "image": "./assets/mater-dei-logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0a1628"
     },
     "plugins": [
       "expo-router",

@@ -1,8 +1,14 @@
 import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { useAutoSyncOutbox } from '../src/hooks/useAutoSyncOutbox';
 
 export default function RootLayout() {
+  // Mounted once for the whole app lifetime — flushes any offline-queued
+  // journal entries as soon as connectivity returns, regardless of which
+  // screen is currently active.
+  useAutoSyncOutbox();
+
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
