@@ -27,6 +27,10 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Press-and-hold, not tap-to-toggle — mirrors the web login's deliberate
+  // choice (see web/src/pages/LoginPage.vue) so the password can't be left
+  // revealed by accident; it's only plain text while actively held.
+  const [showPassword, setShowPassword] = useState(false);
 
   // Already signed in (e.g. app relaunched with a stored token) — skip login.
   if (isAuthenticated) return <Redirect href="/(tabs)" />;
@@ -148,13 +152,22 @@ export default function Login() {
                   onChangeText={setPassword}
                   placeholder="Enter your password"
                   placeholderTextColor={colors.gray400}
-                  secureTextEntry
+                  secureTextEntry={!showPassword}
                   autoCapitalize="none"
                   autoCorrect={false}
                   autoComplete="password"
                   textContentType="password"
                   style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 13.5 }}
                 />
+                <Pressable
+                  onPressIn={() => setShowPassword(true)}
+                  onPressOut={() => setShowPassword(false)}
+                  hitSlop={8}
+                  accessibilityLabel="Press and hold to show password"
+                  style={{ paddingHorizontal: 12 }}
+                >
+                  <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={colors.gray400} />
+                </Pressable>
               </View>
 
               <Pressable onPress={onSubmit} disabled={submitting || !identifier || !password}>
