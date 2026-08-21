@@ -10,6 +10,11 @@ conventions, and domain rules**, and is kept up to date as the project changes.
   disagrees with this one, **this one wins**.
 - Deployment runbook: `docs/DEPLOYMENT.md`. Cron/email operator setup:
   `docs/CRON-AND-EMAIL-SETUP.txt`.
+- **The capstone manuscript is NOT in this repository.** It is authored and
+  built outside the repo, and nothing in the Laravel app renders it. Do not add
+  paper/thesis generation back here — `resources/views/pdf/` and
+  `app/Console/Commands/` are for InternTrack's own documents (info sheets,
+  journals, the SIPP and HTE reports) only.
 
 ## Project Overview
 
@@ -69,8 +74,13 @@ Username + password remains the primary, always-available path.
      are independent top-level units (CABM-B and CABM-H are two separate
      departments, not sub-units of one "CABM"). Do not introduce a
      department→division→program hierarchy without confirming first.
-4. **Out of scope — do not build:** geofence clock-in, rotating QR clock-in,
-   photo capture on clock-in, exit interview report generation.
+4. **Out of scope — do not build:** photo capture on clock-in, exit interview
+   report generation.
+   **RESCINDED 2026-08-20 (project owner):** geofence clock-in, QR clock-in and
+   the in-app camera scanner were all previously listed here as out of scope.
+   They are now **IN scope and BUILT** — see Daily Time Record below. Do not
+   re-add them to this list. Rotating (TOTP) QR is still unbuilt, but the verify
+   path is deliberately shaped for it.
 5. **Record every change in `PROJECT.md` as part of finishing the task.** Any new
    feature, schema change, notable bug fix, or behavior change gets a bullet
    added or a stale statement corrected — before reporting the task complete,
@@ -494,7 +504,9 @@ entries) into `"MONDAY\n<text>\n\nTUESDAY\n<text>"`-shaped
   (`CoordinatorWeeklyJournalController`), department-scoped, excluding
   never-submitted drafts. **No approve/return/edit for coordinators anywhere** —
   review verdicts belong to supervisors.
-- DTR/QR/geofence clock-in is a separate pending feature, **not built here**.
+- DTR/QR/geofence clock-in is a **separate feature that IS now built** — see
+  Daily Time Record below. It is unrelated to weekly-log review: a supervisor
+  approves narratives here and corrects time records there.
 
 ### Journal calendar
 
@@ -555,9 +567,17 @@ migrated and no route was added.
 - **`Faculty Adviser` on the form maps to the batch coordinator.** This system
   has no adviser/instructor role (see Domain Facts), and the coordinator is the
   person that field means.
-- **`Area Assigned` and `No. of hours` are student-entered**, not derived. There
-  is no clock-in/DTR anywhere in this project (explicitly out of scope), so hours
-  cannot be computed and must never be fabricated.
+- **`Area Assigned` is student-entered**, not derived — there is nothing to
+  derive it from.
+- **`No. of hours` is student-entered but PREFILLED from the DTR** where the
+  batch's coordinator enabled it: `WeeklyActivityLogController::store()` fills
+  `no_of_hours` from `DtrService::minutesInWeek()` **only when the student left
+  the field empty**, and `show()` returns an advisory `dtr_hours` alongside it.
+  A typed value is **never** overwritten — this is a paper facsimile a
+  supervisor signs by hand, so a wrong DTR total (a forgotten clock-out, a
+  session still awaiting adjustment) must stay correctable before printing.
+  Where DTR is off, both are null and the field behaves exactly as before.
+  **Hours are still never fabricated** — an unclocked hour stays unclocked.
 - The header block (student name, program and year, adviser, company,
   supervisor) is **read-only**, resolved from the active enrollment.
 
@@ -615,6 +635,486 @@ application reports.
   `WeeklyJournalPaperView.vue`. `JournalPaperView.vue` mirrors the daily PDF 1:1
   and is always rendered read-only on the write page — the paper is a review
   surface, not an alternate editor.
+
+## Daily Time Record (QR + geofence)
+
+Built 2026-08-20. Reverses the earlier "out of scope" wording in Hard Rule #4.
+A company supervisor generates a **static QR code** anchored to coordinates
+captured from their own device at the workplace; the student scans it with
+their phone's camera, the browser reports coordinates, and the server records a
+clock-in/clock-out. **How the supervisor SHOWS that code is up to them** —
+from their own `/supervisor/dtr` page on screen, or from a downloaded SVG/PNG
+copy. Printing is one option among several, not an expectation, and no
+user-facing copy may tell a supervisor to print and post it (corrected
+2026-08-20 by the project owner). Banked hours become a real OJT progress metric
+against `batches.required_hours` — which until now was stored and read by
+**nothing**.
+
+### Be honest about what this proves
+
+- **A static QR authenticates nothing.** Its payload is fixed, so the first
+  student to scan it can screenshot it and share it. The QR identifies a
+  **site**; the geofence carries the entire anti-fraud load.
+- **Browser geolocation is client-supplied and spoofable** (DevTools has a
+  location override; Android mock-location apps need no root). Only a native
+  app could report `mocked: true`, and `mobile/` is still an empty template.
+  The defensible claim is *"raises the cost of cheating and creates a reviewable
+  audit trail"*, **not** *"prevents buddy-punching"*. That is exactly why every
+  punch stores lat/lng/accuracy/distance and why the supervisor's review and
+  adjustment surface exists.
+- **Rotating (TOTP) QR does not "cost a fortune"** — paid *dynamic QR* is a
+  commercial redirect/analytics product and is unrelated. A rotating code is
+  `hash_hmac` over a 30-second window, the same construction as Google
+  Authenticator, and is free. Its only real cost is physical: it must live on a
+  **screen**, so it cannot be printed and taped to a wall. Hence static-now,
+  rotation-ready.
+  **That cost is smaller than it first looked.** The project owner confirmed
+  (2026-08-20) that supervisors are free to display the code straight from
+  their own `/supervisor/dtr` page rather than printing it — and a code already
+  being shown on a screen is exactly the condition rotation needs. Rotation is
+  still unbuilt, but the objection to it is now a preference about how each
+  company chooses to display its code, not a physical blocker.
+
+### Schema (4 migrations, all additive)
+
+- **`users.dtr_enabled`** (bool, default **false** = opt-in). The coordinator's
+  preference, set by the admin at account setup and changeable by the
+  coordinator afterwards. Chosen over the `coordinator_departments` pivot
+  deliberately: that pivot has **no model** and is reached only through
+  `belongsToMany`, so a payload column would need `withPivot()` at every read.
+  Resolution is one hop —
+  `batch_students.batch_id → batches.coordinator_id → users.dtr_enabled` — and
+  `batches.coordinator_id` is NOT NULL and singular, so a department with
+  several coordinators is never ambiguous.
+- **`users.dtr_disabled_reason`** (string(40), nullable) + **`dtr_disabled_note`**
+  (string(255), nullable) — WHY a programme opted out, so an admin auditing a
+  department, or the next coordinator to inherit it, need not guess whether the
+  switch is off deliberately or by neglect. The reason is a slug from the fixed
+  **`User::DTR_DISABLED_REASONS`** vocabulary (not free text, so departments can
+  be compared) and the note carries the specifics a fixed list cannot.
+  **Both are cleared by `DtrPreferenceController` whenever the DTR is switched
+  back ON** — the reason justifies an *off* state, and left behind it would
+  assert a justification for a state the programme is no longer in. The
+  controller ignores whatever the client sent on an enable rather than trusting
+  it. Both are optional: a coordinator is never blocked from switching the DTR
+  off for not having explained themselves.
+  **Deliberately NOT a third state on `dtr_enabled`.** A "never answered" state
+  would make that column nullable and put a null check on every read of the
+  one-hop resolution path above, all to power a first-run prompt — and there is
+  nothing to prompt for, since `Admin/UserController::store` already sets the
+  value definitively on the Create Coordinator form.
+- **`company_geofences`** — `company_id`, `created_by`, `label`, `token`
+  (unique, 32 chars, the static QR payload), `rotation_secret` (nullable, the
+  forward door), `latitude`/`longitude` `decimal(10,7)`, `radius_meters`
+  (default **150**), `captured_accuracy`, `is_active`. A table rather than
+  columns on `companies` because a company can host at two sites, the
+  coordinates belong to the QR rather than the company record, and `companies`
+  has `$timestamps = false` plus a `#[Fillable]` attribute best left alone.
+  `token`/`rotation_secret` are deliberately **not fillable** — generated in a
+  `creating` hook, never accepted from a request.
+- **`dtr_sessions`** — see the two invariants below.
+
+**`dtr_sessions.open_session_key` is a nullable UNIQUE column holding
+`student_id` while a session is open and NULL once it closes.** This is what
+makes "at most one open session per student" a *database* guarantee. The service
+checks it too and produces the friendly message, but a check-then-write cannot
+survive two concurrent requests — a double-tap or two tabs both read "no open
+session" before either writes. Verified: without this index the database
+accepted two open sessions for one student, leaving them unable to clock out of
+either. "At most one open per student" is not expressible as a plain composite
+unique index, and partial/filtered indexes are not portable across MySQL and
+SQLite, hence the nullable-key trick (both treat NULLs as distinct). A
+`DtrSession::booted()` saving hook keeps the key in lockstep with `status` so no
+caller can forget it. `DtrService` catches the resulting
+`UniqueConstraintViolationException` and returns the winning session as a
+success — the student's intent was "I am here now", and that is what got
+recorded.
+
+**CRITICAL — `dtr_sessions` has NO foreign key to `batch_students.id`, and must
+never gain one.** `BatchStudentPurgeService` hard-deletes archived enrollment
+rows after 30 days, and no table references that id precisely so the purge
+cannot orphan history. A cascading FK here would let the nightly purge silently
+erase a student's entire attendance record. Keyed off `student_id` + `batch_id`,
+exactly like `journal_entries` and `weekly_logs`. Pinned by
+`tests/Feature/Services/DtrPurgeSafetyTest.php`. `geofence_id` is
+`nullOnDelete` for the same reason at the site level.
+
+`minutes_worked` is **stored, not derived** from the timestamps, so a
+supervisor's correction (deducting an unlogged break, closing a forgotten
+punch) is durable and the progress figure cannot drift from what was signed off.
+
+`work_date` is derived server-side from `now()` in `config('app.timezone')`.
+Deployments set `Asia/Manila`; on a UTC box a 07:00 Manila punch would land on
+**yesterday**.
+
+### A punch is a TOGGLE, and there is deliberately no standalone clock-out
+
+`DtrService::punch()` is the single chokepoint (the `EnrollmentService` pattern).
+Scanning on arrival opens a session; scanning **the same code** on departure
+closes it. A location-free "Clock Out" button could be pressed from anywhere,
+which would undo the geofence at exactly the moment it matters. A student who
+genuinely cannot scan out asks their supervisor to adjust, which leaves a
+required reason on the record.
+
+Rules enforced there, in order: active enrollment → coordinator has DTR on →
+token resolves to an **active** fence → the fence's company **matches the
+student's enrolled company** → rotating code (no-op today) → distance ≤ radius →
+**stale-session guard** → one-open-session guard. An open session at a
+**different** site 422s rather than being silently closed — closing it would
+invent a clock-out time and place nobody observed. The one-open-session rule
+lives in the service because it is not expressible as a portable partial unique
+index.
+
+**THE ONE CARVE-OUT IN THE TOGGLE: a stale session is not clocked out of, it is
+closed out of the way.** If the open session's `time_in` is older than
+`DtrService::STALE_SESSION_MINUTES`, `punch()` auto-closes it and the scan opens
+a NEW session, returning `action = 'clocked_in'` with `auto_closed_previous`.
+Without this the toggle cascades: a student who forgot to scan out scans the
+next morning expecting to time in, is silently timed OUT of yesterday instead,
+walks away believing they are clocked in, works the whole day uncounted, and
+their evening scan opens *another* overnight session — a day at a time, forever.
+The guard lives in `punch()` **as well as** in the nightly command deliberately:
+the API sleeps on an idle free tier and the external cron jitters, so the
+morning scan cannot depend on the job having run.
+
+- Timestamps are **server receipt time**, never the client clock — a device
+  clock is as manipulable as its GPS.
+- **`STALE_SESSION_MINUTES` is 720 (12h), and 12 is not 8 by accident.** Closing
+  at exactly one standard shift would punish a genuinely long day: an intern
+  working 8h30m would find their session already closed and their scan-out would
+  read as a fresh clock-in. 12h clears a shift plus lunch plus grace, still
+  closes a morning clock-in the same evening, and leaves a real shift crossing
+  midnight (in 22:00, out 02:00) alone — which a "it is a new day" rule would
+  not. Pinned by `test_a_shift_across_midnight_...` and
+  `test_a_long_but_plausible_shift_still_clocks_out_normally`.
+  It replaced `MAX_PLAUSIBLE_SESSION_MINUTES` (16h); one number, one meaning.
+- `minutesCompleted()` counts **`closed` only** (`DtrSession::COUNTED_STATUSES`).
+  `open`, `flagged` and `void` never count.
+- Required hours resolve as
+  `student_profiles.total_hours_required ?? batches.required_hours` — both
+  columns already existed; the per-student one becomes the transferee override
+  it was always shaped for.
+- **The read/write enrollment split applies here exactly as elsewhere.**
+  `DtrService::enrollmentFor()` is **active only** and gates punching;
+  `readEnrollmentFor()` accepts **active OR completed** and backs the DTR page
+  and `appliesTo()`. Getting this wrong was a real inconsistency: the dashboard
+  resolves through `currentEnrollment()` and so already showed a completed
+  student their hours, while the page explaining that number 422'd them out.
+- **`accuracy` is CLAMPED in `PunchDtrRequest::prepareForValidation()`, never
+  rejected.** `coords.accuracy` is unbounded in the spec and a phone with no GPS
+  lock indoors can report a six-figure radius. A bare `max:` rule would 422 the
+  whole punch — refusing a student standing exactly where they should be, over a
+  diagnostic field that gates nothing. The distance check is the gate.
+- **A supervisor's `adjust` or `void` on an open session releases the student.**
+  Since the one-open-session rule is now a DB constraint, a stuck session would
+  otherwise end that student's DTR for the rest of the placement. Both paths go
+  through the saving hook, and both are covered by tests.
+
+### The forgotten clock-out — auto time-out
+
+Built 2026-08-21. `dtr:auto-close-sessions` (hourly) closes every session open
+past `STALE_SESSION_MINUTES` and notifies the student. `DtrService::punch()`
+carries the identical guard (above), so the two must never diverge — both go
+through the single writer **`DtrService::autoCloseStaleSession()`**, the
+`EnrollmentService` pattern again, and both use the one wording from
+`DtrService::staleReason()` so a student cannot be told two stories about the
+same event.
+
+What an auto-closed session looks like, and why each part:
+
+- **`status = 'flagged'`.** `COUNTED_STATUSES` is `closed` only, so it banks
+  exactly zero until a supervisor confirms it. This is what makes the assumed
+  figure below safe to write at all.
+- **`minutes_worked = DEFAULT_SHIFT_MINUTES` (480 / 8h).** Not a claim about the
+  day — the **supervisor's starting number** in the Adjust action, which
+  `SupervisorDtrPage.vue` prefills via `promptAction`'s `initialValue` so
+  confirming is one tap. **If this ever becomes a counted status, an intern who
+  never clocked out banks a full day for turning up once.**
+- **`time_out` stays NULL.** Nobody observed the student leaving. Stamping an
+  assumed departure would print a time they never gave into the "Out" column of
+  their own record; a null reads correctly as "never scanned out", which is what
+  happened. Same reasoning already written into `DtrReviewController::adjust`.
+- **`adjusted_by` stays NULL**, so a system close is distinguishable from a
+  human correction.
+- The student gets an **`in_app`** notification. The supervisor is deliberately
+  not notified — their Needs Attention filter already lists `flagged`.
+- A session is closed **even if the coordinator has since switched DTR off**.
+  Leaving a student permanently unable to clock in, should it come back on, is
+  the worse outcome, and the minutes still do not count.
+
+**Scheduled on BOTH paths, and the cron one takes no marker.** `routes/console.php`
+runs it `hourly()`; `CronController` invokes it on **every ping**, like
+reminders and unlike purge/bundling. It self-gates on how long each session has
+been open, so it is correct at any ping minute, and a marker would actively
+*delay* closing a session that crossed the threshold just after the last run.
+Re-running is free: closing a session moves it out of the `status = 'open'` set
+it selects, so a second run finds nothing and cannot re-notify.
+
+### The rotation-ready contract
+
+The QR encodes `{FRONTEND_URL}/student/dtr/scan?s=<token>` — pointing at the
+**SPA**, not the API, because the student opens it with their phone's own
+camera app. `POST /api/student/dtr/punch` accepts an optional `code` that is
+**validated and ignored** while every `rotation_secret` is null. Populating one
+switches that site to requiring a TOTP code, with no change to any caller and
+no change to what the student does.
+
+### Two ways to scan, both supported
+
+**1. The in-app camera scanner** (`components/dtr/QrScannerModal.vue`) is the
+primary path — the student taps **Scan to Time In / Scan to Time Out** on
+`/student/dtr` and never leaves the app. Decoding falls back in this order:
+
+- **`BarcodeDetector`** where the browser has it (Chrome, Edge, Android Chrome)
+  — hardware-accelerated and free.
+- **`jsqr`** everywhere else. This branch is what makes iPhones work at all:
+  Safari has no `BarcodeDetector`, so without it every iOS student would be
+  locked out of the scanner. It is **dynamically imported**, so browsers with
+  the native detector never download it — that keeps the DTR page chunk at
+  ~13kB instead of ~142kB, with jsQR in its own lazily-fetched chunk.
+
+Both paths feed the same `extractSiteToken()` in `web/src/lib/dtr.ts`, so they
+cannot disagree about what counts as one of our codes. A QR that is not ours is
+ignored and scanning continues, rather than firing a doomed request at the first
+random code that wanders into frame.
+
+**TWO GATES stand between a decode and a punch, and both exist because a punch
+is a TOGGLE** — an accidental read of a code lying on a desk does not merely do
+nothing, it clocks the student OUT.
+
+1. **The framing/stability gate.** A decode is accepted only when the code's
+   corner points fall inside a centred square of `min(videoWidth, videoHeight) *
+   0.75`, the same token reads on 3 consecutive frames, and at least 600ms has
+   passed since the camera opened. QR error correction is deliberately good
+   enough to decode a code half out of frame, at an angle, from a glance — a
+   virtue everywhere except here, where it makes a punch feel like it fired by
+   itself.
+   - **The guide rect is computed the way `object-cover` crops**, from
+     `min(vw, vh)` centred — NOT scaled from width. The video is 4:3 or 16:9
+     inside a square box, so a width-based rect lands in the wrong place on
+     every phone whose camera is not square.
+   - **Missing corner points are ACCEPTED, not rejected.** Some
+     `BarcodeDetector` implementations omit `cornerPoints`; refusing there would
+     lock those browsers out of the scanner entirely. The stability gate and the
+     confirmation below still apply.
+   - The warm-up is load-bearing: without it a code already in frame when the
+     modal opens is read on the very first frame and the student never sees the
+     scanner at all.
+2. **The confirmation card** — and this is the gate that actually matters, since
+   with it, decoding fast is harmless. On lock the scanner stops the camera and
+   calls **`resolveSite()`** (the read-only `GET student/dtr/scan` preview), then
+   shows the site, the direction, and the account before anything is written.
+   Only `Confirm` punches. This brings the in-app scanner in line with the QR
+   landing page, which has always confirmed first, and with the project's rule
+   that crucial actions confirm before they happen.
+
+The modal therefore emits **`confirmed`**, not `decoded` — a decode is no longer
+a decision.
+
+**2. The phone's own camera app** still works and is the fallback whenever
+camera permission in-app is refused: the QR encodes a URL, so the native camera
+opens `/student/dtr/scan?s=<token>` directly. Keep this path — it is the only
+one that works when the student has denied camera access to the site.
+
+`web/src/lib/dtr.ts` is the shared client contract for both surfaces
+(`extractSiteToken`, `resolveSite`, `currentPosition`, `isPermissionDenied`,
+`locationErrorMessage`, `punchAtSite`). Both the scanner and the landing page go
+through it for exactly the reason `DtrService` exists on the backend.
+
+**The scanner must release its camera tracks on close/unmount.** A missed track
+leaves the phone's camera indicator lit after the modal is gone, which reads to
+the student as the app watching them. `stopCamera()` also sets a `finished`
+flag: without it a lucky second decode from an in-flight frame fires a duplicate
+punch.
+
+**Duck-type `code === 1` for PERMISSION_DENIED — never
+`err instanceof GeolocationPositionError`.** That global is not reliably defined
+across browsers, and referencing an undefined identifier *from inside a catch
+block* throws a ReferenceError that swallows the real error and leaves the
+button dead with no message at all.
+
+**`currentPosition()` reads the position in TWO stages.** Stage 1 is GPS
+(`enableHighAccuracy: true, maximumAge: 0`). Stage 2, on failure, is a coarse
+network fix (`enableHighAccuracy: false, maximumAge: 60000`). Interns work
+inside concrete buildings where a GPS lock frequently never arrives and stage 1
+just times out; refusing the punch there would block a student standing exactly
+where they should be, which is the worse failure. This does **not** weaken the
+geofence — the distance check is still the gate, a coarse fix that lands outside
+the radius is rejected as before, and the reported accuracy is stored on the
+punch for the supervisor to judge. A PERMISSION_DENIED is re-thrown immediately
+rather than retried, since the answer will not change on a second ask.
+
+**GOTCHA — an in-app browser can open the camera and still never return a
+position.** Messenger/Facebook/Instagram WebViews need the *host app* to hold
+Android location permission, which most users have never granted. The symptom
+is a successful QR decode followed by a location failure, which reads as an app
+bug. `locationErrorMessage()` therefore names both real causes (device Location
+off, in-app browser) and tells the student to reopen in a real browser.
+
+### Routes and surfaces
+
+- **Student** (inside the gated `infosheet.approved` group): `GET student/dtr`,
+  `GET student/dtr/scan`, `POST student/dtr/punch`. Pages
+  `StudentDtrPage.vue` (`/student/dtr`, read-only) and `StudentDtrScanPage.vue`
+  (`/student/dtr/scan`, the QR landing page). The nav item is hidden unless
+  `student_dtr_enabled`.
+- **Supervisor**: `DtrGeofenceController` (index/store/update/destroy/qr) and
+  `DtrReviewController` (index/adjust/void), one page at `/supervisor/dtr`.
+  `destroy` **deactivates, never deletes**. `update` deliberately cannot move
+  the coordinates — re-anchoring means creating a new site, so a fence can never
+  be quietly relocated without fresh capture evidence. The **radius IS editable
+  in place**, from a dropdown on each site card: resizing is safe from anywhere,
+  and the alternative (retire-and-recreate) issues a new `token` and therefore
+  silently invalidates every QR code already printed.
+- **Coordinator**: `DtrMonitorController` (`index`, `sites`) — **read-only, no
+  adjust/void**, same posture as `CoordinatorWeeklyJournalController`.
+  Its figures come from **one grouped query** (`sessionTallies()`), not from
+  `DtrService`'s per-student helpers — those cost three queries per intern, i.e.
+  ~300 round trips for a 100-intern department on an instance that cold-starts.
+  It also eager-loads **`student.studentProfile`**, because `requiredHours()`
+  reads `total_hours_required` and would otherwise lazy-load one profile per
+  intern — a second N+1 hiding behind the first, which only surfaced because
+  `DtrMonitorTest` asserts a query-count ceiling. Keep that test: it is the
+  only thing that notices either regression coming back.
+  `sites` exists because a supervisor who generated their QR at home anchored
+  the fence to their house and nothing automated can detect that; it lists the
+  coordinates plus a maps link against the company's registered address.
+  `DtrPreferenceController` (`show`/`update`) is the coordinator's own switch.
+  **It is surfaced on `/coordinator/dtr` itself, and nowhere else** — it used to
+  live in the account-menu popover as `DtrSettingsPanel.vue`, which meant a
+  coordinator looking at an empty DTR page had no way to find out from the page
+  why it was empty. That panel is **deleted** and the popover's `dtr` view is
+  gone with it; do not reintroduce a second surface, since the two would then
+  have to be kept in step.
+  `CoordinatorDtrPage.vue` therefore has two whole states: **off** renders the
+  consequence (what interns and supervisors lose, where hours come from
+  instead) plus the switch and the reason fields, in place of the empty table it
+  used to show; **on** collapses to a one-line status strip above the existing
+  read-only tabs. The switch and both reason fields go through **one** writer
+  (`savePreference`), which always PUTs all three values, so the toggle and the
+  reason can never disagree about the stored preference.
+  `show`/`update` also return **`updated_at`**, read back from the
+  `system_logs` row the controller writes rather than from `users.updated_at` —
+  that column moves on any profile edit and would date the preference to an
+  unrelated change. `SystemLog`'s `$timestamps = false` switches off the date
+  casting Laravel would otherwise give `CREATED_AT`, so `logged_at` comes back a
+  plain **string** and must be `Carbon::parse`d; calling `->toIso8601String()`
+  on it directly is a 500.
+
+Turning DTR **off is non-destructive** — existing sessions are kept and simply
+stop counting, and turning it back on restores the figures intact.
+
+### QR generation
+
+`endroid/qr-code` **^6.1** (nothing QR-related existed before, not even
+transitively). Output defaults to **SVG**, which needs no GD and prints sharp at
+any size — it stays sharp both on a supervisor's screen and on paper, whichever
+they choose; `?format=png` is available. `ErrorCorrectionLevel::High` rather
+than the library default `Low`, because a code that *is* printed picks up
+scuffs, glare and torn corners.
+
+### Progress and the dashboard
+
+`StudentDashboardController` gains `progress.hours` —
+`{minutes_completed, hours_completed, hours_required, hours_percent}`, or
+**`null`** when the coordinator has DTR off. Null rather than zero is
+load-bearing: the SPA renders the hours gauge only when it is non-null, and
+falls back to the existing `ojt_duration_percent`. A zeroed gauge would read as
+"you have done nothing" to a student with no way to clock in.
+`weekly_reports_approved_percent` and `ojt_duration_percent` are **unchanged**.
+
+Worth knowing when comparing the two: `ojt_duration_percent` is elapsed calendar
+time and ticks up whether or not the intern ever turns up. `hours_percent` only
+moves when they do.
+
+### Whose record is this? — the account-identity guards
+
+The QR opens in whichever browser the phone treats as default, on a handset that
+may be shared, borrowed, or still signed in from last time. **A scan looks
+identical whichever account is signed in**, so the punch can land on the wrong
+student's record silently and undetectably. Four guards, all cheap:
+
+- **`GET student/dtr/scan` returns a `student` block** (`name`, `username`,
+  `student_id_number`). Free — `DtrService::enrollmentQuery()` already
+  eager-loads `student.studentProfile`.
+- **Both scan surfaces name the account BEFORE the button.** The landing page
+  renders a "Recording as …" row with a **Not you?** control that signs out and
+  returns to the same scan URL via `?redirect=`; the scanner's confirm card
+  carries the same line.
+- **The punch response echoes `student_name`**, shown on the success card, so a
+  student who taps straight through still gets a receipt naming the account.
+- Deliberately **not** done: re-entering a password per punch. Naming the
+  account plus a one-tap switch is the control that actually gets used.
+
+### Redirect-after-login is part of this feature, not incidental
+
+`router.beforeEach` bounces an unauthenticated visitor to
+`/login?redirect=<fullPath>`, and `LoginPage.vue` honours it (same-origin
+relative paths only, so this cannot become an open redirect). Without it the QR
+flow dead-ends: a printed code opens in whichever browser is default, very often
+one with no session, and the student would log in to find the site token gone.
+
+**THREE redirects must preserve the target, not just that one.** Each was a way
+to silently eat the site token:
+
+- **Role mismatch** (`to.meta.role !== user.role`) used to be a bare
+  `return '/login'`. A phone signed in as a supervisor or coordinator opening a
+  clock-in QR landed on a plain login form; signing in as the student then went
+  to the dashboard with the scan lost and nothing explaining why. It now carries
+  `{ redirect: to.fullPath, wrong_role: '1' }`, and `LoginPage.vue` shows an
+  **amber notice, not an error** — nothing failed, and `errorMessage` is watched
+  to shake the card. Read through `consumeQueryParam()` so a refresh cannot
+  replay it. **No automatic sign-out**: replacing someone's session uninvited is
+  not ours to do, and signing in through the form replaces it anyway.
+- **Gated** (`student_gated`) and **paused** (`student_paused`) bounces from
+  `/student/dtr/scan` carry `?from=scan`, and the destination says the clock-in
+  was not recorded and why. The token genuinely cannot be honoured — the student
+  cannot un-gate themselves — so an explanation *is* the whole fix; without it a
+  scanned QR just becomes an unrelated page.
+
+No guard loop is possible: `/login` carries no `requiresAuth`.
+
+### Operational notes
+
+- **Geolocation AND `getUserMedia` require a secure context.** `localhost` is
+  exempt so normal dev works, but **testing from a real phone over
+  `http://192.168.x.x` fails** — the page loads and the camera then refuses,
+  because `navigator.mediaDevices` is undefined on an insecure origin.
+
+  The verified recipe (used to test this feature on a real phone, 2026-08-20):
+  1. `web/vite.config.js` already carries `host: true`, `strictPort: true` and
+     `allowedHosts: true` for exactly this. Vite otherwise binds to localhost
+     only and rejects an unrecognised Host header.
+  2. `cloudflared tunnel --url http://localhost:5173` (install once with
+     `winget install Cloudflare.cloudflared`). Tunnel **Vite, not Laravel** —
+     Vite proxies `/api` onward, so the phone stays same-origin, which mirrors
+     the deployed Vercel rewrite model.
+  3. Put the printed `*.trycloudflare.com` host into **both** `FRONTEND_URL` and
+     `SANCTUM_STATEFUL_DOMAINS`, then **restart `php artisan serve`** — it reads
+     `.env` at boot, and skipping this produces the classic symptom: a 200 login
+     followed by 401 on every request after it. The subdomain changes on every
+     tunnel run.
+  4. Open the tunnel URL in a **real browser** on the phone, never a chat app's
+     in-app browser (see the WebView gotcha above).
+  5. **Put `FRONTEND_URL` and `SANCTUM_STATEFUL_DOMAINS` back to `localhost`
+     afterwards** — a dead tunnel host left in `.env` breaks ordinary local dev.
+
+  A LAN-IP alternative exists for **Android only**
+  (`chrome://flags/#unsafely-treat-insecure-origin-as-secure`), and additionally
+  needs an inbound firewall rule for 5173 on the *matching* profile — a hotspot
+  network is categorised **Public**, so a `-Profile Private` rule silently does
+  nothing. It does not work on iOS at all.
+- **GPS indoors is poor.** Default radius 150m, and a capture worse than
+  `CompanyGeofence::POOR_ACCURACY_METRES` (100m) is flagged back to the
+  supervisor and to the coordinator. Warned, not blocked — a hard block would
+  strand a company whose building simply has bad GPS, and a fence too tight
+  rejects interns who are genuinely present, which is the worse failure.
+- Demo: **both** demo coordinators (`mdccore`, `mdcbalbero`) seed with
+  `dtr_enabled = true` so every role is testable end to end; the opt-out is
+  shown by switching it off on the coordinator's own Daily Time Record page.
+  **No geofence is
+  seeded** — a supervisor must create one from their real location, which is
+  the flow worth demonstrating and the only way the coordinates mean anything.
 
 ## Reminders & Email
 
@@ -1002,6 +1502,12 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
   creator column exists, so unlinked implies visible, keeping freshly-created
   companies in view). Includes the representatives and supervisor-login panels.
 - **Student Info Sheets** — the Accept/Reject queue; defaults to **All** statuses.
+- **Daily Time Record** (`/coordinator/dtr`) — **the only place the DTR on/off
+  preference is set**, plus read-only hours-vs-required per intern and a
+  **Sites** tab listing where each company's QR code is anchored so a fence
+  generated somewhere other than the workplace can be spotted. With the DTR off
+  the page explains the consequence and captures WHY instead of rendering an
+  empty table. No adjust/void here; corrections belong to supervisors.
 - **Users page** (`/coordinator/users`) — a secondary nav with an **Interns** tab
   (every in-scope student regardless of enrollment, each badged ENROLLED /
   NOT ENROLLED) and a **Supervisors** tab. With **no `created_by` column** on
@@ -1022,11 +1528,15 @@ coordinator/admin.
 
 Gated by a `role:supervisor` route group, scoped by company (see
 `ScopesSupervisorWork`). The core action is reviewing the weekly narrative.
+They also own the **Daily Time Record** surface — generating their company's
+clock-in QR codes and correcting the punches those produce (see Daily Time
+Record above).
 
 ### Student
 
 Dashboard, journal calendar, write daily journal, my journals, weekly journals,
-**Weekly and Time Log Summary**, info sheet. The Student Dashboard is real, not
+**Weekly and Time Log Summary**, **Daily Time Record** (only where the batch
+coordinator enabled it), info sheet. The Student Dashboard is real, not
 mock data — it returns submitted
 counts, weekly logs approved/pending, this-week missing working days, two
 completion-progress percentages, the student's own last-5 `SystemLog` rows, and
@@ -1062,6 +1572,10 @@ identical for all four roles — exposing `PUT /api/profile`,
 
 - **Log Out is confirm-first**, default (blue) tone, not `danger` — nothing is
   destroyed, but a mis-tap on the avatar menu should not sign someone out.
+- Students additionally get **Reminder Settings**. There is deliberately **no
+  DTR item any more** — the coordinator's on/off switch moved onto
+  `/coordinator/dtr` on 2026-08-20 and `DtrSettingsPanel.vue` was deleted. A
+  setting belongs beside the thing it governs; do not put it back here.
 - **Forced password change is popover-owned, not router-owned**: the popover
   watches `must_change_password` and force-opens into the password view with no
   back arrow, no outside-click dismissal, and a dimming backdrop, auto-closing
@@ -1084,8 +1598,12 @@ identical for all four roles — exposing `PUT /api/profile`,
 **`notifications.type` is a strict DB enum: `email` / `push` / `in_app`.** An
 in-app business event uses `'in_app'`.
 
-Business triggers so far: the missing-journal reminder, and **Info Sheet
-submission**, which notifies the submitting student's batch's **coordinator**
+Business triggers so far: the missing-journal reminder; the **DTR auto
+time-out**, which tells the student their session was closed with no clock-out
+and does not yet count (see Daily Time Record — the supervisor is deliberately
+NOT notified, since their Needs Attention queue already lists it); and **Info
+Sheet submission**, which notifies the submitting student's batch's
+**coordinator**
 (`batches.coordinator_id` — the single unambiguous owner, not every coordinator
 in the department) only on a transition **into** `submitted`. It deliberately
 does not fire on a draft autosave, a resave of an already-submitted sheet, or an
@@ -1368,7 +1886,13 @@ does have cron keeps working, and the two paths are safe to run side by side.
   on — cron-job.org jitters and a sleeping Render instance adds 30-60s of cold
   start. A ping at 10:03 would find an `hourly()` task not due and silently do
   nothing, every hour, forever. Each command is invoked **directly** instead.
-- **Reminders run on EVERY ping with no marker** — safe because the command
+- **Reminders AND the DTR auto-close run on EVERY ping with no marker.** For the
+  auto-close a marker would be actively wrong, not merely wasteful: it would
+  *delay* closing a session that crossed the stale threshold shortly after the
+  previous run. It self-gates on how long each session has been open (so it is
+  correct at any ping minute) and re-running finds nothing, because closing a
+  session moves it out of the `status = 'open'` set it selects.
+- Reminders are safe on every ping because the command
   already self-gates twice (skip anyone whose hour differs; dedupe on user +
   title + today). That is also why it is *correct* at any minute.
 - **The weekly-bundling marker is load-bearing, not an optimisation.** Bundling
@@ -1739,6 +2263,7 @@ composer run dev
 php artisan journal:run-weekly-bundling                    # optional --week-start=
 php artisan journal:send-missing-entry-reminders --ignore-time
 php artisan roster:purge-archived                          # optional --now=
+php artisan dtr:auto-close-sessions                        # optional --now=
 
 # Verify outbound mail works before relying on it for a roster import
 php artisan mail:test you@example.com                      # optional --raw
@@ -1754,7 +2279,31 @@ npx expo start
 ```
 
 `tests/Feature` splits into `Admin` / `Auth` / `Console` / `Coordinator` /
-`Services` / `Student` / `Supervisor`.
+`Services` / `Student` / `Supervisor`. `tests/Unit` holds `Models` and
+`Support` (the latter added for `GeoDistanceTest`, which exercises the haversine
+geofence maths with no database at all).
+
+DTR coverage lives in six files, and several of them exist to pin a bug that
+was real rather than hypothetical — do not delete them as redundant:
+`Unit/Support/GeoDistanceTest`, `Feature/Student/DtrPunchTest` (the toggle,
+radius rejection, the `open_session_key` race, accuracy clamping, midnight
+spans, the completed-student read/write split), `Feature/Supervisor/
+DtrGeofenceAndReviewTest` (QR output, immovable coordinates, adjust/void
+releasing a stuck student), `Feature/Services/DtrPurgeSafetyTest` (the
+no-FK-to-`batch_students` invariant), and
+`Feature/Coordinator/DtrPreferenceTest` (the opt-out reason's lifecycle — above
+all that re-enabling CLEARS it, so a reason can never outlive the decision it
+explained), and `Feature/Console/AutoCloseOpenDtrSessionsTest` (the auto
+time-out: the assumed hours never count, closing releases `open_session_key`,
+a session inside the threshold is left alone, a second run is a no-op, and a
+supervisor's adjustment is never overwritten).
+
+Two in `DtrPunchTest` earn their place specifically:
+`test_a_stale_session_is_auto_closed_and_the_scan_reads_as_a_fresh_clock_in`
+pins the cascade fix, and
+`test_a_long_but_plausible_shift_still_clocks_out_normally` pins the other side
+of the boundary — without it, tightening the threshold would silently turn every
+long day into a flagged row.
 
 ### Seeded demo accounts
 
@@ -1764,11 +2313,30 @@ also works for accounts that have one).
 | Username | Role |
 |---|---|
 | `mdcadmin` | admin |
-| `mdccore` | CAST/BSIT coordinator |
-| `mdcbalbero` | CABM-B coordinator (Balbero) |
-| `mdcstudent` | enrolled student |
-| `mdcsupervisor` | supervisor |
+| `mdccore` | CAST/BSIT coordinator (DTR **on**) |
+| `mdcbalbero` | CABM-B coordinator (Balbero, DTR **on**) |
+| `mdcstudent` | enrolled student (CAST/BSIT) |
+| `mdcsupervisor` | supervisor (TechPH Inc., `mdcstudent`'s company) |
+| `mdcbalsup` | CABM-B company supervisor — Tagbilaran Cooperative Bank |
+| `mdcbalintern1` · `mdcbalintern2` · `mdcbalintern3` | that supervisor's three interns |
 | `system` | non-login automation account |
+
+**`CabmbSupervisorDemoSeeder` is the clean supervisor world under
+`mdcbalbero`.** The other CABM-B supervisors from `CabmbUsersDemoSeeder` are
+realistic but their logins (`cabmb.sup.bsa`, `cabmb.sup.om2`, …) are awkward to
+type and impossible to remember mid-demo. This one follows the `mdc*` convention
+and gives a single supervisor a three-intern roster in Balbero's **BSBA-FM**
+batch, so coordinator, supervisor and students all see each other.
+
+It uses its **own** company deliberately: a company may have at most one
+login-bearing supervisor (`guardSingleLogin`), so attaching `mdcbalsup` to a
+company that already has one would be rejected by the app's own rule. The
+company also carries a **named-only** contact (Mr. Elmer Bautista) so the
+login-bearing vs named-only split is visible with no setup.
+
+Both demo coordinators now have `dtr_enabled = true` so every role is testable
+end to end. The opt-out is demonstrated live by switching it off in the
+coordinator's own account menu, which is the real flow anyway.
 
 **Intake-flow demo** (`CabmbIntakeDemoSeeder`, CABM-B under Balbero, both
 NOT-enrolled, re-armed each seed): `mdcintake` has a **draft** sheet (log in
@@ -1777,9 +2345,12 @@ naming a `supervisor_name` deliberately distinct from that company's login
 supervisor — so it sits in Balbero's Submitted queue ready to **Accept**, a live
 demonstration of the login-vs-named-individual split.
 
-A one-off `PreOralDefenseDemoSeeder` exists but is deliberately **not** registered
-in `DatabaseSeeder`; run it directly with `--class=`. See
-`docs/PRE-ORAL-DEFENSE-DEMO-GUIDE.txt`.
+**Removed 2026-08-20** as dead weight: the one-off `PreOralDefenseDemoSeeder`
+(and its `docs/PRE-ORAL-DEFENSE-DEMO-GUIDE.txt`), plus `DepartmentSeeder` and
+`ProgramSeeder`, which `DepartmentProgramSeeder` had superseded and which
+nothing referenced. Every seeder still present is registered in
+`DatabaseSeeder` — except `ProductionSeeder`, which is deployment-only and must
+never be run alongside the demo set.
 
 ## Workflow Preferences (project owner)
 

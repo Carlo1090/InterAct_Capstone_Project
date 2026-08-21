@@ -18,6 +18,8 @@ use App\Http\Controllers\Coordinator\CoordinatorDashboardController;
 use App\Http\Controllers\Coordinator\CoordinatorInfoSheetController;
 use App\Http\Controllers\Coordinator\CoordinatorJournalActivityController;
 use App\Http\Controllers\Coordinator\CoordinatorWeeklyJournalController;
+use App\Http\Controllers\Coordinator\DtrMonitorController;
+use App\Http\Controllers\Coordinator\DtrPreferenceController;
 use App\Http\Controllers\Coordinator\EnrollmentController;
 use App\Http\Controllers\Coordinator\GroupInfoSheetController;
 use App\Http\Controllers\Coordinator\HteReportController;
@@ -25,6 +27,7 @@ use App\Http\Controllers\Coordinator\JournalTemplateController;
 use App\Http\Controllers\CronController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\Student\DtrController;
 use App\Http\Controllers\Student\JournalCalendarController;
 use App\Http\Controllers\Student\JournalEntryController;
 use App\Http\Controllers\Student\ReminderPreferenceController;
@@ -32,6 +35,8 @@ use App\Http\Controllers\Student\StudentDashboardController;
 use App\Http\Controllers\Student\StudentInfoSheetController;
 use App\Http\Controllers\Student\WeeklyActivityLogController;
 use App\Http\Controllers\Student\WeeklyLogController;
+use App\Http\Controllers\Supervisor\DtrGeofenceController;
+use App\Http\Controllers\Supervisor\DtrReviewController;
 use App\Http\Controllers\Supervisor\SupervisorDashboardController;
 use App\Http\Controllers\Supervisor\SupervisorInternController;
 use App\Http\Controllers\Supervisor\SupervisorJournalController;
@@ -203,6 +208,16 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::get('hte/{academicYear}/pdf', [HteReportController::class, 'pdf']);
         Route::get('hte/{academicYear}', [HteReportController::class, 'show']);
         Route::post('hte/{academicYear}', [HteReportController::class, 'save']);
+
+        // Read-only DTR monitoring. Corrections belong to the supervisor who
+        // was actually at the workplace; 'sites' exists so a coordinator can
+        // check a geofence is where the company is.
+        Route::get('dtr', [DtrMonitorController::class, 'index']);
+        Route::get('dtr/sites', [DtrMonitorController::class, 'sites']);
+
+        // The coordinator's own on/off switch for the whole feature.
+        Route::get('dtr-preference', [DtrPreferenceController::class, 'show']);
+        Route::put('dtr-preference', [DtrPreferenceController::class, 'update']);
     });
 
 Route::middleware(['auth:sanctum', 'role:student'])
@@ -247,6 +262,13 @@ Route::middleware(['auth:sanctum', 'role:student', 'infosheet.approved'])
         Route::put('weekly-activity-logs/{weeklyActivityLog}/entries/{entry}', [WeeklyActivityLogController::class, 'updateEntry']);
         Route::delete('weekly-activity-logs/{weeklyActivityLog}/entries/{entry}', [WeeklyActivityLogController::class, 'destroyEntry']);
         Route::patch('weekly-activity-logs/{weeklyActivityLog}/entries-reorder', [WeeklyActivityLogController::class, 'reorderEntries']);
+
+        // Daily Time Record. 'punch' is the only write: it toggles clock-in /
+        // clock-out against a scanned QR site token, so both ends of a shift
+        // carry coordinates. There is deliberately no location-free clock-out.
+        Route::get('dtr', [DtrController::class, 'show']);
+        Route::get('dtr/scan', [DtrController::class, 'resolve']);
+        Route::post('dtr/punch', [DtrController::class, 'punch']);
     });
 
 Route::middleware(['auth:sanctum', 'role:supervisor'])
@@ -261,4 +283,17 @@ Route::middleware(['auth:sanctum', 'role:supervisor'])
         Route::get('journals/{weeklyLog}/pdf', [SupervisorJournalController::class, 'pdf']);
         Route::post('journals/{weeklyLog}/approve', [SupervisorJournalController::class, 'approve']);
         Route::post('journals/{weeklyLog}/return', [SupervisorJournalController::class, 'returnLog']);
+
+        // DTR clock-in sites and their printable QR codes. The literal
+        // 'dtr/sessions' segments are registered before any {geofence}
+        // wildcard could swallow them.
+        Route::get('dtr/sessions', [DtrReviewController::class, 'index']);
+        Route::post('dtr/sessions/{session}/adjust', [DtrReviewController::class, 'adjust']);
+        Route::post('dtr/sessions/{session}/void', [DtrReviewController::class, 'void']);
+
+        Route::get('dtr/geofences', [DtrGeofenceController::class, 'index']);
+        Route::post('dtr/geofences', [DtrGeofenceController::class, 'store']);
+        Route::get('dtr/geofences/{geofence}/qr', [DtrGeofenceController::class, 'qr']);
+        Route::put('dtr/geofences/{geofence}', [DtrGeofenceController::class, 'update']);
+        Route::delete('dtr/geofences/{geofence}', [DtrGeofenceController::class, 'destroy']);
     });

@@ -26,6 +26,23 @@ class User extends Authenticatable
     use HasApiTokens, HasFactory, Notifiable;
 
     /**
+     * Why a coordinator's programme opted out of the QR Daily Time Record.
+     *
+     * A fixed vocabulary rather than free text so an admin can compare one
+     * department against another; users.dtr_disabled_note carries the
+     * programme-specific detail alongside it.
+     *
+     * @var array<string, string>
+     */
+    public const DTR_DISABLED_REASONS = [
+        'no_fixed_workplace' => 'Interns have no fixed workplace',
+        'rotating_assignments' => 'Interns rotate across several sites',
+        'recorded_on_paper' => 'Hours are recorded on a signed paper sheet',
+        'location_not_collected' => 'We would rather not collect intern location',
+        'other' => 'Another reason',
+    ];
+
+    /**
      * @var list<string>
      */
     protected $fillable = [
@@ -36,6 +53,14 @@ class User extends Authenticatable
         'role',
         'student_id_number',
         'program_id',
+        // Coordinator-only: whether their batches use the QR/geofence Daily
+        // Time Record. Some programmes place interns with no fixed workplace,
+        // where a location-anchored DTR cannot apply.
+        'dtr_enabled',
+        // …and, when it is off, why. Both are cleared whenever the DTR is
+        // switched back on, so a reason can never outlive its decision.
+        'dtr_disabled_reason',
+        'dtr_disabled_note',
         'is_active',
         'must_change_password',
         'avatar_path',
@@ -68,6 +93,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_active' => 'boolean',
             'must_change_password' => 'boolean',
+            'dtr_enabled' => 'boolean',
         ];
     }
 

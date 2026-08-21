@@ -12,9 +12,11 @@ use App\Http\Requests\Student\UpdateWeeklyActivityLogRequest;
 use App\Models\User;
 use App\Models\WeeklyActivityEntry;
 use App\Models\WeeklyActivityLog;
+use App\Services\DtrService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Symfony\Component\HttpFoundation\Response;
 
 class WeeklyActivityLogController extends Controller
@@ -38,6 +40,8 @@ class WeeklyActivityLogController extends Controller
      */
     private const MIN_FORM_ROWS = 5;
 
+    public function __construct(private readonly DtrService $dtr) {}
+
     public function index(Request $request): JsonResponse
     {
         $logs = WeeklyActivityLog::where('student_id', $request->user()->id)
@@ -56,8 +60,25 @@ class WeeklyActivityLogController extends Controller
             return response()->json(['message' => 'You are not currently enrolled in an active OJT batch.'], 422);
         }
 
+        $validated = $request->validated();
+
+        // Prefill the hours from what the DTR actually recorded for this
+        // period — but only when the student left the field empty, and only
+        // as a starting value. This form is a paper facsimile the supervisor
+        // signs by hand, so a wrong total (a forgotten clock-out, a session
+        // still awaiting adjustment) has to stay correctable before it is
+        // printed. Nothing here ever overwrites a typed figure, and the DTR's
+        // own sum remains the authority for OJT progress.
+        if (($validated['no_of_hours'] ?? null) === null) {
+            $suggested = $this->suggestedHours($user, $enrollment->batch_id, $validated['week_start'] ?? null);
+
+            if ($suggested !== null) {
+                $validated['no_of_hours'] = $suggested;
+            }
+        }
+
         $log = WeeklyActivityLog::create([
-            ...$request->validated(),
+            ...$validated,
             'student_id' => $user->id,
             'batch_id' => $enrollment->batch_id,
         ]);
@@ -72,7 +93,30 @@ class WeeklyActivityLogController extends Controller
         return response()->json([
             ...$weeklyActivityLog->load(['entries' => fn ($query) => $query->orderBy('sort_order')])->toArray(),
             'header' => $this->displayHeader($request->user()),
+            // Advisory only: what the DTR recorded for this period, so the
+            // student can see the two disagree and decide which is right.
+            // Null when DTR is not in use for their batch.
+            'dtr_hours' => $this->suggestedHours(
+                $request->user(),
+                $weeklyActivityLog->batch_id,
+                $weeklyActivityLog->week_start?->toDateString(),
+            ),
         ]);
+    }
+
+    /**
+     * Hours the DTR banked inside the Mon-Sun week containing $weekStart, or
+     * null when DTR does not apply to this student or the period is unknown.
+     */
+    private function suggestedHours(User $student, ?int $batchId, ?string $weekStart): ?float
+    {
+        if ($batchId === null || $weekStart === null || ! $this->dtr->appliesTo($student)) {
+            return null;
+        }
+
+        $minutes = $this->dtr->minutesInWeek($student->id, $batchId, Carbon::parse($weekStart));
+
+        return $minutes > 0 ? round($minutes / 60, 1) : null;
     }
 
     public function update(UpdateWeeklyActivityLogRequest $request, WeeklyActivityLog $weeklyActivityLog): JsonResponse

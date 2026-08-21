@@ -62,6 +62,10 @@ class UserController extends Controller
             'program_id' => ['nullable', 'exists:programs,id'],
             'student_id_number' => ['nullable', 'string', 'max:30', 'unique:users,student_id_number'],
             'department_id' => ['required_if:role,coordinator', 'exists:departments,id'],
+            // The OJT coordinator's DTR preference, chosen at account setup.
+            // Meaningful for coordinators only — a programme placing interns
+            // with no fixed workplace cannot use a location-anchored DTR.
+            'dtr_enabled' => ['nullable', 'boolean'],
         ]);
 
         // Collected as First/Middle/Family Name (matching the Student Information
@@ -73,10 +77,15 @@ class UserController extends Controller
             ->implode(' ');
 
         $user = User::create([
-            ...collect($validated)->except(['department_id', 'first_name', 'middle_name', 'last_name'])->all(),
+            ...collect($validated)->except(['department_id', 'first_name', 'middle_name', 'last_name', 'dtr_enabled'])->all(),
             'name' => $name,
             'password' => Hash::make($validated['password']),
             'is_active' => true,
+            // Only a coordinator carries this preference; leaving it off every
+            // other role keeps a meaningless true out of the record.
+            'dtr_enabled' => $validated['role'] === 'coordinator'
+                ? (bool) ($validated['dtr_enabled'] ?? false)
+                : false,
         ]);
 
         if ($user->isStudent()) {
