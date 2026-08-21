@@ -381,6 +381,15 @@ describes history.
 
 ### Changelog
 
+- **2026-08-20** — **Seeder cleanup.** `PreOralDefenseDemoSeeder` and
+  `docs/PRE-ORAL-DEFENSE-DEMO-GUIDE.txt` (both referenced in the 2026-08-05
+  entry below) were **deleted**, along with `DepartmentSeeder` and
+  `ProgramSeeder`, which `DepartmentProgramSeeder` had superseded and which
+  nothing referenced. The 2026-08-05 entry is kept as a record of what happened
+  at the time — the files it names no longer exist. Added
+  `CabmbSupervisorDemoSeeder` (a clean `mdcbalsup` supervisor world under
+  `mdcbalbero`); see `PROJECT.md` for the current demo account list.
+
 - **2026-08-05** — **Pre-oral-defense demo data pass on the local dev database** (`database/seeders/PreOralDefenseDemoSeeder.php`), one-off and deliberately **not** registered in `DatabaseSeeder::run()` — run directly via `php artisan db:seed --class=PreOralDefenseDemoSeeder`, idempotent/re-runnable. Full mysqldump backup taken first. No migration, route, or app-code change; purely data + one seeder file + one new doc. Walkthrough script and full credential list: **`docs/PRE-ORAL-DEFENSE-DEMO-GUIDE.txt`**. Summary of what changed:
   1. **CABM-B/Metrobank login supervisor renamed** `cabmb.sup.fm` → **`demosupervisor`** (username only — `cabmb.sup.fm@gmail.com` email untouched, so `CabmbWeeklyDemoSeeder`'s email-keyed lookup still resolves it).
   2. **Coordinator Balbero's Weekly Journals page had zero submitted rows** (all 32 pre-existing weekly logs in her scope were unsubmitted drafts) — 7 were marked submitted with a deliberate status spread across all four CABM-B programs (pending / approved / **returned-with-a-real-comment**), so her Weekly Journals page and every CABM-B supervisor's review queue have real content instead of an empty list.

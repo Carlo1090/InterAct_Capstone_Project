@@ -54,6 +54,9 @@ class DatabaseSeeder extends Seeder
         $this->call(CoordinatorPagesDemoSeeder::class);
         $this->call(SupervisorReviewDemoSeeder::class);
         $this->call(CabmbUsersDemoSeeder::class);
+        // Runs AFTER CabmbUsersDemoSeeder: it attaches to that seeder's
+        // coordinator, programs and BSBA-FM batch.
+        $this->call(CabmbSupervisorDemoSeeder::class);
         $this->call(CabmbWeeklyDemoSeeder::class);
         $this->call(SippBsaDemoSeeder::class);
         $this->call(CabmbIntakeDemoSeeder::class);

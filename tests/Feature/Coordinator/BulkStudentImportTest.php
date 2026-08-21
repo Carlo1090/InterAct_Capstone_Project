@@ -7,6 +7,7 @@ use App\Models\Department;
 use App\Models\Program;
 use App\Models\StudentInformationSheet;
 use App\Models\User;
+use App\Notifications\NewAccountCredentials;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Notification;
@@ -172,7 +173,7 @@ class BulkStudentImportTest extends TestCase
         $this->assertSame('created_and_emailed', $outcome['outcome']);
         $this->assertNotEmpty($outcome['temporary_password']);
 
-        Notification::assertSentTo($student, \App\Notifications\NewAccountCredentials::class);
+        Notification::assertSentTo($student, NewAccountCredentials::class);
     }
 
     public function test_confirm_skips_invalid_rows_and_creates_only_the_valid_ones(): void
@@ -306,7 +307,7 @@ class BulkStudentImportTest extends TestCase
         $this->assertNotSame($originalHash, $student->password);
         $this->assertTrue($student->must_change_password);
 
-        Notification::assertSentTo($student, \App\Notifications\NewAccountCredentials::class);
+        Notification::assertSentTo($student, NewAccountCredentials::class);
     }
 
     public function test_coordinator_cannot_resend_credentials_for_an_out_of_scope_student(): void
