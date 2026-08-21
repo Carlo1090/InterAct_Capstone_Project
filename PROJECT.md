@@ -24,11 +24,13 @@ This is a **monorepo** with three parts:
   `api/` subfolder; the Laravel app lives at the top level (`app/`, `routes/`,
   `database/`).
 - `web/` — Vue 3 SPA (Vite, Tailwind CSS v4, TypeScript).
-- `mobile/` — React Native / Expo app (Expo SDK 56, TypeScript, expo-router).
-  Currently the default Expo template scaffolding only — **deferred to Phase 7;
-  do not wire real auth or endpoints into it unless asked.** It has its own
+- `mobile/` — React Native / Expo app (Expo SDK **54**, TypeScript, expo-router).
+  **Phase 7 is under way and this is no longer scaffolding**: it is a real
+  student-only client wired to the live API via bearer-token auth
+  (`POST /api/mobile/login`), with offline caching and a queued-write outbox, and
+  it ships as an installable Android APK built on EAS. It has its own
   `mobile/CLAUDE.md` (importing `mobile/AGENTS.md`) requiring the versioned docs
-  at `docs.expo.dev/versions/v56.0.0/` be checked before any mobile code.
+  at `docs.expo.dev/versions/v54.0.0/` be checked before any mobile code.
 
 ## Tech Stack (do not change without asking)
 
@@ -1669,5 +1671,7 @@ in `DatabaseSeeder`; run it directly with `--class=`. See
 
 Seven-phase roadmap. Phases 1-2 (scaffolding, auth, base schema, admin
 identity/role management) are complete. Coordinator, student, and supervisor
-modules are built out. **Mobile (Expo) integration is Phase 7 — do not wire
-mobile auth or endpoints yet unless asked.**
+modules are built out. **Phase 7 (Expo mobile) is now ACTIVE, at the project
+owner's explicit direction** — mobile auth and endpoints are wired (see the
+`mobile/` bullet under Project Overview), so the former "do not wire mobile auth
+yet" hold no longer applies.
