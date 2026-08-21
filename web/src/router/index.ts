@@ -26,6 +26,29 @@ const router = createRouter({
       component: () => import('@/pages/LoginPage.vue'),
       meta: { title: 'Login' },
     },
+    /*
+     * Password reset. Both are public — carrying `requiresAuth` would bounce a
+     * locked-out user to /login, which is the one place they cannot get past.
+     *
+     * The token path is '/password-reset/:token', NOT '/reset-password': it has
+     * to match the URL AppServiceProvider::boot() builds into the email
+     * (`{FRONTEND_URL}/password-reset/{token}?email=...`), and it deliberately
+     * differs from the API's own POST path so the deployed rewrite cannot
+     * swallow the page load. The credentials POSTs go to '/auth/forgot-password'
+     * and '/auth/reset-password' for the same reason '/auth/login' exists.
+     */
+    {
+      path: '/forgot-password',
+      name: 'forgot-password',
+      component: () => import('@/pages/ForgotPasswordPage.vue'),
+      meta: { title: 'Forgot Password' },
+    },
+    {
+      path: '/password-reset/:token',
+      name: 'password-reset',
+      component: () => import('@/pages/ResetPasswordPage.vue'),
+      meta: { title: 'Reset Password' },
+    },
     {
       path: '/admin',
       component: () => import('@/layouts/AdminLayout.vue'),

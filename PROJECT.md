@@ -322,14 +322,98 @@ Two things distinguish a bulk-imported account from a manually-created one:
   everywhere else, not a bug.
 
 Each row's outcome in the `confirm` response is one of `created_and_emailed`
-/ `created_email_failed` / `skipped_invalid` — a mail failure never undoes
-the account it belongs to (each row is created independently, not inside one
-shared transaction across the whole file). The response also carries a
+/ `created_email_failed` / `skipped_invalid`. **ONE ROW IS ONE TRANSACTION,
+and there is deliberately no transaction spanning the file** —
+`createOne()` wraps the user + profile + draft-info-sheet writes in
+`DB::transaction()` while the per-row `catch` in `confirm()` keeps a failure
+from rolling back rows already created before it. Before that wrapper existed,
+a throw after `User::create` (the profile update, `scaffoldIntendedSheet`)
+left an account behind with **no draft info sheet**, i.e. no intended batch to
+be Accepted into, while the response said "Could not be created — please retry
+this row in a new upload" and the retry then failed validation with "already in
+use". The advice could not be followed and the student was stranded.
+**`$user->notify()` stays OUTSIDE the transaction** — a dead SMTP credential
+must never roll back an otherwise complete account. The response also carries a
 one-time credentials table (ID number, email, temp password) that the
 frontend renders and offers as a client-side CSV download — never persisted
 server-side, and never run through `useFormDraft`/sessionStorage, matching
 the project's existing "never persist a credential" rule
 (`lib/formDraft.ts`).
+
+**THE ROSTER IS READ FROM ONE WORKSHEET, and `StudentBulkImport::collection()`
+is what picks it.** `Reader::loadSpreadsheet()` does
+`array_fill(0, getSheetCount(), $import)` for any import that is not
+`WithMultipleSheets` — it hands EVERY worksheet to the same object, so
+`collection()` fires once per sheet. Assigning `$this->rows` unconditionally
+therefore let the **last** sheet overwrite the roster, and a workbook carrying
+an "Instructions" tab — **or merely the empty trailing "Sheet2" that Excel and
+LibreOffice add by default** — imported ZERO rows and reported it as a
+successful preview of an empty file, with no error anywhere. The rule now is:
+the first sheet carrying a `student_id_number` heading wins outright; failing
+that, the first non-empty sheet is held provisionally and a later real roster
+replaces it; a blank sheet never wins.
+
+**Do NOT "simplify" this by implementing `WithMultipleSheets` and returning
+`[0 => $this]`.** An import that returns itself from `sheets()` sends
+`ColumnCollection::requiresStyleInformation()` into unbounded recursion
+(it walks `sheets()` looking for `WithColumns`), which exhausts memory before a
+single row is read. Verified, not theorised.
+
+This escaped review for the same reason the cache-object bug did: **every test
+in `BulkStudentImportTest` uploads CSV, and a CSV has no worksheets** for the
+overwrite to happen across. `tests/Feature/Coordinator/BulkStudentImportFileFormatTest.php`
+exists to cover the file as a whole and writes **real `.xlsx` files** via
+PhpSpreadsheet — keep it, and keep at least one genuine `.xlsx` case in it.
+
+Three other file-level failures now return a **422 naming the problem** rather
+than a wall of identical row errors or a 500, all raised as
+`App\Exceptions\BulkImportFileException` from the service and caught in the
+controller:
+
+- **An unreadable file** (truncated download, damaged or password-protected
+  workbook) used to escape as a raw PhpSpreadsheet reader exception. The
+  `mimes` rule catches the easy shapes first, but not the ones that matter —
+  a protected `.xlsx` sniffs as a perfectly good `.xlsx` and throws on read.
+- **A missing or renamed heading** ("E-mail" instead of "Email") used to
+  surface as the SAME row-level error on every row, with nothing pointing at
+  row 1 where the actual mistake is. Named once instead.
+- **A file with no data rows** (headings only, or the roster left on a sheet
+  we did not choose) says so, instead of rendering "0 ready to create".
+
+Two row-level rules also changed: **Sex accepts `M`/`F`** alongside the full
+words (a registrar export routinely abbreviates it, and rejecting it meant
+hand-editing every row), and the **already-in-use email check is now
+`LOWER(email)`**, matching the in-file duplicate check — a plain `where()` is
+case-sensitive under SQLite, so an address differing only in case slipped past
+validation and died on the unique index, surfacing as the generic "Could not be
+created" rather than naming the clash.
+
+`confirm()`'s `set_time_limit()` is **sized from the row count**
+(`BASE_SECONDS + rows × SECONDS_PER_ROW`), not a flat 120s. A full 100-row file
+sends 100 messages inline (`QUEUE_CONNECTION=sync`, no worker), which at Gmail's
+pace passes two minutes — and PHP then killed the request MID-LOOP, leaving the
+accounts created but returning no response, so **the one-time credentials table
+was lost for every student in the file** and each needed an individual Resend.
+This governs PHP only; a reverse proxy keeps its own timeout.
+
+**"A student never got their welcome email" now has THREE answers, and the
+student can reach the first one themselves.** In order of who has to act:
+
+1. **The student resets their own password** — "Forgot password?" on the login
+   page. See Password Reset below. This is the only one that needs nobody else,
+   and until it was built there was no such path at all.
+2. **The coordinator hits Resend** on the Interns tab (below).
+3. **The admin relays a password by hand** — `issueTemporaryPassword`, the only
+   action that ALWAYS surfaces the password on screen. This is the escape
+   hatch for the case the other two cannot cover: SMTP reports success but the
+   mail never lands (spam, a mistyped address, a silent drop), so the
+   coordinator sees "Credentials resent" and has nothing to read out. It is
+   **admin-only**, so a coordinator hitting that case has to escalate.
+
+Worth knowing: a student created through the **manual** `createAccount` flow can
+have `email = null`, and then neither 1 nor 2 is possible — Resend 422s and
+there is no address to reset against. Bulk-imported students always have one,
+since Email is a required column.
 
 **"Resend Credentials"** is the fix for "a student says they never got their
 welcome email," without needing a whole spreadsheet re-upload for one
@@ -1274,6 +1358,70 @@ different recipient string that still lands in your own mail.
 has no `name`, since `mail:test` routes it to a bare address
 (`AnonymousNotifiable`) rather than a `User`.
 
+## Password Reset — the student's own way back in
+
+Built 2026-08-21. **Every endpoint below already existed and worked; what did
+not exist was any way to reach them.** The SPA had no forgot-password page, no
+link on the login form, and no route matching the URL the reset email carries —
+so a student who never received their credentials had *no* self-service option
+and had to find their coordinator. `password_reset_tokens` has been in
+`create_users_table` since the beginning.
+
+- **Pages**: `ForgotPasswordPage.vue` at `/forgot-password` and
+  `ResetPasswordPage.vue` at `/password-reset/:token`, both public (marking
+  them `requiresAuth` would bounce a locked-out user to `/login`, the one place
+  they cannot get past). They share `components/auth/AuthCardShell.vue` — a
+  still version of LoginPage's frosted card, deliberately without its
+  pointer-tilt, entrance stagger and sheen.
+- **The token path is `/password-reset/:token`, NOT `/reset-password`.** It has
+  to match the URL `AppServiceProvider::boot()`'s `ResetPassword::createUrlUsing`
+  builds (`{FRONTEND_URL}/password-reset/{token}?email=...`), and it
+  deliberately differs from the API's own POST path so the deployed rewrite
+  cannot swallow the page load. **Both halves of that URL are load-bearing** —
+  `password_reset_tokens` is keyed by email, so the token alone identifies
+  nothing.
+- **The POSTs go to `/auth/forgot-password` and `/auth/reset-password`**, which
+  the Vercel rewrite and the Vite dev proxy map back to the API's real
+  `/forgot-password` and `/reset-password`. Exactly the `/auth/login`
+  indirection and for exactly the same reason: `/forgot-password` is now also
+  the SPA's own page route, and **rewrites match on path, never on method**, so
+  proxying it wholesale would send a page load (GET) to Laravel, which only
+  defines POST there.
+
+### The exception handler had to change first, and it fixed a login bug too
+
+`bootstrap/app.php`'s `shouldRenderJsonWhen()` **fully REPLACES** Laravel's
+default `expectsJson()` check, and listed only `api/*`. The SPA's auth
+endpoints are **web** routes, so every failure on them came back as a **302 HTML
+redirect even for an XHR asking for JSON**. Success returned clean JSON; only
+the unhappy path broke, which is why it went unnoticed.
+
+It now also renders JSON for `login`, `logout`, `forgot-password` and
+`reset-password` when the request asks for it. Listed **explicitly rather than
+by prefix**: `auth/google/*` must keep rendering redirects, because those three
+routes genuinely ARE top-level browser navigations.
+
+Consequences, both real:
+
+- Without it a reset form had no way to show "we can't find a user with that
+  email address" or that a token had expired.
+- **`LoginPage.vue` was a blanket `catch { 'Invalid credentials.' }`** — not
+  merely lazy, since there was no message to read. Both halves are fixed, and
+  the difference matters most for a **deactivated account**: `LoginRequest`
+  rejects it with its own reason, but the student was told their password was
+  wrong, and so went and asked for a credentials resend that could not possibly
+  help them.
+
+`/forgot-password` and `/reset-password` are **`throttle:6,1`**. The `api`
+group's limiter does not cover web routes, and the password broker's own
+throttle (`config/auth.php`, 60s) only rate-limits repeats of the SAME address —
+it does nothing about a caller walking a list, which both mails real students
+and reports back whether each address is on file.
+
+Coverage: `tests/Feature/Auth/PasswordResetTest.php`, which pins the emailed
+URL's shape, the reset round trip, token replay, the throttle, and above all
+that these routes answer in **JSON** rather than redirecting.
+
 ## Google OAuth — email verification + link-only sign-in
 
 `laravel/socialite`, via `App\Http\Controllers\Auth\GoogleController`. Two
@@ -1801,9 +1949,12 @@ failing warm read never executed under test. The regression test forces the
 ### Dev proxy & CORS
 
 `web/vite.config.js` proxies `/api`, `/sanctum`, `/auth/google`, `/auth/login`,
-`/auth/logout`, `/forgot-password`, `/reset-password` to `VITE_BACKEND_URL`
-(default `http://localhost:8000`), so the Vite dev server makes same-origin
-requests. `FRONTEND_URL` and `SANCTUM_STATEFUL_DOMAINS` in `.env` must match
+`/auth/logout`, `/auth/forgot-password`, `/auth/reset-password` to
+`VITE_BACKEND_URL` (default `http://localhost:8000`), so the Vite dev server
+makes same-origin requests. The last four **rewrite** to the API's real
+`/login`, `/logout`, `/forgot-password` and `/reset-password` — all four of
+those paths are also SPA page routes, so they cannot be proxied under their own
+names (see Password Reset above). `FRONTEND_URL` and `SANCTUM_STATEFUL_DOMAINS` in `.env` must match
 wherever `web/` actually runs. CORS `allowed_origins` is pinned to
 `FRONTEND_URL`, never `*`.
 
@@ -1838,9 +1989,11 @@ the data. The only thing lost on a redeploy is uploaded avatars.
 ### The SPA-to-API model is a same-origin rewrite proxy, not cross-domain CORS
 
 `web/vercel.json` rewrites `/api/*`, `/sanctum/*`, `/auth/google/*`,
-`/auth/login`, `/auth/logout`, `/forgot-password`, `/reset-password` to the API
-host, plus a catch-all to `/index.html` for the SPA's `createWebHistory()` deep
-links. The browser therefore only ever sees one origin, which means **CORS never
+`/auth/login`, `/auth/logout`, `/auth/forgot-password`, `/auth/reset-password`
+to the API host, plus a catch-all to `/index.html` for the SPA's
+`createWebHistory()` deep links. **The catch-all is what serves
+`/forgot-password` and `/password-reset/:token` as pages** — those must NOT
+appear as rewrites, or the page load would be proxied to Laravel instead. The browser therefore only ever sees one origin, which means **CORS never
 fires, `SameSite=None` is not needed, and login does not depend on third-party
 cookies** (the fragile part of the cross-domain alternative — Safari and hardened
 browsers block them).

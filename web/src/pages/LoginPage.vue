@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { CSSProperties } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { ensureCsrfCookie, useAuthStore } from '@/stores/auth'
 import { roleRedirect } from '@/router/index.ts'
 import { consumeQueryParam, googleErrorMessage, googleLoginUrl } from '@/lib/googleAuth'
+import { categorizeError } from '@/lib/apiError'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -22,6 +23,13 @@ const errorMessage = ref('')
  * link they opened.
  */
 const noticeMessage = ref('')
+
+/**
+ * Deliberately separate from `noticeMessage`, which renders amber. A completed
+ * password reset is good news rather than the page's most actionable item, and
+ * the project's colour rule reserves amber for exactly one thing per page.
+ */
+const successMessage = ref('')
 const isLoading = ref(false)
 const showPassword = ref(false)
 
@@ -280,6 +288,13 @@ onMounted(() => {
       'That link is for a student account. Sign in with the student username to continue — you will be taken straight back.'
   }
 
+  // ResetPasswordPage sends them here after a successful reset. Without this
+  // the reset just dumps them on a login form with no confirmation that
+  // anything happened, and the natural reading is that it failed.
+  if (consumeQueryParam('reset')) {
+    successMessage.value = 'Your password has been reset. Sign in with your new password.'
+  }
+
   // Pre-fill from the previous visit to this tab. Assigning these triggers the
   // watchers above, which simply rewrite the identical value — harmless.
   const storedUsername = readStored(USERNAME_STORAGE_KEY)
@@ -323,6 +338,7 @@ const redirectTarget = (): string => {
 
 const login = async () => {
   errorMessage.value = ''
+  successMessage.value = ''
   isLoading.value = true
 
   try {
@@ -337,8 +353,20 @@ const login = async () => {
     // layout + page chunks have loaded; leaving it unawaited flipped the button
     // back to "Login" while the page was still visibly stationary.
     await router.push(redirectTarget())
-  } catch {
-    errorMessage.value = 'Invalid credentials. Please try again.'
+  } catch (error) {
+    // Now shows what the server actually said. This was a blanket
+    // `catch { 'Invalid credentials.' }`, which was not merely lazy: the API's
+    // exception handler only rendered JSON for api/* paths, so /login's
+    // ValidationException came back as a 302 HTML redirect and there was no
+    // message here to read. Both halves are fixed — bootstrap/app.php now
+    // renders JSON for the SPA's auth endpoints too — and the difference is
+    // load-bearing for a deactivated account, which LoginRequest rejects with
+    // its own reason. Told "invalid credentials", that student goes and asks
+    // for a password resend, which cannot possibly help them.
+    const { kind, message, fieldErrors } = categorizeError(error, 'Invalid credentials. Please try again.')
+
+    errorMessage.value =
+      kind === 'validation' ? (fieldErrors?.login?.[0] ?? message) : message
   } finally {
     isLoading.value = false
   }
@@ -573,6 +601,30 @@ const login = async () => {
                     </button>
                   </div>
                 </div>
+
+                <!--
+                  The only self-service way out of a lost or never-delivered
+                  password. Before this existed the whole reset flow was
+                  reachable on the API and unreachable from the app, so every
+                  student who never got their welcome email had to find their
+                  coordinator. Right-aligned under the password field, which is
+                  where a user who has just mistyped one looks next.
+                -->
+                <div class="mt-3 text-right">
+                  <RouterLink
+                    to="/forgot-password"
+                    class="rounded text-sm font-medium text-blue-900 transition hover:text-blue-700 focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:outline-none"
+                  >
+                    Forgot password?
+                  </RouterLink>
+                </div>
+
+                <p
+                  v-if="successMessage"
+                  class="mt-6 rounded-xl border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-sm text-emerald-800"
+                >
+                  {{ successMessage }}
+                </p>
 
                 <p
                   v-if="noticeMessage"

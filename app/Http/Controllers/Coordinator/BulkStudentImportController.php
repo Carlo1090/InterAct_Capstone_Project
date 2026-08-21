@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Coordinator;
 
+use App\Exceptions\BulkImportFileException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Coordinator\BulkImportStudentsRequest;
 use App\Models\Batch;
@@ -12,6 +13,7 @@ use App\Notifications\NewAccountCredentials;
 use App\Services\EnrollmentService;
 use App\Services\StudentBulkImportService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -27,6 +29,17 @@ use Throwable;
  */
 class BulkStudentImportController extends Controller
 {
+    /**
+     * Wall-clock budget per row, covering the account write plus one inline
+     * SMTP send. Gmail runs roughly 1-2s per message and nothing here is
+     * queued (QUEUE_CONNECTION=sync), so a flat cap could not stretch to
+     * cover a full file.
+     */
+    private const SECONDS_PER_ROW = 3;
+
+    /** Fixed overhead for parsing the spreadsheet before the loop starts. */
+    private const BASE_SECONDS = 60;
+
     public function __construct(
         private readonly StudentBulkImportService $importer,
         private readonly EnrollmentService $enrollments,
@@ -39,12 +52,14 @@ class BulkStudentImportController extends Controller
      */
     public function preview(BulkImportStudentsRequest $request): JsonResponse
     {
-        $result = $this->importer->parseAndValidate($request->file('file'));
+        try {
+            $result = $this->importer->parseAndValidate($request->file('file'));
+        } catch (BulkImportFileException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
 
         if ($result['tooMany']) {
-            return response()->json([
-                'message' => "This file has {$result['count']} rows. Please split it into batches of ".StudentBulkImportService::MAX_ROWS.' or fewer.',
-            ], 422);
+            return $this->tooManyResponse($result['count']);
         }
 
         $rows = collect($result['rows']);
@@ -67,8 +82,6 @@ class BulkStudentImportController extends Controller
      */
     public function confirm(BulkImportStudentsRequest $request): JsonResponse
     {
-        set_time_limit(120);
-
         $validated = $request->validated();
 
         $batch = Batch::where('id', $validated['batch_id'])
@@ -77,13 +90,24 @@ class BulkStudentImportController extends Controller
 
         abort_unless($batch !== null, 422, 'The selected batch does not belong to that program.');
 
-        $result = $this->importer->parseAndValidate($request->file('file'));
+        try {
+            $result = $this->importer->parseAndValidate($request->file('file'));
+        } catch (BulkImportFileException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
 
         if ($result['tooMany']) {
-            return response()->json([
-                'message' => "This file has {$result['count']} rows. Please split it into batches of ".StudentBulkImportService::MAX_ROWS.' or fewer.',
-            ], 422);
+            return $this->tooManyResponse($result['count']);
         }
+
+        // Sized to the work actually in front of us, not a flat 120s. A full
+        // 100-row file sends 100 messages inline; at Gmail's pace that alone
+        // can pass two minutes, and PHP then killed the request MID-LOOP —
+        // leaving the accounts already created but returning no response, so
+        // the one-time credentials table was lost for every student in the
+        // file and each one needed an individual Resend. Note this governs
+        // PHP only: a reverse proxy in front of the app keeps its own timeout.
+        set_time_limit(self::BASE_SECONDS + (count($result['rows']) * self::SECONDS_PER_ROW));
 
         $outcomes = [];
         $createdCount = 0;
@@ -120,43 +144,67 @@ class BulkStudentImportController extends Controller
         ]);
     }
 
+    private function tooManyResponse(int $count): JsonResponse
+    {
+        return response()->json([
+            'message' => "This file has {$count} rows. Please split it into batches of ".StudentBulkImportService::MAX_ROWS.' or fewer.',
+        ], 422);
+    }
+
     private function createOne(array $row, Batch $batch, int $programId): array
     {
         $name = collect([$row['first_name'], $row['middle_name'], $row['last_name']])->filter()->implode(' ');
         $temporaryPassword = Str::password(12);
 
-        $user = User::create([
-            'name' => $name,
-            'username' => $row['student_id_number'],
-            'email' => $row['email'],
-            'password' => $temporaryPassword,
-            'role' => 'student',
-            'program_id' => $programId,
-            'student_id_number' => $row['student_id_number'],
-            'is_active' => true,
-            'must_change_password' => true,
-        ]);
+        // ONE ROW IS ONE TRANSACTION, and the row's own catch block above is
+        // what keeps that from becoming a whole-file transaction. Without it a
+        // failure in the profile or info-sheet write left the users row
+        // committed and nothing else: the response said "Could not be created
+        // — please retry this row in a new upload", but the retry then failed
+        // validation with "This Student ID Number is already in use", so the
+        // coordinator was told to do the one thing that could not work, and
+        // the student was left with an account carrying no draft info sheet
+        // (and so no intended batch, which is what Accept enrolls from).
+        $user = DB::transaction(function () use ($row, $batch, $programId, $name, $temporaryPassword) {
+            $user = User::create([
+                'name' => $name,
+                'username' => $row['student_id_number'],
+                'email' => $row['email'],
+                'password' => $temporaryPassword,
+                'role' => 'student',
+                'program_id' => $programId,
+                'student_id_number' => $row['student_id_number'],
+                'is_active' => true,
+                'must_change_password' => true,
+            ]);
 
-        // The UserObserver already auto-created the profile on user create,
-        // so set middle_name/sex explicitly (firstOrCreate would no-op on
-        // the existing row and never persist them) — same pattern as the
-        // manual createAccount flow.
-        $profile = StudentProfile::firstOrCreate(
-            ['user_id' => $user->id],
-            ['student_id_number' => $user->student_id_number],
-        );
-        $profile->update([
-            'middle_name' => $row['middle_name'],
-            'sex' => $row['sex'],
-        ]);
+            // The UserObserver already auto-created the profile on user create,
+            // so set middle_name/sex explicitly (firstOrCreate would no-op on
+            // the existing row and never persist them) — same pattern as the
+            // manual createAccount flow.
+            $profile = StudentProfile::firstOrCreate(
+                ['user_id' => $user->id],
+                ['student_id_number' => $user->student_id_number],
+            );
+            $profile->update([
+                'middle_name' => $row['middle_name'],
+                'sex' => $row['sex'],
+            ]);
 
-        $this->enrollments->scaffoldIntendedSheet($user, $batch, [
-            'first_name' => $row['first_name'],
-            'middle_name' => $row['middle_name'],
-            'last_name' => $row['last_name'],
-            'sex' => $row['sex'],
-        ]);
+            $this->enrollments->scaffoldIntendedSheet($user, $batch, [
+                'first_name' => $row['first_name'],
+                'middle_name' => $row['middle_name'],
+                'last_name' => $row['last_name'],
+                'sex' => $row['sex'],
+            ]);
 
+            return $user;
+        });
+
+        // Deliberately OUTSIDE the transaction: a dead SMTP credential must
+        // never roll back an account that is otherwise complete. The row
+        // reports created_email_failed and the password is handed back in the
+        // one-time credentials table instead.
         $emailed = true;
 
         try {

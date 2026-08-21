@@ -53,7 +53,27 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        /*
+         * api/* always answers in JSON, browser navigation or not.
+         *
+         * The SPA's auth endpoints live OUTSIDE that prefix — they are web
+         * routes in routes/auth.php, reached through the '/auth/login' style
+         * proxy paths — so this callback (which fully REPLACES Laravel's
+         * default expectsJson() check) used to render their failures as a 302
+         * HTML redirect even for an XHR that asked for JSON. Every message on
+         * the unhappy path was therefore unreachable by the SPA: a deactivated
+         * account got LoginRequest's "This account has been deactivated." and
+         * the student saw "Invalid credentials. Please try again." instead,
+         * which sends them chasing password resets that cannot help. The
+         * password-reset pages need the same thing for "we can't find a user
+         * with that email address" and an expired token.
+         *
+         * Listed explicitly rather than by prefix: auth/google/* must keep
+         * rendering redirects, because those three routes ARE top-level
+         * browser navigations rather than XHR.
+         */
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request) => $request->is('api/*'),
+            fn (Request $request) => $request->is('api/*')
+                || ($request->expectsJson() && $request->is('login', 'logout', 'forgot-password', 'reset-password')),
         );
     })->create();

@@ -71,13 +71,22 @@ export default defineConfig(({ mode }) => {
         },
         // No '/register' entry: self-service registration was removed from the
         // API (see routes/auth.php), so proxying it would only forward to a 404.
-        '/forgot-password': {
+        //
+        // Password reset uses the SAME '/auth/*' indirection as login, and for
+        // the same reason: '/forgot-password' is now the SPA's own page route,
+        // so proxying that path wholesale would send a page load (a GET) to
+        // Laravel, which only defines POST there. The SPA owns
+        // '/forgot-password' and '/password-reset/:token' as pages; these two
+        // proxy-only paths carry the actual credentials POSTs.
+        '/auth/forgot-password': {
           target: backendUrl,
           changeOrigin: true,
+          rewrite: () => '/forgot-password',
         },
-        '/reset-password': {
+        '/auth/reset-password': {
           target: backendUrl,
           changeOrigin: true,
+          rewrite: () => '/reset-password',
         },
       },
     },

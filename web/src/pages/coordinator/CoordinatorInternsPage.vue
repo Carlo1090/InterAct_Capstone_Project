@@ -1354,7 +1354,8 @@ onMounted(() => {
                 @change="onBulkFileChange"
               />
               <p class="mt-1 text-xs text-slate-500">
-                Columns: First Name, Middle Name (optional), Family Name, Sex, Student ID Number, Email. Up to 100 rows per file.
+                Columns: First Name, Middle Name (optional), Family Name, Sex, Student ID Number, Email. Put the roster on
+                the first sheet, with the headings in row 1. Up to 100 rows per file.
                 <a href="/templates/student-bulk-import-template.csv" download class="font-semibold text-blue-600 hover:text-blue-700">Download template</a>
               </p>
             </div>
