@@ -29,6 +29,15 @@ export type AuthUser = {
   // Students only: true when they cleared intake but were dropped from their
   // batch (no active/completed enrollment) — the "enrollment inactive" state.
   student_paused?: boolean
+  // Students only: whether the QR/geofence Daily Time Record applies to them,
+  // resolved from their batch's coordinator. Carried on the user payload
+  // rather than fetched per page because StudentLayout filters the nav before
+  // any page loads.
+  student_dtr_enabled?: boolean
+  // Coordinators only: their own DTR preference, set at account setup. Some
+  // programmes place interns with no fixed workplace, where a location-anchored
+  // DTR cannot apply.
+  dtr_enabled?: boolean
 }
 
 type AuthState = {

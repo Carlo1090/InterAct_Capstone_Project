@@ -17,6 +17,7 @@ const navItems = [
   { label: 'Users', to: '/coordinator/users', badge: '', icon: 'people' },
   { label: 'Daily Journal Activities', to: '/coordinator/journal-activities', badge: '', icon: 'calendar' },
   { label: 'Weekly Journals', to: '/coordinator/weekly-journals', badge: '', icon: 'stack' },
+  { label: 'Daily Time Record', to: '/coordinator/dtr', badge: '', icon: 'map-pin' },
   { label: 'Journal Templates', to: '/coordinator/journal-templates', badge: '', icon: 'journals' },
   { label: 'Batches', to: '/coordinator/batches', badge: '', icon: 'briefcase' },
   { label: 'Partner Companies', to: '/coordinator/companies', badge: '', icon: 'building' },
@@ -174,6 +175,15 @@ onBeforeUnmount(() => {
             <rect v-if="item.icon === 'clipboard'" x="5.5" y="5" width="13" height="15" rx="1.5" stroke="currentColor" stroke-width="1.6" />
             <path v-if="item.icon === 'clipboard'" d="M9 5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1.2H9V5Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
             <path v-if="item.icon === 'clipboard'" d="M8.5 11h7M8.5 14.5h7M8.5 18h4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+
+            <path
+              v-if="item.icon === 'map-pin'"
+              d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linejoin="round"
+            />
+            <circle v-if="item.icon === 'map-pin'" cx="12" cy="10" r="2.5" stroke="currentColor" stroke-width="1.6" />
 
             <circle v-if="item.icon === 'profile'" cx="12" cy="8.5" r="3.5" stroke="currentColor" stroke-width="1.6" />
             <path v-if="item.icon === 'profile'" d="M4.5 19.5c1-3.6 3.8-5.5 7.5-5.5s6.5 1.9 7.5 5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />

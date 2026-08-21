@@ -111,6 +111,11 @@ const router = createRouter({
           meta: { title: 'Weekly Journals' },
         },
         {
+          path: 'dtr',
+          component: () => import('@/pages/coordinator/CoordinatorDtrPage.vue'),
+          meta: { title: 'Daily Time Record' },
+        },
+        {
           path: 'journal-templates',
           component: () => import('@/pages/coordinator/CoordinatorJournalTemplatesPage.vue'),
           meta: { title: 'Journal Templates' },
@@ -168,6 +173,11 @@ const router = createRouter({
           component: () => import('@/pages/supervisor/SupervisorInternsPage.vue'),
           meta: { title: 'Interns' },
         },
+        {
+          path: 'dtr',
+          component: () => import('@/pages/supervisor/SupervisorDtrPage.vue'),
+          meta: { title: 'Daily Time Record' },
+        },
       ],
     },
     {
@@ -207,6 +217,19 @@ const router = createRouter({
           meta: { title: 'Weekly and Time Log Summary' },
         },
         {
+          path: 'dtr',
+          component: () => import('@/pages/student/StudentDtrPage.vue'),
+          meta: { title: 'Daily Time Record' },
+        },
+        {
+          // The QR landing page. Registered BEFORE nothing in particular, but
+          // kept adjacent to /student/dtr so the pair stays obvious: a printed
+          // code opens this path with ?s=<token> in the phone's own browser.
+          path: 'dtr/scan',
+          component: () => import('@/pages/student/StudentDtrScanPage.vue'),
+          meta: { title: 'Clock In' },
+        },
+        {
           path: 'info-sheet',
           component: () => import('@/pages/student/StudentInfoSheetPage.vue'),
           meta: { title: 'Student Info Sheet' },
@@ -228,12 +251,25 @@ router.beforeEach(async (to) => {
     try {
       await auth.fetchUser()
     } catch {
-      return '/login'
+      // Remember where they were going. This is load-bearing for the DTR QR
+      // flow: a student scans a printed code with their phone camera, which
+      // opens the scan URL in whichever browser is default — very often one
+      // with no session. Without the round trip back, they log in and land on
+      // the dashboard with the site token gone, and the scan has to be redone.
+      return { path: '/login', query: { redirect: to.fullPath } }
     }
   }
 
   if (to.meta.role && auth.user?.role !== to.meta.role) {
-    return '/login'
+    // Carry the intended path, exactly as the unauthenticated branch above
+    // does. A bare '/login' silently ate the DTR site token whenever the phone
+    // held a NON-student session: a supervisor or coordinator opening a
+    // clock-in QR landed on a plain login form, and signing in as the student
+    // then went to the dashboard with the scan lost and nothing explaining
+    // why. Same open-redirect protection applies — LoginPage's
+    // redirectTarget() accepts only same-origin relative paths, and /login
+    // carries no requiresAuth, so there is no guard loop.
+    return { path: '/login', query: { redirect: to.fullPath, wrong_role: '1' } }
   }
 
   // A forced password change (e.g. an admin-issued temporary password) is no
@@ -246,12 +282,19 @@ router.beforeEach(async (to) => {
   // info-sheet page. Backend enforces this too. (The account popover — Edit
   // Profile/Change Password/Activity Log — stays reachable regardless, since
   // it's not a route.)
+  //
+  // A scan bounced here loses its site token, and the student cannot un-gate
+  // themselves — so ?from=scan is carried purely so the destination can say
+  // WHY their clock-in did not record, instead of looking like a random
+  // redirect away from the QR code they just scanned.
   if (
     auth.user?.role === 'student' &&
     auth.user?.student_gated &&
     to.path !== '/student/info-sheet'
   ) {
-    return '/student/info-sheet'
+    return to.path === '/student/dtr/scan'
+      ? { path: '/student/info-sheet', query: { from: 'scan' } }
+      : '/student/info-sheet'
   }
 
   // Dropped-from-batch state: a student past intake but with no active/completed
@@ -264,7 +307,9 @@ router.beforeEach(async (to) => {
     to.path !== '/student/paused' &&
     to.path !== '/student/info-sheet'
   ) {
-    return '/student/paused'
+    return to.path === '/student/dtr/scan'
+      ? { path: '/student/paused', query: { from: 'scan' } }
+      : '/student/paused'
   }
 
   document.title = `${pageTitle(to)} | InternTrack`

@@ -11,6 +11,7 @@ const navItems = [
   { label: 'Dashboard', to: '/supervisor/dashboard', badge: '', icon: 'dashboard' },
   { label: 'Journals', to: '/supervisor/journals', badge: '', icon: 'journals' },
   { label: 'Interns', to: '/supervisor/interns', badge: '', icon: 'people' },
+  { label: 'Time Record', to: '/supervisor/dtr', badge: '', icon: 'map-pin' },
 ]
 
 const auth = useAuthStore()
@@ -80,6 +81,15 @@ const userName = computed(() => auth.user?.name ?? 'Engr. Ramon Villanueva')
             <path v-if="item.icon === 'people'" d="M3.5 19c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
             <circle v-if="item.icon === 'people'" cx="16.5" cy="8.5" r="2.3" stroke="currentColor" stroke-width="1.4" />
             <path v-if="item.icon === 'people'" d="M15.2 14.7c2.3.3 3.9 1.7 4.4 4.3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+
+            <path
+              v-if="item.icon === 'map-pin'"
+              d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linejoin="round"
+            />
+            <circle v-if="item.icon === 'map-pin'" cx="12" cy="10" r="2.5" stroke="currentColor" stroke-width="1.6" />
 
             <circle v-if="item.icon === 'profile'" cx="12" cy="8.5" r="3.5" stroke="currentColor" stroke-width="1.6" />
             <path v-if="item.icon === 'profile'" d="M4.5 19.5c1-3.6 3.8-5.5 7.5-5.5s6.5 1.9 7.5 5.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />

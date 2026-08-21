@@ -1,17 +1,27 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { CSSProperties } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ensureCsrfCookie, useAuthStore } from '@/stores/auth'
 import { roleRedirect } from '@/router/index.ts'
 import { consumeQueryParam, googleErrorMessage, googleLoginUrl } from '@/lib/googleAuth'
 
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 
 const identifier = ref('')
 const password = ref('')
 const errorMessage = ref('')
+/**
+ * An informational notice, NOT a failure.
+ *
+ * Deliberately separate from `errorMessage`, which is watched to shake the card
+ * on bad credentials — nothing has gone wrong when the router sends someone
+ * here because the account signed in on this phone is the wrong role for the
+ * link they opened.
+ */
+const noticeMessage = ref('')
 const isLoading = ref(false)
 const showPassword = ref(false)
 
@@ -257,6 +267,19 @@ onMounted(() => {
   // The OAuth callback bounces failures back here as ?google_error=<code>.
   errorMessage.value = googleErrorMessage(consumeQueryParam('google_error'))
 
+  // The router sends a signed-in user here when their role does not match the
+  // page they opened. In practice this is one thing: a clock-in QR code opened
+  // on a phone already signed in as a supervisor or coordinator. Without an
+  // explanation the redirect looks like the code failed. consumeQueryParam
+  // strips the flag via history.replaceState, so a refresh cannot replay it.
+  //
+  // No automatic sign-out: replacing someone's session uninvited is not ours
+  // to do, and signing in through this form replaces it anyway.
+  if (consumeQueryParam('wrong_role')) {
+    noticeMessage.value =
+      'That link is for a student account. Sign in with the student username to continue — you will be taken straight back.'
+  }
+
   // Pre-fill from the previous visit to this tab. Assigning these triggers the
   // watchers above, which simply rewrite the identical value — harmless.
   const storedUsername = readStored(USERNAME_STORAGE_KEY)
@@ -274,6 +297,30 @@ onMounted(() => {
   })
 })
 
+/**
+ * Where to land after a successful sign-in.
+ *
+ * Normally the role's own dashboard. But the router guard stashes the intended
+ * path in ?redirect= when it bounces an unauthenticated visitor, and honouring
+ * it is what makes the DTR QR flow work: a student scans a printed code, the
+ * phone opens /student/dtr/scan?s=<token> in a browser with no session, and
+ * they must come back to that exact URL — token intact — rather than to the
+ * dashboard with the scan lost.
+ *
+ * Only same-origin relative paths are accepted. A `redirect` is attacker-supplied
+ * (it rides in on a URL), so anything protocol-relative or absolute is discarded
+ * to avoid turning the login page into an open redirect.
+ */
+const redirectTarget = (): string => {
+  const requested = route.query.redirect
+
+  if (typeof requested === 'string' && requested.startsWith('/') && !requested.startsWith('//')) {
+    return requested
+  }
+
+  return roleRedirect(auth.role)
+}
+
 const login = async () => {
   errorMessage.value = ''
   isLoading.value = true
@@ -289,7 +336,7 @@ const login = async () => {
     // screen. router.push resolves only after the guard passes AND the lazy
     // layout + page chunks have loaded; leaving it unawaited flipped the button
     // back to "Login" while the page was still visibly stationary.
-    await router.push(roleRedirect(auth.role))
+    await router.push(redirectTarget())
   } catch {
     errorMessage.value = 'Invalid credentials. Please try again.'
   } finally {
@@ -526,6 +573,13 @@ const login = async () => {
                     </button>
                   </div>
                 </div>
+
+                <p
+                  v-if="noticeMessage"
+                  class="mt-6 rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-800"
+                >
+                  {{ noticeMessage }}
+                </p>
 
                 <p
                   v-if="errorMessage"
