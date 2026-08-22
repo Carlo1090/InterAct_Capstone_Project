@@ -1095,8 +1095,17 @@ stop counting, and turning it back on restores the figures intact.
 
 ### QR generation
 
-`endroid/qr-code` **^6.1** (nothing QR-related existed before, not even
-transitively). Output defaults to **SVG**, which needs no GD and prints sharp at
+`endroid/qr-code` **^6.0** (nothing QR-related existed before, not even
+transitively). **Pinned to `^6.0`, not `^6.1`, and that is load-bearing: every
+6.1.x release requires PHP `^8.4`, while `Dockerfile` runs `php:8.3-apache`.**
+A `^6.1` lock built fine locally and then failed the Render Docker build
+outright at `composer install` ("Your lock file does not contain a compatible
+set of packages"). `composer.json` now also carries
+`config.platform.php = 8.3.33` so local resolution matches the deployment
+target and this class of mismatch cannot recur silently — **do not remove that
+pin, and do not bump this package to 6.1 without first moving the Dockerfile to
+PHP 8.4.**
+Output defaults to **SVG**, which needs no GD and prints sharp at
 any size — it stays sharp both on a supervisor's screen and on paper, whichever
 they choose; `?format=png` is available. `ErrorCorrectionLevel::High` rather
 than the library default `Low`, because a code that *is* printed picks up
