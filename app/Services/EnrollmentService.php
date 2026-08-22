@@ -2,9 +2,12 @@
 
 namespace App\Services;
 
+use App\Models\Batch;
 use App\Models\BatchStudent;
 use App\Models\Company;
 use App\Models\CompanySupervisor;
+use App\Models\StudentInformationSheet;
+use App\Models\User;
 
 /**
  * Shared placement logic for every path that enrolls a student — the
@@ -68,6 +71,50 @@ class EnrollmentService
             'batch_id' => $batchId,
             'student_id' => $studentId,
             ...$attributes,
+        ]);
+    }
+
+    /**
+     * Record a coordinator's intended placement as a DRAFT info sheet whose
+     * batch_id is the intended batch — the single home for "intended batch
+     * before Accept". Program/department/coordinator are pre-filled from the
+     * batch so the student's gated info-sheet form opens partly populated;
+     * the student supplies the rest and chooses their company from the
+     * dropdown. Shared by the manual create-account flow
+     * (EnrollmentController::createAccount) and bulk import
+     * (BulkStudentImportController) so both seed the sheet identically.
+     *
+     * @param  array{first_name: string, middle_name: ?string, last_name: string, sex?: ?string}  $name
+     */
+    public function scaffoldIntendedSheet(User $student, Batch $batch, array $name): void
+    {
+        $batch->loadMissing(['program.department', 'coordinator']);
+
+        StudentInformationSheet::create([
+            'student_id' => $student->id,
+            'batch_id' => $batch->id,
+            'submission_status' => 'draft',
+            'personal_info' => [
+                // Stored from the discrete First/Middle/Family fields the
+                // coordinator typed (or the bulk-import sheet carried) —
+                // never re-split from the joined users.name (which would
+                // fold the middle name into the family name).
+                'last_name' => $name['last_name'],
+                'first_name' => $name['first_name'],
+                'middle_name' => $name['middle_name'] ?? null,
+                'student_id_number' => $student->student_id_number,
+                // Only bulk import supplies this today — the manual flow
+                // doesn't collect sex, so it stays null and the student
+                // fills it in themselves, unchanged from before.
+                'sex' => $name['sex'] ?? null,
+            ],
+            'academic_info' => [
+                'program_course' => $batch->program?->name,
+                'department' => $batch->program?->department?->name,
+                'internship_coordinator' => $batch->coordinator?->name,
+            ],
+            'ojt_info' => [],
+            'emergency_contact' => null,
         ]);
     }
 }

@@ -7,6 +7,7 @@ use App\Http\Controllers\Student\Concerns\ResolvesStudentEnrollment;
 use App\Models\JournalEntry;
 use App\Models\SystemLog;
 use App\Models\WeeklyLog;
+use App\Services\DtrService;
 use App\Support\BatchWorkingDays;
 use Carbon\CarbonInterface;
 use Illuminate\Http\JsonResponse;
@@ -16,6 +17,8 @@ use Illuminate\Support\Carbon;
 class StudentDashboardController extends Controller
 {
     use ResolvesStudentEnrollment;
+
+    public function __construct(private readonly DtrService $dtr) {}
 
     /**
      * Real, own-scope dashboard for the signed-in student — replaces the
@@ -92,6 +95,14 @@ class StudentDashboardController extends Controller
             'progress' => [
                 'weekly_reports_approved_percent' => max(0, min(100, $weeklyApprovalPercent)),
                 'ojt_duration_percent' => max(0, min(100, $durationPercent)),
+                // Hours actually clocked against hours required — the first
+                // consumer batches.required_hours has ever had. NULL (not
+                // zero) when the batch's coordinator has DTR switched off, so
+                // the SPA falls back to ojt_duration_percent rather than
+                // showing an empty gauge to a student who has no way to fill
+                // it. Unlike ojt_duration_percent, this only moves when the
+                // intern actually turns up.
+                'hours' => $this->dtr->progressFor($enrollment),
             ],
             'recent_activity' => $recentActivity,
             'internship' => [

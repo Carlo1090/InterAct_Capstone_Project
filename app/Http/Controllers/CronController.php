@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Console\Commands\AutoCloseOpenDtrSessions;
 use App\Console\Commands\PurgeArchivedBatchStudents;
 use App\Console\Commands\RunWeeklyBundling;
 use App\Console\Commands\SendMissingJournalEntryReminders;
@@ -46,6 +47,14 @@ class CronController extends Controller
         // importantly, correct at any ping MINUTE — which is exactly what a
         // schedule:run-based trigger could not offer.
         $ran['reminders'] = $this->invoke(SendMissingJournalEntryReminders::class);
+
+        // DTR auto-close — also on EVERY ping, no marker, for the same reason
+        // as reminders: it self-gates on how long each session has been open,
+        // so it is correct at any ping minute and does nothing on a re-run
+        // (closing a session moves it out of the status='open' set it selects).
+        // A marker would be actively wrong here — it would delay closing a
+        // session that crossed the threshold shortly after the last run.
+        $ran['dtr_auto_close'] = $this->invoke(AutoCloseOpenDtrSessions::class);
 
         // Archive purge — idempotent (it deletes rows already past their 30-day
         // cutoff), so the daily marker is about not doing pointless work rather

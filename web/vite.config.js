@@ -15,7 +15,22 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
+      // Listen on every interface, not just localhost, so a phone on the same
+      // Wi-Fi (or a tunnel like cloudflared) can reach the dev server. Needed
+      // to test the DTR camera scanner and geolocation on a real device —
+      // neither can be exercised from a desktop browser.
+      host: true,
       port: 5173,
+      // Fail loudly if 5173 is taken instead of sliding to 5174. That silent
+      // fallback produces a genuinely misleading bug: the port is no longer in
+      // SANCTUM_STATEFUL_DOMAINS, so POST /auth/login returns 200 with the user
+      // while the very next GET /api/user returns 401, and the SPA reports
+      // "Invalid credentials" on a perfectly good password.
+      strictPort: true,
+      // Vite rejects requests whose Host header it does not recognise. A phone
+      // arrives as an IP, and a tunnel as a random subdomain, so both would be
+      // refused. Dev server only — this has no effect on the built SPA.
+      allowedHosts: true,
       proxy: {
         '/api': {
           target: backendUrl,
@@ -56,13 +71,22 @@ export default defineConfig(({ mode }) => {
         },
         // No '/register' entry: self-service registration was removed from the
         // API (see routes/auth.php), so proxying it would only forward to a 404.
-        '/forgot-password': {
+        //
+        // Password reset uses the SAME '/auth/*' indirection as login, and for
+        // the same reason: '/forgot-password' is now the SPA's own page route,
+        // so proxying that path wholesale would send a page load (a GET) to
+        // Laravel, which only defines POST there. The SPA owns
+        // '/forgot-password' and '/password-reset/:token' as pages; these two
+        // proxy-only paths carry the actual credentials POSTs.
+        '/auth/forgot-password': {
           target: backendUrl,
           changeOrigin: true,
+          rewrite: () => '/forgot-password',
         },
-        '/reset-password': {
+        '/auth/reset-password': {
           target: backendUrl,
           changeOrigin: true,
+          rewrite: () => '/reset-password',
         },
       },
     },

@@ -23,6 +23,13 @@ class CoordinatorDemoUserSeeder extends Seeder
                 'role' => 'coordinator',
                 'program_id' => $coordinatorProgram?->id,
                 'is_active' => true,
+                // DTR on for the CAST/BSIT coordinator only, so a fresh seed
+                // has one department that demonstrates the QR/geofence Daily
+                // Time Record and the CABM ones that demonstrate opting out
+                // (their interns have no single fixed workplace). No geofence
+                // is seeded — a supervisor must create one from their real
+                // location, which is the flow worth demonstrating.
+                'dtr_enabled' => true,
             ]
         );
 

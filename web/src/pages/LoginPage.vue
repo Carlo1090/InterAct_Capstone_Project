@@ -1,17 +1,35 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { CSSProperties } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { ensureCsrfCookie, useAuthStore } from '@/stores/auth'
 import { roleRedirect } from '@/router/index.ts'
 import { consumeQueryParam, googleErrorMessage, googleLoginUrl } from '@/lib/googleAuth'
+import { categorizeError } from '@/lib/apiError'
 
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 
 const identifier = ref('')
 const password = ref('')
 const errorMessage = ref('')
+/**
+ * An informational notice, NOT a failure.
+ *
+ * Deliberately separate from `errorMessage`, which is watched to shake the card
+ * on bad credentials — nothing has gone wrong when the router sends someone
+ * here because the account signed in on this phone is the wrong role for the
+ * link they opened.
+ */
+const noticeMessage = ref('')
+
+/**
+ * Deliberately separate from `noticeMessage`, which renders amber. A completed
+ * password reset is good news rather than the page's most actionable item, and
+ * the project's colour rule reserves amber for exactly one thing per page.
+ */
+const successMessage = ref('')
 const isLoading = ref(false)
 const showPassword = ref(false)
 
@@ -257,6 +275,26 @@ onMounted(() => {
   // The OAuth callback bounces failures back here as ?google_error=<code>.
   errorMessage.value = googleErrorMessage(consumeQueryParam('google_error'))
 
+  // The router sends a signed-in user here when their role does not match the
+  // page they opened. In practice this is one thing: a clock-in QR code opened
+  // on a phone already signed in as a supervisor or coordinator. Without an
+  // explanation the redirect looks like the code failed. consumeQueryParam
+  // strips the flag via history.replaceState, so a refresh cannot replay it.
+  //
+  // No automatic sign-out: replacing someone's session uninvited is not ours
+  // to do, and signing in through this form replaces it anyway.
+  if (consumeQueryParam('wrong_role')) {
+    noticeMessage.value =
+      'That link is for a student account. Sign in with the student username to continue — you will be taken straight back.'
+  }
+
+  // ResetPasswordPage sends them here after a successful reset. Without this
+  // the reset just dumps them on a login form with no confirmation that
+  // anything happened, and the natural reading is that it failed.
+  if (consumeQueryParam('reset')) {
+    successMessage.value = 'Your password has been reset. Sign in with your new password.'
+  }
+
   // Pre-fill from the previous visit to this tab. Assigning these triggers the
   // watchers above, which simply rewrite the identical value — harmless.
   const storedUsername = readStored(USERNAME_STORAGE_KEY)
@@ -274,8 +312,33 @@ onMounted(() => {
   })
 })
 
+/**
+ * Where to land after a successful sign-in.
+ *
+ * Normally the role's own dashboard. But the router guard stashes the intended
+ * path in ?redirect= when it bounces an unauthenticated visitor, and honouring
+ * it is what makes the DTR QR flow work: a student scans a printed code, the
+ * phone opens /student/dtr/scan?s=<token> in a browser with no session, and
+ * they must come back to that exact URL — token intact — rather than to the
+ * dashboard with the scan lost.
+ *
+ * Only same-origin relative paths are accepted. A `redirect` is attacker-supplied
+ * (it rides in on a URL), so anything protocol-relative or absolute is discarded
+ * to avoid turning the login page into an open redirect.
+ */
+const redirectTarget = (): string => {
+  const requested = route.query.redirect
+
+  if (typeof requested === 'string' && requested.startsWith('/') && !requested.startsWith('//')) {
+    return requested
+  }
+
+  return roleRedirect(auth.role)
+}
+
 const login = async () => {
   errorMessage.value = ''
+  successMessage.value = ''
   isLoading.value = true
 
   try {
@@ -289,9 +352,21 @@ const login = async () => {
     // screen. router.push resolves only after the guard passes AND the lazy
     // layout + page chunks have loaded; leaving it unawaited flipped the button
     // back to "Login" while the page was still visibly stationary.
-    await router.push(roleRedirect(auth.role))
-  } catch {
-    errorMessage.value = 'Invalid credentials. Please try again.'
+    await router.push(redirectTarget())
+  } catch (error) {
+    // Now shows what the server actually said. This was a blanket
+    // `catch { 'Invalid credentials.' }`, which was not merely lazy: the API's
+    // exception handler only rendered JSON for api/* paths, so /login's
+    // ValidationException came back as a 302 HTML redirect and there was no
+    // message here to read. Both halves are fixed — bootstrap/app.php now
+    // renders JSON for the SPA's auth endpoints too — and the difference is
+    // load-bearing for a deactivated account, which LoginRequest rejects with
+    // its own reason. Told "invalid credentials", that student goes and asks
+    // for a password resend, which cannot possibly help them.
+    const { kind, message, fieldErrors } = categorizeError(error, 'Invalid credentials. Please try again.')
+
+    errorMessage.value =
+      kind === 'validation' ? (fieldErrors?.login?.[0] ?? message) : message
   } finally {
     isLoading.value = false
   }
@@ -526,6 +601,37 @@ const login = async () => {
                     </button>
                   </div>
                 </div>
+
+                <!--
+                  The only self-service way out of a lost or never-delivered
+                  password. Before this existed the whole reset flow was
+                  reachable on the API and unreachable from the app, so every
+                  student who never got their welcome email had to find their
+                  coordinator. Right-aligned under the password field, which is
+                  where a user who has just mistyped one looks next.
+                -->
+                <div class="mt-3 text-right">
+                  <RouterLink
+                    to="/forgot-password"
+                    class="rounded text-sm font-medium text-blue-900 transition hover:text-blue-700 focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:outline-none"
+                  >
+                    Forgot password?
+                  </RouterLink>
+                </div>
+
+                <p
+                  v-if="successMessage"
+                  class="mt-6 rounded-xl border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-sm text-emerald-800"
+                >
+                  {{ successMessage }}
+                </p>
+
+                <p
+                  v-if="noticeMessage"
+                  class="mt-6 rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-800"
+                >
+                  {{ noticeMessage }}
+                </p>
 
                 <p
                   v-if="errorMessage"
