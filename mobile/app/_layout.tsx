@@ -2,12 +2,18 @@ import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAutoSyncOutbox } from '../src/hooks/useAutoSyncOutbox';
+import { useLocalReminderSync } from '../src/hooks/useLocalReminderSync';
 
 export default function RootLayout() {
   // Mounted once for the whole app lifetime — flushes any offline-queued
   // journal entries as soon as connectivity returns, regardless of which
   // screen is currently active.
   useAutoSyncOutbox();
+
+  // Re-arms the student's on-device journal reminders from their saved
+  // preferences. These are OS-scheduled local notifications, so unlike the
+  // server's hourly reminder command they still fire with no connection.
+  useLocalReminderSync();
 
   return (
     <SafeAreaProvider>

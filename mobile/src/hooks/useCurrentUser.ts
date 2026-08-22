@@ -63,5 +63,9 @@ export function useCurrentUser() {
     studentGated: user?.student_gated ?? false,
     studentPaused: user?.student_paused ?? false,
     mustChangePassword: user?.must_change_password ?? false,
+    // Defaults to false so the Scan tab stays hidden until the server has
+    // actually said the batch uses a DTR — showing a clock-in surface to a
+    // programme that does not use one is the worse wrong guess.
+    dtrEnabled: user?.student_dtr_enabled ?? false,
   };
 }

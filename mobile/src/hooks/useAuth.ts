@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { api, TOKEN_KEY, toApiError } from '../services/api';
 import { endpoints } from '../services/endpoints';
+import { clearLocalReminders } from '../services/localReminders';
 import { CurrentUser } from '../types/api';
 
 type LoginResult = { ok: true; user: CurrentUser } | { ok: false; error: string };
@@ -37,6 +38,9 @@ export function useAuth() {
       // (e.g. the token was already revoked or the device is offline)
     }
     await SecureStore.deleteItemAsync(TOKEN_KEY);
+    // Local alarms outlive the session otherwise — a shared or handed-on
+    // handset would keep nudging whoever signed in last.
+    await clearLocalReminders();
     setIsAuthenticated(false);
   }, []);
 

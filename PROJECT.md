@@ -32,8 +32,11 @@ This is a **monorepo** with three parts:
 - `mobile/` — React Native / Expo app (Expo SDK **54**, TypeScript, expo-router).
   **Phase 7 is under way and this is no longer scaffolding**: it is a real
   student-only client wired to the live API via bearer-token auth
-  (`POST /api/mobile/login`), with offline caching and a queued-write outbox, and
-  it ships as an installable Android APK built on EAS. It has its own
+  (`POST /api/mobile/login`), with offline caching, a queued-write outbox,
+  on-device local reminder alarms, and a **QR scanner for the Daily Time
+  Record**, and it ships as an installable Android APK built on EAS. Its tab
+  bar is Dashboard · Calendar · **Scan** · Journals · Weekly, with Info Sheet in
+  the header beside the notification bell. It has its own
   `mobile/CLAUDE.md` (importing `mobile/AGENTS.md`) requiring the versioned docs
   at `docs.expo.dev/versions/v54.0.0/` be checked before any mobile code.
 

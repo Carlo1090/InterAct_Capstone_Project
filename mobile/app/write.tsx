@@ -21,6 +21,53 @@ function dateLabelFor(iso: string) {
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 }
 
+/** Matches the server's own `day_label`, which is just `format('l')`. */
+function weekdayLabelFor(iso: string) {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' });
+}
+
+/**
+ * The date-INDEPENDENT half of a journal entry. Which sections the batch's
+ * template defines, and the character budget, are identical for every date —
+ * only content/status/editability differ per day. Caching this under one
+ * date-independent key is what lets a student start a brand-new entry offline
+ * for a date they have never opened before; a per-date cache alone could only
+ * ever reopen days already visited online.
+ */
+type JournalTemplate = Pick<JournalEntryDetail, 'sections' | 'char_limit' | 'student_name' | 'program'>;
+
+const TEMPLATE_CACHE_KEY = 'journal_template';
+
+/**
+ * A blank entry built from the cached template, for a date with no per-date
+ * cache of its own.
+ *
+ * `editable: true` is deliberate. Whether the date is genuinely writable
+ * depends on the OJT range, the enrollment's status, and whether the week has
+ * already been bundled — none of which is knowable offline. The server stays
+ * the authority: `flushQueue()` already treats a real 422 on sync as final and
+ * moves the entry to the failed list rather than retrying forever. Blocking a
+ * student who is legitimately in range and merely has no signal is the worse
+ * of the two failure modes, so this errs toward letting them write.
+ */
+function blankEntryFrom(template: JournalTemplate, date: string): JournalEntryDetail {
+  return {
+    ...template,
+    entry_date: date,
+    status: 'draft',
+    content: {},
+    submitted_at: null,
+    editable: true,
+    locked_reason: null,
+    day_label: weekdayLabelFor(date),
+  };
+}
+
+/** A future date is the one lock we CAN evaluate offline with confidence. */
+function isFutureDate(iso: string) {
+  return iso > todayISO();
+}
+
 const LOCKED_REASON_COPY: Record<string, string> = {
   not_active: 'Your enrollment for this batch is not currently active, so this entry is read-only.',
   range: 'This date is outside your OJT range or is a future date, so it cannot be edited.',
@@ -44,6 +91,11 @@ export default function Write() {
   // sent yet. Must never be visually indistinguishable from a genuinely
   // server-confirmed draft/submission.
   const [fromQueue, setFromQueue] = useState(false);
+  // True when this form was built from the cached template rather than a real
+  // server response for this date — i.e. a brand-new offline entry for a day
+  // never opened online. Its editability is an assumption, not a server fact,
+  // so the UI must say so rather than imply the entry is already accepted.
+  const [offlineDraft, setOfflineDraft] = useState(false);
 
   function hydrateFromContent(res: JournalEntryDetail, overrideContent?: Record<string, string>) {
     const effectiveContent = overrideContent ?? res.content ?? {};
@@ -64,20 +116,39 @@ export default function Write() {
     try {
       const res = await apiGet<JournalEntryDetail>(endpoints.journalEntry(date));
       await setCached(cacheKey, res);
+      // Refresh the date-independent template on every successful fetch, so
+      // ANY day opened online keeps every other day writable offline later.
+      await setCached<JournalTemplate>(TEMPLATE_CACHE_KEY, {
+        sections: res.sections,
+        char_limit: res.char_limit,
+        student_name: res.student_name,
+        program: res.program,
+      });
       hydrateFromContent(res, queued?.content);
       setFromQueue(queued !== null);
+      setOfflineDraft(false);
     } catch (err) {
-      // Offline (or a real error) — fall back to whatever template we last
-      // saw for this date. A queued entry can only exist if this date was
-      // already opened successfully at least once before, so the cached
-      // template should be present whenever the queue has something for it.
-      const cachedTemplate = await getCached<JournalEntryDetail>(cacheKey);
-      if (cachedTemplate) {
-        hydrateFromContent(cachedTemplate, queued?.content);
+      // Offline (or a real error). Prefer this date's own cached response —
+      // it carries the server's real editability and status for the day.
+      const cachedEntry = await getCached<JournalEntryDetail>(cacheKey);
+      if (cachedEntry) {
+        hydrateFromContent(cachedEntry, queued?.content);
         setFromQueue(queued !== null);
+        setOfflineDraft(false);
       } else {
-        // Never touched this date while online — nothing to render offline.
-        setError(err as ApiError);
+        // Never opened this date online. The section list is the same for
+        // every day, so a cached template from ANY other day is enough to
+        // compose this one — see blankEntryFrom() for why it assumes writable.
+        const template = await getCached<JournalTemplate>(TEMPLATE_CACHE_KEY);
+        if (template && !isFutureDate(date)) {
+          hydrateFromContent(blankEntryFrom(template, date), queued?.content);
+          setFromQueue(queued !== null);
+          setOfflineDraft(true);
+        } else {
+          // Genuinely nothing to render: either a future date, or this device
+          // has never successfully loaded a journal entry at all.
+          setError(err as ApiError);
+        }
       }
     } finally {
       setLoading(false);
@@ -261,11 +332,22 @@ export default function Write() {
           </Banner>
         ) : null}
 
-        <Banner variant={editable ? 'info' : 'warn'}>
-          {editable
-            ? `${entry.status === 'submitted' ? "You've submitted this entry — it" : 'This entry'} stays editable until your week is compiled (every Monday at 12:00 AM).`
-            : LOCKED_REASON_COPY[entry.locked_reason ?? ''] ?? 'This entry is read-only.'}
-        </Banner>
+        {offlineDraft ? (
+          // Deliberately does NOT repeat the "stays editable until your week
+          // is compiled" promise below — that is a server fact we do not have
+          // offline. Say only what is true: it is saved here, and it gets
+          // checked on the way in.
+          <Banner variant="neutral">
+            You're offline, so this is a new entry built from your saved journal format. You can write it now — it will
+            be checked against your OJT dates and sent automatically once you're back online.
+          </Banner>
+        ) : (
+          <Banner variant={editable ? 'info' : 'warn'}>
+            {editable
+              ? `${entry.status === 'submitted' ? "You've submitted this entry — it" : 'This entry'} stays editable until your week is compiled (every Monday at 12:00 AM).`
+              : LOCKED_REASON_COPY[entry.locked_reason ?? ''] ?? 'This entry is read-only.'}
+          </Banner>
+        )}
 
         {requiredSections.map((section) => (
           <Card key={section.key} title={section.label}>

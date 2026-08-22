@@ -29,7 +29,19 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "InternTrack uses the camera to scan your workplace Daily Time Record QR code."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "InternTrack records your location when you clock in or out, to confirm you are at your assigned workplace."
+        }
+      ]
     ],
     "extra": {
       "router": {
