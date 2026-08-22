@@ -102,6 +102,9 @@ const issuingForId = ref<number | null>(null)
 const issueError = ref('')
 const issuedPassword = ref<{ studentName: string; password: string } | null>(null)
 
+const resendingForId = ref<number | null>(null)
+const resendError = ref('')
+
 let searchDebounce: ReturnType<typeof setTimeout> | undefined
 
 const searchStudents = async () => {
@@ -149,6 +152,44 @@ const issueTemporaryPassword = async (student: User) => {
     issueError.value = data?.message ?? 'Unable to issue a temporary password.'
   } finally {
     issuingForId.value = null
+  }
+}
+
+/**
+ * "Student says they never got the welcome email" — generates a fresh
+ * temporary password AND emails it, unlike issueTemporaryPassword() above
+ * (which only surfaces the password here for the admin to relay themselves).
+ */
+const resendCredentials = async (student: User) => {
+  if (!student.email) {
+    resendError.value = `${student.name} has no email on file to send credentials to.`
+    return
+  }
+
+  const confirmed = await confirmAction({
+    title: 'Resend login credentials?',
+    message: `Resend login credentials to ${student.name} at ${student.email}? Their current password will stop working immediately.`,
+    confirmLabel: 'Resend',
+    tone: 'danger',
+  })
+  if (!confirmed) return
+
+  resendingForId.value = student.id
+  resendError.value = ''
+
+  try {
+    const response = await api.post<{ emailed: boolean; temporary_password: string }>(`/api/admin/users/${student.id}/resend-credentials`)
+    issuedPassword.value = response.data.emailed
+      ? { studentName: student.name, password: `Emailed to ${student.email}. Backup password: ${response.data.temporary_password}` }
+      : { studentName: student.name, password: response.data.temporary_password }
+    if (!response.data.emailed) {
+      resendError.value = `Email delivery failed for ${student.name}. Share the password below with them directly.`
+    }
+  } catch (error) {
+    const data = axios.isAxiosError(error) ? error.response?.data : null
+    resendError.value = data?.message ?? 'Unable to resend credentials.'
+  } finally {
+    resendingForId.value = null
   }
 }
 
@@ -205,19 +246,30 @@ onMounted(loadSettings)
                 <p class="text-sm font-semibold text-slate-900">{{ student.name }}</p>
                 <p class="text-xs text-slate-500">{{ student.email }}</p>
               </div>
-              <button
-                type="button"
-                class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
-                :disabled="issuingForId === student.id"
-                @click="issueTemporaryPassword(student)"
-              >
-                {{ issuingForId === student.id ? 'Issuing...' : 'Issue Temporary Password' }}
-              </button>
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
+                  :disabled="issuingForId === student.id"
+                  @click="issueTemporaryPassword(student)"
+                >
+                  {{ issuingForId === student.id ? 'Issuing...' : 'Issue Temporary Password' }}
+                </button>
+                <button
+                  type="button"
+                  class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 disabled:grayscale disabled:cursor-not-allowed"
+                  :disabled="resendingForId === student.id"
+                  @click="resendCredentials(student)"
+                >
+                  {{ resendingForId === student.id ? 'Sending...' : 'Resend by Email' }}
+                </button>
+              </div>
             </li>
           </ul>
           <p v-else-if="studentSearch.trim()" class="mt-3 text-sm text-slate-400">No students found.</p>
 
           <p v-if="issueError" class="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ issueError }}</p>
+          <p v-if="resendError" class="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ resendError }}</p>
 
           <div v-if="issuedPassword" class="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <p class="font-semibold">Temporary password for {{ issuedPassword.studentName }}:</p>

@@ -51,6 +51,12 @@ class CabmbUsersDemoSeeder extends Seeder
                 'password' => Hash::make('password'),
                 'role' => 'coordinator',
                 'is_active' => true,
+                // QR/geofence Daily Time Record on, so her supervisor
+                // (mdcbalsup, see CabmbSupervisorDemoSeeder) can generate a
+                // clock-in QR and her interns can time in and out. The opt-out
+                // is still demonstrable at any time by switching this off in
+                // the coordinator's own account menu.
+                'dtr_enabled' => true,
             ]
         );
         $coordinator->departmentsCoordinated()->syncWithoutDetaching([$cabmb->id]);

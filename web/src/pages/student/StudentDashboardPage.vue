@@ -385,6 +385,15 @@ const weeklyBreakdown = computed(() => {
 
 const ojtPercent = computed(() => clampPercent(dashboard.value?.progress.ojt_duration_percent ?? 0))
 
+// Hours banked through the QR/geofence DTR. Null for a programme that does not
+// use it, in which case the OJT Duration gauge beside this one is the only
+// progress figure — deliberately NOT rendered as an empty 0% gauge, which
+// would read as "you have done nothing" to a student who has no way to clock in.
+const hoursProgress = computed(() => dashboard.value?.progress.hours ?? null)
+const hasHoursTracking = computed(() => hoursProgress.value !== null)
+const hoursPercent = computed(() => clampPercent(hoursProgress.value?.hours_percent ?? 0))
+const hasHoursDenominator = computed(() => (hoursProgress.value?.hours_required ?? 0) > 0)
+
 // Not the donut's split — this is approvals over weeks elapsed, which is a
 // different number, so it gets its own labelled caption line.
 const approvalRatePercent = computed(() =>
@@ -667,6 +676,69 @@ onMounted(async () => {
         <div>
           <h3 class="mb-3 text-xs font-medium uppercase tracking-wide text-slate-400">Your progress</h3>
           <div class="grid items-stretch gap-6 md:grid-cols-2 xl:grid-cols-3">
+          <!--
+            Rendered only where the batch coordinator enabled the QR/geofence
+            DTR. Unlike OJT Duration beside it, this only moves when the intern
+            actually turns up, so it is the honest completion figure where it
+            exists.
+          -->
+          <section
+            v-if="hasHoursTracking"
+            class="flex h-full flex-col rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70"
+          >
+            <h2 class="text-sm font-semibold text-slate-900">Required Hours</h2>
+            <p class="mt-1 text-xs text-slate-400">Hours you have clocked in at your host company.</p>
+            <div
+              class="mx-auto mt-5 w-full max-w-[180px]"
+              role="img"
+              :aria-label="`Required hours progress: ${hoursPercent} percent`"
+            >
+              <svg viewBox="0 0 160 96" class="h-auto w-full">
+                <defs>
+                  <!-- Unique id per gauge instance; a duplicate breaks rendering. -->
+                  <linearGradient id="gauge-hours" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stop-color="#2563eb" />
+                    <stop offset="100%" stop-color="#4f46e5" />
+                  </linearGradient>
+                </defs>
+                <path
+                  d="M 20 80 A 60 60 0 0 1 140 80"
+                  fill="none"
+                  stroke="#f1f5f9"
+                  stroke-width="14"
+                  stroke-linecap="round"
+                  pathLength="100"
+                />
+                <!--
+                  Omitted entirely at 0 rather than drawn at length 0 — with
+                  stroke-linecap="round" a zero-length segment still paints a dot.
+                -->
+                <path
+                  v-if="hasHoursDenominator && hoursPercent > 0"
+                  class="draw-offset"
+                  d="M 20 80 A 60 60 0 0 1 140 80"
+                  fill="none"
+                  stroke="url(#gauge-hours)"
+                  stroke-width="14"
+                  stroke-linecap="round"
+                  pathLength="100"
+                  stroke-dasharray="100"
+                  :stroke-dashoffset="drawn ? 100 - hoursPercent : 100"
+                />
+              </svg>
+              <div class="-mt-7 text-center">
+                <p class="text-3xl font-semibold tracking-tight text-slate-900">
+                  {{ hasHoursDenominator ? `${hoursPercent}%` : '—' }}
+                </p>
+                <p class="mt-1 text-xs text-slate-400">
+                  {{ hoursProgress?.hours_completed ?? 0 }}
+                  <template v-if="hasHoursDenominator">of {{ hoursProgress?.hours_required }}</template>
+                  hours
+                </p>
+              </div>
+            </div>
+          </section>
+
           <section class="flex h-full flex-col rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
             <h2 class="text-sm font-semibold text-slate-900">OJT Duration</h2>
             <p class="mt-1 text-xs text-slate-400">How far through your batch's planned dates you are.</p>

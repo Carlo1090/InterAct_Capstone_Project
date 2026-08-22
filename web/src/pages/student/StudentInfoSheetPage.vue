@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import api from '@/lib/axios'
 import { categorizeError } from '@/lib/apiError'
 import { useFormDraft } from '@/lib/formDraft'
@@ -11,6 +12,13 @@ import { useAuthStore } from '@/stores/auth'
 import type { InfoSheet, InfoSheetStatus, StudentCompanyOption } from '@/types/api'
 
 const auth = useAuthStore()
+const route = useRoute()
+
+// The router sends ?from=scan when it bounced a DTR clock-in here because this
+// student is still gated. Saying so is the whole fix — they cannot un-gate
+// themselves, and without it a scanned QR code silently becomes an unrelated
+// page.
+const cameFromScan = computed(() => route.query.from === 'scan')
 
 const isLoading = ref(true)
 const isSaving = ref(false)
@@ -401,6 +409,14 @@ onMounted(loadInfoSheet)
 <template>
   <section class="space-y-5">
     <ToastHost />
+
+    <div
+      v-if="cameFromScan"
+      class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+    >
+      Your clock-in was not recorded. Time in and time out only open once this Information Sheet has been
+      approved by your coordinator — complete and submit it below.
+    </div>
 
     <!-- Status banners -->
     <div v-if="isApproved" class="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">

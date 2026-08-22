@@ -381,6 +381,15 @@ describes history.
 
 ### Changelog
 
+- **2026-08-20** — **Seeder cleanup.** `PreOralDefenseDemoSeeder` and
+  `docs/PRE-ORAL-DEFENSE-DEMO-GUIDE.txt` (both referenced in the 2026-08-05
+  entry below) were **deleted**, along with `DepartmentSeeder` and
+  `ProgramSeeder`, which `DepartmentProgramSeeder` had superseded and which
+  nothing referenced. The 2026-08-05 entry is kept as a record of what happened
+  at the time — the files it names no longer exist. Added
+  `CabmbSupervisorDemoSeeder` (a clean `mdcbalsup` supervisor world under
+  `mdcbalbero`); see `PROJECT.md` for the current demo account list.
+
 - **2026-08-19** — **Mobile's Weekly Journal detail screen now shows the "Daily Entries (Reference)" table, matching `StudentWeeklyJournalsPage.vue` exactly** — `mobile/app/weekly/[id].tsx` previously only rendered the compiled `narrative` textarea; the project owner noticed daily entries weren't visible anywhere on the weekly view and asked for parity with web. The backend's `GET /api/student/weekly-logs/{weekStart}` was already returning `daily_entries` (confirmed live against `mdcstudent`'s real data) and mobile's `WeeklyLogDetail` type already had the field typed — it was simply never rendered. Added a card, positioned identically to web (above Supervisor Comment / Weekly Narrative), listing each day's date/status pill/summary; the summary line deliberately reuses web's exact `Object.values(entry.content)[0] ?? ''` logic (first field in the content object, not necessarily `daily_accomplishment`) rather than picking a "better" field, for byte-for-byte behavioral parity. Empty state ("No daily entries this week.") also matches web. `npx tsc --noEmit` and `npx expo export --platform android` both clean.
   - **Separately confirmed while testing this**: weekly bundling itself only compiles days that actually have a submitted entry — a week with entries on only 2 of 5 weekdays produces a narrative (and now a reference table) covering only those 2 days, by design (matches the documented Weekly Bundling behavior; not a bug). Manually ran `journal:run-weekly-bundling --week-start=2026-07-27` and `--week-start=2026-08-03` against local dev data to backfill two additional bundled weeks for `mdcstudent` (previously only one seeded week existed), confirmed via `tinker` and live API calls through the permanent ngrok tunnel that the compiled narratives and daily-entry breakdowns are correct.
 

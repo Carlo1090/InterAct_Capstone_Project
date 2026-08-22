@@ -173,6 +173,28 @@ class CronEndpointTest extends TestCase
     }
 
     /**
+     * The DTR auto-close runs on EVERY ping, with no marker — the opposite of
+     * purge and bundling.
+     *
+     * That is correct here rather than sloppy: the command self-gates on how
+     * long each session has been open, so it is right at any ping minute, and
+     * a marker would actively DELAY closing a session that crossed the
+     * threshold shortly after the previous run. Re-running is free because
+     * closing a session moves it out of the status='open' set it selects.
+     */
+    public function test_the_dtr_auto_close_runs_on_every_ping(): void
+    {
+        Notification::fake();
+        $this->travelTo(Carbon::parse(self::DUE_WEDNESDAY));
+        $this->enrolledStudent();
+
+        $this->ping()->assertOk()->assertJsonStructure(['tasks' => ['dtr_auto_close']]);
+
+        $this->travel(2)->hours();
+        $this->ping()->assertOk()->assertJsonStructure(['tasks' => ['dtr_auto_close']]);
+    }
+
+    /**
      * The response body is retained in the cron provider's execution history,
      * so it must carry counts only — never the per-student log lines.
      */

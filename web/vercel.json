@@ -14,8 +14,8 @@
     { "source": "/auth/google/:path*", "destination": "https://interntrack-api-ihvm.onrender.com/auth/google/:path*" },
     { "source": "/auth/login", "destination": "https://interntrack-api-ihvm.onrender.com/login" },
     { "source": "/auth/logout", "destination": "https://interntrack-api-ihvm.onrender.com/logout" },
-    { "source": "/forgot-password", "destination": "https://interntrack-api-ihvm.onrender.com/forgot-password" },
-    { "source": "/reset-password", "destination": "https://interntrack-api-ihvm.onrender.com/reset-password" },
+    { "source": "/auth/forgot-password", "destination": "https://interntrack-api-ihvm.onrender.com/forgot-password" },
+    { "source": "/auth/reset-password", "destination": "https://interntrack-api-ihvm.onrender.com/reset-password" },
     { "source": "/:path*", "destination": "/index.html" }
   ],
   "headers": [

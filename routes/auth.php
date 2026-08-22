@@ -24,12 +24,20 @@ Route::post('/login', [AuthenticatedSessionController::class, 'store'])
     ->middleware('guest')
     ->name('login');
 
+/*
+ * Throttled, unlike the rest of this file's guest routes. The api group's
+ * limiter does not cover web routes, and the password broker's own throttle
+ * (config/auth.php, 60s) only rate-limits repeats for the SAME address — it
+ * does nothing about a caller walking a list of addresses, which both sends
+ * real mail to real students and reads back whether each address is on file.
+ * /login has its own per-identifier limiter inside LoginRequest already.
+ */
 Route::post('/forgot-password', [PasswordResetLinkController::class, 'store'])
-    ->middleware('guest')
+    ->middleware(['guest', 'throttle:6,1'])
     ->name('password.email');
 
 Route::post('/reset-password', [NewPasswordController::class, 'store'])
-    ->middleware('guest')
+    ->middleware(['guest', 'throttle:6,1'])
     ->name('password.store');
 
 Route::get('/verify-email/{id}/{hash}', VerifyEmailController::class)

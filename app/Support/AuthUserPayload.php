@@ -55,6 +55,16 @@ class AuthUserPayload
             // to (approved || enrolled) && !enrolled and it reduces to exactly
             // the line below. Same answer, half the queries.
             $user->setAttribute('student_paused', $hasApprovedSheet && ! $hasQualifyingEnrollment);
+
+            // Whether the Daily Time Record applies to this student, resolved
+            // from their batch's coordinator. Needed here rather than on the
+            // DTR endpoint itself because StudentLayout filters the nav before
+            // any page loads — without it the item would flash in and out for
+            // the students who cannot use it. One exists() query.
+            $user->setAttribute('student_dtr_enabled', BatchStudent::where('student_id', $user->id)
+                ->where('status', 'active')
+                ->whereHas('batch.coordinator', fn ($query) => $query->where('dtr_enabled', true))
+                ->exists());
         }
 
         return $user;

@@ -163,6 +163,36 @@ export type CoordinatorInternUser = {
   } | null
 }
 
+export type BulkImportOutcome = 'created_and_emailed' | 'created_email_failed' | 'skipped_invalid'
+
+export type BulkImportRow = {
+  row: number
+  first_name: string
+  middle_name: string | null
+  last_name: string
+  sex: 'male' | 'female' | null
+  student_id_number: string
+  email: string
+  valid: boolean
+  errors: string[]
+}
+
+export type BulkImportResultRow = BulkImportRow & {
+  outcome: BulkImportOutcome
+  temporary_password: string | null
+}
+
+export type BulkImportPreviewResponse = {
+  rows: BulkImportRow[]
+  valid_count: number
+  invalid_count: number
+}
+
+export type BulkImportConfirmResponse = {
+  results: BulkImportResultRow[]
+  created_count: number
+}
+
 export type CoordinatorSupervisorUser = {
   id: number
   name: string
@@ -843,6 +873,16 @@ export type StudentDashboard = {
   progress: {
     weekly_reports_approved_percent: number
     ojt_duration_percent: number
+    // Hours actually clocked via the QR/geofence DTR, against the batch's
+    // required_hours. NULL — not zero — when the batch coordinator has DTR
+    // switched off, so the UI can tell "no hours yet" apart from "hours are
+    // not tracked for this programme" and render the duration gauge instead.
+    hours: {
+      minutes_completed: number
+      hours_completed: number
+      hours_required: number | null
+      hours_percent: number | null
+    } | null
   }
   recent_activity: StudentDashboardActivity[]
   internship: StudentDashboardInternship

@@ -19,6 +19,10 @@ type UserPayload = {
   password: string
   role: 'coordinator'
   department_id: number | null
+  // Whether this coordinator's batches use the QR/geofence Daily Time Record.
+  // Off by default: it anchors to a fixed workplace, which a programme placing
+  // interns on rotating or field assignments does not have.
+  dtr_enabled: boolean
 }
 
 const users = ref<User[]>([])
@@ -95,6 +99,7 @@ const emptyForm = (): UserPayload => ({
   password: '',
   role: 'coordinator',
   department_id: null,
+  dtr_enabled: false,
 })
 
 const userForm = ref<UserPayload>(emptyForm())
@@ -505,6 +510,28 @@ onMounted(() => {
                   {{ department.name }}
                 </option>
               </select>
+            </div>
+
+            <div class="rounded-lg bg-slate-50 p-4 ring-1 ring-slate-200/60">
+              <label class="flex cursor-pointer items-start gap-3">
+                <input
+                  v-model="userForm.dtr_enabled"
+                  type="checkbox"
+                  class="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600"
+                />
+                <span>
+                  <span class="block text-sm font-medium text-slate-900">
+                    Use QR Daily Time Record for this coordinator's batches
+                  </span>
+                  <span class="mt-1 block text-xs text-slate-500">
+                    Interns clock in and out by scanning their site's QR code — shown on their supervisor's screen or a saved copy — and their
+                    hours count toward the batch's required hours. Leave this off for programmes whose
+                    interns have no fixed workplace — field work or rotating assignments — since the code is
+                    anchored to one location. The coordinator can change this later on their own Daily Time
+                    Record page, and record why if they switch it off.
+                  </span>
+                </span>
+              </label>
             </div>
           </section>
 

@@ -1,5 +1,6 @@
 <?php
 
+use App\Console\Commands\AutoCloseOpenDtrSessions;
 use App\Console\Commands\PurgeArchivedBatchStudents;
 use App\Console\Commands\RunWeeklyBundling;
 use App\Console\Commands\SendMissingJournalEntryReminders;
@@ -28,3 +29,11 @@ Schedule::command(RunWeeklyBundling::class)->weeklyOn(1, '00:00');
 
 // Nightly — permanently deletes batch_students rows archived 30+ days ago.
 Schedule::command(PurgeArchivedBatchStudents::class)->dailyAt('02:00');
+
+// Hourly, NOT daily: a session that hits the stale threshold at 20:00 should be
+// closed at 20:00, not held open until the small hours. Running it hourly also
+// means the close has almost always happened before the student's next scan, so
+// the identical guard inside DtrService::punch() stays a fallback rather than
+// the usual path. Safe at any frequency — it only ever selects status='open'
+// past the threshold, so a re-run finds nothing left to do.
+Schedule::command(AutoCloseOpenDtrSessions::class)->hourly();

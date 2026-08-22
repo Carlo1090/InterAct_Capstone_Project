@@ -1,13 +1,29 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 // Shown when a student cleared intake but was dropped from their batch. It
 // replaces the erroring journal pages with a calm, read-only explanation.
 const auth = useAuthStore()
+const route = useRoute()
+
+// The router sends ?from=scan when it bounced a DTR clock-in here. Without
+// saying so, the student scans a QR code and lands on an unrelated page with
+// no connection to what they just did.
+const cameFromScan = computed(() => route.query.from === 'scan')
 </script>
 
 <template>
-  <section class="mx-auto max-w-xl">
+  <section class="mx-auto max-w-xl space-y-4">
+    <div
+      v-if="cameFromScan"
+      class="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200/70"
+    >
+      Your clock-in was not recorded. Time in and time out need an active enrollment, so this QR code
+      cannot be used until your placement is active again.
+    </div>
+
     <div class="rounded-xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200">
       <span class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-600">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-7 w-7">

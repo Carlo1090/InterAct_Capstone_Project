@@ -14,6 +14,10 @@ const allNavItems = [
   { label: 'Write Daily Journal', to: '/student/write-journal', badge: '', icon: 'pencil' },
   { label: 'Weekly Journals', to: '/student/weekly-journals', badge: '', icon: 'stack' },
   { label: 'Weekly and Time Log Summary', to: '/student/weekly-time-log', badge: '', icon: 'clock' },
+  // Shown only where the batch coordinator enabled the QR/geofence DTR — see
+  // the navItems filter below. 'clock' is already taken by the weekly summary
+  // above, so this uses its own pin glyph.
+  { label: 'Daily Time Record', to: '/student/dtr', badge: '', icon: 'map-pin' },
   { label: 'Student Info Sheet', to: '/student/info-sheet', badge: '', icon: 'id-card' },
 ]
 
@@ -37,9 +41,19 @@ const isGated = computed(() => auth.user?.role === 'student' && auth.user?.stude
 const isPaused = computed(
   () => auth.user?.role === 'student' && auth.user?.student_gated !== true && auth.user?.student_paused === true,
 )
-const navItems = computed(() =>
-  isGated.value || isPaused.value ? allNavItems.filter((item) => item.to === '/student/info-sheet') : allNavItems,
-)
+// Not every programme uses the Daily Time Record: it anchors to a fixed
+// workplace, which a student on rotating or field placement does not have.
+// The coordinator decides, and the backend 403s these students on every DTR
+// endpoint — hiding the link keeps the nav honest rather than offering a page
+// that would only refuse them.
+const hasDtr = computed(() => auth.user?.student_dtr_enabled === true)
+const navItems = computed(() => {
+  if (isGated.value || isPaused.value) {
+    return allNavItems.filter((item) => item.to === '/student/info-sheet')
+  }
+
+  return allNavItems.filter((item) => item.to !== '/student/dtr' || hasDtr.value)
+})
 
 const pageTitle = computed(() => (typeof route.meta.title === 'string' ? route.meta.title : 'Dashboard'))
 const userName = computed(() => auth.user?.name ?? 'Student')
@@ -119,6 +133,15 @@ const department = computed(() => auth.user?.program?.department?.name ?? 'CAST'
 
             <circle v-if="item.icon === 'clock'" cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.6" />
             <path v-if="item.icon === 'clock'" d="M12 7.5V12l3 1.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+
+            <path
+              v-if="item.icon === 'map-pin'"
+              d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linejoin="round"
+            />
+            <circle v-if="item.icon === 'map-pin'" cx="12" cy="10" r="2.5" stroke="currentColor" stroke-width="1.6" />
 
             <rect v-if="item.icon === 'id-card'" x="3.5" y="5.5" width="17" height="13" rx="2" stroke="currentColor" stroke-width="1.6" />
             <circle v-if="item.icon === 'id-card'" cx="9" cy="11.5" r="2" stroke="currentColor" stroke-width="1.6" />
