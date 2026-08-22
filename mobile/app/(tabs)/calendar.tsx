@@ -26,7 +26,7 @@ function monthLabel(month: string) {
 const todayISO = new Date().toISOString().slice(0, 10);
 
 export default function CalendarScreen() {
-  const { days, loading, error, month, shiftMonth, reload } = useJournalCalendar();
+  const { days, loading, error, isOffline, month, shiftMonth, reload } = useJournalCalendar();
 
   // Leading blank cells so the 1st lands under the correct weekday column.
   const firstDay = days[0] ? new Date(`${days[0].date}T00:00:00`).getDay() : 0;
@@ -57,6 +57,10 @@ export default function CalendarScreen() {
           </Pressable>
         </View>
       </View>
+
+      {isOffline && days.length > 0 ? (
+        <Banner variant="neutral">You're offline — showing your last saved calendar.</Banner>
+      ) : null}
 
       <View style={{ flexDirection: 'row', gap: 14, marginHorizontal: 20, marginTop: 16, flexWrap: 'wrap' }}>
         <Legend color={colors.blue500} label="Submitted" />

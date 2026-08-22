@@ -27,6 +27,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Already signed in (e.g. app relaunched with a stored token) — skip login.
   if (isAuthenticated) return <Redirect href="/(tabs)" />;
@@ -135,7 +136,7 @@ export default function Login() {
                   autoCapitalize="none"
                   autoComplete="username"
                   textContentType="username"
-                  style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 13.5 }}
+                  style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 13.5, color: colors.black }}
                 />
               </View>
 
@@ -144,17 +145,31 @@ export default function Login() {
                   <Ionicons name="lock-closed-outline" size={16} color="white" />
                 </View>
                 <TextInput
+                  // Android has a long-standing bug where toggling `secureTextEntry`
+                  // on a live TextInput doesn't reliably re-apply the native masking
+                  // (the field can get stuck showing plain text). Remounting via
+                  // `key` on toggle forces Android to recreate the input with the
+                  // correct mode instead of trying to mutate it in place.
+                  key={showPassword ? 'visible' : 'masked'}
                   value={password}
                   onChangeText={setPassword}
                   placeholder="Enter your password"
                   placeholderTextColor={colors.gray400}
-                  secureTextEntry
+                  secureTextEntry={!showPassword}
                   autoCapitalize="none"
                   autoCorrect={false}
                   autoComplete="password"
                   textContentType="password"
-                  style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 13.5 }}
+                  style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 13.5, color: colors.black }}
                 />
+                <Pressable
+                  onPress={() => setShowPassword((prev) => !prev)}
+                  hitSlop={8}
+                  accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                  style={{ paddingHorizontal: 12 }}
+                >
+                  <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={colors.gray400} />
+                </Pressable>
               </View>
 
               <Pressable onPress={onSubmit} disabled={submitting || !identifier || !password}>

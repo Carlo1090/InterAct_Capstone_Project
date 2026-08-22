@@ -12,7 +12,11 @@ export const TOKEN_KEY = 'interntrack_token';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  // 60s, not the usual 10s: the API runs on a Render free instance that spins
+  // down after ~15 minutes idle and takes 30-60s to cold start. A 10s timeout
+  // made the FIRST request after any idle period fail every time, surfacing as
+  // a bogus "check your internet connection" on a perfectly good network.
+  timeout: 60000,
 });
 
 api.interceptors.request.use(async (config) => {
@@ -48,11 +52,21 @@ export function toApiError(err: unknown): ApiError {
   if (axios.isAxiosError(err)) {
     const axiosErr = err as AxiosError<{ message?: string; errors?: Record<string, string[]> }>;
     if (!axiosErr.response) {
-      // No response at all — device offline, DNS failure, request timeout.
-      return new ApiError('Cannot reach the InternTrack server. Check your connection and try again.', null);
+      // A timeout is NOT the same as being offline, and must not be reported as
+      // one: the API sleeps on its free tier, so a slow first response is
+      // expected and the connection is usually fine. Telling the student to
+      // check their Wi-Fi here sends them chasing a problem they don't have.
+      if (axiosErr.code === 'ECONNABORTED' || axiosErr.code === 'ETIMEDOUT') {
+        return new ApiError('InternTrack is taking longer than usual to respond. Please try again in a moment.', null);
+      }
+      // No response at all — device offline or DNS failure. Deliberately avoids
+      // the word "server": that reads as a scary/technical system fault to a
+      // non-technical user rather than what it almost always actually is —
+      // their own Wi-Fi/mobile data being off.
+      return new ApiError("We couldn't connect to InternTrack. Please check your internet connection and try again.", null);
     }
     const body = axiosErr.response.data;
-    const message = body?.message ?? `Request failed (${axiosErr.response.status}).`;
+    const message = body?.message ?? `Something went wrong (error ${axiosErr.response.status}). Please try again.`;
     return new ApiError(message, axiosErr.response.status, body?.errors);
   }
   return new ApiError('Something went wrong. Please try again.', null);

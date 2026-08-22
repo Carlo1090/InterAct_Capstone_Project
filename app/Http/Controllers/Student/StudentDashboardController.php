@@ -75,7 +75,13 @@ class StudentDashboardController extends Controller
             ->get()
             ->map(fn (SystemLog $log) => [
                 'text' => $log->description ?? $log->action,
-                'time' => $log->logged_at ? Carbon::parse($log->logged_at)->diffForHumans() : null,
+                // Explicit timezone, not ambient PHP default: Carbon::parse()
+                // without one depends on date_default_timezone_get(), which was
+                // observed to differ between `artisan tinker`'s CLI process and
+                // `artisan serve`'s spawned request process on this machine —
+                // the write side (now()) already pins app.timezone explicitly,
+                // so the read side must too, or the two silently disagree.
+                'time' => $log->logged_at ? Carbon::parse($log->logged_at, config('app.timezone'))->diffForHumans() : null,
                 'tone' => $this->toneForAction($log->action),
             ]);
 

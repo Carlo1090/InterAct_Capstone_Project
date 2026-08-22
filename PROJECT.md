@@ -29,11 +29,16 @@ This is a **monorepo** with three parts:
   `api/` subfolder; the Laravel app lives at the top level (`app/`, `routes/`,
   `database/`).
 - `web/` — Vue 3 SPA (Vite, Tailwind CSS v4, TypeScript).
-- `mobile/` — React Native / Expo app (Expo SDK 56, TypeScript, expo-router).
-  Currently the default Expo template scaffolding only — **deferred to Phase 7;
-  do not wire real auth or endpoints into it unless asked.** It has its own
+- `mobile/` — React Native / Expo app (Expo SDK **54**, TypeScript, expo-router).
+  **Phase 7 is under way and this is no longer scaffolding**: it is a real
+  student-only client wired to the live API via bearer-token auth
+  (`POST /api/mobile/login`), with offline caching, a queued-write outbox,
+  on-device local reminder alarms, and a **QR scanner for the Daily Time
+  Record**, and it ships as an installable Android APK built on EAS. Its tab
+  bar is Dashboard · Calendar · **Scan** · Journals · Weekly, with Info Sheet in
+  the header beside the notification bell. It has its own
   `mobile/CLAUDE.md` (importing `mobile/AGENTS.md`) requiring the versioned docs
-  at `docs.expo.dev/versions/v56.0.0/` be checked before any mobile code.
+  at `docs.expo.dev/versions/v54.0.0/` be checked before any mobile code.
 
 ## Tech Stack (do not change without asking)
 
@@ -1090,8 +1095,17 @@ stop counting, and turning it back on restores the figures intact.
 
 ### QR generation
 
-`endroid/qr-code` **^6.1** (nothing QR-related existed before, not even
-transitively). Output defaults to **SVG**, which needs no GD and prints sharp at
+`endroid/qr-code` **^6.0** (nothing QR-related existed before, not even
+transitively). **Pinned to `^6.0`, not `^6.1`, and that is load-bearing: every
+6.1.x release requires PHP `^8.4`, while `Dockerfile` runs `php:8.3-apache`.**
+A `^6.1` lock built fine locally and then failed the Render Docker build
+outright at `composer install` ("Your lock file does not contain a compatible
+set of packages"). `composer.json` now also carries
+`config.platform.php = 8.3.33` so local resolution matches the deployment
+target and this class of mismatch cannot recur silently — **do not remove that
+pin, and do not bump this package to 6.1 without first moving the Dockerfile to
+PHP 8.4.**
+Output defaults to **SVG**, which needs no GD and prints sharp at
 any size — it stays sharp both on a supervisor's screen and on paper, whichever
 they choose; `?format=png` is available. `ErrorCorrectionLevel::High` rather
 than the library default `Low`, because a code that *is* printed picks up
@@ -2518,5 +2532,7 @@ never be run alongside the demo set.
 
 Seven-phase roadmap. Phases 1-2 (scaffolding, auth, base schema, admin
 identity/role management) are complete. Coordinator, student, and supervisor
-modules are built out. **Mobile (Expo) integration is Phase 7 — do not wire
-mobile auth or endpoints yet unless asked.**
+modules are built out. **Phase 7 (Expo mobile) is now ACTIVE, at the project
+owner's explicit direction** — mobile auth and endpoints are wired (see the
+`mobile/` bullet under Project Overview), so the former "do not wire mobile auth
+yet" hold no longer applies.

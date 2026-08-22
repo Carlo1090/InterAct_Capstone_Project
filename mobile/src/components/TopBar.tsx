@@ -1,5 +1,6 @@
 import { View, Text, Pressable, Image } from 'react-native';
 import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../constants/colors';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 import { NotificationBell } from './NotificationBell';
@@ -50,6 +51,19 @@ export function TopBar() {
         </View>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        {/* Info Sheet moved off the tab bar to make room for Scan in the
+            centre. It sits to the LEFT of the bell: filled once at intake,
+            then only occasionally revisited, so it belongs in the header
+            with the other infrequent destinations rather than in the daily
+            navigation. */}
+        <Pressable
+          onPress={() => router.push('/infosheet')}
+          hitSlop={8}
+          accessibilityLabel="Student Information Sheet"
+          style={{ width: 34, height: 34, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Ionicons name="clipboard-outline" size={21} color="white" />
+        </Pressable>
         <NotificationBell />
         <Pressable
           onPress={() => router.push('/profile')}

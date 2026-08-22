@@ -25,6 +25,13 @@ export const endpoints = {
 
   reminderPreferences: '/api/student/reminder-preferences',
 
+  // Daily Time Record (QR + geofence). `dtrScan` is the coordinate-free
+  // preview — the student sees which site and which account a punch would be
+  // recorded against BEFORE any location permission is requested.
+  dtr: '/api/student/dtr',
+  dtrScan: '/api/student/dtr/scan',
+  dtrPunch: '/api/student/dtr/punch',
+
   profile: '/api/profile',
   profilePassword: '/api/profile/password',
   profilePhoto: '/api/profile/photo',

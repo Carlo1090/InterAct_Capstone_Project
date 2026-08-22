@@ -1,4 +1,4 @@
-import { Tabs, router, Redirect } from 'expo-router';
+import { Tabs, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { View, ActivityIndicator } from 'react-native';
 import { useAuth } from '../../src/hooks/useAuth';
@@ -10,12 +10,16 @@ import { colors } from '../../src/constants/colors';
  * student (info sheet not yet approved) can only reach the Info Sheet; a
  * paused student (dropped from their batch) can only reach Paused/Info
  * Sheet; must_change_password force-routes to the Change Password screen
- * regardless of gate state. Every other authenticated student sees the
- * normal 5-tab shell.
+ * regardless of gate state.
+ *
+ * Tab order is Dashboard · Calendar · Scan · Journals · Weekly, putting Scan
+ * dead centre as the one physical, in-the-moment action. Info Sheet is NOT a
+ * tab — it lives in the header beside the notification bell (see TopBar),
+ * since it is filled once at intake rather than visited daily.
  */
 export default function TabsLayout() {
   const { isAuthenticated } = useAuth();
-  const { user, loading, studentGated, studentPaused, mustChangePassword } = useCurrentUser();
+  const { user, loading, studentGated, studentPaused, mustChangePassword, dtrEnabled } = useCurrentUser();
 
   if (isAuthenticated === false) return <Redirect href="/login" />;
 
@@ -56,6 +60,18 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="scan"
+        options={{
+          title: 'Scan',
+          tabBarIcon: ({ color }) => <Ionicons name="qr-code-outline" size={22} color={color} />,
+          // Mirrors the web SPA, which hides its DTR nav item for a programme
+          // whose coordinator has the Daily Time Record switched off. The
+          // route still exists (the screen renders the server's own "not
+          // enabled" message if reached directly) — only the tab is hidden.
+          href: dtrEnabled ? undefined : null,
+        }}
+      />
+      <Tabs.Screen
         name="journals"
         options={{
           title: 'Journals',
@@ -67,19 +83,6 @@ export default function TabsLayout() {
         options={{
           title: 'Weekly',
           tabBarIcon: ({ color }) => <Ionicons name="albums-outline" size={20} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="_infosheet-placeholder"
-        options={{
-          title: 'Info Sheet',
-          tabBarIcon: ({ color }) => <Ionicons name="clipboard-outline" size={20} color={color} />,
-        }}
-        listeners={{
-          tabPress: (e) => {
-            e.preventDefault();
-            router.push('/infosheet');
-          },
         }}
       />
     </Tabs>

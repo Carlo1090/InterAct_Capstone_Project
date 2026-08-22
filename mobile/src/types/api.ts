@@ -17,6 +17,10 @@ export type CurrentUser = {
   // Present ONLY when role === 'student'.
   student_gated?: boolean;
   student_paused?: boolean;
+  /** True when this student's coordinator has the Daily Time Record switched
+   *  on. The web SPA hides its DTR nav item when false; mobile hides the Scan
+   *  tab for the same reason. */
+  student_dtr_enabled?: boolean;
 };
 
 export type ActivityTone = 'green' | 'amber' | 'blue' | 'slate';
@@ -207,4 +211,63 @@ export type SystemLogEntry = {
   action: string;
   description: string | null;
   logged_at: string;
+};
+
+// --- Daily Time Record (QR + geofence) -----------------------------------
+// Shapes read directly from App\Http\Controllers\Student\DtrController and
+// DtrService::progressFor(), not guessed.
+
+/** The exact `dtr_sessions.status` DB enum — verified against the migration. */
+export type DtrSessionStatus = 'open' | 'closed' | 'flagged' | 'void';
+
+export type DtrSession = {
+  id: number;
+  work_date: string | null;
+  site: string | null;
+  time_in: string | null;
+  time_out: string | null;
+  minutes_worked: number | null;
+  status: DtrSessionStatus;
+  adjustment_reason: string | null;
+};
+
+export type DtrProgress = {
+  minutes_completed: number;
+  hours_completed: number;
+  hours_required: number;
+  /** null when the batch has no required_hours set — render a dash, not 0%. */
+  hours_percent: number | null;
+};
+
+/** `enabled: false` is NOT an error — the coordinator's programme simply
+ *  doesn't use a location-anchored DTR. */
+export type DtrOverview =
+  | { enabled: false; message: string }
+  | {
+      enabled: true;
+      company: string | null;
+      open_session: DtrSession | null;
+      week: { start: string; end: string; minutes: number };
+      sessions: DtrSession[];
+      progress: DtrProgress;
+    };
+
+/** What punch() WOULD do with this token right now, so the button can be
+ *  labelled honestly before anything is written. */
+export type DtrNextAction = 'clock_in' | 'clock_out' | 'blocked_other_site';
+
+export type DtrScanPreview = {
+  student: { name: string; username: string | null; student_id_number: string | null };
+  site: { label: string; company: string | null; radius_meters: number };
+  next_action: DtrNextAction;
+  open_session: DtrSession | null;
+};
+
+export type DtrPunchResult = {
+  action: 'clocked_in' | 'clocked_out';
+  distance_meters: number;
+  session: DtrSession;
+  student_name: string;
+  auto_closed_previous: boolean;
+  message: string;
 };

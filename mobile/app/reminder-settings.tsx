@@ -72,6 +72,13 @@ export default function ReminderSettings() {
         which days and what time.
       </Banner>
 
+      {/* Two different mechanisms sit behind one setting, and they behave
+          differently — saying so is more useful than implying one system. */}
+      <Banner variant="neutral">
+        These days and times also set an alarm on this phone, so you still get reminded with no internet. The
+        on-phone reminder is a general nudge — it can't check which entries are missing without a connection.
+      </Banner>
+
       {saveError ? (
         <View
           style={{

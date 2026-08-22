@@ -305,6 +305,9 @@ class GoogleController extends Controller
             'action' => $action,
             'description' => $description,
             'ip_address' => request()->ip(),
+            // See SystemLog::record()'s own comment — the column's useCurrent()
+            // default follows the DB server's clock, not the app's UTC one.
+            'logged_at' => now(),
         ]);
     }
 

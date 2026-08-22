@@ -9,7 +9,7 @@ import { useJournalList } from '../../src/hooks/useJournals';
 import { colors } from '../../src/constants/colors';
 
 export default function Journals() {
-  const { entries, loading, error, reload } = useJournalList();
+  const { entries, loading, error, isOffline, reload } = useJournalList();
 
   const sorted = useMemo(
     () => [...entries].sort((a, b) => (a.entry_date < b.entry_date ? 1 : -1)),
@@ -34,9 +34,13 @@ export default function Journals() {
         </Pressable>
       </View>
 
-      <Banner variant="info">
-        Daily entries track submission status. Review happens after entries compile into your weekly journal.
-      </Banner>
+      {isOffline && entries.length > 0 ? (
+        <Banner variant="neutral">You're offline — showing your last saved journals.</Banner>
+      ) : (
+        <Banner variant="info">
+          Daily entries track submission status. Review happens after entries compile into your weekly journal.
+        </Banner>
+      )}
 
       {loading && entries.length === 0 ? (
         <LoadingState />

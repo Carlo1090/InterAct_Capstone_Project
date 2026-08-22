@@ -42,6 +42,9 @@ class MobileAuthController extends Controller
             'action' => 'Logged In',
             'description' => "{$user->name} logged in (mobile)",
             'ip_address' => $request->ip(),
+            // See SystemLog::record()'s own comment — the column's useCurrent()
+            // default follows the DB server's clock, not the app's UTC one.
+            'logged_at' => now(),
         ]);
 
         return response()->json([
