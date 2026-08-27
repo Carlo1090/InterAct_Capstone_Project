@@ -1,5 +1,8 @@
 import { createRouter, createWebHistory, type RouteLocationNormalized } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+// The ONLY statically-imported page in this file, and deliberately so — see the
+// '/' route below.
+import LandingPage from '@/pages/LandingPage.vue'
 
 export const roleRedirect = (role: string | null): string => {
   const redirects: Record<string, string> = {
@@ -19,7 +22,40 @@ const pageTitle = (route: RouteLocationNormalized): string => {
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', redirect: '/login' },
+    /*
+     * The public landing page — the app's front door. '/' used to redirect
+     * straight to '/login'.
+     *
+     * Eagerly imported, unlike every other route in this file. It is the first
+     * paint for an unauthenticated visitor arriving at the bare domain, and a
+     * dynamic import costs a second round trip (entry chunk, THEN the page)
+     * before anything renders at all.
+     *
+     * The cost was measured, not assumed: lazy gives a 41.20 kB gzip entry plus
+     * a 6.26 kB page chunk and a 0.44 kB CSS chunk; eager gives a 47.12 kB
+     * entry and nothing else. So this trades ~5.9 kB gzip on every OTHER page
+     * load in the app against one saved round trip for every public visitor.
+     * At that size the round trip is worth more. Re-measure before reverting.
+     *
+     * No `requiresAuth`, for the same reason the password-reset routes carry
+     * none: it must stay reachable with no session whatsoever.
+     *
+     * A signed-in user visiting '/' sees this page rather than their dashboard,
+     * and that is deliberate. Bouncing them would need auth.user populated, but
+     * beforeEach only calls fetchUser() for `requiresAuth` routes — so the
+     * bounce would fire on in-app navigation and silently not fire on a cold
+     * load with a perfectly valid session. Adding a blocking fetchUser() here
+     * to close that gap would put an API round trip in front of every public
+     * visitor's first paint, which is exactly backwards for a marketing page.
+     * Note this is not a regression: '/' already landed a signed-in user on the
+     * login form, since LoginPage has never redirected an authenticated user.
+     */
+    {
+      path: '/',
+      name: 'landing',
+      component: LandingPage,
+      meta: { title: 'Internship Journal and Progress Monitoring System' },
+    },
     {
       path: '/login',
       name: 'login',
@@ -132,6 +168,11 @@ const router = createRouter({
           path: 'weekly-journals',
           component: () => import('@/pages/coordinator/CoordinatorWeeklyJournalsPage.vue'),
           meta: { title: 'Weekly Journals' },
+        },
+        {
+          path: 'weekly-time-logs',
+          component: () => import('@/pages/coordinator/CoordinatorWeeklyTimeLogsPage.vue'),
+          meta: { title: 'Weekly and Time Log Summaries' },
         },
         {
           path: 'dtr',

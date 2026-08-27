@@ -10,6 +10,7 @@ use App\Models\JournalEntry;
 use App\Models\SystemLog;
 use App\Models\User;
 use App\Models\WeeklyLog;
+use App\Services\WeeklyBundlingService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -103,8 +104,13 @@ class WeeklyLogController extends Controller
             ->whereDate('week_start', $start->toDateString())
             ->first();
 
+        // whereDate on both bounds, never whereBetween: entry_date is a
+        // date-cast column and SQLite stores it WITH a time component
+        // ("2026-08-30 00:00:00"), which sorts after a bare upper bound of
+        // "2026-08-30" — silently dropping Sunday, the last day of the week.
         $dailyEntries = JournalEntry::where('student_id', $user->id)
-            ->whereBetween('entry_date', [$start->toDateString(), $end->toDateString()])
+            ->whereDate('entry_date', '>=', $start->toDateString())
+            ->whereDate('entry_date', '<=', $end->toDateString())
             ->orderBy('entry_date')
             ->get(['entry_date', 'status', 'content']);
 
@@ -115,6 +121,10 @@ class WeeklyLogController extends Controller
             'supervisor_comment' => $log?->supervisor_comment,
             'submitted_at' => $log?->submitted_at?->toIso8601String(),
             'narrative' => $log?->narrative ?? '',
+            // How many of this week's daily entries are actually submitted —
+            // the only ones compilation draws from. Lets the page say "Compile
+            // from 4 entries" rather than offering a button that 422s.
+            'submitted_entries_count' => $dailyEntries->where('status', 'submitted')->count(),
             'sipp_notes' => $this->sippNotesByDay($dailyEntries, $enrollment->batch->journalTemplate?->sections ?? []),
             'daily_entries' => $dailyEntries,
         ]);
@@ -237,6 +247,71 @@ class WeeklyLogController extends Controller
         }
 
         return response()->json($log);
+    }
+
+    /**
+     * Compile this week's narrative from the student's own submitted daily
+     * entries, on demand.
+     *
+     * Bundling used to be something that only happened TO a student, once a
+     * week, overnight — so an intern who submitted Friday's entry on Saturday
+     * had missed the bus, and an intern catching up on a fortnight of entries
+     * had no way to fold them in at all. This is the same compiler
+     * (WeeklyBundlingService, one writer for both paths), triggered by the
+     * person whose work it is.
+     *
+     * It overwrites whatever is in the narrative box, which is exactly what it
+     * is for — so the button confirms first on the client. A log already with
+     * the supervisor is refused; a returned one recompiles, since that is the
+     * revision path.
+     */
+    public function bundle(Request $request, string $weekStart, WeeklyBundlingService $bundler): JsonResponse
+    {
+        $user = $request->user();
+        $enrollment = $this->activeEnrollment($user->id);
+
+        if (! $enrollment) {
+            return response()->json(['message' => 'You are not currently enrolled in an active OJT batch.'], 422);
+        }
+
+        $start = Carbon::parse($weekStart)->startOfWeek(Carbon::MONDAY);
+        $end = $start->copy()->addDays(6);
+
+        // The current week is allowed on purpose (compile what you have so
+        // far); a week that has not begun has nothing to compile.
+        if ($start->isAfter(today()->startOfWeek(Carbon::MONDAY))) {
+            return response()->json(['message' => 'That week has not started yet.'], 422);
+        }
+
+        if ($end->lessThan($this->ojtRange($enrollment)['start'])) {
+            return response()->json(['message' => 'That week is before your OJT started.'], 422);
+        }
+
+        $submittedCount = JournalEntry::where('student_id', $user->id)
+            ->where('status', 'submitted')
+            ->whereDate('entry_date', '>=', $start->toDateString())
+            ->whereDate('entry_date', '<=', $end->toDateString())
+            ->count();
+
+        if ($submittedCount === 0) {
+            return response()->json([
+                'message' => 'There are no submitted daily entries in this week yet. Submit your daily journals first, then compile.',
+            ], 422);
+        }
+
+        $log = $bundler->bundleForStudent($user->id, $enrollment->batch_id, $start);
+
+        if (! $log) {
+            return response()->json([
+                'message' => 'This weekly log is already with your supervisor and can no longer be recompiled.',
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => "Compiled from {$submittedCount} submitted daily ".($submittedCount === 1 ? 'entry' : 'entries').'.',
+            'narrative' => $log->narrative ?? '',
+            'log' => $log->fresh(),
+        ]);
     }
 
     /**

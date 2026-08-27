@@ -337,7 +337,10 @@ export type JournalEntryDetail = {
   content: Record<string, string>
   submitted_at: string | null
   editable: boolean
-  locked_reason?: 'range' | 'not_active' | 'bundled' | null
+  // 'week_submitted' replaced the old 'bundled': a compiled weekly log no
+  // longer freezes its daily entries — only sending that week to the
+  // supervisor does.
+  locked_reason?: 'range' | 'not_active' | 'week_submitted' | null
   student_name: string
   program: string | null
   // Weekday name of the entry date, e.g. "Sunday" (rendered "Sunday (MM-DD-YYYY)").
@@ -400,6 +403,8 @@ export type WeeklyLogDetail = {
   supervisor_comment: string | null
   submitted_at: string | null
   narrative: string
+  /** How many of this week's daily entries are submitted — what Compile draws from. */
+  submitted_entries_count: number
   sipp_notes: WeeklySippDay[]
   daily_entries: WeeklyLogDailyEntry[]
 }
@@ -407,9 +412,11 @@ export type WeeklyLogDetail = {
 export type WeeklyActivityEntryRecord = {
   id: number
   weekly_activity_log_id: number
-  inclusive_date_start: string
-  inclusive_date_end: string
-  activities: string
+  // Nullable since the grid auto-saves half-typed rows — a row exists as soon
+  // as any one cell has something in it.
+  inclusive_date_start: string | null
+  inclusive_date_end: string | null
+  activities: string | null
   documents_records: string | null
   objectives: string | null
   supervisor_name: string | null
@@ -429,6 +436,65 @@ export type WeeklyActivityLogRecord = {
   status: 'draft' | 'submitted' | 'approved'
   submitted_at: string | null
   entries?: WeeklyActivityEntryRecord[]
+}
+
+/** One row of the coordinator's Weekly and Time Log Summary list. */
+export type CoordinatorWeeklyActivityLogRow = {
+  id: number
+  student_id: number
+  student_name: string
+  student_id_number: string | null
+  program: string
+  week_start: string | null
+  week_end: string | null
+  area_assigned: string | null
+  no_of_hours: string | number | null
+  entries_count: number
+}
+
+export type WeeklyActivityLogHeader = {
+  student_name: string | null
+  program: string | null
+  year_level: string | null
+  coordinator_name: string | null
+  company_name: string | null
+  supervisor_name: string | null
+  area_assigned: string | null
+  department_line: string
+  unit_line: string
+  program_and_year: string
+  faculty_adviser: string | null
+}
+
+export type CoordinatorWeeklyActivityLogsResponse = {
+  programs: { id: number; name: string; code?: string }[]
+  logs: {
+    data: CoordinatorWeeklyActivityLogRow[]
+    current_page: number
+    last_page: number
+    total: number
+  }
+}
+
+/** One sheet as the coordinator reads it — read-only, no editing anywhere. */
+export type CoordinatorWeeklyActivityLogDetail = {
+  id: number
+  student_id: number
+  week_start: string | null
+  week_end: string | null
+  area_assigned: string | null
+  no_of_hours: string | number | null
+  header: WeeklyActivityLogHeader
+  entries: Array<{
+    id: number
+    inclusive_date_start: string | null
+    inclusive_date_end: string | null
+    activities: string | null
+    documents_records: string | null
+    objectives: string | null
+    supervisor_name: string | null
+    supervisor_position: string | null
+  }>
 }
 
 export type InfoSheetStatus = 'draft' | 'submitted' | 'approved' | 'rejected'

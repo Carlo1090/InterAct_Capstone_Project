@@ -493,16 +493,32 @@ untouched by archiving.
   `ValidatesJournalTemplate::prepareForValidation()` force-merges the fixed value
   before validation, so a tampered or omitted value is silently ignored rather
   than 422ing. Per-SIPP-field cap is **300** characters.
-- **A daily entry locks only once its week is BUNDLED, not on submit.**
-  `store()` 422s only once `isBundledWeek()` finds a `WeeklyLog` for that date's
-  Mon-Fri week. Until then a student can freely resave any date in range,
-  submitted or not. There is no return-for-revision for individual daily
-  entries; the correction surface is the weekly narrative once bundled.
-- **This is a ONE-WAY lock** — even if the `WeeklyLog` is later returned by a
-  supervisor, the underlying daily entries stay locked.
+- **A daily entry locks only once its week has been SUBMITTED TO THE
+  SUPERVISOR — not on submit of the entry, and NOT when the week is compiled.**
+  `store()` 422s only once `isWeekUnderReview()` finds a `WeeklyLog` for that
+  date's Mon-Sun week that is `submitted_at IS NOT NULL` **and** still
+  `pending`/`approved`. Until then a student can freely resave any date inside
+  their OJT range, submitted or not, however late.
+  **CHANGED 2026-08-27 — the old rule was a real defect, not a preference.**
+  The lock used to fire on the mere EXISTENCE of a `WeeklyLog`, and
+  `WeeklyBundlingService` stamps one every Monday for **every active student**.
+  So a student who filed Friday's entry on Monday morning — or who came back to
+  catch up on a fortnight — found the week permanently frozen with no way to
+  write it, and no route to unfreeze it. Compilation is now reversible (the
+  student can recompile the week themselves, see Manual bundling below), so it
+  no longer freezes anything; a supervisor's review is not reversible by the
+  student, which is why the line sits there instead.
+- **The lock lifts when a supervisor RETURNS the week** (`status = 'returned'`),
+  matching the weekly narrative's own rule. That is what makes "fix the daily
+  entry, recompile, resubmit" a real revision path rather than a rewrite by
+  hand.
 - `isEditableDate()` is a thin wrapper over `lockedReason()`, which returns
-  `'not_active'` | `'range'` | `'bundled'` | `null`; `show()` exposes it as
-  `locked_reason` so the UI can show the right banner.
+  `'not_active'` | `'range'` | `'week_submitted'` | `null`; `show()` exposes it
+  as `locked_reason` so the UI can show the right banner. One message per token
+  lives in `JournalEntryController::LOCK_MESSAGES`, shared by `show()`'s banner
+  and `store()`'s rejection so the two can never explain the same lock
+  differently. **The old `'bundled'` token is gone** — the frontend type and
+  `StudentWriteJournalPage.vue`'s banner were updated with it.
 - **`journal_entries.status` only ever holds `draft` or `submitted` in storage.**
   `missing`/`overdue` are **derived on read** (absence of a submitted entry on a
   working day), never queried against the column. Querying the column for them
@@ -553,15 +569,51 @@ entries) into `"MONDAY\n<text>\n\nTUESDAY\n<text>"`-shaped
   every run — there is no way to distinguish a student's manual edit from an
   auto-fill.
 - **Runs every MONDAY at 00:00**, for the full Mon-Sun week that just ended.
-  **It used to run Saturday and that was a real bug, not a preference** —
-  stamping a `WeeklyLog` is a one-way edit lock on every daily entry in the week,
-  so a Saturday run locked the week BEFORE a Saturday shift began, and an intern
-  rostered that day could never write the entry.
+  It used to run Saturday and that was a real bug, not a preference — back when
+  stamping a `WeeklyLog` was a one-way edit lock on every daily entry in the
+  week, a Saturday run locked the week BEFORE a Saturday shift began. (That lock
+  is gone as of 2026-08-27 — see Daily journal entries above — but the Monday
+  schedule is still correct on its own terms: a week is not compilable until it
+  has ended.)
 - `mostRecentlyCompletedWeekStart()` is unconditionally
   `today()->startOfWeek(Monday)->subWeek()` — a week is complete only once its
   **Sunday** has passed.
 - Laravel 13 has no `app/Console/Kernel.php`; scheduling lives in
   `routes/console.php` via `Schedule::command()`.
+
+#### Manual bundling — the student can compile their own week
+
+Added 2026-08-27. `POST student/weekly-logs/{weekStart}/bundle`
+(`WeeklyLogController::bundle`), surfaced as **"Compile from Daily Entries"** on
+each editable week of `StudentWeeklyJournalsPage.vue`.
+
+Bundling used to be something that only happened TO a student, once, overnight.
+Anything written after that run — a Friday entry filed on Monday, a fortnight of
+catching up — could never reach the narrative, and there was no way to ask for
+it. This is the same compiler, triggered by the person whose work it is.
+
+- **ONE WRITER for both paths.** `bundleWeek()` (the schedule) and
+  `bundleForStudent()` (the button) both go through the private
+  `compileFor()`, the `EnrollmentService` pattern again — a student pressing the
+  button and the job running overnight must never produce two different
+  narratives from the same daily entries.
+- **The two callers differ on exactly ONE point, via `$recompileReturned`.** A
+  `returned` log is back in the student's hands, so their own explicit
+  recompile picks up whatever they have since corrected; the **scheduled job
+  leaves it alone**, because it runs unattended and would otherwise silently
+  replace a revision the student typed after a return. Pinned by
+  `test_the_scheduled_job_leaves_a_returned_log_alone`.
+- Guards, in order: active enrollment → the week has actually started (the
+  CURRENT week is allowed on purpose — compile what you have so far) → the week
+  is not entirely before the batch start → at least one **submitted** daily
+  entry exists in it (else 422 naming that, rather than writing an empty
+  narrative) → the log is not already with the supervisor.
+- It **overwrites** the narrative box, which is what it is for — so the button
+  confirms first, and the confirm switches to `tone: 'danger'` when there is
+  already text to lose.
+- `show()` returns **`submitted_entries_count`** so the page can say what the
+  button will draw from and disable it at zero, rather than offering a button
+  that 422s.
 
 ### Weekly logs and supervisor review
 
@@ -631,17 +683,38 @@ migrated and no route was added.
   pair), so there is **no Save button anywhere** — the only row action is
   **Delete**. A page-level pill reports Saving / All changes saved / error, and
   each row carries its own small status.
-  - **A draft row is only POSTed once it has both dates AND activities.** Those
-    three are `required` on `StoreWeeklyActivityEntryRequest`, so auto-saving an
-    incomplete row would 422 on every keystroke — `isRowCreatable()` is the gate
-    that prevents it. Once created, the row keeps its id and subsequent edits go
-    out as PUTs.
+  - **A draft row is POSTed as soon as ANY cell has something in it**, and
+    `isRowCreatable()` is now simply "not untouched".
+    **CHANGED 2026-08-27 — this was a real data-loss bug.** A row could only be
+    created once BOTH dates AND the Activities text were present, because those
+    three columns were NOT NULL, so a half-filled row lived only in the browser
+    tab and was thrown away on logout with nothing on screen admitting it would
+    be. `2026_08_27_000001_make_weekly_activity_entry_fields_nullable` relaxes
+    `inclusive_date_start` / `inclusive_date_end` / `activities`, and the guard
+    **moved up a layer rather than disappearing**:
+    `StoreWeeklyActivityEntryRequest` has a `withValidator` "at least one of
+    `CONTENT_FIELDS` is non-empty" rule, so the blank template row at the bottom
+    of the grid still never becomes a database row on its own.
+    Once created, the row keeps its id and subsequent edits go out as PUTs.
+  - **`after_or_equal:inclusive_date_start` is applied only when a start date
+    was actually sent.** With the field nullable, the rule's fallback — comparing
+    against `Carbon::parse(null)`, i.e. **now** — would silently reject every
+    past end date on a row whose start cell has not been typed yet. Both entry
+    requests build that rule conditionally; pinned by
+    `test_an_end_date_before_its_start_date_is_refused_but_a_lone_past_end_date_is_not`.
+  - **Empty cells are sent as `null`, never `''`.** A bare `''` fails the `date`
+    rule and would reject the whole row over a cell the student has not reached.
   - **A flush that lands while a row is already saving reschedules instead of
     firing**, so a fast typist cannot race two POSTs and duplicate a row.
   - **Saving never re-fetches the sheet.** Reloading mid-typing would blow away
     focus and cursor position; rows are updated in place instead.
   - `onBeforeUnmount` flushes anything still inside its debounce window, so
-    navigating away does not silently drop the last keystrokes.
+    navigating away does not silently drop the last keystrokes. Two more nets
+    cover the same 800ms window: **`visibilitychange` → hidden** (the point a
+    browser is free to freeze or discard the page, and the only one that is
+    reliable on mobile) also flushes, and **`beforeunload`** flushes and then
+    warns — but only when something is genuinely unconfirmed, since a prompt on
+    every navigation is noise students learn to click through.
   - **The "New Log Sheet" form is deliberately NOT auto-saved** — it creates a
     record rather than editing one, and auto-saving it would create sheets while
     the student is still typing dates.
@@ -663,11 +736,44 @@ migrated and no route was added.
   Where DTR is off, both are null and the field behaves exactly as before.
   **Hours are still never fabricated** — an unclocked hour stays unclocked.
 - The header block (student name, program and year, adviser, company,
-  supervisor) is **read-only**, resolved from the active enrollment.
+  supervisor) is **read-only**, and is resolved from the LOG's own
+  `(student_id, batch_id)` pair — not from "whatever the student is enrolled in
+  right now" — so a sheet still prints its real company and coordinator after
+  the enrollment is marked completed, which is exactly when a coordinator is
+  collecting these for the SIPP file.
+
+#### The coordinator's read-only list (added 2026-08-27)
+
+`Coordinator/CoordinatorWeeklyActivityLogController` (`index`/`show`/`pdf`,
+routes `coordinator/weekly-activity-logs*`), page
+`CoordinatorWeeklyTimeLogsPage.vue` at `/coordinator/weekly-time-logs`, nav
+label **"Weekly and Time Log Summary"** (`clock` icon, the same glyph
+`StudentLayout` uses for the student's own copy).
+
+- Shaped like the **Student Info Sheets queue** — scope by the batch's program,
+  filter, open one, download the official PDF — minus Accept/Reject, which has
+  no meaning here: **this form has no approval step in the app at all.** The
+  paper copy is signed by hand by the company supervisor. Same read-only
+  posture as `CoordinatorWeeklyJournalController`.
+- Unlike the weekly-journal queue it does **NOT** filter on a submitted state.
+  There is no submit step on this form, so excluding anything unsubmitted would
+  hide every sheet in the system.
+- **The PDF is the identical measured facsimile the student downloads** — both
+  controllers use the shared `Concerns\BuildsWeeklyActivityLogPdf` trait (the
+  same call already made for the individual info sheet via
+  `BuildsInfoSheetPdf`), so the coordinator's filed copy and the student's
+  printed copy cannot drift. Only the filename differs (it carries the student
+  name). `CoordinatorWeeklyActivityLogTest` asserts the coordinator's download
+  is still US Letter, which is the trait's own load-bearing `setPaper()` call.
+- Filters: `program_id` (403 out of scope), `search` (student name), and
+  `from`/`to` matched against the period **overlapping** the range
+  (`week_end >= from`, `week_start <= to`), not against `week_start` alone — a
+  sheet whose period straddles the filter boundary is still the sheet the
+  coordinator is looking for.
 
 #### The PDF is a facsimile — four things are load-bearing
 
-1. **`->setPaper('letter', 'portrait')` in the controller.** dompdf defaults to
+1. **`->setPaper('letter', 'portrait')` in `BuildsWeeklyActivityLogPdf`.** dompdf defaults to
    **A4** (595x842), which silently narrows every measured column. Pinned by
    `test_the_pdf_is_us_letter_and_fits_on_one_page`, which asserts the MediaBox
    is `612 x 792` — verified to genuinely fail (it reports A4) when the call is
@@ -682,7 +788,7 @@ migrated and no route was added.
    Company rows both span), and `table-layout: fixed` distributes columns equally
    regardless. Those widths are **content-box** — dompdf adds cell padding on
    top, so each is written as (target - horizontal padding).
-4. **The department and unit lines are literal constants**
+4. **The department and unit lines are literal constants** (on the trait)
    (`DEFAULT_DEPARTMENT_LINE` = "College of Accountancy, Business and
    Management", `DEFAULT_UNIT_LINE` = "Business Department"), matching the
    reference form verbatim. Deliberately **not** derived from
@@ -1474,6 +1580,20 @@ either back:**
    redirects an already-authenticated user to `/`, which on the API origin is the
    Laravel root route — a dead end on a different host from the SPA.
    `redirectToLogin()` handles the already-signed-in case itself.
+   **Fixed 2026-08-23: the plain username/password form had the identical bug**
+   and was the actual root cause of a reported "login just sits there, nothing
+   happens" report — `POST /login` (`routes/auth.php`) carried `guest` too, so a
+   browser with a still-valid session (SESSION_LIFETIME is 120 minutes, and the
+   SPA never notices — see the Gotchas entry below) silently got the SAME `/`
+   JSON body back instead of `{user: ...}`, `auth.ts` set `this.user = undefined`,
+   `roleRedirect(null)` resolved to `/login`, and the router pushed to the page
+   it was already on — no error, no navigation, which reads exactly like a stuck
+   button. `guest` is now removed from `/login`, `/forgot-password` and
+   `/reset-password` for the same reason; none of the three controllers assume a
+   guest, so nothing else changed. This is also why the "log in with Google
+   signs me in directly, no Google screen" half of that same report was **not**
+   a bug — it is `redirectToLogin()`'s documented short-circuit above, correctly
+   firing because the browser genuinely still had a valid session.
 2. **Every success redirect goes to `/{role}/dashboard`, NEVER to `/`.** The
    SPA's root route is an unconditional redirect to `/login`, and the router
    guard only calls `fetchUser()` for routes marked `requiresAuth` — so a browser
@@ -1618,6 +1738,75 @@ both info sheets) is standalone. `pdf/layout.blade.php` still exists but is
 extended by **no** view; its base contradicts the measured forms on every axis
 (font, colour, margins, and forced title elements).
 
+## Public landing page
+
+`/` renders `web/src/pages/LandingPage.vue` rather than redirecting to `/login`.
+It is the only **marketing** surface in the app; every other public route
+(`/login`, `/forgot-password`, `/password-reset/:token`) is functional.
+
+- **Eagerly imported — the ONLY statically-imported page in
+  `router/index.ts`.** It is the first paint for an unauthenticated visitor at
+  the bare domain, so a dynamic import costs a second round trip (entry chunk,
+  THEN the page) before anything renders. Measured, not assumed: lazy is a
+  41.20 kB gzip entry + a 6.26 kB page chunk + a 0.44 kB CSS chunk; eager is a
+  47.12 kB entry and nothing else — ~5.9 kB gzip added to every other page load
+  in exchange for that round trip. Re-measure before reverting.
+- **A signed-in user visiting `/` sees the landing page, not their dashboard,
+  and that is deliberate.** Bouncing them needs `auth.user` populated, but
+  `beforeEach` only calls `fetchUser()` for `requiresAuth` routes — so a bounce
+  would fire on in-app navigation and silently NOT fire on a cold load with a
+  perfectly valid session (the same hazard documented under Google OAuth's
+  "never redirect to `/`" rule). Closing that gap with a blocking `fetchUser()`
+  would put an API round trip in front of every public visitor's first paint.
+  **This is not a regression**: `/` already landed a signed-in user on the login
+  form, because `LoginPage.vue` has never redirected an authenticated user.
+- **The preview cards are illustrations, not dashboards.** The hero's stat grid
+  and the Daily Time Record panel are static markup. The rule that dashboards
+  render only fields the API returns governs the four REAL dashboards — this
+  page has no session to read from. Both carry `aria-hidden`, so a screen reader
+  is never told these are the visitor's own numbers. **Do not wire either to an
+  endpoint.** The one figure that is real is **486**, the SIPP requirement the
+  seeders write into `batches.required_hours`.
+- **Animation is shared with `LoginPage.vue`, not reimplemented.** `.reveal`,
+  `bg-drift` and `.blob-a/.blob-b` are the same mechanism, including the inline
+  `--d` custom property that lets the sub-`lg` media query halve the stagger (a
+  stylesheet cannot override an inline `transition-delay`, but it can re-derive
+  from a custom property). `.on-scroll` extends the same grammar below the fold
+  via ONE shared `IntersectionObserver` that unobserves on entry, so a section
+  never re-animates on a second pass.
+- **Reduced motion is a single switch**: one `prefers-reduced-motion` block
+  stills every animation, and the observer is skipped entirely rather than being
+  neutralized in CSS after the fact.
+- **Colour follows the existing rules.** Exactly one filled blue button per
+  viewport — the nav CTA and the hero CTA never share one, since the hero's
+  scrolls away before the roles section arrives. Only the four sanctioned
+  accents appear, in the established order (blue neutral, emerald good, amber
+  waiting, rose needs attention).
+- **The three role links in the nav target INDIVIDUAL role cards**
+  (`#role-student`, `#role-supervisor`, `#role-coordinator`), not the `#roles`
+  section. The source design lists four nav links against only three content
+  sections, so pointing them all at `#roles` would ship three controls doing the
+  identical thing. Each card carries its own id plus `scroll-mt-24` (6rem, which
+  clears the `h-19`/76px sticky header).
+
+Source design: Figma file `IcDGFFr5XSdfR96m1GRKj7`, frame `Landing — Desktop 1440`;
+the translation table from Figma variables to Tailwind tokens is
+`docs/LANDING_PAGE_HANDOFF_1.md`. Gradient stops cannot bind to Figma variables,
+so the hero and closing band carry raw hex in Figma matching `blue-900` /
+`blue-800` / `teal-500` — in code they are the `bg-linear-to-br from-blue-900
+via-blue-800 to-teal-500` class `LoginPage.vue` already ships.
+
+**KNOWN DEVIATION from the design: the footer's `Privacy` and `Support` links
+are NOT built**, because neither page exists and a landing page linking to
+nowhere is worse than one that does not offer the link. The footer ships the
+brand block plus a `Sign in` link instead. Add them when there are real
+destinations.
+
+Two other gaps carried over from the handoff, neither blocking: there is **no
+mobile Figma frame** (responsive behaviour below `lg` follows `LoginPage.vue`'s
+breakpoint as a code-side judgement call), and **`teal-50` is used once** (the
+Geofence chip) without being in the Figma token collection.
+
 ## Role Surfaces
 
 ### Admin
@@ -1650,6 +1839,10 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
   creator column exists, so unlinked implies visible, keeping freshly-created
   companies in view). Includes the representatives and supervisor-login panels.
 - **Student Info Sheets** — the Accept/Reject queue; defaults to **All** statuses.
+- **Weekly and Time Log Summary** (`/coordinator/weekly-time-logs`) — read-only
+  list of every in-scope intern's MDC Weekly Activity Log sheet, with a per-row
+  and in-modal **Download PDF**. See Weekly Activity Log above; there is no
+  approval step on this form and no write action here.
 - **Daily Time Record** (`/coordinator/dtr`) — **the only place the DTR on/off
   preference is set**, plus read-only hours-vs-required per intern and a
   **Sites** tab listing where each company's QR code is anchored so a fence
@@ -2133,6 +2326,57 @@ POST the cropped square blob.
 
 Hard-won, each from a real debugging session. Do not "simplify" any of these away.
 
+### `session()->regenerate()` does not clear session DATA, only its ID — and that silently logs out the very login that just succeeded
+
+Found 2026-08-23 chasing a report of "login just sits there" plus "Google sign-in
+logs me in directly with no Google screen." The login itself was fixed by
+removing `guest` from `/login` (see the Google OAuth section above), but fixing
+that surfaced a SECOND, genuinely subtler bug: switching accounts on the same
+browser (log in as A, then — without logging out — log in as B) always
+succeeded with a 200 and the right user in the response body, yet **every
+single API call the new dashboard made came back 401, permanently**, until the
+tab was hard-reloaded.
+
+Root cause, confirmed by literally tracing every SQL statement the `sessions`
+table received: `Illuminate\Session\Middleware\AuthenticateSession` is enabled
+by Laravel's own default `config/sanctum.php`
+(`'authenticate_session' => AuthenticateSession::class`), and runs on every
+stateful request. On first seeing a session, it stamps a `password_hash_web`
+key — an HMAC of the CURRENT user's password hash — and on every later request
+re-hashes `$request->user()`'s password and compares it against that stored
+value, logging out (`session()->flush()` + throw `AuthenticationException`) on
+a mismatch. This exists to catch a genuinely changed password invalidating
+old sessions. **`Auth::attempt()`'s own internal `migrate(true)` and the
+controller's explicit `session()->regenerate()` only ever rotate the session
+ID — neither touches `$attributes`.** So logging in as B over A's still-live
+session carries A's `password_hash_web` straight into B's brand-new session
+row. The very next request hashes B's (different) password, compares it
+against A's leftover hash, mismatches, and `AuthenticateSession` itself wipes
+the row it's sitting in and 401s — a real logout, self-inflicted one request
+after a real, successful login, with no error the SPA could ever show.
+
+This is exactly why Laravel ships `guest` middleware on the stock login route
+in the first place: the framework's assumption is that `POST /login` never
+runs against an already-authenticated session, so this interaction never had a
+chance to fire. Once that assumption is deliberately dropped (correctly, for
+the reason above), the responsibility for a clean slate falls on the
+controller. **Fix: `$request->session()->flush()` BEFORE `$request->authenticate()`
+(or `Auth::login()`), never after** — flushing after authenticating would wipe
+the very `login_web_*` key the login just wrote. Applied in both
+`AuthenticatedSessionController::store()` and
+`GoogleController::completeLogin()`, since Google sign-in's callback can hit
+the identical stale-session case (`redirectToLogin()`'s early return only
+guards the entry point, not the callback that actually calls `Auth::login()`).
+
+Verified two ways: `php artisan test` (503 tests) stayed green — nothing else
+in the suite exercises a login-over-a-live-session — and a live Playwright
+repro (log in as a student, reload `/login` without logging out, log in as a
+coordinator) went from 5-for-5 `401 Unauthenticated` on the new dashboard's own
+API calls to a clean `200` with real data, confirmed by tracing the exact
+`sessions` row: before the fix its payload went from a correct
+`{"login_web_...":9,...}` to a blank `{"_flash":{...}}` within milliseconds of
+the second login; after the fix it stays correct indefinitely.
+
 ### `date`-cast columns and plain equality under SQLite
 
 MySQL's `DATE` truncates any time component on write; **SQLite does not**. So a
@@ -2253,6 +2497,104 @@ at dispatch time and stays correct even after the DOM mutates mid-event.
   extension is absent but irrelevant — Laravel's SQLite testing driver uses
   `pdo_sqlite`.
 - `storage/app/public` must be linked into `public/storage` (`storage:link`).
+
+### Mobile overflow: no global `overflow-x` guard, so any fixed floor bleeds through
+
+`web/src/style.css` sets no `overflow-x: hidden` on `html`/`body`. That is
+deliberate — it would mask a genuine layout bug instead of surfacing it — but it
+means any element with a hard minimum width wider than the viewport is never
+contained unless ITS OWN wrapper is `overflow-x-auto`. Audited 2026-08-23 after
+a report of journal input "running out of the frame" on a phone.
+
+Found and fixed: `AnnualSippPaperView.vue`, `HtePaperView.vue`, and
+`GroupInfoSheetPaperView.vue` (the coordinator/admin report-preview documents)
+all carried `min-w-[44rem]` (704px) — a **hard floor with no relation to their
+actual content**, since `AnnualSippPaperView`'s table is three `w-1/3` columns
+and `HtePaperView`'s is percentage-based; both are fully fluid and needed no
+minimum at all. Removed on all three (now `w-full max-w-4xl`, padding
+`px-4 py-6` scaling up to `px-8 py-10` at `sm:`). **This is a live-preview
+component, not the PDF** — dompdf renders the actual document from a separate
+blade template with its own measured facsimile constraints (see the PDF
+sections above), so narrowing this Vue component has zero effect on the
+generated report. `GroupInfoSheetPaperView`'s roster table still carries a few
+fixed-`w-8/w-10/w-24` narrow columns for `#`/MI/Program/Contact, so an 8-column
+roster still needs horizontal scroll on a phone even after the floor is gone —
+a `sm:hidden` "scroll sideways" hint now sits above it rather than leaving the
+cutoff silent.
+
+Also fixed: `JournalPaperView.vue` and `WeeklyJournalPaperView.vue` (the
+daily/weekly journal "paper" read view) used a flat `p-10` (40px/side)
+regardless of viewport, eating a quarter of a 375px phone's width in padding
+alone — now `p-5 sm:p-8 md:p-10`. Their header row (student name / program name)
+gained `flex-wrap` and `wrap-break-word` as a defensive measure against a name
+or program with no natural break point.
+
+`StudentWeeklyTimeLogPage.vue`'s Activity Log grid (`min-w-248` = 992px,
+genuinely load-bearing — the five text columns need real width to be typable)
+was NOT narrowed, since doing so would make the actual writing surface worse.
+Instead it got the same `sm:hidden` scroll hint plus tighter mobile padding
+(`px-2 py-5 sm:px-6`) around the scroll container, so a student sees why only
+two columns fit instead of assuming the page is broken.
+
+**Follow-up pass (same day):** `AdminUsersPage.vue` and `AdminBatchesPage.vue`
+already carried a **dual layout** — a `hidden md:block` table plus a parallel
+`md:hidden` stacked-card list reproducing the same rows — and so did
+`SupervisorJournalsPage.vue`, `SupervisorInternsPage.vue`, and
+`CoordinatorActivityLog.vue`. That pattern was applied to every coordinator and
+student list page that was missing it and is plausibly checked from a phone:
+`CoordinatorInternsPage.vue` (both the Interns and Supervisors tabs),
+`CoordinatorCompaniesPage.vue`, `CoordinatorBatchesPage.vue`'s main list,
+`CoordinatorInfoSheetsPage.vue` (the Accept/Reject queue),
+`CoordinatorJournalActivitiesPage.vue`, `CoordinatorWeeklyJournalsPage.vue`,
+`CoordinatorJournalTemplatesPage.vue`, and `StudentJournalsPage.vue`. Each card
+list reuses the exact same reactive data and handler functions as its table —
+no new script logic, purely a second `<template>` block — so the two views
+cannot drift apart in what they show or do.
+
+A full sweep for the OTHER classic overflow trigger — a hard `min-w-[...]`
+floor — confirmed the three fixed above were the only ones in the entire
+codebase; every DTR page (`StudentDtrPage`, `CoordinatorDtrPage`,
+`SupervisorDtrPage`) and every other table already sizes its `<col>` widths in
+relative Tailwind units with no artificial floor, which is what makes plain
+horizontal scroll a safe fallback for them. A parallel sweep for `grid-cols-N`
+used with no responsive prefix turned up only deliberately fixed grids (a
+7-column calendar, 2-column key/value and signatory blocks) — none were
+narrowing a form under load.
+
+**Third pass (same day): the remaining admin/report tables converted too.**
+`AdminInfoSheetsPage.vue`, `AdminAuditLogsPage.vue`, and `AdminProgramsPage.vue`
+gained the same `hidden md:block` table / `md:hidden` card-list pattern.
+`AdminDepartmentsPage.vue`'s own list was already a responsive card grid
+(`grid sm:grid-cols-2 xl:grid-cols-3`, no table at all) — only its View modal's
+two nested tables (Programs, Students) needed the treatment. The four nested
+roster sub-tables inside `CoordinatorBatchesPage.vue`'s roster modal (Active /
+Completed / Dropped / Archived) got it as well.
+
+`CoordinatorAnnualSippPage.vue` and `CoordinatorHtePage.vue`'s own curation
+tables (distinct from the `*PaperView` read-only previews fixed earlier) are
+**genuine data-entry grids** — SIPP notes are typed into three side-by-side
+`<textarea>`s per row, HTE rows are typed into five inputs — so unlike a
+read-only list, stacking each row as a full-width mobile card is a real
+usability improvement, not just a fallback: every textarea gets the whole
+screen width instead of a table cell a few characters wide. Verified live
+(mdcbalbero, real SIPP/HTE data) — the cards render with working checkboxes,
+character counters, and Delete buttons, identical data to the desktop table
+since both `v-for` the same `rows` array.
+
+Every item from the original "deliberately left as plain scrollable" list is
+now converted. Nothing remaining is known to need this treatment.
+
+**A CSS-only "scroll shadow" affordance for every `overflow-x-auto` region was
+attempted and reverted — do not retry it as a blanket rule.** Tailwind v4 wraps
+its own utilities in named cascade layers via `@import "tailwindcss"`; a plain
+top-level `.overflow-x-auto { background: ... }` rule in `style.css` is
+**unlayered**, and unlayered CSS always wins over ANY layered rule regardless
+of source order or specificity — so it silently stripped every element's own
+`bg-white`/`bg-slate-100` utility wherever both classes landed on the same
+node. Verified by re-deriving the cascade-layers spec, not by trial in a
+browser. A per-container fix would need its own explicit background color
+matching each context, or a technique that never touches `background`/
+`background-color` (e.g. `mask-image`) — not a single global rule.
 
 ## Frontend UI conventions
 
@@ -2436,6 +2778,16 @@ npx expo start
 `Support` (the latter added for `GeoDistanceTest`, which exercises the haversine
 geofence maths with no database at all).
 
+Three tests pin the 2026-08-27 journal-flexibility work specifically, and each
+covers a rule that used to be the opposite — do not "restore" the old
+behaviour they describe:
+`JournalEntryTest::test_a_compiled_but_unsubmitted_week_leaves_its_daily_entries_writable`
+(a late entry can still be written after bundling has run),
+`WeeklyBundlingServiceTest::test_the_scheduled_job_leaves_a_returned_log_alone`
+(the one point where the manual and scheduled compiles diverge), and
+`WeeklyActivityLogTest::test_a_half_filled_row_is_saved_rather_than_lost`
+(a partially-typed grid row reaches the database).
+
 DTR coverage lives in six files, and several of them exist to pin a bug that
 was real rather than hypothetical — do not delete them as redundant:
 `Unit/Support/GeoDistanceTest`, `Feature/Student/DtrPunchTest` (the toggle,
@@ -2490,6 +2842,43 @@ login-bearing vs named-only split is visible with no setup.
 Both demo coordinators now have `dtr_enabled = true` so every role is testable
 end to end. The opt-out is demonstrated live by switching it off in the
 coordinator's own account menu, which is the real flow anyway.
+
+**Weekly and Time Log Summary demo** (`CabmbWeeklyTimeLogDemoSeeder`, added
+2026-08-27) gives **mdcbalbero** eight sheets across **six students in all four
+CABM-B programs** — `mdcbalintern1` · `mdcbalintern2` · `mdcbalintern3`
+(BSBA-FM) · `cabmb.bsa1` (BSA) · `cabmb.mm1` (BSBA-MM) · `cabmb.om1` (BSBA-OM).
+Six would only need five; spreading them over four programs is what makes the
+coordinator page's **Program filter** mean anything, and three of the six are
+the memorable `mdcbalintern*` logins so the same roster is reachable as
+coordinator, as their supervisor (`mdcbalsup`) and as each student.
+
+- **The Period Covered is THREE MONTHS** — 13 weeks, one sheet for the whole
+  internship quarter, which is what 486 SIPP hours works out to at 8h/day. It is
+  anchored to the **batch's own `start_date`**, never to `now()`, so it always
+  lands inside the batch window whenever the database is seeded, and it is a
+  whole number of weeks so the weekly rows tile it exactly.
+- **Only FINISHED weeks get a row.** The declared period runs to the end of the
+  quarter while the rows stop at last Friday — exactly what a coordinator sees
+  opening a sheet mid-placement. Seeding a row dated in the future would be
+  visibly wrong on a form a supervisor signs by hand.
+- `mdcbalintern1` and `cabmb.bsa1` each get a **second, single-week sheet**, so
+  "one student, several sheets" and the page's Period From / Period To filter
+  both have something to act on.
+- A 3-month sheet carries 9 rows and therefore prints on **two pages**. That is
+  correct, not a regression — the one-page guarantee in the PDF section above is
+  for the blank/sparse form; the table is documented to grow past
+  `MIN_FORM_ROWS`.
+- Activities are drawn from four program-appropriate 13-week vocabularies
+  (banking / accounting / marketing / operations) and **rotated per student**, so
+  three interns at the same bank do not file byte-identical sheets. Each row's
+  signatory is the company's login supervisor, with the position read off
+  `company_supervisors` rather than hardcoded.
+- Re-runnable like every other seeder: the sheet is found by
+  (student, batch, `week_start`) with **`whereDate()`**, never plain equality —
+  `week_start` is a `date`-cast column and SQLite keeps a time component on it,
+  so equality would miss the previous run's row and insert a duplicate. Rows are
+  keyed by (sheet, `sort_order`) and any row left over from a longer previous run
+  is pruned.
 
 **Intake-flow demo** (`CabmbIntakeDemoSeeder`, CABM-B under Balbero, both
 NOT-enrolled, re-armed each seed): `mdcintake` has a **draft** sheet (log in

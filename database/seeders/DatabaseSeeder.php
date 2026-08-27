@@ -58,6 +58,10 @@ class DatabaseSeeder extends Seeder
         // coordinator, programs and BSBA-FM batch.
         $this->call(CabmbSupervisorDemoSeeder::class);
         $this->call(CabmbWeeklyDemoSeeder::class);
+        // Runs AFTER both CABM-B seeders above: it writes Weekly Activity Log
+        // sheets for students they enrolled, and reads each sheet's period off
+        // the batch those seeders created.
+        $this->call(CabmbWeeklyTimeLogDemoSeeder::class);
         $this->call(SippBsaDemoSeeder::class);
         $this->call(CabmbIntakeDemoSeeder::class);
         $this->call(GroupInfoSheetDemoSeeder::class);

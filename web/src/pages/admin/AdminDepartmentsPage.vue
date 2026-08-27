@@ -320,58 +320,88 @@ onMounted(() => {
 
           <div>
             <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Programs</h5>
-            <div v-if="viewedDepartment.programs.length > 0" class="mt-2 overflow-x-auto rounded-lg ring-1 ring-slate-200">
-              <table class="min-w-full divide-y divide-slate-200">
-                <thead class="bg-slate-50">
-                  <tr>
-                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Code</th>
-                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
-                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
-                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Active Interns</th>
-                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Total (All-time)</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100">
-                  <tr v-for="program in viewedDepartment.programs" :key="program.id">
-                    <td class="px-3 py-2 text-sm font-medium text-slate-900">{{ program.code ?? '—' }}</td>
-                    <td class="px-3 py-2 text-sm text-slate-700">{{ program.name }}</td>
-                    <td class="px-3 py-2">
-                      <span
-                        class="rounded-full px-2 py-0.5 text-xs font-bold"
-                        :class="program.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
-                      >
-                        {{ program.is_active ? 'Active' : 'Inactive' }}
-                      </span>
-                    </td>
-                    <td class="px-3 py-2 font-mono text-sm font-bold text-slate-800">{{ program.active_interns_count }}</td>
-                    <td class="px-3 py-2 font-mono text-sm text-slate-500">{{ program.total_interns_count }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <template v-if="viewedDepartment.programs.length > 0">
+              <!-- md and up: aligned table. -->
+              <div class="mt-2 hidden overflow-x-auto rounded-lg ring-1 ring-slate-200 md:block">
+                <table class="min-w-full divide-y divide-slate-200">
+                  <thead class="bg-slate-50">
+                    <tr>
+                      <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Code</th>
+                      <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
+                      <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+                      <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Active Interns</th>
+                      <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Total (All-time)</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100">
+                    <tr v-for="program in viewedDepartment.programs" :key="program.id">
+                      <td class="px-3 py-2 text-sm font-medium text-slate-900">{{ program.code ?? '—' }}</td>
+                      <td class="px-3 py-2 text-sm text-slate-700">{{ program.name }}</td>
+                      <td class="px-3 py-2">
+                        <span
+                          class="rounded-full px-2 py-0.5 text-xs font-bold"
+                          :class="program.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
+                        >
+                          {{ program.is_active ? 'Active' : 'Inactive' }}
+                        </span>
+                      </td>
+                      <td class="px-3 py-2 font-mono text-sm font-bold text-slate-800">{{ program.active_interns_count }}</td>
+                      <td class="px-3 py-2 font-mono text-sm text-slate-500">{{ program.total_interns_count }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <!-- Below md: one stacked card per program. -->
+              <ul class="mt-2 divide-y divide-slate-100 rounded-lg ring-1 ring-slate-200 md:hidden">
+                <li v-for="program in viewedDepartment.programs" :key="program.id" class="px-3 py-2.5">
+                  <div class="flex items-center justify-between gap-3">
+                    <p class="text-sm font-medium text-slate-900">{{ program.code ?? '—' }} · {{ program.name }}</p>
+                    <span
+                      class="shrink-0 rounded-full px-2 py-0.5 text-xs font-bold"
+                      :class="program.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
+                    >
+                      {{ program.is_active ? 'Active' : 'Inactive' }}
+                    </span>
+                  </div>
+                  <p class="mt-1 font-mono text-xs text-slate-500">
+                    {{ program.active_interns_count }} active · {{ program.total_interns_count }} all-time
+                  </p>
+                </li>
+              </ul>
+            </template>
             <p v-else class="mt-2 text-sm text-slate-400">No programs under this department yet.</p>
           </div>
 
           <div>
             <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Students</h5>
-            <div v-if="viewedDepartment.students.length > 0" class="mt-2 overflow-x-auto rounded-lg ring-1 ring-slate-200">
-              <table class="min-w-full divide-y divide-slate-200">
-                <thead class="bg-slate-50">
-                  <tr>
-                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
-                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Email</th>
-                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100">
-                  <tr v-for="student in viewedDepartment.students" :key="student.id">
-                    <td class="px-3 py-2 text-sm font-medium text-slate-900">{{ student.name }}</td>
-                    <td class="px-3 py-2 text-sm text-slate-700">{{ student.email }}</td>
-                    <td class="px-3 py-2 text-sm text-slate-700">{{ student.program?.name ?? '—' }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <template v-if="viewedDepartment.students.length > 0">
+              <!-- md and up: aligned table. -->
+              <div class="mt-2 hidden overflow-x-auto rounded-lg ring-1 ring-slate-200 md:block">
+                <table class="min-w-full divide-y divide-slate-200">
+                  <thead class="bg-slate-50">
+                    <tr>
+                      <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
+                      <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Email</th>
+                      <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100">
+                    <tr v-for="student in viewedDepartment.students" :key="student.id">
+                      <td class="px-3 py-2 text-sm font-medium text-slate-900">{{ student.name }}</td>
+                      <td class="px-3 py-2 text-sm text-slate-700">{{ student.email }}</td>
+                      <td class="px-3 py-2 text-sm text-slate-700">{{ student.program?.name ?? '—' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <!-- Below md: one stacked card per student. -->
+              <ul class="mt-2 divide-y divide-slate-100 rounded-lg ring-1 ring-slate-200 md:hidden">
+                <li v-for="student in viewedDepartment.students" :key="student.id" class="px-3 py-2.5">
+                  <p class="text-sm font-medium text-slate-900">{{ student.name }}</p>
+                  <p class="mt-0.5 truncate text-xs text-slate-500">{{ student.email }} · {{ student.program?.name ?? '—' }}</p>
+                </li>
+              </ul>
+            </template>
             <p v-else class="mt-2 text-sm text-slate-400">No students assigned yet.</p>
           </div>
 

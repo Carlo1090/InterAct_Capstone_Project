@@ -17,6 +17,7 @@ use App\Http\Controllers\Coordinator\CoordinatorCompanyController;
 use App\Http\Controllers\Coordinator\CoordinatorDashboardController;
 use App\Http\Controllers\Coordinator\CoordinatorInfoSheetController;
 use App\Http\Controllers\Coordinator\CoordinatorJournalActivityController;
+use App\Http\Controllers\Coordinator\CoordinatorWeeklyActivityLogController;
 use App\Http\Controllers\Coordinator\CoordinatorWeeklyJournalController;
 use App\Http\Controllers\Coordinator\DtrMonitorController;
 use App\Http\Controllers\Coordinator\DtrPreferenceController;
@@ -141,6 +142,10 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::get('weekly-journals/{weeklyLog}', [CoordinatorWeeklyJournalController::class, 'show']);
         Route::get('weekly-journals/{weeklyLog}/pdf', [CoordinatorWeeklyJournalController::class, 'pdf']);
 
+        Route::get('weekly-activity-logs', [CoordinatorWeeklyActivityLogController::class, 'index']);
+        Route::get('weekly-activity-logs/{weeklyActivityLog}', [CoordinatorWeeklyActivityLogController::class, 'show']);
+        Route::get('weekly-activity-logs/{weeklyActivityLog}/pdf', [CoordinatorWeeklyActivityLogController::class, 'pdf']);
+
         Route::get('companies', [CoordinatorCompanyController::class, 'index']);
         Route::post('companies', [CoordinatorCompanyController::class, 'store']);
         Route::get('companies/{company}', [CoordinatorCompanyController::class, 'show']);
@@ -252,6 +257,7 @@ Route::middleware(['auth:sanctum', 'role:student', 'infosheet.approved'])
         Route::get('weekly-logs/{weekStart}/pdf', [WeeklyLogController::class, 'pdf']);
         Route::post('weekly-logs', [WeeklyLogController::class, 'store']);
         Route::post('weekly-logs/{weekStart}/submit', [WeeklyLogController::class, 'submit']);
+        Route::post('weekly-logs/{weekStart}/bundle', [WeeklyLogController::class, 'bundle']);
 
         Route::get('weekly-activity-logs', [WeeklyActivityLogController::class, 'index']);
         Route::post('weekly-activity-logs', [WeeklyActivityLogController::class, 'store']);

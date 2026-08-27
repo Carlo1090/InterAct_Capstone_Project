@@ -17,6 +17,7 @@ const navItems = [
   { label: 'Users', to: '/coordinator/users', badge: '', icon: 'people' },
   { label: 'Daily Journal Activities', to: '/coordinator/journal-activities', badge: '', icon: 'calendar' },
   { label: 'Weekly Journals', to: '/coordinator/weekly-journals', badge: '', icon: 'stack' },
+  { label: 'Weekly and Time Log Summary', to: '/coordinator/weekly-time-logs', badge: '', icon: 'clock' },
   { label: 'Daily Time Record', to: '/coordinator/dtr', badge: '', icon: 'map-pin' },
   { label: 'Journal Templates', to: '/coordinator/journal-templates', badge: '', icon: 'journals' },
   { label: 'Batches', to: '/coordinator/batches', badge: '', icon: 'briefcase' },
@@ -155,6 +156,10 @@ onBeforeUnmount(() => {
               stroke-linejoin="round"
             />
             <path v-if="item.icon === 'stack'" d="m4 13.5 8 4.5 8-4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+
+            <!-- Same glyph the student layout uses for their own copy of this form. -->
+            <circle v-if="item.icon === 'clock'" cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.6" />
+            <path v-if="item.icon === 'clock'" d="M12 7.5V12l3 1.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
 
             <rect v-if="item.icon === 'journals'" x="4.5" y="3.5" width="15" height="17" rx="1.5" stroke="currentColor" stroke-width="1.6" />
             <path v-if="item.icon === 'journals'" d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />

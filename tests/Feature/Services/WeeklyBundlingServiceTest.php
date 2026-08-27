@@ -160,6 +160,51 @@ Only Monday was submitted.', $log->narrative);
         $this->assertSame('The student already submitted this for review.', $log->narrative);
     }
 
+    /**
+     * The manual and scheduled compiles share one writer but differ on exactly
+     * one point, and this pins it: the SCHEDULED job leaves a returned log
+     * alone. It runs unattended overnight, and a returned log is one the
+     * student is mid-way through revising — replacing that text with a
+     * recompile would destroy work nobody asked it to touch. The student's own
+     * on-demand compile is an explicit request, so it may.
+     */
+    public function test_the_scheduled_job_leaves_a_returned_log_alone(): void
+    {
+        $student = $this->enrolledStudent();
+        $batchId = $student->batchEnrollment->batch_id;
+        $monday = Carbon::now()->startOfWeek(Carbon::MONDAY);
+
+        $this->entry($student->id, $batchId, $monday->toDateString(), 'submitted', 'Fresh compiled content.');
+
+        WeeklyLog::create([
+            'batch_id' => $batchId,
+            'student_id' => $student->id,
+            'week_start' => $monday->toDateString(),
+            'week_end' => $monday->copy()->addDays(6)->toDateString(),
+            'narrative' => 'The revision the student is part-way through.',
+            'status' => 'returned',
+            'submitted_at' => now()->subDay(),
+            'supervisor_comment' => 'Please expand Wednesday.',
+        ]);
+
+        $service = new WeeklyBundlingService;
+        $result = $service->bundleWeek($monday);
+
+        $this->assertSame(0, $result['compiled']);
+        $this->assertSame(
+            'The revision the student is part-way through.',
+            $this->weeklyLogFor($student->id, $monday)->narrative
+        );
+
+        // The student asking for it themselves is a different matter.
+        $service->bundleForStudent($student->id, $batchId, $monday);
+
+        $this->assertSame(
+            "MONDAY\nFresh compiled content.",
+            $this->weeklyLogFor($student->id, $monday)->narrative
+        );
+    }
+
     public function test_pre_fills_an_unsubmitted_draft_log(): void
     {
         $student = $this->enrolledStudent();

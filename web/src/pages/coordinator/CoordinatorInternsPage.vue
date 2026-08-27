@@ -841,7 +841,8 @@ onMounted(() => {
           <option v-for="program in programOptions" :key="program.id" :value="program.id">{{ program.code ?? program.name }}</option>
         </select>
       </div>
-      <div class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+      <!-- md and up: aligned table. -->
+      <div class="hidden overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200 md:block">
         <table class="min-w-full divide-y divide-slate-200">
           <thead class="bg-slate-50">
             <tr>
@@ -915,6 +916,66 @@ onMounted(() => {
           </tbody>
         </table>
       </div>
+
+      <!-- Below md: one stacked card per intern, so nothing scrolls sideways. -->
+      <ul class="divide-y divide-slate-100 rounded-lg bg-white px-4 shadow-sm ring-1 ring-slate-200 md:hidden">
+        <li v-if="interns.length === 0" class="py-6 text-center text-sm text-slate-500">
+          {{
+            hasInternsFilter
+              ? 'No students match this filter.'
+              : 'No students in your programs yet. Use "Create Student Account" to add one.'
+          }}
+          <button
+            v-if="hasInternsFilter"
+            type="button"
+            class="mt-2 block w-full text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+            @click="clearInternsFilter"
+          >
+            Clear filter
+          </button>
+        </li>
+        <li v-for="student in interns" :key="student.id" class="py-4">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="truncate text-sm font-semibold text-slate-900">{{ student.name }}</p>
+              <p class="font-mono text-xs text-slate-400">{{ student.student_id_number ?? '—' }}</p>
+            </div>
+            <span
+              class="shrink-0 rounded-full px-3 py-1 text-xs font-bold"
+              :class="student.enrolled ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'"
+            >
+              {{ student.enrolled ? 'ENROLLED' : 'NOT ENROLLED' }}
+            </span>
+          </div>
+          <p class="mt-1 truncate text-xs text-slate-500">{{ student.program?.code ?? student.program?.name ?? '—' }}</p>
+          <p class="mt-1 truncate text-xs text-slate-500">
+            {{ student.enrollment?.batch?.name ?? '—' }} · {{ student.enrollment?.company?.name ?? '—' }}
+          </p>
+          <p v-if="student.enrollment?.supervisor?.name" class="mt-0.5 truncate text-xs text-slate-400">
+            Supervisor: {{ student.enrollment.supervisor.name }}
+          </p>
+          <div class="mt-3 flex flex-wrap items-center gap-2">
+            <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="viewIntern(student.id)">
+              View
+            </button>
+            <button
+              type="button"
+              class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="resendingId === student.id"
+              @click="resendCredentials(student)"
+            >
+              {{ resendingId === student.id ? 'Sending...' : 'Resend' }}
+            </button>
+            <button
+              type="button"
+              class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:bg-red-50"
+              @click="askDeleteAccount(student)"
+            >
+              Delete
+            </button>
+          </div>
+        </li>
+      </ul>
     </template>
 
     <!-- Supervisors tab -->
@@ -932,7 +993,8 @@ onMounted(() => {
           </select>
         </div>
       </div>
-      <div class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+      <!-- md and up: aligned table. -->
+      <div class="hidden overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200 md:block">
         <table class="min-w-full divide-y divide-slate-200">
           <thead class="bg-slate-50">
             <tr>
@@ -997,6 +1059,51 @@ onMounted(() => {
           </tbody>
         </table>
       </div>
+
+      <!-- Below md: one stacked card per supervisor, so nothing scrolls sideways. -->
+      <ul class="divide-y divide-slate-100 rounded-lg bg-white px-4 shadow-sm ring-1 ring-slate-200 md:hidden">
+        <li v-if="filteredSupervisors.length === 0" class="py-6 text-center text-sm text-slate-500">
+          {{
+            hasSupervisorFilters
+              ? 'No supervisors match these filters.'
+              : 'No supervisors on your companies yet. Use "Create Supervisor" to add one.'
+          }}
+          <button
+            v-if="hasSupervisorFilters"
+            type="button"
+            class="mt-2 block w-full text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+            @click="clearSupervisorFilters"
+          >
+            Clear filters
+          </button>
+        </li>
+        <li v-for="supervisor in filteredSupervisors" :key="supervisor.id" class="py-4">
+          <div class="flex items-start justify-between gap-3">
+            <p class="min-w-0 truncate text-sm font-semibold text-slate-900">{{ supervisor.name }}</p>
+            <span
+              class="shrink-0 rounded-full px-3 py-1 text-xs font-bold"
+              :class="supervisor.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
+            >
+              {{ supervisor.is_active ? 'Active' : 'Inactive' }}
+            </span>
+          </div>
+          <p class="mt-1 truncate text-xs text-slate-500">{{ supervisor.email }}</p>
+          <div v-if="supervisor.companies.length" class="mt-2 flex flex-wrap gap-1.5">
+            <span
+              v-for="company in supervisor.companies"
+              :key="company.id"
+              class="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700"
+            >
+              {{ company.name }}<span v-if="company.position" class="text-slate-400"> · {{ company.position }}</span>
+            </span>
+          </div>
+          <div v-if="supervisor.batches.length" class="mt-1.5 flex flex-wrap gap-1.5">
+            <span v-for="batch in supervisor.batches" :key="batch.id" class="rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-500">
+              {{ batch.name }}
+            </span>
+          </div>
+        </li>
+      </ul>
     </template>
 
     <!-- Enroll modal -->
