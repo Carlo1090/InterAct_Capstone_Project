@@ -9,7 +9,10 @@ import { colors } from '../../src/constants/colors';
 import { CalendarDayStatus } from '../../src/types/api';
 
 const dayStyle: Record<CalendarDayStatus, { bg: string; tx: string }> = {
-  submitted: { bg: colors.blue100, tx: colors.blue700 },
+  // Green, not blue: submitted is the "done" state, and blue now belongs to
+  // buttons and to today's marker. Sharing blue made a submitted day and the
+  // current day hard to tell apart at a glance.
+  submitted: { bg: colors.greenBg, tx: colors.greenTx },
   draft: { bg: colors.gray100, tx: colors.gray600 },
   missing: { bg: colors.redBg, tx: colors.redTx },
   no_entry: { bg: 'transparent', tx: colors.gray300 },
@@ -63,7 +66,7 @@ export default function CalendarScreen() {
       ) : null}
 
       <View style={{ flexDirection: 'row', gap: 14, marginHorizontal: 20, marginTop: 16, flexWrap: 'wrap' }}>
-        <Legend color={colors.blue500} label="Submitted" />
+        <Legend color={colors.green} label="Submitted" />
         <Legend color={colors.gray400} label="Draft" />
         <Legend color={colors.red} label="Missing" />
         <Legend color={colors.gray300} label="Weekend / No Entry" />

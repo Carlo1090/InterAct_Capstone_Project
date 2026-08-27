@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { View, Text, Pressable, ActivityIndicator, ScrollView, Platform } from 'react-native';
+import { View, Text, Pressable, ScrollView, Platform } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Banner } from '../src/components/Banner';
+import { Button } from '../src/components/Button';
 import { ErrorState, LoadingState } from '../src/components/ErrorState';
 import { colors } from '../src/constants/colors';
 import { useReminderPreferences } from '../src/hooks/useReminderPreferences';
@@ -180,20 +181,7 @@ export default function ReminderSettings() {
         ) : null}
       </View>
 
-      <Pressable
-        onPress={onSave}
-        disabled={saving}
-        style={{
-          marginHorizontal: 20,
-          marginTop: 20,
-          paddingVertical: 14,
-          borderRadius: 12,
-          alignItems: 'center',
-          backgroundColor: saving ? colors.gray300 : colors.blue600,
-        }}
-      >
-        {saving ? <ActivityIndicator color="white" /> : <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>Save</Text>}
-      </Pressable>
+      <Button label="Save" icon="checkmark" loading={saving} disabled={saving} onPress={onSave} style={{ marginHorizontal: 20, marginTop: 20 }} />
     </ScrollView>
   );
 }

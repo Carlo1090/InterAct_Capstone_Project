@@ -1,6 +1,7 @@
-import { View, Text, Pressable } from 'react-native';
+import { View, Text } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { Button } from '../src/components/Button';
 import { colors } from '../src/constants/colors';
 import { useAuth } from '../src/hooks/useAuth';
 
@@ -40,21 +41,13 @@ export default function Paused() {
         Please contact your coordinator. Your submitted journal entries and weekly reports are safely kept and will
         be available again once you are re-enrolled in a batch.
       </Text>
-      <Pressable
+      <Button
+        label="View Student Info Sheet"
+        icon="clipboard-outline"
         onPress={() => router.push('/infosheet')}
-        style={{
-          paddingVertical: 12,
-          paddingHorizontal: 20,
-          borderRadius: 10,
-          backgroundColor: colors.blue600,
-          marginBottom: 12,
-        }}
-      >
-        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600' }}>View Student Info Sheet</Text>
-      </Pressable>
-      <Pressable onPress={onLogout} style={{ paddingVertical: 10, paddingHorizontal: 20 }}>
-        <Text style={{ color: colors.gray600, fontSize: 13, fontWeight: '600' }}>Log Out</Text>
-      </Pressable>
+        style={{ marginBottom: 12 }}
+      />
+      <Button label="Log Out" variant="danger" icon="log-out-outline" onPress={onLogout} />
     </View>
   );
 }

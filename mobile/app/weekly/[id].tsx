@@ -3,6 +3,7 @@ import { ScrollView, View, Text, TextInput, Pressable, ActivityIndicator, Alert 
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Banner } from '../../src/components/Banner';
+import { Button } from '../../src/components/Button';
 import { Card } from '../../src/components/Card';
 import { weekStatusStyle } from '../../src/components/WeekCard';
 import { ErrorState, LoadingState } from '../../src/components/ErrorState';
@@ -198,59 +199,26 @@ export default function WeeklyDetail() {
 
       {isEditable ? (
         <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 20, marginTop: 16 }}>
-          <Pressable
-            onPress={onSave}
-            disabled={saving}
-            style={{
-              flex: 1,
-              paddingVertical: 14,
-              borderRadius: 12,
-              borderWidth: 1.5,
-              borderColor: colors.gray200,
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ fontSize: 14, fontWeight: '600', color: colors.gray600 }}>Save Draft</Text>
-          </Pressable>
-          <Pressable
-            onPress={onSubmit}
+          <Button label="Save Draft" variant="secondary" fullWidth disabled={saving} onPress={onSave} />
+          <Button
+            label={isReturned ? 'Resubmit' : 'Submit'}
+            icon="checkmark"
+            fullWidth
+            loading={saving}
             disabled={saving || overLimit || narrative.trim().length === 0}
-            style={{
-              flex: 1,
-              paddingVertical: 14,
-              borderRadius: 12,
-              alignItems: 'center',
-              backgroundColor:
-                saving || overLimit || narrative.trim().length === 0 ? colors.gray300 : colors.blue600,
-            }}
-          >
-            {saving ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <Text style={{ fontSize: 14, fontWeight: '600', color: 'white' }}>{isReturned ? 'Resubmit' : 'Submit'}</Text>
-            )}
-          </Pressable>
+            onPress={onSubmit}
+          />
         </View>
       ) : (
-        <Pressable
-          onPress={onDownloadPdf}
+        <Button
+          label="Download PDF"
+          icon="download-outline"
+          variant="secondary"
+          loading={downloading}
           disabled={downloading}
-          style={{
-            marginHorizontal: 20,
-            marginTop: 16,
-            paddingVertical: 14,
-            borderRadius: 12,
-            borderWidth: 1.5,
-            borderColor: colors.blue200,
-            alignItems: 'center',
-            flexDirection: 'row',
-            justifyContent: 'center',
-            gap: 8,
-          }}
-        >
-          {downloading ? <ActivityIndicator size="small" color={colors.blue600} /> : <Ionicons name="download-outline" size={16} color={colors.blue600} />}
-          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.blue600 }}>Download PDF</Text>
-        </Pressable>
+          onPress={onDownloadPdf}
+          style={{ marginHorizontal: 20, marginTop: 16 }}
+        />
       )}
     </ScrollView>
   );

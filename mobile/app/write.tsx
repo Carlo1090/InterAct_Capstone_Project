@@ -3,6 +3,7 @@ import { ScrollView, View, Text, TextInput, Pressable, ActivityIndicator, Alert 
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Banner } from '../src/components/Banner';
+import { Button } from '../src/components/Button';
 import { Card } from '../src/components/Card';
 import { ErrorState, LoadingState } from '../src/components/ErrorState';
 import { colors } from '../src/constants/colors';
@@ -288,31 +289,14 @@ export default function Write() {
         </Text>
         {editable ? (
           <>
-            <Pressable
-              onPress={saveDraft}
-              disabled={saving}
-              style={{
-                paddingVertical: 8,
-                paddingHorizontal: 14,
-                borderRadius: 8,
-                borderWidth: 1.5,
-                borderColor: colors.gray200,
-              }}
-            >
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.gray600 }}>Save Draft</Text>
-            </Pressable>
-            <Pressable
-              onPress={confirmSubmit}
+            <Button label="Save Draft" variant="secondary" size="sm" disabled={saving} onPress={saveDraft} />
+            <Button
+              label="Submit"
+              icon="checkmark"
+              size="sm"
               disabled={saving || !canSubmit}
-              style={{
-                paddingVertical: 8,
-                paddingHorizontal: 14,
-                borderRadius: 8,
-                backgroundColor: canSubmit ? colors.blue600 : colors.gray300,
-              }}
-            >
-              <Text style={{ fontSize: 12, fontWeight: '600', color: 'white' }}>{'✓ Submit'}</Text>
-            </Pressable>
+              onPress={confirmSubmit}
+            />
           </>
         ) : (
           <Pressable onPress={onDownloadPdf} disabled={downloading} hitSlop={8}>

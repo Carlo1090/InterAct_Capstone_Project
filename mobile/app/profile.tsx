@@ -1,6 +1,7 @@
 import { ScrollView, View, Text, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { Button } from '../src/components/Button';
 import { InfoSectionTitle, ProfileRow } from '../src/components/InfoField';
 import { ErrorState, LoadingState } from '../src/components/ErrorState';
 import { useCurrentUser } from '../src/hooks/useCurrentUser';
@@ -90,9 +91,15 @@ export default function Profile() {
           <ProfileRow label="Company" value={dashboard?.internship.host_company ?? 'Not yet assigned'} />
           <ProfileRow label="Supervisor" value={dashboard?.internship.supervisor ?? 'Not yet assigned'} />
           <ProfileRow label="Coordinator" value={dashboard?.internship.coordinator ?? 'Not yet assigned'} />
+          <ProfileRow label="Department" value={dashboard?.internship.department ?? 'Not yet assigned'} />
+          <ProfileRow label="Program" value={dashboard?.internship.program ?? 'Not yet assigned'} />
           <ProfileRow label="Start Date" value={dashboard?.internship.start_date ?? '—'} />
         </>
       )}
+      {/* Moved here from the header. The Info Sheet is the record of this
+          placement, so it belongs with the placement's own details rather
+          than as a permanent icon next to the notification bell. */}
+      <MenuRow icon="clipboard-outline" label="Student Info Sheet" onPress={() => router.push('/infosheet')} />
 
       <InfoSectionTitle>Settings</InfoSectionTitle>
       <MenuRow icon="notifications-outline" label="Reminder Settings" onPress={() => router.push('/reminder-settings')} />
@@ -101,20 +108,7 @@ export default function Profile() {
       <MenuRow icon="book-outline" label="Guide & Submission Rules" onPress={() => router.push('/guide')} />
 
       <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 }}>
-        <Pressable
-          onPress={onLogout}
-          style={{
-            width: '100%',
-            padding: 13,
-            borderRadius: 12,
-            borderWidth: 1.5,
-            borderColor: colors.gray200,
-            backgroundColor: colors.white,
-            alignItems: 'center',
-          }}
-        >
-          <Text style={{ fontSize: 13, fontWeight: '600', color: colors.redDark }}>Log Out</Text>
-        </Pressable>
+        <Button label="Log Out" variant="danger" icon="log-out-outline" fullWidth onPress={onLogout} />
       </View>
     </ScrollView>
   );

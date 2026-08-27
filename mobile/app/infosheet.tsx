@@ -3,6 +3,7 @@ import { ScrollView, View, Text, TextInput, Pressable, ActivityIndicator, Alert 
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Banner } from '../src/components/Banner';
+import { Button } from '../src/components/Button';
 import { InfoSectionTitle, InfoField } from '../src/components/InfoField';
 import { ErrorState, LoadingState } from '../src/components/ErrorState';
 import { useStudentInfo } from '../src/hooks/useStudentInfo';
@@ -207,31 +208,16 @@ export default function InfoSheetScreen() {
       {editing && (
         <View style={{ paddingHorizontal: 20, paddingTop: 16, gap: 10 }}>
           {canSubmit ? (
-            <Pressable
-              onPress={onSubmit}
-              disabled={saving}
-              style={{ paddingVertical: 12, alignItems: 'center', borderRadius: 10, backgroundColor: colors.blue600 }}
-            >
-              {saving ? <ActivityIndicator size="small" color="white" /> : <Text style={{ fontSize: 13, fontWeight: '600', color: 'white' }}>Submit</Text>}
-            </Pressable>
+            <Button label="Submit" icon="checkmark" loading={saving} disabled={saving} onPress={onSubmit} />
           ) : null}
-          <Pressable
-            onPress={onSaveChanges}
+          <Button
+            label={canSubmit ? 'Save Draft' : 'Save Changes'}
+            variant="secondary"
+            loading={saving}
             disabled={saving}
-            style={{ paddingVertical: 12, alignItems: 'center', borderRadius: 10, borderWidth: 1.5, borderColor: colors.blue200 }}
-          >
-            {saving ? (
-              <ActivityIndicator size="small" color={colors.blue600} />
-            ) : (
-              <Text style={{ fontSize: 13, fontWeight: '600', color: colors.blue600 }}>{canSubmit ? 'Save Draft' : 'Save Changes'}</Text>
-            )}
-          </Pressable>
-          <Pressable
-            onPress={confirmDiscard}
-            style={{ paddingVertical: 12, alignItems: 'center', borderRadius: 10, borderWidth: 1.5, borderColor: colors.gray200 }}
-          >
-            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.gray600 }}>Cancel</Text>
-          </Pressable>
+            onPress={onSaveChanges}
+          />
+          <Button label="Cancel" variant="secondary" onPress={confirmDiscard} />
         </View>
       )}
     </ScrollView>
