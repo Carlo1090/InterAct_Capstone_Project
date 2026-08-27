@@ -2679,6 +2679,97 @@ follow them rather than inventing a parallel style.
   `bg-black/40 md:hidden` backdrop, an `md:hidden` hamburger, and close-on-nav-link
   / close-on-backdrop. **Copy the pattern, do not re-invent it.**
 
+### The list-page shape — one pattern, all four roles
+
+Every list page in the SPA is built the same way, and **the admin pages were
+brought onto it on 2026-08-27** (they were the last holdouts). Top to bottom:
+`<section class="space-y-5">` → `ToastHost` → header actions
+(`flex flex-wrap items-center justify-end gap-4`) → filters → loading/error
+paragraphs → a `<template v-else>` holding **both** a `hidden md:block` table and
+an `md:hidden` stacked card list built from the same reactive array.
+
+The table card is `rounded-lg bg-white shadow-sm ring-1 ring-slate-200` +
+`overflow-x-auto`, the table `w-full table-fixed divide-y divide-slate-200` with
+a `colgroup`, `<thead class="bg-slate-50">`, `th` =
+`px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500`
+(the Actions `th` is `text-right`), `tbody` = `divide-y divide-slate-100`, `td` =
+`px-4 py-3`. The mobile list is
+`divide-y divide-slate-100 rounded-lg bg-white px-4 shadow-sm ring-1 ring-slate-200 md:hidden`.
+**The empty state lives INSIDE both** — a `<tr v-if="rows.length === 0">`
+spanning every column and a matching `<li v-if>` — never as a separate card
+above them, so "no rows" and "no rows matching your filters" are worded in one
+place per surface.
+
+What the admin pages looked like before, and why each was wrong:
+
+- **`AdminDepartmentsPage` had no table at all** — a
+  `grid sm:grid-cols-2 xl:grid-cols-3` of `<article>` cards. It was the only
+  list surface in the app you could not scan down a column of, and the reason
+  the admin section read as a different product from the coordinator section.
+- **`AdminUsersPage` / `AdminBatchesPage` had card-shaped tables**: a padded
+  `rounded-xl bg-white px-6 ring-slate-200/70` wrapper with **no `<thead>`
+  band**, borderless headers in `text-slate-400`, and `pl-0`/`pr-0` edge cells,
+  so rows floated on a card instead of sitting in a grid. Both also opened with
+  a bare `<section>` and hand-placed `mt-6`/`mb-5` instead of `space-y-5`.
+- Form-field labels across the three pages were
+  `text-xs font-medium uppercase tracking-wide text-slate-400`; the app's label
+  everywhere else is **`text-xs font-bold text-slate-600`**. The `<label for>` /
+  `<input id>` association was kept — only the visual classes changed. Modal
+  *group* headings (`<h4>`) stay uppercase-slate-400; that is a section heading,
+  not a field label.
+- The **View modals** on Departments, Programs and Users used the old two-part
+  `max-h-[calc(100vh-4rem)] overflow-y-auto` shell while the Create/Edit modal
+  on the *same page* already used the documented three-part flex shell. All
+  three now use the three-part shell.
+
+**No `min-w-[...]` floor on the Users or Batches table, deliberately — this was
+tried and reverted after measuring.** Actions is the LAST column, so any floor
+that forces horizontal scroll parks Deactivate/Reactivate behind a scrollbar,
+and that is the one control on the row that must always be reachable. Verified
+in a real browser at a 1280px viewport: with `min-w-[1024px]` the container
+measured `clientWidth 945 / scrollWidth 1024` and the Deactivate button was
+clipped to the letters "De". The fix is the other direction — size each fixed
+column to its longest **real** value ("No Department", "Supervisor",
+"Deactivate", an ISO date, the status pill) and leave the free-text columns
+(Name + Email; Batch Name + Coordinator) with no width so they split the
+remainder. They truncate under the `TooltipWrap` that is already on them, which
+is exactly what that tooltip is for. Final measurement: `scrollWidth ===
+clientWidth` on all four pages, Actions cell 195px holding 163px of buttons.
+
+**`w-full table-fixed`, never `min-w-full table-fixed`.** A `table-fixed` table
+with `min-width:100%` but no `width` sizes itself to the sum of its specified
+columns *plus each auto column's content*, so it overflows its container instead
+of distributing — which is how the Deactivate button first went missing. The
+plain `min-w-full divide-y` (auto layout, no `table-fixed`) that the coordinator
+pages use is fine on its own terms; it is only the *combination* with
+`table-fixed` that misbehaves.
+
+KNOWN, DELIBERATELY NOT CHANGED: `AdminInfoSheetsPage`'s single-action cell is
+still left-aligned, matching `CoordinatorInfoSheetsPage` — the two are
+deliberate twins (same queue, minus Accept/Reject), and right-aligning only the
+admin copy would trade one inconsistency for another. `AdminAuditLogsPage`'s
+"Action" column is log *data*, not an actions cell.
+
+`SupervisorInternsPage` and `SupervisorJournalsPage` were the last two pages
+on the padded card-table shape and were converted the same day. **Every list
+page in the SPA is now on the pattern above — there are no holdouts left.**
+Both keep their `LoadStatus` wrapper (loading/error/Retry) rather than the bare
+loading/error paragraphs, which is the better of the two and is what new pages
+should copy. Their blue notice row also dropped from `rounded-xl … p-6` to the
+app's compact `rounded-md … px-4 py-3`.
+
+One substantive change came out of that pass: **`SupervisorInternsPage`'s
+"Review Journals" was the only filled blue button inside a table row anywhere in
+the app** and is now a bordered outline button like every other row action. The
+convention is that a row's actions are outline buttons (destructive ones red
+text-only); a filled blue in a repeating row paints a solid stripe down the list
+and competes with the page's actual primary action. The two remaining
+`bg-blue-600 px-3 py-1.5` buttons in `CoordinatorCompaniesPage` are inside modal
+forms, not table rows, and are correct where they are.
+
+Also in that pass, the intern row's count pills moved from `whitespace-nowrap`
+to `flex flex-wrap` — with three pills ("pending", "approved", "returned") they
+exceed the column and previously overflowed the cell rather than wrapping.
 ### Dashboard structure
 
 All four dashboards follow one order. A role skips a section only when it has no

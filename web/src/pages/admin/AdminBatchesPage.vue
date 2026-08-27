@@ -122,10 +122,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <section>
-    <div class="mb-5 flex flex-wrap gap-3">
+  <section class="space-y-5">
+    <div class="flex flex-wrap gap-3">
       <label class="block">
-        <span class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400">Department</span>
+        <span class="mb-1.5 block text-xs font-bold text-slate-600">Department</span>
         <select v-model="departmentFilter" class="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm sm:w-auto sm:min-w-56">
           <option value="">All Departments</option>
           <option v-for="department in departments" :key="department.id" :value="department.id">
@@ -141,116 +141,126 @@ onMounted(() => {
     </p>
 
     <template v-else>
-      <p v-if="batches.length === 0" class="rounded-xl bg-white px-6 py-8 text-center text-sm text-slate-500 shadow-sm ring-1 ring-slate-200/70">
-        No batches found.
-      </p>
-
-      <template v-else>
+      <!--
+        md and up: aligned table. Widths live in the colgroup and are enforced
+        by `table-fixed` — without it a browser treats col widths as hints, and
+        a long program or coordinator name re-inflates the row to three lines,
+        which is the problem this replaces.
+      -->
+      <div class="hidden overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200 md:block">
         <!--
-          md and up: aligned table. Widths live in the colgroup and are enforced
-          by `table-fixed` — without it a browser treats col widths as hints, and
-          a long program or coordinator name re-inflates the row to three lines,
-          which is the problem this replaces.
+          No `min-w` floor, for the reason spelled out in AdminUsersPage: a
+          floor would scroll the Actions column out of reach. The six fixed
+          columns are sized to their longest real value (an ISO date, the status
+          pill, the View button); Batch Name and Coordinator carry no width and
+          split the remainder, each under a TooltipWrap for the overflow.
         -->
-        <div class="hidden overflow-x-auto rounded-xl bg-white px-6 shadow-sm ring-1 ring-slate-200/70 md:block">
-          <table class="w-full table-fixed">
-            <colgroup>
-              <col />
-              <col class="w-[120px]" />
-              <col class="w-[120px]" />
-              <col />
-              <col class="w-[130px]" />
-              <col class="w-[130px]" />
-              <col class="w-[110px]" />
-              <col class="w-[100px]" />
-            </colgroup>
-            <thead>
-              <tr>
-                <th class="whitespace-nowrap border-b border-slate-200 pb-3 pt-4 text-left text-xs font-medium uppercase tracking-wide text-slate-400 pl-0 pr-4">Batch Name</th>
-                <th class="whitespace-nowrap border-b border-slate-200 pb-3 pt-4 text-left text-xs font-medium uppercase tracking-wide text-slate-400 px-4">Program</th>
-                <th class="whitespace-nowrap border-b border-slate-200 pb-3 pt-4 text-left text-xs font-medium uppercase tracking-wide text-slate-400 px-4">Department</th>
-                <th class="whitespace-nowrap border-b border-slate-200 pb-3 pt-4 text-left text-xs font-medium uppercase tracking-wide text-slate-400 px-4">Coordinator</th>
-                <th class="whitespace-nowrap border-b border-slate-200 pb-3 pt-4 text-left text-xs font-medium uppercase tracking-wide text-slate-400 px-4">Start Date</th>
-                <th class="whitespace-nowrap border-b border-slate-200 pb-3 pt-4 text-left text-xs font-medium uppercase tracking-wide text-slate-400 px-4">End Date</th>
-                <th class="whitespace-nowrap border-b border-slate-200 pb-3 pt-4 text-left text-xs font-medium uppercase tracking-wide text-slate-400 px-4">Status</th>
-                <th class="whitespace-nowrap border-b border-slate-200 pb-3 pt-4 text-left text-xs font-medium uppercase tracking-wide text-slate-400 pl-4 pr-0 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-100">
-              <tr v-for="batch in batches" :key="batch.id" class="transition-colors hover:bg-slate-50/70">
-                <td class="truncate whitespace-nowrap py-3.5 pl-0 pr-4 text-sm font-medium text-slate-900">{{ batch.name }}</td>
-                <td class="px-4 py-3.5 text-sm text-slate-500">
-                  <TooltipWrap :label="batch.program?.name ?? 'No Program'" placement="top" class="max-w-full">
-                    <span class="block max-w-full truncate whitespace-nowrap">{{ batch.program?.name ?? 'No Program' }}</span>
-                  </TooltipWrap>
-                </td>
-                <td class="truncate whitespace-nowrap px-4 py-3.5 text-sm text-slate-500">
-                  {{ batch.program?.department?.name ?? 'No Department' }}
-                </td>
-                <td class="px-4 py-3.5 text-sm text-slate-500">
-                  <TooltipWrap :label="batch.coordinator?.name ?? 'No Coordinator'" placement="top" class="max-w-full">
-                    <span class="block max-w-full truncate whitespace-nowrap">{{ batch.coordinator?.name ?? 'No Coordinator' }}</span>
-                  </TooltipWrap>
-                </td>
-                <td class="whitespace-nowrap px-4 py-3.5 text-sm tabular-nums text-slate-500">
-                  <span v-if="isoDate(batch.start_date)">{{ isoDate(batch.start_date) }}</span>
-                  <span v-else class="text-slate-300">—</span>
-                </td>
-                <td class="whitespace-nowrap px-4 py-3.5 text-sm tabular-nums text-slate-500">
-                  <span v-if="isoDate(batch.end_date)">{{ isoDate(batch.end_date) }}</span>
-                  <span v-else class="text-slate-300">—</span>
-                </td>
-                <td class="whitespace-nowrap px-4 py-3.5">
-                  <span
-                    class="rounded-full px-3 py-1 text-xs font-bold"
-                    :class="batch.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
-                  >
-                    {{ batch.is_active ? 'Active' : 'Inactive' }}
-                  </span>
-                </td>
-                <td class="whitespace-nowrap py-3.5 pl-4 pr-0 text-right">
-                  <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50" @click="openViewModal(batch)">View</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <table class="w-full table-fixed divide-y divide-slate-200">
+          <colgroup>
+            <col />
+            <col class="w-[110px]" />
+            <col class="w-[110px]" />
+            <col />
+            <col class="w-[110px]" />
+            <col class="w-[110px]" />
+            <col class="w-[100px]" />
+            <col class="w-[90px]" />
+          </colgroup>
+          <thead class="bg-slate-50">
+            <tr>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Batch Name</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Department</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Coordinator</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Start Date</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">End Date</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+              <th class="whitespace-nowrap px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-slate-500">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <tr v-if="batches.length === 0">
+              <td colspan="8" class="px-4 py-6 text-center text-sm text-slate-500">No batches found.</td>
+            </tr>
+            <tr v-for="batch in batches" :key="batch.id" class="transition-colors hover:bg-slate-50/70">
+              <td class="px-4 py-3 text-sm font-semibold text-slate-900">
+                <TooltipWrap :label="batch.name" placement="top" class="max-w-full">
+                  <span class="block max-w-full truncate whitespace-nowrap">{{ batch.name }}</span>
+                </TooltipWrap>
+              </td>
+              <td class="px-4 py-3 text-sm text-slate-500">
+                <TooltipWrap :label="batch.program?.name ?? 'No Program'" placement="top" class="max-w-full">
+                  <span class="block max-w-full truncate whitespace-nowrap">{{ batch.program?.name ?? 'No Program' }}</span>
+                </TooltipWrap>
+              </td>
+              <td class="truncate whitespace-nowrap px-4 py-3 text-sm text-slate-500">
+                {{ batch.program?.department?.name ?? 'No Department' }}
+              </td>
+              <td class="px-4 py-3 text-sm text-slate-500">
+                <TooltipWrap :label="batch.coordinator?.name ?? 'No Coordinator'" placement="top" class="max-w-full">
+                  <span class="block max-w-full truncate whitespace-nowrap">{{ batch.coordinator?.name ?? 'No Coordinator' }}</span>
+                </TooltipWrap>
+              </td>
+              <td class="whitespace-nowrap px-4 py-3 text-sm tabular-nums text-slate-500">
+                <span v-if="isoDate(batch.start_date)">{{ isoDate(batch.start_date) }}</span>
+                <span v-else class="text-slate-300">—</span>
+              </td>
+              <td class="whitespace-nowrap px-4 py-3 text-sm tabular-nums text-slate-500">
+                <span v-if="isoDate(batch.end_date)">{{ isoDate(batch.end_date) }}</span>
+                <span v-else class="text-slate-300">—</span>
+              </td>
+              <td class="whitespace-nowrap px-4 py-3">
+                <span
+                  class="rounded-full px-3 py-1 text-xs font-bold"
+                  :class="batch.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
+                >
+                  {{ batch.is_active ? 'Active' : 'Inactive' }}
+                </span>
+              </td>
+              <td class="px-4 py-3">
+                <div class="flex items-center justify-end gap-2 whitespace-nowrap">
+                  <button type="button" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50" @click="openViewModal(batch)">View</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-        <!-- Below md: one stacked block per batch, so nothing scrolls sideways. -->
-        <ul class="divide-y divide-slate-100 rounded-xl bg-white px-6 shadow-sm ring-1 ring-slate-200/70 md:hidden">
-          <li v-for="batch in batches" :key="batch.id" class="py-4">
-            <div class="flex items-start justify-between gap-3">
-              <p class="min-w-0 truncate text-sm font-medium text-slate-900">
-                {{ batch.program?.name ?? 'No Program' }}
-              </p>
-              <span
-                class="shrink-0 rounded-full px-3 py-1 text-xs font-bold"
-                :class="batch.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
-              >
-                {{ batch.is_active ? 'Active' : 'Inactive' }}
-              </span>
-            </div>
-            <p class="mt-1 truncate text-xs text-slate-500">
-              {{ batch.program?.department?.name ?? 'No Department' }} · {{ batch.coordinator?.name ?? 'No Coordinator' }}
+      <!-- Below md: one stacked block per batch, so nothing scrolls sideways. -->
+      <ul class="divide-y divide-slate-100 rounded-lg bg-white px-4 shadow-sm ring-1 ring-slate-200 md:hidden">
+        <li v-if="batches.length === 0" class="py-6 text-center text-sm text-slate-500">No batches found.</li>
+        <li v-for="batch in batches" :key="batch.id" class="py-4">
+          <div class="flex items-start justify-between gap-3">
+            <p class="min-w-0 truncate text-sm font-semibold text-slate-900">
+              {{ batch.program?.name ?? 'No Program' }}
             </p>
-            <p class="mt-1 text-xs tabular-nums text-slate-500">
-              <span v-if="isoDate(batch.start_date)">{{ isoDate(batch.start_date) }}</span>
-              <span v-else class="text-slate-300">—</span>
-              –
-              <span v-if="isoDate(batch.end_date)">{{ isoDate(batch.end_date) }}</span>
-              <span v-else class="text-slate-300">—</span>
-            </p>
-            <div class="mt-3">
-              <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50" @click="openViewModal(batch)">View</button>
-            </div>
-          </li>
-        </ul>
-      </template>
+            <span
+              class="shrink-0 rounded-full px-3 py-1 text-xs font-bold"
+              :class="batch.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
+            >
+              {{ batch.is_active ? 'Active' : 'Inactive' }}
+            </span>
+          </div>
+          <p class="mt-1 truncate text-xs text-slate-500">
+            {{ batch.program?.department?.name ?? 'No Department' }} · {{ batch.coordinator?.name ?? 'No Coordinator' }}
+          </p>
+          <p class="mt-1 text-xs tabular-nums text-slate-500">
+            <span v-if="isoDate(batch.start_date)">{{ isoDate(batch.start_date) }}</span>
+            <span v-else class="text-slate-300">—</span>
+            –
+            <span v-if="isoDate(batch.end_date)">{{ isoDate(batch.end_date) }}</span>
+            <span v-else class="text-slate-300">—</span>
+          </p>
+          <div class="mt-3">
+            <button type="button" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50" @click="openViewModal(batch)">View</button>
+          </div>
+        </li>
+      </ul>
     </template>
 
-    
     <!-- View (read-only preview) modal -->
-<div v-if="isViewOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+    <div v-if="isViewOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
       <!-- Three-part flex shell: the body is the only scrolling element. -->
       <section class="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
         <div class="flex shrink-0 items-center justify-between border-b border-slate-200 px-6 py-4">
