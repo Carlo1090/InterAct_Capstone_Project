@@ -284,6 +284,11 @@ Route::middleware(['auth:sanctum', 'role:supervisor'])
         Route::get('interns', [SupervisorInternController::class, 'index']);
         Route::get('interns/{student}', [SupervisorInternController::class, 'show']);
 
+        // One intern's whole notebook — every week they have submitted, in one
+        // list. Distinct from the queue below, which slices every intern by a
+        // single review status.
+        Route::get('interns/{student}/journals', [SupervisorJournalController::class, 'notebook']);
+
         Route::get('journals', [SupervisorJournalController::class, 'index']);
         Route::get('journals/{weeklyLog}', [SupervisorJournalController::class, 'show']);
         Route::get('journals/{weeklyLog}/pdf', [SupervisorJournalController::class, 'pdf']);
@@ -301,5 +306,9 @@ Route::middleware(['auth:sanctum', 'role:supervisor'])
         Route::post('dtr/geofences', [DtrGeofenceController::class, 'store']);
         Route::get('dtr/geofences/{geofence}/qr', [DtrGeofenceController::class, 'qr']);
         Route::put('dtr/geofences/{geofence}', [DtrGeofenceController::class, 'update']);
+        Route::post('dtr/geofences/{geofence}/restore', [DtrGeofenceController::class, 'restore']);
+        // destroy RETIRES (deactivates); forceDestroy erases, and only ever a
+        // site that is already retired and carries zero time records.
+        Route::delete('dtr/geofences/{geofence}/permanent', [DtrGeofenceController::class, 'forceDestroy']);
         Route::delete('dtr/geofences/{geofence}', [DtrGeofenceController::class, 'destroy']);
     });

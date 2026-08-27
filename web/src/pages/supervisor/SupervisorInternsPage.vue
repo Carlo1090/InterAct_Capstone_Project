@@ -1,13 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import api from '@/lib/axios'
 import InternDetailModal from '@/components/interns/InternDetailModal.vue'
 import LoadStatus from '@/components/LoadStatus.vue'
 import TooltipWrap from '@/components/ui/TooltipWrap.vue'
 import type { InternDetail, SupervisorInternRow } from '@/types/api'
-
-const router = useRouter()
 
 const interns = ref<SupervisorInternRow[]>([])
 const search = ref('')
@@ -54,17 +51,13 @@ const load = async () => {
   }
 }
 
-const reviewStudent = () => {
-  // Weekly journals are reviewed from the Journals page.
-  router.push('/supervisor/journals')
-}
-
 onMounted(load)
 </script>
 <template>
   <section class="space-y-5">
     <div class="rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-      Interns assigned to you (via your company placements). Weekly-journal review counts are shown per intern.
+      Interns assigned to you (via your company placements). <strong>Journals</strong> opens one intern's full notebook —
+      every week they have handed in, front to back — where you can also approve or return a week.
     </div>
 
     <div class="flex flex-wrap items-end gap-3">
@@ -100,7 +93,7 @@ onMounted(load)
             <col class="w-[110px]" />
             <col class="w-[180px]" />
             <col class="w-[250px]" />
-            <col class="w-[230px]" />
+            <col class="w-[210px]" />
           </colgroup>
           <thead class="bg-slate-50">
             <tr>
@@ -146,13 +139,24 @@ onMounted(load)
                   >
                     View
                   </button>
-                  <button
-                    type="button"
-                    class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                    @click="reviewStudent"
-                  >
-                    Review Journals
-                  </button>
+                  <TooltipWrap :label="`Open ${intern.name}'s journal notebook`" placement="top" align="end">
+                    <RouterLink
+                      :to="`/supervisor/interns/${intern.student_id}/journals`"
+                      :aria-label="`Open ${intern.name}'s journal notebook`"
+                      class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4 text-slate-400">
+                        <path
+                          d="M4 5.5A1.5 1.5 0 0 1 5.5 4H18a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5.5A1.5 1.5 0 0 1 4 18.5v-13ZM8 4v16"
+                          stroke="currentColor"
+                          stroke-width="1.7"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        />
+                      </svg>
+                      Journals
+                    </RouterLink>
+                  </TooltipWrap>
                 </div>
               </td>
             </tr>
@@ -186,13 +190,21 @@ onMounted(load)
             >
               View
             </button>
-            <button
-              type="button"
-              class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              @click="reviewStudent"
+            <RouterLink
+              :to="`/supervisor/interns/${intern.student_id}/journals`"
+              class="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
             >
-              Review Journals
-            </button>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4 text-slate-400">
+                <path
+                  d="M4 5.5A1.5 1.5 0 0 1 5.5 4H18a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5.5A1.5 1.5 0 0 1 4 18.5v-13ZM8 4v16"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              Journals
+            </RouterLink>
           </div>
         </li>
       </ul>

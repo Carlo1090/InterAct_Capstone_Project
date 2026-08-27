@@ -912,6 +912,45 @@ export type SupervisorJournalDetail = {
   daily_entries: { entry_date: string; status: JournalEntryStatus; content: Record<string, string> }[]
 }
 
+
+// One intern's whole weekly-journal notebook — the per-student surface behind
+// the "Journals" action on My Interns. `week_number` is the same 1-based
+// position the PDF prints, counted over ALL of that student's logs, so a gap in
+// this list means that week exists but has not been submitted.
+export type SupervisorNotebookWeek = {
+  id: number
+  week_number: number
+  week_start: string
+  week_end: string
+  status: SupervisorReviewStatus
+  submitted_at: string | null
+  reviewed_at: string | null
+  reviewable: boolean
+  has_comment: boolean
+  entries_count: number
+}
+
+export type SupervisorInternNotebook = {
+  student: {
+    id: number
+    name: string
+    student_id_number: string | null
+    avatar_url: string | null
+    program: string
+    company: string
+    batch: string
+    enrollment_status: BatchStudentStatus | null
+  }
+  totals: {
+    total: number
+    pending: number
+    approved: number
+    returned: number
+    drafts_hidden: number
+  }
+  weeks: SupervisorNotebookWeek[]
+}
+
 export type StudentDashboardStats = {
   entries_submitted_total: number
   weekly_logs_approved: number

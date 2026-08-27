@@ -8,7 +8,7 @@ const dialog = useConfirmDialog()
 
 const confirmButton = ref<HTMLButtonElement | null>(null)
 const cancelButton = ref<HTMLButtonElement | null>(null)
-const inputRef = ref<HTMLTextAreaElement | null>(null)
+const inputRef = ref<HTMLTextAreaElement | HTMLInputElement | null>(null)
 
 // When the dialog opens, move focus into it: the input for a prompt, otherwise
 // the confirm button.
@@ -82,12 +82,31 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
               <h3 id="confirm-title" class="text-base font-bold text-slate-900">{{ dialog.title }}</h3>
               <p class="mt-1 whitespace-pre-line text-sm text-slate-600">{{ dialog.message }}</p>
 
+              <!--
+                A reason or comment gets the 3-row textarea this dialog was
+                built for; a short exact value typed back to confirm a delete
+                gets a single-line input, where a multi-line box would imply
+                more is wanted than the one word being asked for.
+              -->
               <div v-if="dialog.mode === 'prompt'" class="mt-3">
                 <textarea
+                  v-if="dialog.multiline"
                   ref="inputRef"
                   v-model="dialog.inputValue"
                   :placeholder="dialog.placeholder"
                   rows="3"
+                  class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  :class="dialog.inputError && 'border-red-400 ring-1 ring-red-300'"
+                  @keydown.enter.prevent="acceptDialog"
+                  @input="dialog.inputError = ''"
+                />
+                <input
+                  v-else
+                  ref="inputRef"
+                  v-model="dialog.inputValue"
+                  :placeholder="dialog.placeholder"
+                  type="text"
+                  autocomplete="off"
                   class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                   :class="dialog.inputError && 'border-red-400 ring-1 ring-red-300'"
                   @keydown.enter.prevent="acceptDialog"

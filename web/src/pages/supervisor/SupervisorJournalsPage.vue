@@ -323,6 +323,21 @@ onMounted(load)
               <p v-if="detail" class="mt-0.5 text-sm text-slate-500">
                 Week {{ dateOnly(detail.week_start) ?? '—' }} – {{ dateOnly(detail.week_end) ?? '—' }}
               </p>
+              <!--
+                One week rarely stands on its own — the way to judge it is
+                against the weeks around it. This is the same notebook the
+                Interns page opens, entered from the week being reviewed.
+              -->
+              <RouterLink
+                v-if="detail"
+                :to="`/supervisor/interns/${detail.student.id}/journals`"
+                class="mt-1 inline-flex items-center gap-1 text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+              >
+                Open full notebook
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-3.5 w-3.5">
+                  <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </RouterLink>
             </div>
             <button type="button" class="shrink-0 text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeDetail">
               Close

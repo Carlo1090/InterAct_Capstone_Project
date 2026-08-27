@@ -238,6 +238,14 @@ const router = createRouter({
           meta: { title: 'Interns' },
         },
         {
+          // One intern's whole journal notebook. A page rather than a modal:
+          // it is a reading surface the supervisor stays in, and it is worth
+          // being linkable and back-button-able.
+          path: 'interns/:studentId/journals',
+          component: () => import('@/pages/supervisor/SupervisorInternJournalsPage.vue'),
+          meta: { title: 'Intern Journals' },
+        },
+        {
           path: 'dtr',
           component: () => import('@/pages/supervisor/SupervisorDtrPage.vue'),
           meta: { title: 'Daily Time Record' },

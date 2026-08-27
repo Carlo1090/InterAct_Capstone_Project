@@ -644,6 +644,56 @@ it. This is the same compiler, triggered by the person whose work it is.
   Daily Time Record below. It is unrelated to weekly-log review: a supervisor
   approves narratives here and corrects time records there.
 
+
+#### The per-intern journal notebook (added 2026-08-28)
+
+`SupervisorJournalController::notebook` (`GET supervisor/interns/{student}/journals`),
+page `SupervisorInternJournalsPage.vue` at
+`/supervisor/interns/:studentId/journals`. Reached from the **"Journals"**
+action on each row of My Interns, and from an **"Open full notebook"** link in
+the review modal's header.
+
+**This replaced a button that lied.** The row action used to read "Review
+Journals" and did `router.push('/supervisor/journals')` — the cross-intern
+queue, unfiltered, defaulting to Pending. Clicking it on a specific intern
+neither scoped to that intern nor said it had not, so a supervisor wanting to
+read one student's work had no surface that showed it, and the only way to see
+an approved week again was to switch the queue's tab and hunt for the name.
+
+The notebook is the opposite cut of the same data: **one intern, every week
+they have handed in, oldest first**, with the week's document, its daily
+entries, and — because the supervisor is already looking at it — the same
+Approve / Return actions the queue offers. It calls the **existing**
+`journals/{weeklyLog}` show/approve/return/pdf endpoints; nothing about
+reviewing changed.
+
+- **Never-submitted drafts are excluded**, matching the queue and
+  `CoordinatorWeeklyJournalController`. `WeeklyBundlingService` stamps a draft
+  every Monday for every active student, so including them would show a
+  supervisor work the intern has not handed in.
+- **`week_number` is counted over ALL of that student's logs, drafts included**,
+  so it is the same number `pdf.weekly-log` prints. A gap in the visible list
+  (Week 1, then Week 3) is therefore honest rather than a bug: Week 2 exists and
+  has not been submitted. `totals.drafts_hidden` says so in words under the
+  index.
+- The week detail is **lazy-loaded per week and cached client-side**, so paging
+  back and forth never re-requests a week already read. A verdict busts that
+  week's cache entry and reloads the list, since the tallies move with it.
+- **The tally pills double as the index filter** (click "3 pending" to narrow,
+  click again to clear) and are `disabled` at zero — a filter that can only
+  produce an empty list is not worth offering.
+- **Daily entries are collapsed by default here, unlike the review modal.** A
+  modal shows one week and scrolls on its own; this page pages through a whole
+  placement, and five expanded entries per week buries the next week's document
+  under a screen and a half of scroll.
+- Below `lg` the week index becomes a horizontally scrolling chip row (its own
+  container's scroll, so the page never scrolls sideways — verified at 390px,
+  `documentElement.scrollWidth === clientWidth`).
+
+Coverage: `tests/Feature/Supervisor/SupervisorInternNotebookTest.php` — the
+draft exclusion and the PDF-matching week numbering above all, plus the
+own-interns-only 403, a 404 on a non-student account, and the empty notebook.
+
 ### Journal calendar
 
 `JournalCalendarController::statusFor()` resolves in this order: submitted →
@@ -1194,6 +1244,77 @@ off, in-app browser) and tells the student to reopen in a real browser.
 Turning DTR **off is non-destructive** — existing sessions are kept and simply
 stop counting, and turning it back on restores the figures intact.
 
+
+#### A site's whole lifecycle: retire → restore → delete (added 2026-08-28)
+
+`destroy` has always RETIRED rather than erased, for the reason above. What was
+missing was everywhere that led. A retired site stayed in the same grid at 60%
+opacity with **every action stripped off** (they were all inside
+`v-if="site.is_active"`), so it became a permanently inert card: no way to undo
+the retire, no way to remove it, and the list only ever grew. "Where does a
+retired site go, and how do I delete one?" had no answer in the GUI at all.
+
+Three additions close it:
+
+- **`restore`** (`POST supervisor/dtr/geofences/{geofence}/restore`) — undoes a
+  retire. **The token is untouched**, so QR codes already handed out start
+  working again; that is the whole point, since re-creating the site instead
+  issues a NEW token and silently kills every printed copy. Pinned by
+  `test_a_retired_site_can_be_restored_and_keeps_its_token`.
+- **`forceDestroy`** (`DELETE supervisor/dtr/geofences/{geofence}/permanent`) —
+  the real delete, for a site created by mistake (a typo'd label, a fence
+  anchored at home). **Two guards, both load-bearing:**
+  1. **Retired first**, the same shape as the batch roster's
+     archive-before-delete rule. A live site is one interns may be standing in
+     front of right now.
+  2. **Zero time records.** `dtr_sessions.geofence_id` is `nullOnDelete`, so
+     deleting a used site does NOT remove the punches — it silently strips the
+     location off every one of them, which is precisely the audit trail the
+     geofence exists to produce. Refused with a 422 that counts them.
+- **`sessions_count`** on every row of `index()` (via `withCount('sessions')`,
+  one subquery, not a count per card). The SPA offers Delete **only** at zero,
+  so a supervisor never meets a button that answers 422 — a used site shows the
+  reason in the button's place instead.
+
+GUI: retired sites moved out of the active grid into their own collapsed
+**"Retired sites (N)"** section beneath it, each row carrying **Restore** and,
+where allowed, **Delete permanently**. Retiring opens that section
+automatically, so the card does not appear to vanish.
+
+##### The confirmation ladder — three different weights, on purpose
+
+This page now holds actions of genuinely different severity, and they are
+deliberately NOT confirmed identically. The app-wide rule ("crucial actions
+confirm first, `tone: 'danger'` for anything destructive") is the floor, not
+the ceiling.
+
+1. **Resize a radius — no confirmation.** It is instantly reversible from the
+   same dropdown, and the change is visible in the control itself.
+2. **Retire — `confirmAction`, danger tone.** Destructive in effect (the QR
+   stops working that second) but fully recoverable. The copy now **says** it is
+   recoverable and names where the site goes; the old wording read like a
+   delete, which made a reversible action feel final and pushed supervisors
+   toward creating duplicate sites instead.
+3. **Restore — `confirmAction`, DEFAULT tone.** It is confirmed because it
+   re-arms a QR code that may be posted somewhere, but it is not destructive, so
+   it does not get the red treatment. Reaching for `danger` here would dilute it
+   where it matters.
+4. **Delete permanently — `promptAction` type-to-confirm, danger tone.** The
+   only irreversible action on the page, and the only one where a single "are
+   you sure?" is not proportionate: every other destructive control here is
+   recoverable, so a supervisor's reflex on a red button in a familiar position
+   is "yes". Typing the site's own name back makes the gesture **specific to
+   that site** — the failure mode being defended against is deleting the wrong
+   row, not deleting on purpose. Match is **case- and whitespace-insensitive**:
+   the point is proving they read WHICH site, not testing their typing.
+
+`promptAction` gained three additive options for this — `tone`, `validate`
+(return a message to reject and keep the dialog OPEN with it inline) and
+`multiline` (a short exact value gets a single-line `<input>`; a reason or
+comment keeps the 3-row textarea the dialog was built for). Existing callers
+pass none of them and are unchanged. **A failed validate must not close the
+dialog** — a mistyped confirmation is a slip to correct, not a reason to make
+someone start the action over.
 ### QR generation
 
 `endroid/qr-code` **^6.1** (nothing QR-related existed before, not even
@@ -1302,9 +1423,15 @@ No guard loop is possible: `/login` carries no `requiresAuth`.
 - Demo: **both** demo coordinators (`mdccore`, `mdcbalbero`) seed with
   `dtr_enabled = true` so every role is testable end to end; the opt-out is
   shown by switching it off on the coordinator's own Daily Time Record page.
-  **No geofence is
-  seeded** — a supervisor must create one from their real location, which is
-  the flow worth demonstrating and the only way the coordinates mean anything.
+  **CHANGED 2026-08-28 — geofences ARE now seeded, for `mdcbalsup` only**
+  (`CabmbSupervisorDtrDemoSeeder`, see Seeded demo accounts below). The old
+  rule said none ever were, because a seeded fence is anchored to coordinates
+  nobody is standing at and so cannot be used to actually clock in. **That
+  reasoning is unchanged and still true — the seeded sites are for looking at,
+  not for scanning, and testing a real punch still means creating your own site
+  from your own location.** It simply was not the whole story: the site LIST is
+  a real surface with real actions on it (resize, retire, restore, delete), and
+  at zero seeded sites none of them could be seen at all.
 
 ## Reminders & Email
 
@@ -1868,10 +1995,15 @@ coordinator/admin.
 ### Supervisor
 
 Gated by a `role:supervisor` route group, scoped by company (see
-`ScopesSupervisorWork`). The core action is reviewing the weekly narrative.
-They also own the **Daily Time Record** surface — generating their company's
-clock-in QR codes and correcting the punches those produce (see Daily Time
-Record above).
+`ScopesSupervisorWork`). The core action is reviewing the weekly narrative,
+from either of two cuts of the same data: **Journals** is the cross-intern
+review queue (one status at a time, most recently submitted first), and the
+**Journals** action on each My Interns row opens that intern's whole
+notebook — every week they have handed in, front to back (see The per-intern
+journal notebook above). They also own the **Daily Time Record** surface —
+generating their company's clock-in QR codes, managing those sites through
+their whole life (resize · retire · restore · permanently delete, see A site's
+whole lifecycle above), and correcting the punches those codes produce.
 
 ### Student
 
@@ -2885,7 +3017,9 @@ was real rather than hypothetical — do not delete them as redundant:
 radius rejection, the `open_session_key` race, accuracy clamping, midnight
 spans, the completed-student read/write split), `Feature/Supervisor/
 DtrGeofenceAndReviewTest` (QR output, immovable coordinates, adjust/void
-releasing a stuck student), `Feature/Services/DtrPurgeSafetyTest` (the
+releasing a stuck student, and the retire → restore → delete lifecycle: a
+restore that keeps the token, and both delete guards — refused while active,
+refused once a single punch exists), `Feature/Services/DtrPurgeSafetyTest` (the
 no-FK-to-`batch_students` invariant), and
 `Feature/Coordinator/DtrPreferenceTest` (the opt-out reason's lifecycle — above
 all that re-enabling CLEARS it, so a reason can never outlive the decision it
@@ -2933,6 +3067,76 @@ login-bearing vs named-only split is visible with no setup.
 Both demo coordinators now have `dtr_enabled = true` so every role is testable
 end to end. The opt-out is demonstrated live by switching it off in the
 coordinator's own account menu, which is the real flow anyway.
+
+**Supervisor workload demo** — two seeders added 2026-08-28, both keyed to
+`mdcbalsup` and both running immediately after `CabmbSupervisorDemoSeeder`.
+Before them that account had a roster and nothing else: all three Journals tabs
+empty, every notebook saying "has not submitted any weekly journals yet", four
+zeroes on the dashboard, and a Daily Time Record page with no sites and no rows.
+
+`CabmbSupervisorJournalDemoSeeder` — **six weeks** of journals for the three
+interns, spread rather than uniform so every surface has something in it:
+
+| Intern | Approved | Returned | Pending | Never submitted |
+|---|---|---|---|---|
+| Jomar Bactol | 3 | 1 | 1 | 1 |
+| Rhea Lumapas | 4 | — | 2 | — |
+| Kenneth Auza | 3 | 1 | 1 | 1 |
+
+- **The narrative is compiled in `WeeklyBundlingService`'s exact shape**
+  (`"MONDAY\n<text>\n\nTUESDAY\n<text>"`), and this is the point of the seeder
+  rather than a detail. `SupervisorReviewDemoSeeder`'s narrative is one flat
+  paragraph, so the day-header parsing that `WeeklyJournalPaperView` and
+  `pdf.weekly-log` both perform **never actually showed on demo data**. A seeded
+  log that does not look like a bundled one demonstrates a document format the
+  app does not produce.
+- Every daily entry carries `daily_accomplishment` (the one key bundling
+  compiles from) **plus the SIPP trio**, so the coordinator's Annual SIPP report
+  picks up rows from these students too.
+- **Two interns keep an unsubmitted week**, so the notebook's "still being
+  drafted" line and the gap in its Week numbering appear on real data and not
+  only in a test.
+
+`CabmbSupervisorDtrDemoSeeder` — three clock-in sites and ~12 working days of
+punches per intern. The sites are chosen to show the whole lifecycle at once:
+
+- `Main Branch — Front Entrance` — **active**, clean capture, has records.
+- `Vault Annex (2F)` — **retired WITH records** → Restore only, and the row says
+  why it cannot be deleted.
+- `Test — do not use` — **retired with ZERO records** → the one row that offers
+  Delete permanently.
+
+That contrast is the demonstration: the delete guard is visible as a difference
+between two adjacent rows rather than something you have to read the code to
+know about. Sessions cover `closed` (banking real hours against the batch's
+486), one `flagged` per intern (the auto time-out shape — no `time_out`, an
+assumed 8h that counts zero) so Needs attention is non-empty, and one `void`.
+
+**Both seeders write timestamps anchored to `Asia/Manila`, never
+`->setTime()`.** This is a real bug that was found and fixed on screen, not a
+precaution. `setTime(8, 0)` writes 08:00 in the APP's timezone, and
+`config('app.timezone')` defaults to **UTC** while deployments set Asia/Manila —
+so on a normal dev box an 08:00 seed is 08:00Z, which the SPA renders in the
+viewer's own timezone as **4:00 PM**: a morning shift reading as an afternoon
+one. The same shift moved every `submitted_at` a day later in the review queue
+(a 21:00Z submission is 5am the next day in Manila). Each seeder carries a
+`manila()` helper that builds the instant in Asia/Manila and converts — correct
+under both configurations, because it describes the moment rather than a number
+on a clock. This does NOT apply to real punches, which `DtrService` stamps with
+`now()` at the actual instant and which therefore always displayed correctly.
+
+Both are re-runnable: weekly logs are located by (student, batch, `week_start`)
+and sessions by (student, `work_date`) with **`whereDate()`**, never plain
+equality — those are `date`-cast columns and SQLite keeps a time component on
+them, so `where()` would miss the previous run's row and insert a duplicate.
+Sites are keyed on (company, label).
+
+**Both run under `DatabaseSeeder`'s `WithoutModelEvents`, which mutes
+`CompanyGeofence::booted()` (generates `token`) and `DtrSession::booted()`
+(keeps `open_session_key` in step with `status`).** Every value those hooks
+would supply is written explicitly. Dropping either breaks the seed: `token` is
+NOT NULL and unique, and a non-null `open_session_key` on a closed session
+would hold that student's slot in the one-open-session unique index forever.
 
 **Weekly and Time Log Summary demo** (`CabmbWeeklyTimeLogDemoSeeder`, added
 2026-08-27) gives **mdcbalbero** eight sheets across **six students in all four
