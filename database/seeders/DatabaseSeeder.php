@@ -67,6 +67,10 @@ class DatabaseSeeder extends Seeder
         // sheets for students they enrolled, and reads each sheet's period off
         // the batch those seeders created.
         $this->call(CabmbWeeklyTimeLogDemoSeeder::class);
+        // Exit interviews for the same three mdcbalintern* logins, one in
+        // each state (reviewed / submitted / draft), so the coordinator's
+        // Student Exit Interviews page has something in every filter.
+        $this->call(CabmbExitInterviewDemoSeeder::class);
         $this->call(SippBsaDemoSeeder::class);
         $this->call(CabmbIntakeDemoSeeder::class);
         $this->call(GroupInfoSheetDemoSeeder::class);

@@ -175,6 +175,11 @@ const router = createRouter({
           meta: { title: 'Weekly and Time Log Summaries' },
         },
         {
+          path: 'exit-interviews',
+          component: () => import('@/pages/coordinator/CoordinatorExitInterviewsPage.vue'),
+          meta: { title: 'Student Exit Interviews' },
+        },
+        {
           path: 'dtr',
           component: () => import('@/pages/coordinator/CoordinatorDtrPage.vue'),
           meta: { title: 'Daily Time Record' },
@@ -287,6 +292,11 @@ const router = createRouter({
           path: 'weekly-time-log',
           component: () => import('@/pages/student/StudentWeeklyTimeLogPage.vue'),
           meta: { title: 'Weekly and Time Log Summary' },
+        },
+        {
+          path: 'exit-interview',
+          component: () => import('@/pages/student/StudentExitInterviewPage.vue'),
+          meta: { title: 'Exit Interview' },
         },
         {
           path: 'dtr',

@@ -17,6 +17,7 @@ use App\Http\Controllers\Coordinator\CoordinatorCompanyController;
 use App\Http\Controllers\Coordinator\CoordinatorDashboardController;
 use App\Http\Controllers\Coordinator\CoordinatorInfoSheetController;
 use App\Http\Controllers\Coordinator\CoordinatorJournalActivityController;
+use App\Http\Controllers\Coordinator\CoordinatorExitInterviewController;
 use App\Http\Controllers\Coordinator\CoordinatorWeeklyActivityLogController;
 use App\Http\Controllers\Coordinator\CoordinatorWeeklyJournalController;
 use App\Http\Controllers\Coordinator\DtrMonitorController;
@@ -33,6 +34,7 @@ use App\Http\Controllers\Student\JournalCalendarController;
 use App\Http\Controllers\Student\JournalEntryController;
 use App\Http\Controllers\Student\ReminderPreferenceController;
 use App\Http\Controllers\Student\StudentDashboardController;
+use App\Http\Controllers\Student\StudentExitInterviewController;
 use App\Http\Controllers\Student\StudentInfoSheetController;
 use App\Http\Controllers\Student\WeeklyActivityLogController;
 use App\Http\Controllers\Student\WeeklyLogController;
@@ -145,6 +147,14 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::get('weekly-activity-logs', [CoordinatorWeeklyActivityLogController::class, 'index']);
         Route::get('weekly-activity-logs/{weeklyActivityLog}', [CoordinatorWeeklyActivityLogController::class, 'show']);
         Route::get('weekly-activity-logs/{weeklyActivityLog}/pdf', [CoordinatorWeeklyActivityLogController::class, 'pdf']);
+
+        // Exit interviews — read every in-scope student's answers, download
+        // the official form, and fill the coordinator's own block on it.
+        // There is no accept/reject: an exit interview gates nothing.
+        Route::get('exit-interviews', [CoordinatorExitInterviewController::class, 'index']);
+        Route::get('exit-interviews/{exitInterview}', [CoordinatorExitInterviewController::class, 'show']);
+        Route::put('exit-interviews/{exitInterview}', [CoordinatorExitInterviewController::class, 'update']);
+        Route::get('exit-interviews/{exitInterview}/pdf', [CoordinatorExitInterviewController::class, 'pdf']);
 
         Route::get('companies', [CoordinatorCompanyController::class, 'index']);
         Route::post('companies', [CoordinatorCompanyController::class, 'store']);
@@ -282,6 +292,13 @@ Route::middleware(['auth:sanctum', 'role:student', 'infosheet.approved'])
         // Daily Time Record. 'punch' is the only write: it toggles clock-in /
         // clock-out against a scanned QR site token, so both ends of a shift
         // carry coordinates. There is deliberately no location-free clock-out.
+        // The Internship Program Student Exit Interview — the last form of
+        // the placement. Unlike every other student write surface this one
+        // stays reachable while `completed`; see StudentExitInterviewController.
+        Route::get('exit-interview', [StudentExitInterviewController::class, 'show']);
+        Route::post('exit-interview', [StudentExitInterviewController::class, 'store']);
+        Route::get('exit-interview/pdf', [StudentExitInterviewController::class, 'pdf']);
+
         Route::get('dtr', [DtrController::class, 'show']);
         Route::get('dtr/scan', [DtrController::class, 'resolve']);
         Route::post('dtr/punch', [DtrController::class, 'punch']);

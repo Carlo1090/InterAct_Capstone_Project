@@ -993,3 +993,79 @@ export type StudentDashboard = {
   internship: StudentDashboardInternship
   week: { start: string; end: string }
 }
+
+// ── Internship Program Student Exit Interview ────────────────────────────
+// The CABM paper form (docs/reference/INTERNSHIP PROGRAM STUDENT EXIT
+// INTERVIEW - BUSINESS.pdf). `responses` is deliberately an open map keyed
+// q1..q14 plus q2_choice/q7_choice/q10_choice/q11_choice — the question set
+// belongs to the form, not to the schema.
+
+export type ExitInterviewStatus = 'draft' | 'submitted' | 'reviewed'
+
+export type ExitInterviewComplianceChoice = 'complete' | 'pending'
+
+export type StudentExitInterviewResponse = {
+  interview: {
+    id: number
+    submission_status: ExitInterviewStatus
+    submitted_at: string | null
+    reviewed_at: string | null
+    student_info: {
+      department_position?: string | null
+      total_hours?: string | null
+      date_of_interview?: string | null
+    }
+    responses: Record<string, string | null>
+  } | null
+  header: {
+    student_name: string | null
+    program: string | null
+    company: string | null
+    training_period: string | null
+    coordinator_name: string | null
+    assigned_division: string | null
+  }
+  /** Banked DTR hours, or null where the coordinator does not run the DTR. */
+  suggested_total_hours: number | null
+  /** Keyed by question — q7 has four printed lines, the rest have five. */
+  answer_char_limits: Record<string, number>
+  answer_char_limit: number
+  ojt_completed: boolean
+}
+
+export type CoordinatorExitInterviewRow = {
+  id: number
+  student_id: number
+  student_name: string
+  student_id_number: string | null
+  program: string
+  submission_status: ExitInterviewStatus
+  submitted_at: string | null
+  reviewed_at: string | null
+  compliance: ExitInterviewComplianceChoice | null
+}
+
+export type CoordinatorExitInterviewsResponse = {
+  programs: { id: number; name: string; code?: string }[]
+  interviews: {
+    data: CoordinatorExitInterviewRow[]
+    current_page: number
+    last_page: number
+    total: number
+  }
+}
+
+export type CoordinatorExitInterviewDetail = {
+  id: number
+  submission_status: ExitInterviewStatus
+  submitted_at: string | null
+  reviewed_at: string | null
+  reviewed_by: string | null
+  header: Record<string, string>
+  responses: Record<string, string | null>
+  coordinator_section: {
+    compliance?: ExitInterviewComplianceChoice | null
+    pending_detail?: string | null
+    remarks?: string | null
+  }
+}

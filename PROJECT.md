@@ -74,8 +74,20 @@ Username + password remains the primary, always-available path.
      are independent top-level units (CABM-B and CABM-H are two separate
      departments, not sub-units of one "CABM"). Do not introduce a
      department→division→program hierarchy without confirming first.
-4. **Out of scope — do not build:** photo capture on clock-in, exit interview
-   report generation.
+   - `student_exit_interviews` was added 2026-08-30 at the project owner's
+     request (see Exit Interview below) — one row per (student, batch), three
+     JSON payload columns, `UNIQUE(student_id, batch_id)`. It is the only
+     table outside the v2 schema; the JSON columns exist so adding or
+     rewording a question on the paper form never means a migration.
+4. **Out of scope — do not build:** photo capture on clock-in, and the
+   **Summary Report on Student Exit Interview** — the aggregate report, which
+   is a different document from the per-student form.
+   **NARROWED 2026-08-30 (project owner):** this entry used to read "exit
+   interview report generation" and was read as covering the whole subject.
+   The per-student **Internship Program Student Exit Interview Form** is now
+   **IN scope and BUILT** (students fill it in, coordinators read and print
+   it) — see Exit Interview below. Only the aggregate SUMMARY report is still
+   out.
    **RESCINDED 2026-08-20 (project owner):** geofence clock-in, QR clock-in and
    the in-app camera scanner were all previously listed here as out of scope.
    They are now **IN scope and BUILT** — see Daily Time Record below. Do not
@@ -111,11 +123,14 @@ Username + password remains the primary, always-available path.
 - **Creating a `student`-role user auto-creates a `student_profiles` row** via
   `UserObserver` on the `created` event, with a placeholder
   `student_id_number` (`PENDING-XXXXXXXX`) until the registrar ID is filled in.
-- **SIPP compliance documents:** OJT Annual Report; Summary Report on Student
-  Exit Interview (the report itself is out of scope); Student Information Sheet
+- **SIPP compliance documents:** OJT Annual Report; Student Information Sheet
   in **two variants, both built** — the per-student individual sheet and the
   per-company GROUP sheet (reference:
-  `docs/reference/Student Information Sheet (Group) (1) (3).pdf`).
+  `docs/reference/Student Information Sheet (Group) (1) (3).pdf`); and the
+  **Internship Program Student Exit Interview Form**, built 2026-08-30
+  (reference: `docs/reference/INTERNSHIP PROGRAM STUDENT EXIT INTERVIEW -
+  BUSINESS.pdf`). The aggregate **Summary Report on Student Exit Interview**
+  is a separate document and remains out of scope.
 
 ## Core Data Model & Invariants
 
@@ -273,10 +288,180 @@ enrollment.
    labels `rejected` as **"Returned"**.
 5. **Individual Info Sheet PDF** (`pdf.info-sheet` via the shared
    `BuildsInfoSheetPdf` trait) — MDC logo as a base64 data URI from
-   `public/images/mdc-logo.png`, the two labeled sections, plus a blank
-   **"Sketch of Internship Company Location"** box. Downloadable by the student,
-   the coordinator (in-scope), and the admin (no scope check — that page is
-   explicitly all-departments).
+   `public/images/mdc-logo.png`, the two labeled sections, plus the
+   **"Sketch of Internship Company Location"** box, which since 2026-08-28 is
+   **90mm tall and filled with a map of the student's pinned company location**
+   (see Company location map below). Downloadable by the student, the
+   coordinator (in-scope), and the admin (no scope check — that page is
+   explicitly all-departments); all three share the trait, so all three get the
+   map.
+
+### Company location map — the sketch box, filled in
+
+Built 2026-08-28. The student drops a pin on a map; the server rasterises those
+coordinates into the sketch box at download time. It replaces a blank square
+nobody could fill in from inside the app.
+
+**OpenStreetMap, NOT Google — and that is a constraint, not a preference.**
+Google Maps Platform (the Static Maps API included) requires a **billing
+account with a card on file** even to stay inside its free credit, and this
+project's whole deployment story is the documented zero-cost / no-credit-card
+constraint (see Deployment). OSM raster tiles need no key, no account and no
+card. `config/staticmap.php` takes any `{z}/{x}/{y}` raster endpoint, so a
+keyed or paid provider is one env var with no code change.
+
+- **No migration, deliberately.** `student_information_sheets.ojt_info` is a
+  JSON column, so the pin lives there as `location_lat` / `location_lng` /
+  `location_zoom` / `location_label`. Hard Rule #3 is untouched.
+- **`App\Services\StaticMapService`** stitches the tiles covering a viewport
+  centred on the pin, draws the marker and burns in the attribution — sized
+  off the canvas **WIDTH**, never its height, since both canvases it draws are
+  the full width of what they sit in and vary only in height; on height the
+  credit grew with the box and rendered as a watermark across the 90mm map.
+  The credit itself is burned in because the tile licence requires it to stay
+  with the image. **Every failure path returns null and the blade prints the
+  blank box** — no tiles, a slow server, GD missing, a nonsense coordinate. It
+  reaches the network from inside a PDF download, so a student must never be
+  unable to fetch their own information sheet because somebody else's tile
+  server was down. Pinned by
+  `test_the_pdf_still_downloads_when_the_tile_server_is_down`.
+- **A zero-tile render returns null rather than a grey rectangle.** An empty
+  grey box reads as "this application is broken"; the blank box reads as "no
+  location pinned", which is what the paper form has always meant.
+- **Both the composed image AND the individual tiles are cached** on the `local`
+  disk. Re-downloading an unchanged sheet touches the network zero times (cold
+  ~4s, warm ~200ms, measured), and students placed at the same company pin
+  within a few hundred metres of each other so the tiles are shared. The cache
+  is ephemeral on Render by design — everything is re-derivable from the two
+  numbers stored on the sheet.
+- **The `User-Agent` in config is REQUIRED, not decorative.** OpenStreetMap's
+  tile policy and Nominatim both block unidentified callers, and the symptom is
+  a silently empty map rather than an error.
+- **The box is 90mm tall (255.12pt), and FOUR numbers must move together** —
+  `BuildsInfoSheetPdf::SKETCH_HEIGHT_PT`, the blade's two `90mm` rules,
+  `StaticMapService::PREVIEW_HEIGHT`, and `CompanyLocationPicker.vue`'s
+  `PRINT_ASPECT`/`PRINT_RATIO`. The image is rasterised to exactly that box at
+  2x (~144dpi) and then stretched to fill it, so changing one alone distorts
+  the map; the preview and the dialog's guide are drawn at the same ratio, so
+  missing either makes them quietly stop being previews of the print.
+  **It was 50mm until 2026-08-29.** At 90mm the whole sheet still fits on one
+  page with about **42pt of slack** below the attribution line — re-measure
+  after touching anything above the box, since it is now the tightest part of
+  the document.
+- **Nothing is verified against anything, and that is deliberate.** The DTR
+  geofence is adversarial and is distance-checked server-side because a punch
+  is a claim about attendance. This is *descriptive* — a map so a coordinator
+  can find the place — so a radius check would add friction against a threat
+  that does not exist here. The pin is also never required: an unpinned sheet
+  submits normally.
+
+**Frontend**: `components/infosheet/CompanyLocationPicker.vue`, the **LAST**
+field of the info sheet's Internship Company Information section — below
+Estimated Date to Finish Internship, not up under Company Address where it
+first sat. It mirrors the printed sheet, where the sketch box is the final
+element after every typed field, so the form and the PDF are read in the same
+order; it also keeps the one control that opens a dialog and loads a map
+library out of the middle of a run of plain text inputs.
+
+**THE MAP LIVES BEHIND A "Set location" BUTTON, AND THAT IS THE OPTIMISATION —
+do not inline it again.** Rendered inline (as it briefly was) it charged every
+student who opened the info sheet a **~43kB gzip map library plus a dozen live
+tile requests**, on a form where every other field is typed and most students
+never touch the map. Measured in a real browser on the collapsed page:
+`leafletLoaded: false, tileRequests: 0`. Leaflet, its stylesheet and every tile
+are fetched on the **first** press of the button and never before, then cached
+in the component so a second open costs nothing.
+
+- **Collapsed, the section shows ONE cached PNG** from
+  `student/location-preview` — 640x324, ~25kB, `Cache-Control: private,
+  max-age=86400`. Because it is rendered at the printed box's own aspect it is
+  a **true preview of the sheet**, not an approximation of one. The preview
+  canvas size is fixed **server-side**: a caller-controlled width and height is
+  a way to make the server fetch arbitrarily many tiles from a free service on
+  demand. A pin whose tiles cannot be fetched **404s rather than returning a
+  placeholder**, so the `<img>` fails and the form falls back to plain
+  coordinates instead of presenting a grey rectangle as the location.
+- **The dialog holds a DRAFT pin; nothing reaches the form until "Use this
+  location".** Cancel therefore really cancels, which is what a dialog with a
+  Cancel button has to mean. Inline, every drag wrote straight through.
+- **`z-500` on the "Printed area" guide is load-bearing.** Leaflet gives its own
+  panes `z-index: 400` in the *shared* stacking context (the map container is
+  `position: relative` with `z-index: auto`), so an un-layered overlay is
+  painted underneath the tiles and silently never appears — which is exactly
+  what happened first time. 500 clears the panes and stays below Leaflet's
+  controls at 800.
+- **The guide's size is computed in JS (`sizeGuide()`), not left to CSS, and
+  that is not a preference.** It has to fit the map on BOTH axes and still be
+  exactly the printed ratio, and no width/`max-height` pair does that: once a
+  max clamps one axis, `aspect-ratio` does **not** re-derive the other, so the
+  guide silently stops matching the print. It never bit while the box was a
+  3.56:1 strip; at the 90mm box's 1.98:1 it clamps on any short viewport. The
+  existing `ResizeObserver` (already there for Leaflet's `invalidateSize`)
+  drives it, so there is no second observer. Verified in a browser at two map
+  heights: 720x468 → guide 662x335, and 720x260 → guide 411x208 — `ratio:
+  1.978` in both, which is 504.57/255.12.
+- The dialog uses the documented three-part flex shell (`shrink-0` header,
+  `flex-1 overflow-y-auto` body, `shrink-0` footer).
+- The stock Leaflet marker is replaced by a `divIcon` carrying **inline SVG**:
+  Leaflet's own marker loads PNGs by a path relative to its stylesheet, which a
+  bundler rewrites, and the classic symptom is a broken-image icon.
+- **Dragging leads; "Use my location" follows.** The information sheet is the
+  intake gateway, filled in BEFORE enrollment, so the student is almost always
+  at home or on campus rather than at the company — defaulting to their current
+  position would confidently pin the wrong building. The button reuses
+  `currentPosition()` / `isPermissionDenied()` / `locationErrorMessage()` from
+  `lib/dtr.ts` (the two-stage GPS→network fix and the in-app-browser WebView
+  warning are already solved there); `locationErrorMessage` gained an optional
+  `purpose` argument so its copy no longer says "clock in" on this page.
+- **The tile URL and attribution come from the SERVER** (`student/location-options`),
+  not hardcoded in the SPA, so the map the student pins on and the map that
+  prints can never be two different maps.
+- **It deliberately does NOT seed the pin from `company_geofences`.** Those are
+  the coordinates a supervisor captured for QR clock-in, and handing every
+  student the precise location of every company's fence would lower the cost of
+  spoofing a punch — the one thing that scheme's honesty rests on. The picker
+  opens on the college instead.
+- The tile layer sets **`updateWhenIdle: true` and `keepBuffer: 1`** (Leaflet's
+  default is 2) — both purely to be a good citizen of a free tile server we do
+  not own.
+- **Address search** (`student/location-search`, `throttle:20,1`) proxies
+  Nominatim. Its policy caps callers near 1 req/sec and forbids
+  autocomplete-as-you-type, so the UI searches only on an explicit submit, the
+  route is throttled, and answers are cached for a day — but a **failed lookup
+  is never cached**, and comes back as `unavailable: true` rather than "no
+  results", because the two need different advice.
+
+All three routes are in the **ungated** student group, for the same reason the
+sheet itself is: a student filling in the gateway has not cleared it yet.
+
+#### Server-side rendering cost
+
+- **Tiles are fetched `FETCH_CONCURRENCY = 6` at a time via `Http::pool()`.**
+  Six is not a "make it faster" number — it is exactly what a browser opens per
+  host, so a map this page draws costs the tile server no more than the same
+  map drawn in Leaflet would. Measured cold render of a 1009x283 viewport (the
+  box's size before it grew to 90mm): **6.7s sequential → 1.5s pooled**; warm
+  (composed cache hit) **27ms**. The 90mm box is 1009x510 and needs about half
+  again as many tiles, still far under `MAX_TILES = 40`.
+- **The canvas is quantised to a flat 256-colour palette before encoding.**
+  Street-map tiles are flat artwork from a small palette, so at print size this
+  is indistinguishable from truecolour while cutting the PNG to about a third
+  (134kB → 43kB measured). Dithering is deliberately off: it costs most of the
+  saving and speckles the tiles' own label text.
+- **Do not expect `imagepng($canvas, null, 9)` to reach the PDF.** dompdf's
+  `Cpdf::addImagePng()` loads the image into GD and **re-encodes it with
+  `imagepng()` at the default compression** before embedding, so the
+  compression level chosen here only affects the cached file and the preview
+  endpoint. The palette still survives that round trip (a pinned sheet went
+  262kB → 237kB), and the preview — served straight to the browser with no
+  dompdf in the path — is where the saving lands in full.
+
+`phpunit.xml` sets **`STATIC_MAP_ENABLED=false`** so no test can silently depend
+on the network; the map tests switch it back on with `Http::fake()`. Coverage:
+`tests/Unit/Services/StaticMapServiceTest.php` (the Web Mercator projection
+cross-checked against the OSM wiki's own `log(tan + sec)` formula, the caching,
+the User-Agent, and the graceful null) and
+`tests/Feature/Student/InfoSheetLocationTest.php`.
 
 **Bulk-importing students (Excel/CSV) is an alternative entry to step 1
 above, not a different flow.** `Coordinator/BulkStudentImportController`
@@ -821,30 +1006,99 @@ label **"Weekly and Time Log Summary"** (`clock` icon, the same glyph
   sheet whose period straddles the filter boundary is still the sheet the
   coordinator is looking for.
 
-#### The PDF is a facsimile — four things are load-bearing
+#### The PDF is a facsimile — and as of 2026-08-28 it is a MEASURED one
+
+**Every geometric number in `pdf/weekly-activity-log.blade.php` was extracted
+from the reference PDF's own vector content stream** — its stroked table rules
+and its text baselines — not estimated from a photo. The reference, on a
+612x792 US Letter page, in points:
+
+- content column **x 56.8 -> 559.8** (503.0pt); **both** tables are that width
+- info table rules at x **56.8 | 177.0 | 357.7 | 453.5 | 559.8**, rows at y
+  **646.5 632.7 618.7 604.7 590.8 577.1** (a ~13.9pt pitch)
+- activity table rules at x **56.8 | 120.25 | 226.75 | 333.0 | 453.5 | 559.8**;
+  header row **40.75pt**, then five rows of **94.5 94.5 94.5 81.25 81.0**
+  landing the last rule on **y=67.5**
+- type is **Calibri Bold 11pt throughout** — masthead, title, every field label
+  and every column heading; rules are **0.5pt** black
+
+Rebuilt against those numbers, the blank form overlays the reference with
+**7.5% of ink pixels differing at a ±2px tolerance** (it was **84.7%** before),
+and the residue is anti-aliasing on 0.75px hairlines. Everything below is what
+made that possible; do not "tidy" any of it.
 
 1. **`->setPaper('letter', 'portrait')` in `BuildsWeeklyActivityLogPdf`.** dompdf defaults to
    **A4** (595x842), which silently narrows every measured column. Pinned by
    `test_the_pdf_is_us_letter_and_fits_on_one_page`, which asserts the MediaBox
    is `612 x 792` — verified to genuinely fail (it reports A4) when the call is
    removed.
-2. **The whole form fits on ONE page, and the margin is thin.** A blank form is
-   one page at a `table.activity td` height of **70pt** and spills to two at
-   72pt — bisected empirically, not estimated. Re-measure after changing any
-   masthead, info-table or row spacing.
-3. **Both tables open with a zero-height `.sizer` row carrying the column
-   widths, under AUTO layout.** dompdf ignores `<colgroup>` and ignores a width
-   on any cell carrying a `colspan` (the info table's Faculty Adviser and Name of
-   Company rows both span), and `table-layout: fixed` distributes columns equally
-   regardless. Those widths are **content-box** — dompdf adds cell padding on
-   top, so each is written as (target - horizontal padding).
-4. **The department and unit lines are literal constants** (on the trait)
+2. **EVERY `line-height` IS WRITTEN PRE-DIVIDED BY 1.3428, and that is not a
+   typo.** dompdf does not use `line-height` as the line box height:
+   `FrameDecorator\Text::get_margin_height()` returns
+   `(line_height / font_size) * fontHeight`, and `fontHeight` is
+   `(winAscent + winDescent) / unitsPerEm * FONT_HEIGHT_RATIO` — for Carlito
+   `(1950 + 550) / 2048 * 1.1 = 1.3428em`. So a plain `line-height: 14.5pt`
+   renders a **19.47pt** line, and every heading, row and table comes out a
+   third too tall. A unitless value is **not** a way out: it is multiplied by
+   font-size first and then hits the same factor. `height`, by contrast, is
+   content-box and is **not** rescaled, so a row's printed pitch is
+   `height + vertical padding + the 0.5pt rule`.
+3. **The whole blank form fits on ONE page**, with the last rule landing on the
+   reference's own y=67.5 and 13.5pt of slack to the bottom margin. Re-measure
+   after changing any masthead, info-table or row spacing. A log with more than
+   five entries still flows to a second page, which is the documented
+   "the table grows" behaviour.
+4. **The column widths ride on the first row of each table that has no colspan
+   in it** — the info table's first data row and the activity table's header
+   row. dompdf ignores `<colgroup>`, ignores a width on any cell carrying a
+   `colspan` (the info table's Faculty Adviser and Name of Company rows both
+   span), and `table-layout: fixed` distributes columns equally regardless.
+   Those widths are **content-box** — dompdf adds cell padding on top, so each
+   is written as (target - 10pt of horizontal padding).
+   **There is deliberately NO `.sizer` row any more, and it must not come
+   back.** It was the visible defect that prompted this rebuild: a `.sizer td`
+   rule (specificity 0-1-1) *loses* to `table.info td` / `table.activity td`
+   (0-1-2), so both "zero-height" rows inherited a real row's border, padding
+   and height and **printed as an empty leading row** in each table — a 13.9pt
+   ghost above "Name of Student Intern" and a 70pt one above the column
+   headings.
+5. **The masthead and title carry a 9.4pt `padding-left`.** The reference
+   centres its heading block on x=313.0, which is 4.7pt right of the content
+   column's own centre (308.3); the indent moves the centre by half of it.
+6. **Column headings are `vertical-align: top`, not middle** — on the reference
+   every heading's first line shares one baseline with "Inclusive".
+7. **The department and unit lines are literal constants** (on the trait)
    (`DEFAULT_DEPARTMENT_LINE` = "College of Accountancy, Business and
    Management", `DEFAULT_UNIT_LINE` = "Business Department"), matching the
    reference form verbatim. Deliberately **not** derived from
    `departments.name`, which is seeded to the short code ("CABM-B") and would
    print wrongly — the same call already made for the GROUP Student Information
    Sheet.
+
+#### The type is Carlito, and the font files ship in the repo
+
+The reference is set in **Calibri**, which cannot be redistributed and is not
+present in the Linux Docker image. **Carlito** (`resources/fonts/Carlito-Regular.ttf`,
+`Carlito-Bold.ttf`, plus `OFL.txt`) is metric-compatible with Calibri and is SIL
+OFL licensed, so it can. Measured against the reference: "Name of Student
+Intern" sets 108.11pt wide in Carlito against Calibri's 107.98pt.
+
+- The faces are registered in PHP by `registerWeeklyActivityLogFonts()`,
+  **not** through `@font-face`. A CSS `url()` pointing at a local `.ttf` goes
+  through dompdf's URL resolver, which does not survive a Windows drive-letter
+  path. Registration is **best-effort** — the blade's stack falls back to
+  Helvetica, so a missing font file degrades the type rather than 500-ing the
+  download.
+- dompdf caches the parsed metrics into **`storage/fonts/`** on first render.
+  That directory is committed (via its own `.gitignore`) and the Dockerfile
+  already `chown`s `storage`, so nothing extra is needed to deploy.
+- **Font subsetting is switched ON for this document only.**
+  `laravel-dompdf`'s shipped config sets `enable_font_subsetting => false`,
+  which is harmless while every PDF uses a base-14 font but embeds the whole
+  682KB face the moment one does not — the download went from ~10KB to
+  **~600KB**. `setIsFontSubsettingEnabled(true)` on the instance takes the
+  blank form to **~12KB** and a filled one to ~24KB, and changes nothing that
+  renders. It is set per-instance, so no other PDF in the project is affected.
 
 `formRows()` pads to **`MIN_FORM_ROWS = 5`** so a sparse log still prints like
 the pre-printed paper form, while the table itself **grows** past it (matching
@@ -875,6 +1129,260 @@ application reports.
   `WeeklyJournalPaperView.vue`. `JournalPaperView.vue` mirrors the daily PDF 1:1
   and is always rendered read-only on the write page — the paper is a review
   surface, not an alternate editor.
+
+## Exit Interview
+
+Built 2026-08-30 at the project owner's request. Narrows Hard Rule #4: the
+per-student **form** is in scope and built; the aggregate **Summary Report on
+Student Exit Interview** is a different document and is still out.
+
+The student fills in the official CABM "Internship Program Student Exit
+Interview Form" at the close of their placement; their coordinator reads every
+answer, records the compliance verification the form reserves for them, and
+downloads a measured facsimile to file. Reference:
+`docs/reference/INTERNSHIP PROGRAM STUDENT EXIT INTERVIEW - BUSINESS.pdf`.
+
+- **Student**: `StudentExitInterviewController` (`show`/`store`/`pdf`, routes
+  `student/exit-interview*` in the **gated** group), page
+  `StudentExitInterviewPage.vue` at `/student/exit-interview`, nav label
+  **"Exit Interview"** (`exit` icon), placed last in the student nav —
+  after Student Info Sheet, because that is the order a student meets them:
+  intake first, exit last.
+- **Coordinator**: `CoordinatorExitInterviewController`
+  (`index`/`show`/`update`/`pdf`, routes `coordinator/exit-interviews*`), page
+  `CoordinatorExitInterviewsPage.vue` at `/coordinator/exit-interviews`, nav
+  label **"Student Exit Interviews"**.
+
+### Schema — one additive table
+
+`student_exit_interviews`: `student_id`, `batch_id`, three JSON payloads
+(`student_info`, `responses`, `coordinator_section`), `submission_status`
+(`draft`/`submitted`/`reviewed`), `submitted_at`, `reviewed_at`, `reviewed_by`,
+and **`UNIQUE(student_id, batch_id)`** — the form is filled once per placement,
+backstopped in the database the way `batch_students` backstops its own pair
+rather than by the controller alone.
+
+The JSON columns follow `student_information_sheets`' precedent for the same
+reason: **the question set belongs to the paper form, not to the schema**, so
+rewording or adding a question is not a migration. `responses` is keyed
+`q1`..`q14` plus `q2_choice` / `q7_choice` / `q10_choice` / `q11_choice` for the
+four printed ☐ Yes ☐ No pairs. **`StudentExitInterview::QUESTION_KEYS` and
+`CHOICE_KEYS` are the single definition** shared by the Form Request, the API
+payload and the PDF, so the three can never disagree about what question 7 is.
+
+### The write rule is deliberately NOT the project-wide one
+
+Every other student WRITE endpoint requires `activeEnrollment()`, so a
+`completed` student is read-only. **This form uses `currentEnrollment()`
+(active OR completed)** — and it is the only student surface that does.
+
+An exit interview is *by definition* filed at or after the end of a placement.
+Applying the usual rule would make it unwritable at exactly the moment it falls
+due, which is the whole reason it exists. A `dropped` student still gets
+nothing, as everywhere else. Pinned by
+`test_a_completed_student_can_still_file_their_exit_interview` and
+`test_a_dropped_student_has_no_exit_interview_to_file` — do not "restore" the
+usual rule here.
+
+### What the student types, and what is derived
+
+Section A is mostly re-derived, so the student types only what the system cannot
+know: **Department/Position Assigned** (prefilled from
+`batch_students.assigned_division`, still editable — the form asks for something
+more specific than a division), **Total Hours Completed**, and **Date of
+Interview**. Name, program, company, training period and coordinator come from
+the enrollment and are read-only.
+
+**Total Hours prefills from the DTR and is never overwritten** — the same rule
+as the Weekly Activity Log's "No. of hours". This is a paper facsimile somebody
+signs by hand, so a wrong DTR total (a forgotten clock-out, a session awaiting
+adjustment) must stay correctable before printing. With DTR off and nothing
+typed, the blank prints blank; **hours are never fabricated**.
+
+### Draft, submit, lock — and the coordinator's own block
+
+- A **draft** validates nothing; a **submit** requires all fourteen answers and
+  all four Yes/No choices. Half an interview handed to a coordinator is worse
+  than none, but a student must be able to stop typing and come back.
+- **Submitting locks the student's half permanently** — there is no unsubmit.
+  It notifies the batch's own coordinator (`batches.coordinator_id`, the single
+  unambiguous owner — the same call the info sheet's submission makes) and
+  writes a `SystemLog` row.
+- The coordinator then fills **"SECTION FOR OJT/INTERNSHIP COORDINATOR"**
+  (compliance verification, the pending-requirements detail, remarks), which
+  stamps `reviewed`. `update()` never touches `responses` and 422s a `draft`
+  interview — there is nothing to verify until it is handed in.
+- **There is deliberately NO accept/reject**, unlike the Student Info Sheets
+  queue. An exit interview is feedback, not an application: it gates nothing,
+  and a coordinator disagreeing with an answer is not grounds to bounce it back.
+  Drafts ARE listed (unlike the weekly-journal queue), because the list is also
+  how a coordinator sees who has not started.
+
+### Answer length is a WIDTH check, not a character count
+
+Each question gets five printed ruled lines. The
+renderer wraps onto exactly those and **silently drops the overflow, because a
+PDF cannot refuse** — so the refusal has to happen at validation time, and
+`ExitInterviewFormLayout::fits()` measures the rendered width rather than
+counting characters.
+
+That distinction is load-bearing, not fussiness: measured in Helvetica at
+9.5pt, ordinary prose sets ~0.45em per character (~109 to a 467.75pt rule)
+while an ALL-CAPS answer sets ~0.60em (~82). **No single character count is
+both generous to the first and safe for the second** — a cap tight enough for
+capitals would refuse a perfectly ordinary answer, and one generous enough for
+prose would cut a shouted one off mid-sentence with nothing on screen admitting
+it. The character caps that remain are `CHARS_PER_LINE` × the field's OWN rule
+count — 500 for a question, 300 for the coordinator's Remarks, 200 for the
+pending-requirements detail — and only size the textarea and bound the
+payload; `HARD_CHAR_CAP` is the cheap gate that stops a megabyte reaching the
+measurer. The coordinator's two fields go through the identical check, so a
+remark cannot be truncated off the foot of the form either.
+
+### The PDF: measured from the reference, regularised against it
+
+`resources/views/pdf/exit-interview.blade.php` via the shared
+`Concerns\BuildsExitInterviewPdf` trait — one renderer, so the student's
+printed copy and the coordinator's filed copy cannot drift.
+
+**THE BLADE HOLDS NO GEOMETRY.** Every position is computed by
+`App\Support\ExitInterviewFormLayout::document()` from one horizontal grid and
+one vertical rhythm; the blade is three loops over the result. That is
+deliberate and is the whole point of the 2026-08-30 rebuild: the first cut
+hand-placed some sixty coordinates in the blade, which is exactly the shape
+that lets spacing drift, one edit at a time, into what the reference itself
+became.
+
+**What was measured off the reference and KEPT:** the page box, the ruled
+column (x 72 → 539.75), the 13.2pt rule pitch, the type and its sizes, the
+two-column Section A, the section order, and every word of every question and
+label.
+
+**What was NOT kept is its spacing**, which is a Word artifact. The reference,
+measured off its own content stream:
+
+- pitches its answer rules at **13.15 / 13.20 / 13.25 / 13.40 / 13.45 /
+  13.65pt** in different places
+- varies the gap from a question to its first answer rule across **14.84 –
+  15.58pt**
+- puts the four ☐ Yes ☐ No pairs at **four different x positions** (378.12,
+  450.12, 324.00, 466.80), each simply trailing however long its question
+  happened to be
+- orphans **"Please explain:"** onto a line of its own **18pt to the LEFT of
+  the question it belongs to**, because Word wrapped it off the end
+- indents **page 1's whole body 18pt less than page 2's**, so one document has
+  two left margins
+- gives **question 7 four answer lines** where every other question gets five,
+  and **splits them across the page break** — three at the foot of page 1, one
+  at the top of page 2, so a single answer runs across two sheets
+- spends **less** vertical air on a section break (10.5pt) than between two
+  questions of the same section (11.4pt), so its sections do not announce
+  themselves
+
+The rebuilt form fixes each of those. Load-bearing details:
+
+1. **The page is 612 x 936pt — Philippine "long bond" (8.5" x 13", Folio/F4),
+   NOT Letter and emphatically not dompdf's A4 default.** `setPaper([0, 0, 612,
+   936], 'portrait')` is the single most important line in the trait. Asserted
+   on both download paths.
+2. **One horizontal grid, both pages**: section headings at **72** (flush with
+   the answer rules, so the document has a single strong left edge), question
+   numbers hanging at **90**, question text and every wrapped line at **108**,
+   answers back at **72**.
+3. **One vertical rhythm**, stated against `LINE = 13.2` (the reference's own
+   rule pitch). The resulting gaps are few and each means something: **26.4pt**
+   between two questions of the same section, **43.6pt** across a section
+   break, plus **one LINE** where a question genuinely needs a second line. Every
+   variation encodes structure; none is an accident.
+4. **Every question gets five answer lines, on one page.** Question 7 no longer
+   straddles the break.
+5. **The ☐ Yes ☐ No pairs share one column on both pages.** A choice question's
+   text wraps short of that column, so the pair is in the same place every
+   time rather than trailing the text. `CHOICE_GUTTER` is sized so all four fit
+   beside their pair on one line — **question 11 is the long one and clears it
+   by about 3.6pt**, and `test_only_the_one_over_long_question_wraps` guards
+   the widow that appears if it stops fitting.
+6. **"Please explain:" is printed ON the first answer rule**, with the answer
+   inset past it — the same treatment the coordinator's "If pending, specify:"
+   already had. One mechanism for all five labelled fields.
+7. **Answers are wrapped in PHP, not by dompdf**, against the very
+   `Helvetica.afm.json` dompdf will use, so the wrap and the render cannot
+   disagree. It also sidesteps dompdf's line-height quirk entirely (its line
+   box is `(line_height / font_size) * fontHeight`, not `line_height`), since
+   no block holds more than one line.
+8. **dompdf positions a block by its TOP, so each computed BASELINE is
+   converted with the face's own ratio** — `BASELINE_RATIO`: Helvetica (regular
+   and bold) 0.81400, Times 0.79200, Times-Bold 0.78922, ZapfDingbats 0.84740.
+   These were **probed against dompdf itself**, not derived; linear in size to
+   within 0.05pt across 9.4-19pt.
+9. **The type is substituted and the size scaled to match.** The reference sets
+   its body in **Tahoma at 10.45pt horizontally CONDENSED to ~91%** (every glyph
+   carries its own `Tm` with an `a` scale of 0.043-0.05 against a fixed `d` of
+   0.05). dompdf cannot condense a face and Tahoma is proprietary, so the
+   substitute is **Helvetica at 9.5pt** — base-14, so nothing embeds. Measured
+   at 10.45pt the preamble sets 553.71pt in real Tahoma against **550.59pt in
+   Helvetica (0.6% out)**, 628.24pt in DejaVu Sans (13% too wide) and 509.49pt
+   in Carlito (8% too narrow); the drop to 9.5pt is what makes UNCONDENSED
+   Helvetica occupy the width the condensed original does. Times **is**
+   metric-compatible with Times New Roman, so the masthead keeps the
+   reference's own sizes — including "Mater Dei College" in **#205E99**, the
+   one coloured element and the reference's own `rg 0.125 0.369 0.6`.
+10. **A ticked box carries a CHECK MARK from ZapfDingbats** (glyph `a19`,
+    character `'3'`), centred in the box from the glyph's own AFM metrics.
+    ZapfDingbats is base-14 like Helvetica and Times, so it embeds nothing —
+    **Helvetica has no check glyph at all**, which is why an X stood in for one
+    before. The ☐ itself is a stroked div: the reference's Segoe UI Symbol is
+    proprietary and would render as a blank or a tofu square.
+11. **Section A pairs Total Hours with Date of Interview and gives the
+    coordinator a full-width row of its own.** The reference pairs Date of
+    Interview with the coordinator, which leaves the coordinator's blank far
+    too short for a full name with post-nominals — the longest value on the
+    form. Regrouping costs no height and lets **every** right-hand cell start
+    at the same x.
+12. **Nothing may reach the folio.** `document()['bottom']` reports each page's
+    lowest ink and a test asserts 20pt of clearance — an answer printing across
+    the page number is what an unchecked overrun produces. Currently page 1
+    ends at 868.85 and page 2 at 871.37, against a folio baseline of 906.53
+    (the reference's own page-2 bottom was 882.05, so the envelope is
+    unchanged).
+
+The blank form and a fully filled one both come out at **exactly two pages**,
+asserted on both download paths, and **no font is embedded** — a filled
+download is about 6KB.
+
+### Coverage
+
+`tests/Unit/Support/ExitInterviewFormLayoutTest.php` pins the REGULARITY, and
+each of its cases names an irregularity the reference actually has — a single
+rule pitch, one answer box size on one page per question, one column for every
+☐ Yes ☐ No pair, one left grid across both pages, labelled answers inset clear
+of their printed label, no page running into the folio, and only the one
+genuinely over-long question wrapping. It also pins that `fits()` measures
+width rather than length — the same text passes as prose and is refused in
+capitals.
+
+`tests/Feature/Student/ExitInterviewTest.php` (draft vs submit validation, the
+lock, the completed/dropped split, the page size) and
+`tests/Feature/Coordinator/CoordinatorExitInterviewTest.php` (program scoping,
+the 403s, the coordinator block never touching `responses`, and the draft that
+cannot be signed off) cover the endpoints.
+
+### Demo data
+
+`CabmbExitInterviewDemoSeeder` gives the three `mdcbalintern*` logins one form
+each, **one in every state** — `mdcbalintern1` reviewed (with the coordinator's
+block filled in and "With pending requirements" ticked, so the printed PDF
+shows a ticked box), `mdcbalintern2` submitted (the row that needs the
+coordinator to act), `mdcbalintern3` draft (visible to the coordinator but
+refused for sign-off). Three states, not three copies: the Status filter and the
+sign-off rule are only demonstrable side by side. Answers are written in three
+distinct voices, and every one fits its printed rules.
+
+Its `interviewedOn()` both anchors to **Asia/Manila** (never `->setTime()`, for
+the reason `CabmbSupervisorDtrDemoSeeder` documents) **and clamps the date to
+the past** — the batch runs on beyond today, so a naive "start + 10 weeks"
+printed a FUTURE interview date onto a form a coordinator signs by hand. That
+was a real defect caught on screen, not a precaution.
 
 ## Daily Time Record (QR + geofence)
 
@@ -1966,6 +2474,11 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
   creator column exists, so unlinked implies visible, keeping freshly-created
   companies in view). Includes the representatives and supervisor-login panels.
 - **Student Info Sheets** — the Accept/Reject queue; defaults to **All** statuses.
+- **Student Exit Interviews** (`/coordinator/exit-interviews`) — every
+  in-scope intern's exit interview, filterable by program / status / name,
+  with a per-row and in-modal **Download PDF**. Read the fourteen answers and
+  fill the coordinator's own compliance block; there is **no accept/reject**,
+  because an exit interview gates nothing. See Exit Interview above.
 - **Weekly and Time Log Summary** (`/coordinator/weekly-time-logs`) — read-only
   list of every in-scope intern's MDC Weekly Activity Log sheet, with a per-row
   and in-modal **Download PDF**. See Weekly Activity Log above; there is no
@@ -2009,7 +2522,8 @@ whole lifecycle above), and correcting the punches those codes produce.
 
 Dashboard, journal calendar, write daily journal, my journals, weekly journals,
 **Weekly and Time Log Summary**, **Daily Time Record** (only where the batch
-coordinator enabled it), info sheet. The Student Dashboard is real, not
+coordinator enabled it), info sheet, and — last in the nav, as it is last in
+the placement — the **Exit Interview**. The Student Dashboard is real, not
 mock data — it returns submitted
 counts, weekly logs approved/pending, this-week missing working days, two
 completion-progress percentages, the student's own last-5 `SystemLog` rows, and
@@ -2080,7 +2594,8 @@ Sheet submission**, which notifies the submitting student's batch's
 (`batches.coordinator_id` — the single unambiguous owner, not every coordinator
 in the department) only on a transition **into** `submitted`. It deliberately
 does not fire on a draft autosave, a resave of an already-submitted sheet, or an
-edit to an approved sheet.
+edit to an approved sheet. **Exit interview submission** notifies the same
+coordinator on the same rule, and cannot repeat: submitting locks the form.
 
 ## Architecture
 
@@ -2999,7 +3514,10 @@ npx expo start
 `tests/Feature` splits into `Admin` / `Auth` / `Console` / `Coordinator` /
 `Services` / `Student` / `Supervisor`. `tests/Unit` holds `Models` and
 `Support` (the latter added for `GeoDistanceTest`, which exercises the haversine
-geofence maths with no database at all).
+geofence maths with no database at all, and now also
+`ExitInterviewFormLayoutTest`, which pins the exit interview form's measured
+geometry the same way — no database, just the numbers taken off the reference
+PDF).
 
 Three tests pin the 2026-08-27 journal-flexibility work specifically, and each
 covers a rule that used to be the opposite — do not "restore" the old
@@ -3175,9 +3693,24 @@ coordinator, as their supervisor (`mdcbalsup`) and as each student.
   keyed by (sheet, `sort_order`) and any row left over from a longer previous run
   is pruned.
 
+**Exit interview demo** (`CabmbExitInterviewDemoSeeder`, added 2026-08-30)
+gives the same three `mdcbalintern*` logins one form each, **one in every
+state**: `mdcbalintern1` **reviewed** (coordinator's block filled in, "With
+pending requirements" ticked, so the printed PDF shows a ticked box),
+`mdcbalintern2` **submitted** (the one row that needs the coordinator to act),
+`mdcbalintern3` **draft** (visible in the list but refused for sign-off). The
+three states are the point rather than the count — the Status filter and the
+"a draft cannot be signed off" rule are only demonstrable side by side.
+Answers are written in three distinct voices so a coordinator paging through
+them is reading three students, and each fits its printed rules. Its
+`interviewedOn()` anchors to **Asia/Manila** and **clamps the date to the
+past**: the batch runs on beyond today, so a naive "start + 10 weeks" printed
+a FUTURE interview date onto a form a coordinator signs by hand — caught on
+screen, not in theory. See Exit Interview above.
+
 **Intake-flow demo** (`CabmbIntakeDemoSeeder`, CABM-B under Balbero, both
 NOT-enrolled, re-armed each seed): `mdcintake` has a **draft** sheet (log in
-gated, fill, choose company, submit), and `mdcintake2` has a **submitted** sheet
+gated, fill, choose company, submit), and `mdcintake2` has a **submitted** sheet (carrying a pinned company location, so the sketch box on the demo PDF shows a real map)
 naming a `supervisor_name` deliberately distinct from that company's login
 supervisor — so it sits in Balbero's Submitted queue ready to **Accept**, a live
 demonstration of the login-vs-named-individual split.

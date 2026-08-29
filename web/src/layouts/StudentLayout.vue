@@ -19,6 +19,9 @@ const allNavItems = [
   // above, so this uses its own pin glyph.
   { label: 'Daily Time Record', to: '/student/dtr', badge: '', icon: 'map-pin' },
   { label: 'Student Info Sheet', to: '/student/info-sheet', badge: '', icon: 'id-card' },
+  // The last form of the placement. Sits after the info sheet because that
+  // is the order a student meets them: intake first, exit last.
+  { label: 'Exit Interview', to: '/student/exit-interview', badge: '', icon: 'exit' },
 ]
 
 const auth = useAuthStore()
@@ -145,6 +148,9 @@ const department = computed(() => auth.user?.program?.department?.name ?? 'CAST'
 
             <rect v-if="item.icon === 'id-card'" x="3.5" y="5.5" width="17" height="13" rx="2" stroke="currentColor" stroke-width="1.6" />
             <circle v-if="item.icon === 'id-card'" cx="9" cy="11.5" r="2" stroke="currentColor" stroke-width="1.6" />
+            <path v-if="item.icon === 'exit'" d="M14 4.5H6.5A1.5 1.5 0 0 0 5 6v12a1.5 1.5 0 0 0 1.5 1.5H14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+            <path v-if="item.icon === 'exit'" d="M15.5 8.5 19 12l-3.5 3.5M10.5 12H19" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+
             <path v-if="item.icon === 'id-card'" d="M6.5 15.5c.6-1.4 1.8-2 2.5-2s1.9.6 2.5 2M14 10h4M14 13h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
 
             <circle v-if="item.icon === 'profile'" cx="12" cy="8.5" r="3.5" stroke="currentColor" stroke-width="1.6" />
