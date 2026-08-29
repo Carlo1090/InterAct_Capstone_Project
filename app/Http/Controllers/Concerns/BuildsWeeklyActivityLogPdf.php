@@ -39,6 +39,25 @@ trait BuildsWeeklyActivityLogPdf
      */
     private const MIN_FORM_ROWS = 5;
 
+    /**
+     * The reference form is set in Calibri Bold 11pt throughout. Carlito is
+     * metric-compatible with Calibri and is SIL OFL licensed, so unlike Calibri
+     * itself it can ship in the repo and in the Docker image. dompdf bundles
+     * nothing resembling it, so the faces are registered by hand here rather
+     * than through @font-face — a CSS url() to a local .ttf goes through
+     * dompdf's URL resolver, which does not survive a Windows drive-letter path.
+     *
+     * Registration is best-effort on purpose: the blade's font stack falls back
+     * to Helvetica, so a missing or unreadable font file degrades the type
+     * rather than failing the download.
+     */
+    private const FORM_FONT_FAMILY = 'carlito';
+
+    private const FORM_FONT_FILES = [
+        'normal' => 'resources/fonts/Carlito-Regular.ttf',
+        'bold' => 'resources/fonts/Carlito-Bold.ttf',
+    ];
+
     protected function renderWeeklyActivityLogPdf(WeeklyActivityLog $log, ?string $filename = null): Response
     {
         $log->load(['entries' => fn ($query) => $query->orderBy('sort_order')]);
@@ -52,9 +71,42 @@ trait BuildsWeeklyActivityLogPdf
             // dompdf defaults to A4, which silently narrows every measured column.
         ])->setPaper('letter', 'portrait');
 
+        $this->registerWeeklyActivityLogFonts($pdf);
+
         $slug = str($log->week_start?->toDateString() ?? (string) $log->id)->slug();
 
         return $pdf->download($filename ?? "weekly-activity-log-{$slug}.pdf");
+    }
+
+    /**
+     * Make the two Carlito faces available to the blade's `carlito` family.
+     * Registration is cached into dompdf's font dir on first use.
+     */
+    protected function registerWeeklyActivityLogFonts(mixed $pdf): void
+    {
+        $dompdf = $pdf->getDomPDF();
+
+        // laravel-dompdf's shipped config turns subsetting OFF, which is
+        // harmless while every PDF uses a base-14 font but embeds the whole
+        // 682KB face the moment one does not. Switched on for THIS document
+        // only (the option lives on the instance, not the container binding);
+        // it takes the blank form from ~600KB to ~12KB.
+        $dompdf->getOptions()->setIsFontSubsettingEnabled(true);
+
+        $metrics = $dompdf->getFontMetrics();
+
+        foreach (self::FORM_FONT_FILES as $weight => $relativePath) {
+            $path = base_path($relativePath);
+
+            if (! is_file($path)) {
+                continue;
+            }
+
+            $metrics->registerFont(
+                ['family' => self::FORM_FONT_FAMILY, 'style' => 'normal', 'weight' => $weight],
+                $path
+            );
+        }
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Student;
 
+use App\Services\StaticMapService;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreInfoSheetRequest extends FormRequest
@@ -59,6 +60,21 @@ class StoreInfoSheetRequest extends FormRequest
             'ojt_info.ojt_start_date' => ['nullable', 'date'],
             'ojt_info.ojt_end_date' => ['nullable', 'date', 'after_or_equal:ojt_info.ojt_start_date'],
 
+            // The pinned company location behind the form's "Sketch of
+            // Internship Company Location" box. Every part is nullable and
+            // nothing here can block a submit — an unpinned sheet simply
+            // prints the blank box the paper form has always carried.
+            //
+            // Deliberately NOT verified against anything. The DTR geofence is
+            // adversarial and is checked against a radius server-side because a
+            // punch is a claim about attendance; this is descriptive — a map so
+            // the coordinator can find the place — so there is nothing to
+            // defend against and a radius check would only add friction.
+            'ojt_info.location_lat' => ['nullable', 'numeric', 'between:-90,90', 'required_with:ojt_info.location_lng'],
+            'ojt_info.location_lng' => ['nullable', 'numeric', 'between:-180,180', 'required_with:ojt_info.location_lat'],
+            'ojt_info.location_zoom' => ['nullable', 'integer', 'between:'.StaticMapService::MIN_ZOOM.','.StaticMapService::MAX_ZOOM],
+            'ojt_info.location_label' => ['nullable', 'string', 'max:255'],
+
             'emergency_contact' => ['nullable', 'array'],
         ];
     }
@@ -92,6 +108,9 @@ class StoreInfoSheetRequest extends FormRequest
             'ojt_info.intern_duty_schedule' => "Intern's Duty Schedule",
             'ojt_info.ojt_start_date' => 'Start of Internship Duty',
             'ojt_info.ojt_end_date' => 'Estimated Date to Finish Internship',
+            'ojt_info.location_lat' => 'Pinned Location',
+            'ojt_info.location_lng' => 'Pinned Location',
+            'ojt_info.location_zoom' => 'Map Zoom',
         ];
     }
 }

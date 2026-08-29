@@ -185,9 +185,9 @@ export async function currentPosition(timeout = 15000): Promise<GeolocationPosit
  * those WebViews can open the camera perfectly well and still never return a
  * position, which makes the failure look like an app bug.
  */
-export function locationErrorMessage(error: unknown): string {
+export function locationErrorMessage(error: unknown, purpose = 'clock in'): string {
   if (error instanceof Error && error.message === 'unsupported') {
-    return 'This browser cannot report your location, so it cannot be used to clock in.'
+    return `This browser cannot report your location, so it cannot be used to ${purpose}.`
   }
 
   return (

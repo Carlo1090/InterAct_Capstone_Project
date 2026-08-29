@@ -6,6 +6,7 @@ import { categorizeError } from '@/lib/apiError'
 import { useFormDraft } from '@/lib/formDraft'
 import { confirmAction, showToast } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
+import CompanyLocationPicker from '@/components/infosheet/CompanyLocationPicker.vue'
 import { useAuthStore } from '@/stores/auth'
 import type { InfoSheet, InfoSheetStatus, StudentCompanyOption } from '@/types/api'
 
@@ -57,7 +58,26 @@ const ojtInfo = reactive({
   area_assigned: '',
   ojt_start_date: '',
   ojt_end_date: '',
+  // Backs the printed "Sketch of Internship Company Location" box. Nullable
+  // throughout and never required — an unpinned sheet prints the blank box
+  // the paper form has always carried.
+  location_lat: null as number | null,
+  location_lng: null as number | null,
+  location_zoom: null as number | null,
+  location_label: null as string | null,
 })
+
+const applyLocation = (pin: {
+  lat: number | null
+  lng: number | null
+  zoom: number | null
+  label: string | null
+}) => {
+  ojtInfo.location_lat = pin.lat
+  ojtInfo.location_lng = pin.lng
+  ojtInfo.location_zoom = pin.zoom
+  ojtInfo.location_label = pin.label
+}
 
 // --- Status-driven UI -------------------------------------------------------
 const isApproved = computed(() => submissionStatus.value === 'approved')
@@ -656,6 +676,15 @@ onMounted(loadInfoSheet)
             Estimated Date to Finish Internship
             <input v-model="ojtInfo.ojt_end_date" type="date" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm read-only:bg-slate-100" />
           </label>
+          <div class="md:col-span-2">
+            <CompanyLocationPicker
+              :lat="ojtInfo.location_lat"
+              :lng="ojtInfo.location_lng"
+              :zoom="ojtInfo.location_zoom"
+              :label="ojtInfo.location_label"
+              @change="applyLocation"
+            />
+          </div>
         </div>
       </div>
 

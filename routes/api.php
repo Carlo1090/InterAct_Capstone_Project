@@ -233,6 +233,16 @@ Route::middleware(['auth:sanctum', 'role:student'])
         Route::post('info-sheet', [StudentInfoSheetController::class, 'store']);
         Route::get('info-sheet/pdf', [StudentInfoSheetController::class, 'pdf']);
         Route::get('companies', [StudentInfoSheetController::class, 'companies']);
+
+        // The company-location picker behind the info sheet's sketch box. Both
+        // are ungated for the same reason the sheet itself is — a student
+        // filling in the gateway has not cleared it yet. The search is
+        // throttled on top of the api limiter because it fans out to a free
+        // third-party geocoder whose policy caps callers at ~1 req/sec.
+        Route::get('location-options', [StudentInfoSheetController::class, 'locationOptions']);
+        Route::get('location-preview', [StudentInfoSheetController::class, 'locationPreview']);
+        Route::get('location-search', [StudentInfoSheetController::class, 'locationSearch'])
+            ->middleware('throttle:20,1');
     });
 
 // Everything else a student does is gated behind an APPROVED info sheet.
