@@ -155,7 +155,7 @@ onMounted(load)
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
     <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
 
-    <div v-else class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+    <div v-else class="rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
       <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
         <p class="text-sm font-semibold text-slate-700">
           {{ isSingleDay ? `Journals for ${from}` : `Range: ${from} → ${to}` }}
@@ -163,6 +163,8 @@ onMounted(load)
         <span class="text-xs text-slate-400">{{ rows.length }} {{ rows.length === 1 ? 'student' : 'students' }}</span>
       </div>
 
+      <!-- md and up: aligned table. -->
+      <div class="hidden overflow-x-auto md:block">
       <table class="min-w-full divide-y divide-slate-200">
         <thead class="bg-slate-50">
           <tr>
@@ -231,6 +233,53 @@ onMounted(load)
           </tr>
         </tbody>
       </table>
+      </div>
+
+      <!-- Below md: one stacked card per student, so nothing scrolls sideways. -->
+      <ul class="divide-y divide-slate-100 px-4 md:hidden">
+        <li v-if="rows.length === 0" class="py-6 text-center text-sm text-slate-500">
+          {{ hasFilters ? 'No interns match these filters.' : 'No active interns in your programs yet.' }}
+          <button
+            v-if="hasFilters"
+            type="button"
+            class="mt-2 block w-full text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+            @click="resetToToday"
+          >
+            Reset to today
+          </button>
+        </li>
+        <li v-for="row in rows" :key="row.student_id" class="py-4">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="truncate text-sm font-semibold text-slate-900">{{ row.student_name }}</p>
+              <p class="truncate text-xs text-slate-500">{{ row.company || '—' }} · {{ row.program || '—' }}</p>
+            </div>
+            <span
+              v-if="isSingleDay"
+              class="shrink-0 rounded-full px-3 py-1 text-xs font-bold"
+              :class="row.day_status === 'submitted' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'"
+            >
+              {{ row.day_status === 'submitted' ? 'Submitted' : 'Missing' }}
+            </span>
+          </div>
+          <p v-if="isSingleDay" class="mt-1 font-mono text-xs text-slate-400">{{ formatTime(row.submitted_at) }}</p>
+          <div v-else class="mt-2 flex items-center gap-2">
+            <span class="rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700">{{ row.submitted_count }} submitted</span>
+            <span class="rounded-full px-3 py-1 text-xs font-bold" :class="row.missing_count > 0 ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-500'">
+              {{ row.missing_count }} missing
+            </span>
+          </div>
+          <div class="mt-3">
+            <button
+              type="button"
+              class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              @click="openDetail(row, isSingleDay ? from : to)"
+            >
+              View
+            </button>
+          </div>
+        </li>
+      </ul>
     </div>
 
     <!-- Journal entry detail modal — read-only -->

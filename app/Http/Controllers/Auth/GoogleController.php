@@ -161,6 +161,20 @@ class GoogleController extends Controller
             return $this->fail('login', 'deactivated');
         }
 
+        // Flush BEFORE logging in, not after — see the identical comment in
+        // AuthenticatedSessionController::store(). This callback can also run
+        // with a session already carrying a DIFFERENT signed-in user's data
+        // (the "session outlived what the SPA thought" case this file already
+        // handles in redirectToLogin()'s early return — that guard covers the
+        // ENTRY point, not this callback). migrate()/regenerate() only rotate
+        // the session ID, never $attributes, so the previous user's
+        // `password_hash_web` (Illuminate\Session\Middleware\AuthenticateSession,
+        // enabled in config/sanctum.php) survives into the new session, is
+        // compared against the NEWLY signed-in user's password hash on the very
+        // next request, mismatches, and that middleware itself flushes the
+        // session and 401s — a silent post-login logout with no error shown.
+        $request->session()->flush();
+
         Auth::login($user);
         // Against session fixation — the pre-login session id must not survive.
         $request->session()->regenerate();

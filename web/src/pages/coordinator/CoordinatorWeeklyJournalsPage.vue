@@ -166,12 +166,14 @@ onMounted(load)
 
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
 
-    <div v-else class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+    <div v-else class="rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
       <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
         <p class="text-sm font-semibold text-slate-700">Submitted weekly journals</p>
         <span class="text-xs text-slate-400">{{ total }} {{ total === 1 ? 'journal' : 'journals' }}</span>
       </div>
 
+      <!-- md and up: aligned table. -->
+      <div class="hidden overflow-x-auto md:block">
       <table class="min-w-full divide-y divide-slate-200">
         <thead class="bg-slate-50">
           <tr>
@@ -224,6 +226,47 @@ onMounted(load)
           </tr>
         </tbody>
       </table>
+      </div>
+
+      <!-- Below md: one stacked card per weekly journal, so nothing scrolls sideways. -->
+      <ul class="divide-y divide-slate-100 px-4 md:hidden">
+        <li v-if="rows.length === 0" class="py-6 text-center text-sm text-slate-500">
+          {{
+            hasFilters
+              ? 'No weekly journals match these filters.'
+              : 'No interns have submitted a weekly journal yet.'
+          }}
+          <button
+            v-if="hasFilters"
+            type="button"
+            class="mt-2 block w-full text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+            @click="resetFilters"
+          >
+            Clear filters
+          </button>
+        </li>
+        <li v-for="row in rows" :key="row.id" class="py-4">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="truncate text-sm font-semibold text-slate-900">{{ row.student_name }}</p>
+              <p class="font-mono text-xs text-slate-400">{{ row.student_id_number ?? '—' }}</p>
+            </div>
+            <span class="shrink-0 rounded-full px-3 py-1 text-xs font-bold" :class="statusClass(row.status)">{{ statusLabel(row.status) }}</span>
+          </div>
+          <p class="mt-1 truncate text-xs text-slate-500">{{ row.program || '—' }}</p>
+          <p class="mt-1 font-mono text-xs text-slate-500">{{ row.week_start }} – {{ row.week_end }}</p>
+          <p class="mt-0.5 font-mono text-xs text-slate-400">Submitted {{ formatDateTime(row.submitted_at) }}</p>
+          <div class="mt-3">
+            <button
+              type="button"
+              class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              @click="openDetail(row)"
+            >
+              View
+            </button>
+          </div>
+        </li>
+      </ul>
 
       <div v-if="lastPage > 1" class="flex items-center justify-between border-t border-slate-100 px-4 py-3">
         <button

@@ -85,79 +85,120 @@ onMounted(() => {
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
     <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
 
-    <div v-else class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
-      <table class="min-w-full divide-y divide-slate-200">
-        <thead class="bg-slate-50">
-          <tr>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Code</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Department</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Actions</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-100">
-          <tr v-if="filteredPrograms.length === 0">
-            <td colspan="5" class="px-4 py-6 text-center text-sm text-slate-500">No programs found.</td>
-          </tr>
-          <tr v-for="program in filteredPrograms" :key="program.id">
-            <td class="px-4 py-3 text-sm font-medium text-slate-900">{{ program.code ?? '—' }}</td>
-            <td class="px-4 py-3 text-sm text-slate-700">{{ program.name }}</td>
-            <td class="px-4 py-3 text-sm text-slate-700">{{ program.department?.name ?? '—' }}</td>
-            <td class="px-4 py-3">
-              <span
-                class="rounded-full px-3 py-1 text-xs font-bold"
-                :class="program.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
-              >
-                {{ program.is_active ? 'Active' : 'Inactive' }}
-              </span>
-            </td>
-            <td class="px-4 py-3">
-              <button
-                type="button"
-                class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700"
-                @click="openViewModal(program)"
-              >
-                View
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <template v-else>
+      <!-- md and up: aligned table. -->
+      <div class="hidden overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200 md:block">
+        <table class="w-full table-fixed divide-y divide-slate-200">
+          <colgroup>
+            <col class="w-[120px]" />
+            <col />
+            <col class="w-[200px]" />
+            <col class="w-[110px]" />
+            <col class="w-[110px]" />
+          </colgroup>
+          <thead class="bg-slate-50">
+            <tr>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Code</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Department</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+              <th class="whitespace-nowrap px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-slate-500">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <tr v-if="filteredPrograms.length === 0">
+              <td colspan="5" class="px-4 py-6 text-center text-sm text-slate-500">No programs found.</td>
+            </tr>
+            <tr v-for="program in filteredPrograms" :key="program.id">
+              <td class="truncate px-4 py-3 text-sm font-semibold text-slate-900">{{ program.code ?? '—' }}</td>
+              <td class="px-4 py-3 text-sm text-slate-700">{{ program.name }}</td>
+              <td class="px-4 py-3 text-sm text-slate-700">{{ program.department?.name ?? '—' }}</td>
+              <td class="px-4 py-3">
+                <span
+                  class="rounded-full px-3 py-1 text-xs font-bold"
+                  :class="program.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
+                >
+                  {{ program.is_active ? 'Active' : 'Inactive' }}
+                </span>
+              </td>
+              <td class="px-4 py-3">
+                <div class="flex items-center justify-end gap-2 whitespace-nowrap">
+                  <button
+                    type="button"
+                    class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    @click="openViewModal(program)"
+                  >
+                    View
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Below md: one stacked card per program, so nothing scrolls sideways. -->
+      <ul class="divide-y divide-slate-100 rounded-lg bg-white px-4 shadow-sm ring-1 ring-slate-200 md:hidden">
+        <li v-if="filteredPrograms.length === 0" class="py-6 text-center text-sm text-slate-500">No programs found.</li>
+        <li v-for="program in filteredPrograms" :key="program.id" class="py-4">
+          <div class="flex items-start justify-between gap-3">
+            <p class="min-w-0 truncate text-sm font-semibold text-slate-900">{{ program.code ?? '—' }} · {{ program.name }}</p>
+            <span
+              class="shrink-0 rounded-full px-3 py-1 text-xs font-bold"
+              :class="program.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
+            >
+              {{ program.is_active ? 'Active' : 'Inactive' }}
+            </span>
+          </div>
+          <p class="mt-1 truncate text-xs text-slate-500">{{ program.department?.name ?? '—' }}</p>
+          <div class="mt-3">
+            <button
+              type="button"
+              class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              @click="openViewModal(program)"
+            >
+              View
+            </button>
+          </div>
+        </li>
+      </ul>
+    </template>
 
     <!-- View (read-only preview) modal -->
-    <div v-if="isViewOpen" class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
-      <section class="max-h-[calc(100vh-4rem)] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
-        <div class="flex items-center justify-between">
+    <div v-if="isViewOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+      <!-- Three-part flex shell: the body is the only scrolling element. -->
+      <section class="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+        <div class="flex shrink-0 items-center justify-between border-b border-slate-200 px-6 py-4">
           <h3 class="text-lg font-semibold text-slate-950">Program Details</h3>
           <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeViewModal">Close</button>
         </div>
 
-        <p v-if="isViewLoading" class="mt-6 text-sm text-slate-500">Loading...</p>
-        <p v-else-if="viewError" class="mt-6 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ viewError }}</p>
+        <div class="flex-1 overflow-y-auto px-6 py-5">
+          <p v-if="isViewLoading" class="text-sm text-slate-500">Loading...</p>
+          <p v-else-if="viewError" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ viewError }}</p>
 
-        <div v-else-if="viewedProgram" class="mt-6 space-y-3 text-sm">
-          <div>
-            <span class="block text-xs font-semibold uppercase tracking-wide text-slate-400">Code</span>
-            {{ viewedProgram.code ?? '—' }}
-          </div>
-          <div>
-            <span class="block text-xs font-semibold uppercase tracking-wide text-slate-400">Name</span>
-            {{ viewedProgram.name }}
-          </div>
-          <div>
-            <span class="block text-xs font-semibold uppercase tracking-wide text-slate-400">Department</span>
-            {{ viewedProgram.department?.name ?? '—' }}
-          </div>
-          <div>
-            <span class="block text-xs font-semibold uppercase tracking-wide text-slate-400">Status</span>
-            <span
-              class="mt-1 inline-flex rounded-full px-3 py-1 text-xs font-bold"
-              :class="viewedProgram.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
-            >
-              {{ viewedProgram.is_active ? 'Active' : 'Inactive' }}
-            </span>
+          <div v-else-if="viewedProgram" class="space-y-3 text-sm">
+            <div>
+              <span class="block text-xs font-semibold uppercase tracking-wide text-slate-400">Code</span>
+              {{ viewedProgram.code ?? '—' }}
+            </div>
+            <div>
+              <span class="block text-xs font-semibold uppercase tracking-wide text-slate-400">Name</span>
+              {{ viewedProgram.name }}
+            </div>
+            <div>
+              <span class="block text-xs font-semibold uppercase tracking-wide text-slate-400">Department</span>
+              {{ viewedProgram.department?.name ?? '—' }}
+            </div>
+            <div>
+              <span class="block text-xs font-semibold uppercase tracking-wide text-slate-400">Status</span>
+              <span
+                class="mt-1 inline-flex rounded-full px-3 py-1 text-xs font-bold"
+                :class="viewedProgram.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
+              >
+                {{ viewedProgram.is_active ? 'Active' : 'Inactive' }}
+              </span>
+            </div>
           </div>
         </div>
       </section>

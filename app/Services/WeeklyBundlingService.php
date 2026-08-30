@@ -46,44 +46,10 @@ class WeeklyBundlingService
         $skippedSubmitted = 0;
 
         foreach ($activeEnrollments as $enrollment) {
-            $entries = JournalEntry::where('student_id', $enrollment->student_id)
-                ->where('status', 'submitted')
-                // whereDate on both bounds, never whereBetween: entry_date is a
-                // date-cast column, and SQLite stores it WITH a time component
-                // ("2026-08-02 00:00:00"), which sorts after a bare upper bound
-                // of "2026-08-02" and silently drops the last day of the range.
-                ->whereDate('entry_date', '>=', $monday->toDateString())
-                ->whereDate('entry_date', '<=', $weekEnd->toDateString())
-                ->get(['entry_date', 'content']);
-
-            $existing = WeeklyLog::where('student_id', $enrollment->student_id)
-                ->where('batch_id', $enrollment->batch_id)
-                ->whereDate('week_start', $monday->toDateString())
-                ->first();
-
-            if ($existing && $existing->submitted_at !== null) {
+            if ($this->compileFor($enrollment->student_id, $enrollment->batch_id, $monday, $weekEnd) === null) {
                 $skippedSubmitted++;
 
                 continue;
-            }
-
-            $narrative = $this->compileNarrative($monday, $entries);
-
-            // Update the already-fetched row directly rather than
-            // WeeklyLog::updateOrCreate() — its plain-equality match on
-            // week_start can miss an existing row under SQLite, where a
-            // date-cast column still stores a time component (unlike MySQL,
-            // which truncates it), and would insert a duplicate instead.
-            if ($existing) {
-                $existing->update(['week_end' => $weekEnd->toDateString(), 'narrative' => $narrative]);
-            } else {
-                WeeklyLog::create([
-                    'student_id' => $enrollment->student_id,
-                    'batch_id' => $enrollment->batch_id,
-                    'week_start' => $monday->toDateString(),
-                    'week_end' => $weekEnd->toDateString(),
-                    'narrative' => $narrative,
-                ]);
             }
 
             $compiled++;
@@ -95,6 +61,85 @@ class WeeklyBundlingService
             'compiled' => $compiled,
             'skipped_submitted' => $skippedSubmitted,
         ];
+    }
+
+    /**
+     * Compile ONE student's week on demand — the student's own "Compile from
+     * my daily entries" action on the Weekly Journals page.
+     *
+     * Same writer as the Monday schedule above, deliberately: a student
+     * pressing the button and the job running overnight must never produce two
+     * different narratives from the same daily entries. The submitted-log
+     * guard is shared too, so a manual compile can no more overwrite a log
+     * under review than the scheduled one can.
+     *
+     * @return WeeklyLog|null the compiled log, or null when it is already
+     *                        submitted and therefore untouchable
+     */
+    public function bundleForStudent(int $studentId, int $batchId, string|Carbon $weekStart): ?WeeklyLog
+    {
+        $monday = Carbon::parse($weekStart)->startOfWeek(Carbon::MONDAY);
+
+        return $this->compileFor($studentId, $batchId, $monday, $monday->copy()->addDays(6), true);
+    }
+
+    /**
+     * The single write path for a (student, batch, week) narrative. Returns the
+     * saved log, or null when an already-submitted log makes it untouchable.
+     *
+     * $recompileReturned separates the two callers on the one point where they
+     * genuinely should differ. A log a supervisor RETURNED is back in the
+     * student's hands: their own recompile is an explicit request and should
+     * pick up whatever daily entries they have since corrected. The scheduled
+     * job is not — it runs unattended overnight, and silently replacing a
+     * revision the student typed after a return would destroy work nobody
+     * asked it to touch.
+     */
+    private function compileFor(int $studentId, int $batchId, Carbon $monday, Carbon $weekEnd, bool $recompileReturned = false): ?WeeklyLog
+    {
+        $entries = JournalEntry::where('student_id', $studentId)
+            ->where('status', 'submitted')
+            // whereDate on both bounds, never whereBetween: entry_date is a
+            // date-cast column, and SQLite stores it WITH a time component
+            // ("2026-08-02 00:00:00"), which sorts after a bare upper bound
+            // of "2026-08-02" and silently drops the last day of the range.
+            ->whereDate('entry_date', '>=', $monday->toDateString())
+            ->whereDate('entry_date', '<=', $weekEnd->toDateString())
+            ->get(['entry_date', 'content']);
+
+        $existing = WeeklyLog::where('student_id', $studentId)
+            ->where('batch_id', $batchId)
+            ->whereDate('week_start', $monday->toDateString())
+            ->first();
+
+        if ($existing && $existing->submitted_at !== null) {
+            $isReturned = $existing->status === 'returned';
+
+            if (! ($recompileReturned && $isReturned)) {
+                return null;
+            }
+        }
+
+        $narrative = $this->compileNarrative($monday, $entries);
+
+        // Update the already-fetched row directly rather than
+        // WeeklyLog::updateOrCreate() — its plain-equality match on
+        // week_start can miss an existing row under SQLite, where a
+        // date-cast column still stores a time component (unlike MySQL,
+        // which truncates it), and would insert a duplicate instead.
+        if ($existing) {
+            $existing->update(['week_end' => $weekEnd->toDateString(), 'narrative' => $narrative]);
+
+            return $existing;
+        }
+
+        return WeeklyLog::create([
+            'student_id' => $studentId,
+            'batch_id' => $batchId,
+            'week_start' => $monday->toDateString(),
+            'week_end' => $weekEnd->toDateString(),
+            'narrative' => $narrative,
+        ]);
     }
 
     /**

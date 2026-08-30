@@ -195,48 +195,95 @@ onMounted(() => {
 <template>
   <section class="space-y-5">
     <ToastHost />
-<div class="flex flex-wrap items-center justify-end gap-4">
+    <div class="flex flex-wrap items-center justify-end gap-4">
       <button type="button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700" @click="openCreateModal">+ Add Department</button>
     </div>
 
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
     <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
 
-    <div v-else-if="departments.length === 0" class="rounded-xl bg-white px-6 py-8 text-center text-sm text-slate-500 shadow-sm ring-1 ring-slate-200/70">
-      No departments found.
-    </div>
+    <template v-else>
+      <!--
+        md and up: aligned table, the same shape every other list page in the app
+        uses. Widths live in the colgroup and are enforced by `table-fixed`, so a
+        long department or dean name can never squeeze the Actions cell into
+        wrapping onto two lines.
+      -->
+      <div class="hidden overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200 md:block">
+        <table class="w-full table-fixed divide-y divide-slate-200">
+          <colgroup>
+            <col class="w-32" />
+            <col />
+            <col class="w-56" />
+            <col class="w-28" />
+            <col class="w-28" />
+            <col class="w-44" />
+          </colgroup>
+          <thead class="bg-slate-50">
+            <tr>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Code</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Dean</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Programs</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+              <th class="whitespace-nowrap px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-slate-500">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <tr v-if="departments.length === 0">
+              <td colspan="6" class="px-4 py-6 text-center text-sm text-slate-500">No departments found.</td>
+            </tr>
+            <tr v-for="department in departments" :key="department.id">
+              <td class="px-4 py-3">
+                <span class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-700">
+                  {{ department.code }}
+                </span>
+              </td>
+              <td class="truncate px-4 py-3 text-sm font-semibold text-slate-900">{{ department.name }}</td>
+              <td class="truncate px-4 py-3 text-sm text-slate-500">{{ department.dean_name || '—' }}</td>
+              <td class="px-4 py-3 text-sm tabular-nums text-slate-700">{{ department.programs_count ?? 0 }}</td>
+              <td class="px-4 py-3">
+                <span
+                  class="rounded-full px-3 py-1 text-xs font-bold"
+                  :class="department.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
+                >
+                  {{ department.is_active ? 'Active' : 'Inactive' }}
+                </span>
+              </td>
+              <td class="px-4 py-3">
+                <div class="flex items-center justify-end gap-2 whitespace-nowrap">
+                  <button type="button" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50" @click="openViewModal(department)">View</button>
+                  <button type="button" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50" @click="openEditModal(department)">Edit</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-    <!-- `items-stretch` + `h-full` keeps every card in a row the same height. -->
-    <div v-else class="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-3">
-      <article
-        v-for="department in departments"
-        :key="department.id"
-        class="flex h-full flex-col rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70 transition hover:shadow-md"
-      >
-        <div class="flex items-center justify-between gap-2">
-          <span class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-700">
-            {{ department.code }}
-          </span>
-          <span
-            class="rounded-full px-2 py-0.5 text-xs font-bold"
-            :class="department.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
-          >
-            {{ department.is_active ? 'Active' : 'Inactive' }}
-          </span>
-        </div>
-
-        <h3 class="mt-4 text-lg font-semibold text-slate-900">{{ department.name }}</h3>
-        <p v-if="department.dean_name" class="mt-1 text-sm text-slate-500">Dean: {{ department.dean_name }}</p>
-        <p class="mt-1 text-sm text-slate-500">
-          {{ department.programs_count ?? 0 }} program{{ (department.programs_count ?? 0) === 1 ? '' : 's' }}
-        </p>
-
-        <div class="mt-auto flex gap-2 border-t border-slate-100 pt-4">
-          <button type="button" class="flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50" @click="openViewModal(department)">View</button>
-          <button type="button" class="flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50" @click="openEditModal(department)">Edit</button>
-        </div>
-      </article>
-    </div>
+      <!-- Below md: one stacked block per department, so nothing scrolls sideways. -->
+      <ul class="divide-y divide-slate-100 rounded-lg bg-white px-4 shadow-sm ring-1 ring-slate-200 md:hidden">
+        <li v-if="departments.length === 0" class="py-6 text-center text-sm text-slate-500">No departments found.</li>
+        <li v-for="department in departments" :key="department.id" class="py-4">
+          <div class="flex items-start justify-between gap-3">
+            <p class="min-w-0 truncate text-sm font-semibold text-slate-900">{{ department.code }} · {{ department.name }}</p>
+            <span
+              class="shrink-0 rounded-full px-3 py-1 text-xs font-bold"
+              :class="department.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
+            >
+              {{ department.is_active ? 'Active' : 'Inactive' }}
+            </span>
+          </div>
+          <p class="mt-1 truncate text-xs text-slate-500">
+            Dean: {{ department.dean_name || '—' }} · {{ department.programs_count ?? 0 }} program{{ (department.programs_count ?? 0) === 1 ? '' : 's' }}
+          </p>
+          <div class="mt-3 flex items-center gap-2">
+            <button type="button" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50" @click="openViewModal(department)">View</button>
+            <button type="button" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50" @click="openEditModal(department)">Edit</button>
+          </div>
+        </li>
+      </ul>
+    </template>
 
     <!-- Create / Edit modal: three-part flex shell, body is the only scroller. -->
     <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
@@ -252,15 +299,15 @@ onMounted(() => {
             with no format constraint, so there is no format to state.
           -->
           <div v-if="!editingDepartmentId">
-            <label class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400" for="department-code">Code</label>
+            <label class="mb-1.5 block text-xs font-bold text-slate-600" for="department-code">Code</label>
             <input id="department-code" v-model="departmentForm.code" type="text" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm" />
           </div>
           <div>
-            <label class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400" for="department-name">Name</label>
+            <label class="mb-1.5 block text-xs font-bold text-slate-600" for="department-name">Name</label>
             <input id="department-name" v-model="departmentForm.name" type="text" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm" />
           </div>
           <div>
-            <label class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-400" for="department-dean-name">Dean's Name (optional)</label>
+            <label class="mb-1.5 block text-xs font-bold text-slate-600" for="department-dean-name">Dean's Name (optional)</label>
             <input id="department-dean-name" v-model="departmentForm.dean_name" type="text" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm" />
           </div>
           <div v-if="editingDepartmentId">
@@ -285,157 +332,190 @@ onMounted(() => {
     </div>
 
     <!-- View (read-only preview) modal -->
-    <div v-if="isViewOpen" class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
-      <section class="max-h-[calc(100vh-4rem)] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
-        <div class="flex items-center justify-between">
+    <div v-if="isViewOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+      <!-- Three-part flex shell: the body is the only scrolling element. -->
+      <section class="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+        <div class="flex shrink-0 items-center justify-between border-b border-slate-200 px-6 py-4">
           <h3 class="text-lg font-semibold text-slate-950">Department Details</h3>
           <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeViewModal">Close</button>
         </div>
 
-        <p v-if="isViewLoading" class="mt-6 text-sm text-slate-500">Loading...</p>
-        <p v-else-if="viewError" class="mt-6 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ viewError }}</p>
+        <div class="flex-1 overflow-y-auto px-6 py-5">
+          <p v-if="isViewLoading" class="text-sm text-slate-500">Loading...</p>
+          <p v-else-if="viewError" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ viewError }}</p>
 
-        <div v-else-if="viewedDepartment" class="mt-6 max-h-[80vh] space-y-6 overflow-y-auto pr-1">
-          <div>
-            <span class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-700">
-              {{ viewedDepartment.code }}
-            </span>
-            <h4 class="mt-2 text-xl font-bold text-slate-950">{{ viewedDepartment.name }}</h4>
-          </div>
+          <div v-else-if="viewedDepartment" class="space-y-6">
+            <div>
+              <span class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-700">
+                {{ viewedDepartment.code }}
+              </span>
+              <h4 class="mt-2 text-xl font-bold text-slate-950">{{ viewedDepartment.name }}</h4>
+            </div>
 
-          <div class="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-            <div>
-              <span class="block text-xs font-semibold uppercase tracking-wide text-slate-400">Dean</span>
-              {{ viewedDepartment.dean_name ?? '—' }}
+            <div class="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+              <div>
+                <span class="block text-xs font-semibold uppercase tracking-wide text-slate-400">Dean</span>
+                {{ viewedDepartment.dean_name ?? '—' }}
+              </div>
+              <div>
+                <span class="block text-xs font-semibold uppercase tracking-wide text-slate-400">Programs</span>
+                {{ viewedDepartment.programs.length }}
+              </div>
+              <div>
+                <span class="block text-xs font-semibold uppercase tracking-wide text-slate-400">Active Interns (Dept-wide)</span>
+                {{ viewedDepartment.active_interns_count }}
+              </div>
             </div>
-            <div>
-              <span class="block text-xs font-semibold uppercase tracking-wide text-slate-400">Programs</span>
-              {{ viewedDepartment.programs.length }}
-            </div>
-            <div>
-              <span class="block text-xs font-semibold uppercase tracking-wide text-slate-400">Active Interns (Dept-wide)</span>
-              {{ viewedDepartment.active_interns_count }}
-            </div>
-          </div>
 
-          <div>
-            <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Programs</h5>
-            <div v-if="viewedDepartment.programs.length > 0" class="mt-2 overflow-x-auto rounded-lg ring-1 ring-slate-200">
-              <table class="min-w-full divide-y divide-slate-200">
-                <thead class="bg-slate-50">
-                  <tr>
-                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Code</th>
-                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
-                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
-                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Active Interns</th>
-                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Total (All-time)</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100">
-                  <tr v-for="program in viewedDepartment.programs" :key="program.id">
-                    <td class="px-3 py-2 text-sm font-medium text-slate-900">{{ program.code ?? '—' }}</td>
-                    <td class="px-3 py-2 text-sm text-slate-700">{{ program.name }}</td>
-                    <td class="px-3 py-2">
+            <div>
+              <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Programs</h5>
+              <template v-if="viewedDepartment.programs.length > 0">
+                <!-- md and up: aligned table. -->
+                <div class="mt-2 hidden overflow-x-auto rounded-lg ring-1 ring-slate-200 md:block">
+                  <table class="min-w-full divide-y divide-slate-200">
+                    <thead class="bg-slate-50">
+                      <tr>
+                        <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Code</th>
+                        <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
+                        <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+                        <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Active Interns</th>
+                        <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Total (All-time)</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                      <tr v-for="program in viewedDepartment.programs" :key="program.id">
+                        <td class="px-3 py-2 text-sm font-medium text-slate-900">{{ program.code ?? '—' }}</td>
+                        <td class="px-3 py-2 text-sm text-slate-700">{{ program.name }}</td>
+                        <td class="px-3 py-2">
+                          <span
+                            class="rounded-full px-2 py-0.5 text-xs font-bold"
+                            :class="program.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
+                          >
+                            {{ program.is_active ? 'Active' : 'Inactive' }}
+                          </span>
+                        </td>
+                        <td class="px-3 py-2 font-mono text-sm font-bold text-slate-800">{{ program.active_interns_count }}</td>
+                        <td class="px-3 py-2 font-mono text-sm text-slate-500">{{ program.total_interns_count }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <!-- Below md: one stacked card per program. -->
+                <ul class="mt-2 divide-y divide-slate-100 rounded-lg ring-1 ring-slate-200 md:hidden">
+                  <li v-for="program in viewedDepartment.programs" :key="program.id" class="px-3 py-2.5">
+                    <div class="flex items-center justify-between gap-3">
+                      <p class="text-sm font-medium text-slate-900">{{ program.code ?? '—' }} · {{ program.name }}</p>
                       <span
-                        class="rounded-full px-2 py-0.5 text-xs font-bold"
+                        class="shrink-0 rounded-full px-2 py-0.5 text-xs font-bold"
                         :class="program.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
                       >
                         {{ program.is_active ? 'Active' : 'Inactive' }}
                       </span>
-                    </td>
-                    <td class="px-3 py-2 font-mono text-sm font-bold text-slate-800">{{ program.active_interns_count }}</td>
-                    <td class="px-3 py-2 font-mono text-sm text-slate-500">{{ program.total_interns_count }}</td>
-                  </tr>
-                </tbody>
-              </table>
+                    </div>
+                    <p class="mt-1 font-mono text-xs text-slate-500">
+                      {{ program.active_interns_count }} active · {{ program.total_interns_count }} all-time
+                    </p>
+                  </li>
+                </ul>
+              </template>
+              <p v-else class="mt-2 text-sm text-slate-400">No programs under this department yet.</p>
             </div>
-            <p v-else class="mt-2 text-sm text-slate-400">No programs under this department yet.</p>
-          </div>
 
-          <div>
-            <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Students</h5>
-            <div v-if="viewedDepartment.students.length > 0" class="mt-2 overflow-x-auto rounded-lg ring-1 ring-slate-200">
-              <table class="min-w-full divide-y divide-slate-200">
-                <thead class="bg-slate-50">
-                  <tr>
-                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
-                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Email</th>
-                    <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100">
-                  <tr v-for="student in viewedDepartment.students" :key="student.id">
-                    <td class="px-3 py-2 text-sm font-medium text-slate-900">{{ student.name }}</td>
-                    <td class="px-3 py-2 text-sm text-slate-700">{{ student.email }}</td>
-                    <td class="px-3 py-2 text-sm text-slate-700">{{ student.program?.name ?? '—' }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <p v-else class="mt-2 text-sm text-slate-400">No students assigned yet.</p>
-          </div>
-
-          <div>
-            <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Partner Companies</h5>
-            <div v-if="viewedDepartment.companies.length > 0" class="mt-2 flex flex-wrap gap-2">
-              <span
-                v-for="company in viewedDepartment.companies"
-                :key="company.id"
-                class="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700"
-              >
-                {{ company.name }}
-              </span>
-            </div>
-            <p v-else class="mt-2 text-sm text-slate-400">No partner companies yet.</p>
-          </div>
-
-          <div>
-            <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Assigned Coordinators</h5>
-
-            <div v-if="viewedDepartment.coordinators.length > 0" class="mt-2 space-y-2">
-              <div
-                v-for="coordinator in viewedDepartment.coordinators"
-                :key="coordinator.id"
-                class="flex items-center justify-between rounded-md px-3 py-2 ring-1 ring-slate-200"
-              >
-                <div>
-                  <p class="text-sm font-semibold text-slate-900">{{ coordinator.name }}</p>
-                  <p class="text-xs text-slate-500">{{ coordinator.email }}</p>
+            <div>
+              <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Students</h5>
+              <template v-if="viewedDepartment.students.length > 0">
+                <!-- md and up: aligned table. -->
+                <div class="mt-2 hidden overflow-x-auto rounded-lg ring-1 ring-slate-200 md:block">
+                  <table class="min-w-full divide-y divide-slate-200">
+                    <thead class="bg-slate-50">
+                      <tr>
+                        <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
+                        <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Email</th>
+                        <th class="whitespace-nowrap px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                      <tr v-for="student in viewedDepartment.students" :key="student.id">
+                        <td class="px-3 py-2 text-sm font-medium text-slate-900">{{ student.name }}</td>
+                        <td class="px-3 py-2 text-sm text-slate-700">{{ student.email }}</td>
+                        <td class="px-3 py-2 text-sm text-slate-700">{{ student.program?.name ?? '—' }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
+                <!-- Below md: one stacked card per student. -->
+                <ul class="mt-2 divide-y divide-slate-100 rounded-lg ring-1 ring-slate-200 md:hidden">
+                  <li v-for="student in viewedDepartment.students" :key="student.id" class="px-3 py-2.5">
+                    <p class="text-sm font-medium text-slate-900">{{ student.name }}</p>
+                    <p class="mt-0.5 truncate text-xs text-slate-500">{{ student.email }} · {{ student.program?.name ?? '—' }}</p>
+                  </li>
+                </ul>
+              </template>
+              <p v-else class="mt-2 text-sm text-slate-400">No students assigned yet.</p>
+            </div>
+
+            <div>
+              <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Partner Companies</h5>
+              <div v-if="viewedDepartment.companies.length > 0" class="mt-2 flex flex-wrap gap-2">
+                <span
+                  v-for="company in viewedDepartment.companies"
+                  :key="company.id"
+                  class="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700"
+                >
+                  {{ company.name }}
+                </span>
+              </div>
+              <p v-else class="mt-2 text-sm text-slate-400">No partner companies yet.</p>
+            </div>
+
+            <div>
+              <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Assigned Coordinators</h5>
+
+              <div v-if="viewedDepartment.coordinators.length > 0" class="mt-2 space-y-2">
+                <div
+                  v-for="coordinator in viewedDepartment.coordinators"
+                  :key="coordinator.id"
+                  class="flex items-center justify-between rounded-md px-3 py-2 ring-1 ring-slate-200"
+                >
+                  <div>
+                    <p class="text-sm font-semibold text-slate-900">{{ coordinator.name }}</p>
+                    <p class="text-xs text-slate-500">{{ coordinator.email }}</p>
+                  </div>
+                  <button
+                    type="button"
+                    class="text-sm font-semibold text-red-600 disabled:text-slate-400"
+                    :disabled="removingCoordinatorId === coordinator.id"
+                    @click="removeCoordinator(coordinator.id, coordinator.name)"
+                  >
+                    {{ removingCoordinatorId === coordinator.id ? 'Removing...' : 'Remove' }}
+                  </button>
+                </div>
+              </div>
+              <p v-else class="mt-2 text-sm text-slate-400">No coordinators assigned yet.</p>
+
+              <div class="mt-3 flex gap-2">
+                <select v-model="coordinatorToAssign" class="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+                  <option value="">Select a coordinator...</option>
+                  <option
+                    v-for="coordinator in coordinatorOptions"
+                    :key="coordinator.id"
+                    :value="coordinator.id"
+                  >
+                    {{ coordinator.name }} ({{ coordinator.email }})
+                  </option>
+                </select>
                 <button
                   type="button"
-                  class="text-sm font-semibold text-red-600 disabled:text-slate-400"
-                  :disabled="removingCoordinatorId === coordinator.id"
-                  @click="removeCoordinator(coordinator.id, coordinator.name)"
+                  class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  :disabled="!coordinatorToAssign || isAssigningCoordinator"
+                  @click="assignCoordinator"
                 >
-                  {{ removingCoordinatorId === coordinator.id ? 'Removing...' : 'Remove' }}
+                  {{ isAssigningCoordinator ? 'Assigning...' : 'Assign' }}
                 </button>
               </div>
-            </div>
-            <p v-else class="mt-2 text-sm text-slate-400">No coordinators assigned yet.</p>
 
-            <div class="mt-3 flex gap-2">
-              <select v-model="coordinatorToAssign" class="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
-                <option value="">Select a coordinator...</option>
-                <option
-                  v-for="coordinator in coordinatorOptions"
-                  :key="coordinator.id"
-                  :value="coordinator.id"
-                >
-                  {{ coordinator.name }} ({{ coordinator.email }})
-                </option>
-              </select>
-              <button
-                type="button"
-                class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                :disabled="!coordinatorToAssign || isAssigningCoordinator"
-                @click="assignCoordinator"
-              >
-                {{ isAssigningCoordinator ? 'Assigning...' : 'Assign' }}
-              </button>
+              <p v-if="coordinatorError" class="mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ coordinatorError }}</p>
             </div>
-
-            <p v-if="coordinatorError" class="mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ coordinatorError }}</p>
           </div>
         </div>
       </section>

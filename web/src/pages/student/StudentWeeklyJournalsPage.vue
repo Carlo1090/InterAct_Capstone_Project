@@ -5,6 +5,7 @@ import api from '@/lib/axios'
 import NotEnrolledNotice from '@/components/student/NotEnrolledNotice.vue'
 import ToastHost from '@/components/ToastHost.vue'
 import WeeklyJournalPaperView from '@/components/journal/WeeklyJournalPaperView.vue'
+import TooltipWrap from '@/components/ui/TooltipWrap.vue'
 import { confirmAction, showToast } from '@/lib/toast'
 import { isNotEnrolledError } from '@/lib/enrollment'
 import { useFormDraft } from '@/lib/formDraft'
@@ -40,6 +41,7 @@ const details = reactive<Record<string, WeeklyLogDetail>>({})
 const loadingDetail = reactive<Record<string, boolean>>({})
 const savingDetail = reactive<Record<string, boolean>>({})
 const submittingDetail = reactive<Record<string, boolean>>({})
+const compilingDetail = reactive<Record<string, boolean>>({})
 const saveMessage = reactive<Record<string, string>>({})
 
 // Per-week Edit ⇄ Preview toggle for editable (draft/returned) weeks — mirrors
@@ -163,6 +165,50 @@ const saveNarrative = async (weekStart: string) => {
   }
 }
 
+/**
+ * Rebuild this week's narrative from the student's own submitted daily entries.
+ *
+ * The overnight job only ever compiles the week that has just ended, once — so
+ * anything written late (a Friday entry filed on Monday, a fortnight of
+ * catching up) never made it into the narrative and there was no way to ask for
+ * it. This is the same compiler on the server, run on request.
+ *
+ * It replaces the narrative box outright, which is why it confirms first and
+ * why the wording says so rather than saying "update".
+ */
+const compileWeek = async (week: WeeklyLogSummary) => {
+  const detail = details[week.week_start]
+  const hasTyped = (detail?.narrative ?? '').trim() !== ''
+
+  const confirmed = await confirmAction({
+    title: 'Compile this week from your daily entries?',
+    message: hasTyped
+      ? 'This rewrites the narrative below from your submitted daily entries for this week. Anything you have typed here will be replaced.'
+      : 'This fills the narrative below from your submitted daily entries for this week. You can edit it afterwards.',
+    confirmLabel: 'Compile Week',
+    tone: hasTyped ? 'danger' : 'default',
+  })
+  if (!confirmed) return
+
+  compilingDetail[week.week_start] = true
+  saveMessage[week.week_start] = ''
+
+  try {
+    const { data } = await api.post<{ message: string; narrative: string }>(
+      `/api/student/weekly-logs/${week.week_start}/bundle`,
+    )
+    if (detail) detail.narrative = data.narrative
+    previewMode[week.week_start] = false
+    await loadWeeks()
+    showToast(data.message)
+  } catch (error) {
+    const data = axios.isAxiosError(error) ? error.response?.data : null
+    showToast(data?.message ?? 'Unable to compile this week.', 'error')
+  } finally {
+    compilingDetail[week.week_start] = false
+  }
+}
+
 const submitWeek = async (week: WeeklyLogSummary) => {
   const isResubmit = weekState(week) === 'returned'
 
@@ -215,7 +261,11 @@ onMounted(loadWeeks)
   <section class="space-y-4">
     <ToastHost />
     <div class="flex items-start justify-between gap-4 rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-      <p>Write a short narrative for each week alongside your daily entries. Approval happens with your company supervisor.</p>
+      <p>
+        Write a short narrative for each week alongside your daily entries — or press
+        <strong class="font-semibold">Compile from Daily Entries</strong> to build it from what you have already
+        submitted, including entries you filed late. Approval happens with your company supervisor.
+      </p>
     </div>
 
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
@@ -373,6 +423,24 @@ onMounted(loadWeeks)
             >
               Download PDF
             </button>
+            <TooltipWrap
+              v-if="isEditable(week)"
+              :label="
+                details[week.week_start].submitted_entries_count === 0
+                  ? 'Submit at least one daily entry in this week first.'
+                  : `Rewrite the narrative from your ${details[week.week_start].submitted_entries_count} submitted daily entries this week.`
+              "
+            >
+              <button
+                type="button"
+                class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:grayscale disabled:cursor-not-allowed"
+                :disabled="compilingDetail[week.week_start] || details[week.week_start].submitted_entries_count === 0"
+                :aria-label="`Compile the week of ${formatDate(week.week_start)} from your submitted daily entries`"
+                @click="compileWeek(week)"
+              >
+                {{ compilingDetail[week.week_start] ? 'Compiling...' : 'Compile from Daily Entries' }}
+              </button>
+            </TooltipWrap>
             <button
               v-if="isEditable(week)"
               type="button"

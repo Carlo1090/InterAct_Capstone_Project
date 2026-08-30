@@ -472,49 +472,80 @@ onMounted(async () => {
     <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
     <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">{{ errorMessage }}</p>
 
-    <div v-else class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
-      <table class="min-w-full divide-y divide-slate-200">
-        <thead class="bg-slate-50">
-          <tr>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Company</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Location</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Department</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Active Interns</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Representatives</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">OJT Supervisor</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-100">
-          <tr v-if="companies.length === 0">
-            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="7">No companies in your scope yet.</td>
-          </tr>
-          <tr v-for="company in companies" :key="company.id">
-            <td class="px-4 py-3">
-              <p class="text-sm font-semibold text-slate-900">{{ company.name }}</p>
-              <p class="text-xs text-slate-400">{{ company.description || '—' }}</p>
-            </td>
-            <td class="px-4 py-3 text-sm text-slate-500">{{ company.location || '—' }}</td>
-            <td class="px-4 py-3 text-sm text-slate-500">{{ company.industry || '—' }}</td>
-            <td class="px-4 py-3 font-mono text-sm font-bold text-slate-800">{{ company.active_interns_count ?? 0 }}</td>
-            <td class="px-4 py-3 font-mono text-sm text-slate-500">{{ company.supervisors?.filter((sup) => !sup.is_login).length ?? 0 }}</td>
-            <td class="px-4 py-3 text-sm">
-              <span
-                class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
-                :class="company.supervisors?.some((sup) => sup.is_login) ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'"
-              >
-                {{ company.supervisors?.some((sup) => sup.is_login) ? 'Yes' : 'None' }}
-              </span>
-            </td>
-            <td class="px-4 py-3">
-              <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="openEdit(company)">
-                Manage
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <template v-else>
+      <!-- md and up: aligned table. -->
+      <div class="hidden overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200 md:block">
+        <table class="min-w-full divide-y divide-slate-200">
+          <thead class="bg-slate-50">
+            <tr>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Company</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Location</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Department</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Active Interns</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Representatives</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">OJT Supervisor</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <tr v-if="companies.length === 0">
+              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="7">No companies in your scope yet.</td>
+            </tr>
+            <tr v-for="company in companies" :key="company.id">
+              <td class="px-4 py-3">
+                <p class="text-sm font-semibold text-slate-900">{{ company.name }}</p>
+                <p class="text-xs text-slate-400">{{ company.description || '—' }}</p>
+              </td>
+              <td class="px-4 py-3 text-sm text-slate-500">{{ company.location || '—' }}</td>
+              <td class="px-4 py-3 text-sm text-slate-500">{{ company.industry || '—' }}</td>
+              <td class="px-4 py-3 font-mono text-sm font-bold text-slate-800">{{ company.active_interns_count ?? 0 }}</td>
+              <td class="px-4 py-3 font-mono text-sm text-slate-500">{{ company.supervisors?.filter((sup) => !sup.is_login).length ?? 0 }}</td>
+              <td class="px-4 py-3 text-sm">
+                <span
+                  class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+                  :class="company.supervisors?.some((sup) => sup.is_login) ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'"
+                >
+                  {{ company.supervisors?.some((sup) => sup.is_login) ? 'Yes' : 'None' }}
+                </span>
+              </td>
+              <td class="px-4 py-3">
+                <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="openEdit(company)">
+                  Manage
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Below md: one stacked card per company, so nothing scrolls sideways. -->
+      <ul class="divide-y divide-slate-100 rounded-lg bg-white px-4 shadow-sm ring-1 ring-slate-200 md:hidden">
+        <li v-if="companies.length === 0" class="py-6 text-center text-sm text-slate-500">No companies in your scope yet.</li>
+        <li v-for="company in companies" :key="company.id" class="py-4">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="truncate text-sm font-semibold text-slate-900">{{ company.name }}</p>
+              <p class="truncate text-xs text-slate-400">{{ company.location || '—' }} · {{ company.industry || '—' }}</p>
+            </div>
+            <span
+              class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+              :class="company.supervisors?.some((sup) => sup.is_login) ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'"
+            >
+              {{ company.supervisors?.some((sup) => sup.is_login) ? 'Supervisor: Yes' : 'Supervisor: None' }}
+            </span>
+          </div>
+          <p class="mt-1 text-xs text-slate-500">
+            <span class="font-mono font-bold text-slate-800">{{ company.active_interns_count ?? 0 }}</span> active interns ·
+            <span class="font-mono">{{ company.supervisors?.filter((sup) => !sup.is_login).length ?? 0 }}</span> representatives
+          </p>
+          <div class="mt-3">
+            <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="openEdit(company)">
+              Manage
+            </button>
+          </div>
+        </li>
+      </ul>
+    </template>
 
     <!-- Create / Edit modal -->
     <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">

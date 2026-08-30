@@ -67,12 +67,12 @@ const vAutoGrow = {
 
 <template>
   <article
-    class="mx-auto max-w-[720px] bg-white p-10 text-black shadow-md"
+    class="mx-auto max-w-[720px] bg-white p-5 text-black shadow-md sm:p-8 md:p-10"
     style="font-family: 'Times New Roman', Times, serif; font-size: 16px; line-height: 1.6"
   >
-    <header class="flex items-start justify-between gap-6">
-      <span class="uppercase">{{ studentName }}</span>
-      <span class="text-right">{{ programName }}</span>
+    <header class="flex flex-wrap items-start justify-between gap-x-6 gap-y-1">
+      <span class="uppercase wrap-break-word">{{ studentName }}</span>
+      <span class="text-right wrap-break-word">{{ programName }}</span>
     </header>
 
     <p class="mt-8">{{ dayLabel }} ({{ formattedDate }})</p>

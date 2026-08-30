@@ -12,7 +12,7 @@ const includedRows = computed(() => props.rows.filter((row) => row.included))
 </script>
 
 <template>
-  <article class="report-paper mx-auto min-w-[44rem] max-w-4xl rounded-md bg-white px-8 py-10 shadow-md ring-1 ring-slate-200">
+  <article class="report-paper mx-auto w-full max-w-4xl rounded-md bg-white px-4 py-6 shadow-md ring-1 ring-slate-200 sm:px-8 sm:py-10">
     <p class="text-right text-xs font-bold">Annex "C"</p>
 
     <header class="text-center leading-snug">

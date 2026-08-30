@@ -161,7 +161,7 @@ const load = async () => {
       }
     })
 
-    // A locked entry (bundled / out of range) or an explicit ?view=1 opens
+    // A locked entry (week already with the supervisor, or out of range) or an explicit ?view=1 opens
     // straight to the read-only paper; an editable entry lands in the editor.
     isViewMode.value = route.query.view === '1' || !data.editable
 
@@ -181,13 +181,13 @@ const load = async () => {
 }
 
 const save = async (nextStatus: 'draft' | 'submitted') => {
-  // Submitting still locks the entry once its week is bundled, so it keeps
+  // Submitting still locks the entry once the week is sent to the supervisor, so it keeps
   // the confirm-first treatment even though it's no longer immediately final.
   if (nextStatus === 'submitted') {
     const confirmed = await confirmAction({
       title: 'Submit this journal entry?',
       message:
-        'Submit this journal entry? You can still edit it until this week is compiled into your Weekly Log.',
+        'Submit this journal entry? You can still edit it until this week is sent to your supervisor for review.',
       confirmLabel: 'Submit Entry',
     })
     if (!confirmed) return
@@ -283,10 +283,11 @@ onMounted(load)
 
       <!-- Lock / editability notices (kept thin) -->
       <div
-        v-if="lockedReason === 'bundled'"
+        v-if="lockedReason === 'week_submitted'"
         class="rounded-md border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700"
       >
-        This week has already been compiled into your Weekly Log — daily entries for this week can no longer be edited.
+        This week has already been sent to your supervisor for review. Ask them to return it if you need to change a
+        daily entry.
       </div>
       <div
         v-else-if="!editable"
@@ -299,7 +300,7 @@ onMounted(load)
         v-else-if="status === 'submitted'"
         class="rounded-md border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-800"
       >
-        Submitted — you can still edit this entry until your weekly log for this week is compiled.
+        Submitted — you can still edit this entry until this week is sent to your supervisor for review.
       </div>
 
       <!-- EDIT MODE — clean writing surface, no checkboxes inline -->

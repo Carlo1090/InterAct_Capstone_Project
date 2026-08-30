@@ -18,6 +18,8 @@ use App\Http\Controllers\Coordinator\CoordinatorCompanyController;
 use App\Http\Controllers\Coordinator\CoordinatorDashboardController;
 use App\Http\Controllers\Coordinator\CoordinatorInfoSheetController;
 use App\Http\Controllers\Coordinator\CoordinatorJournalActivityController;
+use App\Http\Controllers\Coordinator\CoordinatorExitInterviewController;
+use App\Http\Controllers\Coordinator\CoordinatorWeeklyActivityLogController;
 use App\Http\Controllers\Coordinator\CoordinatorWeeklyJournalController;
 use App\Http\Controllers\Coordinator\DtrMonitorController;
 use App\Http\Controllers\Coordinator\DtrPreferenceController;
@@ -33,6 +35,7 @@ use App\Http\Controllers\Student\JournalCalendarController;
 use App\Http\Controllers\Student\JournalEntryController;
 use App\Http\Controllers\Student\ReminderPreferenceController;
 use App\Http\Controllers\Student\StudentDashboardController;
+use App\Http\Controllers\Student\StudentExitInterviewController;
 use App\Http\Controllers\Student\StudentInfoSheetController;
 use App\Http\Controllers\Student\WeeklyActivityLogController;
 use App\Http\Controllers\Student\WeeklyLogController;
@@ -150,6 +153,18 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::get('weekly-journals/{weeklyLog}', [CoordinatorWeeklyJournalController::class, 'show']);
         Route::get('weekly-journals/{weeklyLog}/pdf', [CoordinatorWeeklyJournalController::class, 'pdf']);
 
+        Route::get('weekly-activity-logs', [CoordinatorWeeklyActivityLogController::class, 'index']);
+        Route::get('weekly-activity-logs/{weeklyActivityLog}', [CoordinatorWeeklyActivityLogController::class, 'show']);
+        Route::get('weekly-activity-logs/{weeklyActivityLog}/pdf', [CoordinatorWeeklyActivityLogController::class, 'pdf']);
+
+        // Exit interviews — read every in-scope student's answers, download
+        // the official form, and fill the coordinator's own block on it.
+        // There is no accept/reject: an exit interview gates nothing.
+        Route::get('exit-interviews', [CoordinatorExitInterviewController::class, 'index']);
+        Route::get('exit-interviews/{exitInterview}', [CoordinatorExitInterviewController::class, 'show']);
+        Route::put('exit-interviews/{exitInterview}', [CoordinatorExitInterviewController::class, 'update']);
+        Route::get('exit-interviews/{exitInterview}/pdf', [CoordinatorExitInterviewController::class, 'pdf']);
+
         Route::get('companies', [CoordinatorCompanyController::class, 'index']);
         Route::post('companies', [CoordinatorCompanyController::class, 'store']);
         Route::get('companies/{company}', [CoordinatorCompanyController::class, 'show']);
@@ -237,6 +252,16 @@ Route::middleware(['auth:sanctum', 'role:student'])
         Route::post('info-sheet', [StudentInfoSheetController::class, 'store']);
         Route::get('info-sheet/pdf', [StudentInfoSheetController::class, 'pdf']);
         Route::get('companies', [StudentInfoSheetController::class, 'companies']);
+
+        // The company-location picker behind the info sheet's sketch box. Both
+        // are ungated for the same reason the sheet itself is — a student
+        // filling in the gateway has not cleared it yet. The search is
+        // throttled on top of the api limiter because it fans out to a free
+        // third-party geocoder whose policy caps callers at ~1 req/sec.
+        Route::get('location-options', [StudentInfoSheetController::class, 'locationOptions']);
+        Route::get('location-preview', [StudentInfoSheetController::class, 'locationPreview']);
+        Route::get('location-search', [StudentInfoSheetController::class, 'locationSearch'])
+            ->middleware('throttle:20,1');
     });
 
 // Everything else a student does is gated behind an APPROVED info sheet.
@@ -261,6 +286,7 @@ Route::middleware(['auth:sanctum', 'role:student', 'infosheet.approved'])
         Route::get('weekly-logs/{weekStart}/pdf', [WeeklyLogController::class, 'pdf']);
         Route::post('weekly-logs', [WeeklyLogController::class, 'store']);
         Route::post('weekly-logs/{weekStart}/submit', [WeeklyLogController::class, 'submit']);
+        Route::post('weekly-logs/{weekStart}/bundle', [WeeklyLogController::class, 'bundle']);
 
         Route::get('weekly-activity-logs', [WeeklyActivityLogController::class, 'index']);
         Route::post('weekly-activity-logs', [WeeklyActivityLogController::class, 'store']);
@@ -275,6 +301,13 @@ Route::middleware(['auth:sanctum', 'role:student', 'infosheet.approved'])
         // Daily Time Record. 'punch' is the only write: it toggles clock-in /
         // clock-out against a scanned QR site token, so both ends of a shift
         // carry coordinates. There is deliberately no location-free clock-out.
+        // The Internship Program Student Exit Interview — the last form of
+        // the placement. Unlike every other student write surface this one
+        // stays reachable while `completed`; see StudentExitInterviewController.
+        Route::get('exit-interview', [StudentExitInterviewController::class, 'show']);
+        Route::post('exit-interview', [StudentExitInterviewController::class, 'store']);
+        Route::get('exit-interview/pdf', [StudentExitInterviewController::class, 'pdf']);
+
         Route::get('dtr', [DtrController::class, 'show']);
         Route::get('dtr/scan', [DtrController::class, 'resolve']);
         Route::post('dtr/punch', [DtrController::class, 'punch']);
@@ -286,6 +319,11 @@ Route::middleware(['auth:sanctum', 'role:supervisor'])
         Route::get('dashboard', [SupervisorDashboardController::class, 'index']);
         Route::get('interns', [SupervisorInternController::class, 'index']);
         Route::get('interns/{student}', [SupervisorInternController::class, 'show']);
+
+        // One intern's whole notebook — every week they have submitted, in one
+        // list. Distinct from the queue below, which slices every intern by a
+        // single review status.
+        Route::get('interns/{student}/journals', [SupervisorJournalController::class, 'notebook']);
 
         Route::get('journals', [SupervisorJournalController::class, 'index']);
         Route::get('journals/{weeklyLog}', [SupervisorJournalController::class, 'show']);
@@ -304,5 +342,9 @@ Route::middleware(['auth:sanctum', 'role:supervisor'])
         Route::post('dtr/geofences', [DtrGeofenceController::class, 'store']);
         Route::get('dtr/geofences/{geofence}/qr', [DtrGeofenceController::class, 'qr']);
         Route::put('dtr/geofences/{geofence}', [DtrGeofenceController::class, 'update']);
+        Route::post('dtr/geofences/{geofence}/restore', [DtrGeofenceController::class, 'restore']);
+        // destroy RETIRES (deactivates); forceDestroy erases, and only ever a
+        // site that is already retired and carries zero time records.
+        Route::delete('dtr/geofences/{geofence}/permanent', [DtrGeofenceController::class, 'forceDestroy']);
         Route::delete('dtr/geofences/{geofence}', [DtrGeofenceController::class, 'destroy']);
     });

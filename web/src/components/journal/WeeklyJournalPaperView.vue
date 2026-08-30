@@ -46,7 +46,7 @@ const weekRange = computed(() => `${formatDate(props.weekStart)} to ${formatDate
 
 <template>
   <article
-    class="mx-auto max-w-[720px] bg-white p-10 text-black shadow-md"
+    class="mx-auto max-w-[720px] bg-white p-5 text-black shadow-md sm:p-8 md:p-10"
     style="font-family: 'Times New Roman', Times, serif; font-size: 14px; line-height: 1.6"
   >
     <header class="mb-6">

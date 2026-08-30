@@ -36,6 +36,10 @@ class DtrGeofenceController extends Controller
         $companyIds = $this->supervisedCompanyIds($request->user());
 
         $geofences = CompanyGeofence::with('company:id,name')
+            // One grouped subquery rather than a count per card: the page
+            // renders every site the company has ever had, and `sessions_count`
+            // is what decides whether permanent delete is offered at all.
+            ->withCount('sessions')
             ->whereIn('company_id', $companyIds)
             ->orderByDesc('is_active')
             ->orderBy('label')
@@ -108,6 +112,79 @@ class DtrGeofenceController extends Controller
     }
 
     /**
+     * Bring a retired site back. Retiring used to be one-way with no undo in
+     * the API at all, which made a mis-click on a busy site permanent: the
+     * only recovery was creating a new site, which issues a new token and so
+     * invalidates every QR code already handed out.
+     *
+     * The token is untouched, so a restored site's existing codes work again.
+     */
+    public function restore(Request $request, CompanyGeofence $geofence): JsonResponse
+    {
+        $this->authorizeCompany($request, $geofence->company_id);
+
+        $geofence->is_active = true;
+        $geofence->save();
+
+        SystemLog::record('DTR Site Restored', "Restored clock-in site \"{$geofence->label}\".");
+
+        return response()->json([
+            'geofence' => $this->present($geofence->fresh('company')),
+            'message' => 'Clock-in site restored. Its existing QR codes work again.',
+        ]);
+    }
+
+    /**
+     * Erase a site for good — the escape hatch for one created by mistake: a
+     * typo'd label, or a fence anchored at home instead of at the workplace.
+     * Without it, a retired site was inert but permanent, and a supervisor's
+     * list filled with dead cards they could not clear.
+     *
+     * Two guards, and both are the point of the action rather than padding:
+     *
+     * 1. **It must be retired first.** Same shape as the batch roster's
+     *    archive-before-delete rule. A live site is one interns may be
+     *    standing in front of right now, and deleting it kills its QR mid
+     *    shift; retiring first makes that a deliberate two-step.
+     * 2. **It must carry ZERO time records.** `dtr_sessions.geofence_id` is
+     *    `nullOnDelete`, so deleting a used site does NOT remove the punches —
+     *    it silently strips the location off every one of them, which is
+     *    exactly the audit trail the geofence exists to produce. That is why
+     *    `destroy()` retires rather than erases, and this method refuses
+     *    rather than quietly doing the damage.
+     *
+     * The result is that permanent delete is only ever offered where it is
+     * genuinely lossless.
+     */
+    public function forceDestroy(Request $request, CompanyGeofence $geofence): JsonResponse
+    {
+        $this->authorizeCompany($request, $geofence->company_id);
+
+        abort_if(
+            $geofence->is_active,
+            422,
+            'Retire this site before deleting it, so its QR code stops working first.'
+        );
+
+        $sessions = $geofence->sessions()->count();
+
+        abort_if(
+            $sessions > 0,
+            422,
+            $sessions === 1
+                ? 'One time record was taken at this site, so it cannot be deleted. It stays retired, and that record keeps its location.'
+                : "{$sessions} time records were taken at this site, so it cannot be deleted. It stays retired, and those records keep their location."
+        );
+
+        $label = $geofence->label;
+        $geofence->delete();
+
+        SystemLog::record('DTR Site Deleted', "Permanently deleted the unused clock-in site \"{$label}\".");
+
+        return response()->json(['message' => "\"{$label}\" was deleted."]);
+    }
+
+    /**
      * The printable code. SVG by default — it needs no GD and stays sharp at
      * any print size, which matters for something taped to a wall. PNG is
      * offered for tools that will not place an SVG.
@@ -169,6 +246,11 @@ class DtrGeofenceController extends Controller
             'accuracy_is_poor' => $geofence->captured_accuracy !== null
                 && $geofence->captured_accuracy > CompanyGeofence::POOR_ACCURACY_METRES,
             'is_active' => $geofence->is_active,
+            // How many punches were taken here. The SPA offers permanent
+            // delete only at zero, so the supervisor never meets a Delete
+            // button that answers 422 — and a used site can say in words why
+            // it can only be retired.
+            'sessions_count' => (int) ($geofence->sessions_count ?? $geofence->sessions()->count()),
             'scan_url' => $this->scanUrl($geofence),
             'created_at' => $geofence->created_at?->toIso8601String(),
         ];

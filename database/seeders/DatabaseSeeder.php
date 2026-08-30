@@ -57,7 +57,20 @@ class DatabaseSeeder extends Seeder
         // Runs AFTER CabmbUsersDemoSeeder: it attaches to that seeder's
         // coordinator, programs and BSBA-FM batch.
         $this->call(CabmbSupervisorDemoSeeder::class);
+        // Both run AFTER CabmbSupervisorDemoSeeder: they attach to the
+        // supervisor, company and three interns it creates. Journals first
+        // so the DTR figures sit alongside a roster that already has work.
+        $this->call(CabmbSupervisorJournalDemoSeeder::class);
+        $this->call(CabmbSupervisorDtrDemoSeeder::class);
         $this->call(CabmbWeeklyDemoSeeder::class);
+        // Runs AFTER both CABM-B seeders above: it writes Weekly Activity Log
+        // sheets for students they enrolled, and reads each sheet's period off
+        // the batch those seeders created.
+        $this->call(CabmbWeeklyTimeLogDemoSeeder::class);
+        // Exit interviews for the same three mdcbalintern* logins, one in
+        // each state (reviewed / submitted / draft), so the coordinator's
+        // Student Exit Interviews page has something in every filter.
+        $this->call(CabmbExitInterviewDemoSeeder::class);
         $this->call(SippBsaDemoSeeder::class);
         $this->call(CabmbIntakeDemoSeeder::class);
         $this->call(GroupInfoSheetDemoSeeder::class);

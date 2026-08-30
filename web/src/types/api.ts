@@ -337,7 +337,10 @@ export type JournalEntryDetail = {
   content: Record<string, string>
   submitted_at: string | null
   editable: boolean
-  locked_reason?: 'range' | 'not_active' | 'bundled' | null
+  // 'week_submitted' replaced the old 'bundled': a compiled weekly log no
+  // longer freezes its daily entries — only sending that week to the
+  // supervisor does.
+  locked_reason?: 'range' | 'not_active' | 'week_submitted' | null
   student_name: string
   program: string | null
   // Weekday name of the entry date, e.g. "Sunday" (rendered "Sunday (MM-DD-YYYY)").
@@ -400,6 +403,8 @@ export type WeeklyLogDetail = {
   supervisor_comment: string | null
   submitted_at: string | null
   narrative: string
+  /** How many of this week's daily entries are submitted — what Compile draws from. */
+  submitted_entries_count: number
   sipp_notes: WeeklySippDay[]
   daily_entries: WeeklyLogDailyEntry[]
 }
@@ -407,9 +412,11 @@ export type WeeklyLogDetail = {
 export type WeeklyActivityEntryRecord = {
   id: number
   weekly_activity_log_id: number
-  inclusive_date_start: string
-  inclusive_date_end: string
-  activities: string
+  // Nullable since the grid auto-saves half-typed rows — a row exists as soon
+  // as any one cell has something in it.
+  inclusive_date_start: string | null
+  inclusive_date_end: string | null
+  activities: string | null
   documents_records: string | null
   objectives: string | null
   supervisor_name: string | null
@@ -429,6 +436,65 @@ export type WeeklyActivityLogRecord = {
   status: 'draft' | 'submitted' | 'approved'
   submitted_at: string | null
   entries?: WeeklyActivityEntryRecord[]
+}
+
+/** One row of the coordinator's Weekly and Time Log Summary list. */
+export type CoordinatorWeeklyActivityLogRow = {
+  id: number
+  student_id: number
+  student_name: string
+  student_id_number: string | null
+  program: string
+  week_start: string | null
+  week_end: string | null
+  area_assigned: string | null
+  no_of_hours: string | number | null
+  entries_count: number
+}
+
+export type WeeklyActivityLogHeader = {
+  student_name: string | null
+  program: string | null
+  year_level: string | null
+  coordinator_name: string | null
+  company_name: string | null
+  supervisor_name: string | null
+  area_assigned: string | null
+  department_line: string
+  unit_line: string
+  program_and_year: string
+  faculty_adviser: string | null
+}
+
+export type CoordinatorWeeklyActivityLogsResponse = {
+  programs: { id: number; name: string; code?: string }[]
+  logs: {
+    data: CoordinatorWeeklyActivityLogRow[]
+    current_page: number
+    last_page: number
+    total: number
+  }
+}
+
+/** One sheet as the coordinator reads it — read-only, no editing anywhere. */
+export type CoordinatorWeeklyActivityLogDetail = {
+  id: number
+  student_id: number
+  week_start: string | null
+  week_end: string | null
+  area_assigned: string | null
+  no_of_hours: string | number | null
+  header: WeeklyActivityLogHeader
+  entries: Array<{
+    id: number
+    inclusive_date_start: string | null
+    inclusive_date_end: string | null
+    activities: string | null
+    documents_records: string | null
+    objectives: string | null
+    supervisor_name: string | null
+    supervisor_position: string | null
+  }>
 }
 
 export type InfoSheetStatus = 'draft' | 'submitted' | 'approved' | 'rejected'
@@ -846,6 +912,45 @@ export type SupervisorJournalDetail = {
   daily_entries: { entry_date: string; status: JournalEntryStatus; content: Record<string, string> }[]
 }
 
+
+// One intern's whole weekly-journal notebook — the per-student surface behind
+// the "Journals" action on My Interns. `week_number` is the same 1-based
+// position the PDF prints, counted over ALL of that student's logs, so a gap in
+// this list means that week exists but has not been submitted.
+export type SupervisorNotebookWeek = {
+  id: number
+  week_number: number
+  week_start: string
+  week_end: string
+  status: SupervisorReviewStatus
+  submitted_at: string | null
+  reviewed_at: string | null
+  reviewable: boolean
+  has_comment: boolean
+  entries_count: number
+}
+
+export type SupervisorInternNotebook = {
+  student: {
+    id: number
+    name: string
+    student_id_number: string | null
+    avatar_url: string | null
+    program: string
+    company: string
+    batch: string
+    enrollment_status: BatchStudentStatus | null
+  }
+  totals: {
+    total: number
+    pending: number
+    approved: number
+    returned: number
+    drafts_hidden: number
+  }
+  weeks: SupervisorNotebookWeek[]
+}
+
 export type StudentDashboardStats = {
   entries_submitted_total: number
   weekly_logs_approved: number
@@ -887,4 +992,80 @@ export type StudentDashboard = {
   recent_activity: StudentDashboardActivity[]
   internship: StudentDashboardInternship
   week: { start: string; end: string }
+}
+
+// ── Internship Program Student Exit Interview ────────────────────────────
+// The CABM paper form (docs/reference/INTERNSHIP PROGRAM STUDENT EXIT
+// INTERVIEW - BUSINESS.pdf). `responses` is deliberately an open map keyed
+// q1..q14 plus q2_choice/q7_choice/q10_choice/q11_choice — the question set
+// belongs to the form, not to the schema.
+
+export type ExitInterviewStatus = 'draft' | 'submitted' | 'reviewed'
+
+export type ExitInterviewComplianceChoice = 'complete' | 'pending'
+
+export type StudentExitInterviewResponse = {
+  interview: {
+    id: number
+    submission_status: ExitInterviewStatus
+    submitted_at: string | null
+    reviewed_at: string | null
+    student_info: {
+      department_position?: string | null
+      total_hours?: string | null
+      date_of_interview?: string | null
+    }
+    responses: Record<string, string | null>
+  } | null
+  header: {
+    student_name: string | null
+    program: string | null
+    company: string | null
+    training_period: string | null
+    coordinator_name: string | null
+    assigned_division: string | null
+  }
+  /** Banked DTR hours, or null where the coordinator does not run the DTR. */
+  suggested_total_hours: number | null
+  /** Keyed by question — q7 has four printed lines, the rest have five. */
+  answer_char_limits: Record<string, number>
+  answer_char_limit: number
+  ojt_completed: boolean
+}
+
+export type CoordinatorExitInterviewRow = {
+  id: number
+  student_id: number
+  student_name: string
+  student_id_number: string | null
+  program: string
+  submission_status: ExitInterviewStatus
+  submitted_at: string | null
+  reviewed_at: string | null
+  compliance: ExitInterviewComplianceChoice | null
+}
+
+export type CoordinatorExitInterviewsResponse = {
+  programs: { id: number; name: string; code?: string }[]
+  interviews: {
+    data: CoordinatorExitInterviewRow[]
+    current_page: number
+    last_page: number
+    total: number
+  }
+}
+
+export type CoordinatorExitInterviewDetail = {
+  id: number
+  submission_status: ExitInterviewStatus
+  submitted_at: string | null
+  reviewed_at: string | null
+  reviewed_by: string | null
+  header: Record<string, string>
+  responses: Record<string, string | null>
+  coordinator_section: {
+    compliance?: ExitInterviewComplianceChoice | null
+    pending_detail?: string | null
+    remarks?: string | null
+  }
 }

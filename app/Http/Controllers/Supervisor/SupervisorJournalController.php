@@ -8,6 +8,7 @@ use App\Http\Requests\Supervisor\ReturnWeeklyLogRequest;
 use App\Models\BatchStudent;
 use App\Models\JournalEntry;
 use App\Models\SystemLog;
+use App\Models\User;
 use App\Models\WeeklyLog;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
@@ -176,6 +177,93 @@ class SupervisorJournalController extends Controller
         SystemLog::record('Weekly Journal Returned', "Returned {$weeklyLog->student?->name}'s week of {$weeklyLog->week_start->toDateString()}");
 
         return response()->json($weeklyLog->fresh());
+    }
+
+    /**
+     * One intern's whole weekly-journal notebook — every week they have handed
+     * in, oldest first, in a single list rather than the queue's one-status-at-
+     * a-time slice. This is the "read the notebook end to end" surface: the
+     * supervisor opens an intern and sees the whole placement, not just what is
+     * waiting on them today.
+     *
+     * Never-submitted drafts are excluded, matching the review queue and
+     * CoordinatorWeeklyJournalController — WeeklyBundlingService stamps a draft
+     * every Monday for every active student, so including them would show the
+     * supervisor work the intern has not handed in yet.
+     */
+    public function notebook(Request $request, User $student): JsonResponse
+    {
+        abort_unless($student->role === 'student', 404);
+
+        $supervisor = $request->user();
+        abort_unless(
+            $this->supervisedStudentIds($supervisor)->contains($student->id),
+            403,
+            'This student is not one of your interns.'
+        );
+
+        // Every log, drafts included, so "Week N" numbers identically to the
+        // PDF's own 1-based position among the student's logs by week_start.
+        // A gap in the visible list is therefore honest: that week exists but
+        // has not been submitted.
+        $allLogs = WeeklyLog::where('student_id', $student->id)
+            ->orderBy('week_start')
+            ->get();
+
+        $weekNumbers = $allLogs->values()->mapWithKeys(
+            fn (WeeklyLog $log, int $index) => [$log->id => $index + 1]
+        );
+
+        $submitted = $allLogs->filter(fn (WeeklyLog $log) => $log->submitted_at !== null)->values();
+
+        // Daily-entry counts for every listed week, in one query.
+        $entries = JournalEntry::where('student_id', $student->id)->get(['entry_date']);
+
+        $weeks = $submitted->map(function (WeeklyLog $log) use ($entries, $weekNumbers) {
+            return [
+                'id' => $log->id,
+                'week_number' => $weekNumbers[$log->id],
+                'week_start' => $log->week_start->toDateString(),
+                'week_end' => $log->week_end->toDateString(),
+                'status' => $log->status,
+                'submitted_at' => $log->submitted_at?->toIso8601String(),
+                'reviewed_at' => $log->reviewed_at?->toIso8601String(),
+                'reviewable' => $this->isReviewable($log),
+                'has_comment' => filled($log->supervisor_comment),
+                'entries_count' => $entries
+                    ->filter(fn (JournalEntry $entry) => $entry->entry_date->between($log->week_start, $log->week_end))
+                    ->count(),
+            ];
+        });
+
+        $enrollment = $this->supervisedEnrollments($supervisor)
+            ->where('student_id', $student->id)
+            ->with(['batch:id,name', 'company:id,name'])
+            ->latest('id')
+            ->first();
+
+        $student->loadMissing('program:id,code,name');
+
+        return response()->json([
+            'student' => [
+                'id' => $student->id,
+                'name' => $student->name,
+                'student_id_number' => $student->student_id_number,
+                'avatar_url' => $student->avatar_url,
+                'program' => $student->program?->code ?? $student->program?->name ?? '',
+                'company' => $enrollment?->company?->name ?? '',
+                'batch' => $enrollment?->batch?->name ?? '',
+                'enrollment_status' => $enrollment?->status,
+            ],
+            'totals' => [
+                'total' => $weeks->count(),
+                'pending' => $weeks->where('status', 'pending')->count(),
+                'approved' => $weeks->where('status', 'approved')->count(),
+                'returned' => $weeks->where('status', 'returned')->count(),
+                'drafts_hidden' => $allLogs->count() - $submitted->count(),
+            ],
+            'weeks' => $weeks->values(),
+        ]);
     }
 
     private function isReviewable(WeeklyLog $log): bool

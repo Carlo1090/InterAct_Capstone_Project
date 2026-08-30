@@ -34,7 +34,17 @@
         .spacer td { padding: 3px 0; border: none; }
 
         .sketch-label { font-weight: bold; font-size: 12px; margin: 14px 0 4px; }
-        .sketch-box { border: 1px solid #000; width: 100%; height: 35mm; }
+
+        /*
+           90mm, and the height is shared with BuildsInfoSheetPdf: the pinned
+           map is rasterised to exactly this box (at 2x) and then stretched to
+           fill it, so changing one without the other distorts the image.
+           Keep the empty box working — a sheet with no pin still prints the
+           blank space the paper form has always carried.
+        */
+        .sketch-box { border: 1px solid #000; width: 100%; height: 90mm; }
+        .sketch-box img { display: block; width: 100%; height: 90mm; }
+        .sketch-note { font-size: 9px; color: #333; margin: 3px 0 0; }
     </style>
 </head>
 <body>
@@ -129,6 +139,9 @@
     </table>
 
     <p class="sketch-label">Sketch of Internship Company Location:</p>
-    <div class="sketch-box"></div>
+    <div class="sketch-box">@if (! empty($locationMap ?? null))<img src="{{ $locationMap }}" alt="">@endif</div>
+    @if (! empty($locationNote ?? null))
+        <p class="sketch-note">{{ $locationNote }}</p>
+    @endif
 </body>
 </html>
