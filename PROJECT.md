@@ -89,6 +89,11 @@ Username + password remains the primary, always-available path.
      are independent top-level units (CABM-B and CABM-H are two separate
      departments, not sub-units of one "CABM"). Do not introduce a
      department→division→program hierarchy without confirming first.
+   - `batches.ojt_type` and a nullable `batch_students.supervisor_id` were
+     added 2026-08-30 at the project owner's request (see OJT Type below).
+     The enum is additive and DEFAULTS to `supervisor`, so every existing batch
+     keeps its current mechanics; the nullable column is the only relaxation of
+     an existing constraint in the schema.
    - `student_exit_interviews` was added 2026-08-30 at the project owner's
      request (see Exit Interview below) — one row per (student, batch), three
      JSON payload columns, `UNIQUE(student_id, batch_id)`. It is the only
@@ -236,6 +241,11 @@ company login see the company's full roster.
 
 ### The supervisor is tied to the company, never manually picked
 
+**Scoped 2026-08-30: everything in this subsection describes a
+`supervisor`-type batch, which is the default and remains how every existing
+cohort runs. A `coordinator`-type batch has no company supervisor at all — see
+OJT Type below.**
+
 `EnrollmentService::enrollOrReactivate()` takes **no `$supervisorId` parameter**.
 Callers supply only a `$companyId`, and the service derives `supervisor_id` from
 `Company::loginSupervisor()->user_id`, aborting 422 if the company has none.
@@ -261,6 +271,123 @@ Consequences, all deliberate:
 - **Seeders bypass this gate** (expected) — they write `batch_students` directly
   via Eloquent, so `migrate:fresh --seed` is unaffected. But every demo company
   referenced by an enrollment still needs a login supervisor for later UI edits.
+
+## OJT Type — supervisor-supported vs coordinator-centered
+
+Built 2026-08-30 at the project owner's request. **`batches.ojt_type`** is an
+enum (`supervisor` | `coordinator`) chosen during batch creation, deciding who
+reviews that cohort's weekly journals.
+
+- **`supervisor`** (the column DEFAULT) — the host company holds a login and its
+  supervisor reviews the weekly journals and corrects the time records. This is
+  exactly how every batch behaved before the choice existed, so **every existing
+  row keeps its mechanics with no backfill** and nothing changes on deploy.
+- **`coordinator`** — there is **no company supervisor at all**. Not a different
+  one, none. The coordinator reviews the weekly journals themselves, and the
+  supervisor fields that still print on the paper forms are informational text
+  rather than a linked account.
+
+**It lives on the BATCH, not on the coordinator** (unlike `users.dtr_enabled`).
+A cohort is placed under one arrangement; a coordinator can genuinely run a
+supervisor-supported programme and a field-placement one at the same time; and
+every journal, weekly log and time record already carries its `batch_id`, so a
+finished cohort keeps whichever rule it ran under.
+
+### Two migrations, and the second is the whole structural cost
+
+1. `2026_08_30_000002_add_ojt_type_to_batches_table` — additive, defaulted.
+2. `2026_08_30_000003_make_supervisor_id_nullable_on_batch_students_table` —
+   **`batch_students.supervisor_id` was NOT NULL + FK since the beginning.** That
+   is what made "the supervisor is tied to the company" enforceable at the
+   database level, and it is unchanged for supervisor-supported batches; the
+   column is merely allowed to be empty where the question does not arise.
+
+`weekly_logs.supervisor_id` needed **no** migration — it has always been a
+nullable users FK, so a coordinator's id sits in it as naturally as a
+supervisor's. On a coordinator-centered batch the column simply means *the
+reviewer*, which is what it has always recorded.
+
+### The branch lives in ONE place per concern
+
+- **Enrollment**: `EnrollmentService::enrollOrReactivate()` reads the batch and
+  either resolves the company login as before, or writes `supervisor_id` and
+  `company_supervisor_id` as **null**. The branch is read off the BATCH, never
+  off a parameter, so no caller can opt a placement out of the gate by
+  forgetting to pass something. All three enrollment paths inherit it.
+- **Supervisor scoping**: `ScopesSupervisorWork::supervisedEnrollments()` gained
+  **`->whereNotNull('supervisor_id')`** — one clause, not an `ojt_type` join at
+  each call site. A company can host both kinds of batch at once, and those
+  enrollments have no supervisor at all, so "rows that pin a supervisor" is the
+  same question as "rows this login has any role over". My Interns, the review
+  queue, the notebook and the DTR review surface all resolve through that one
+  method, so they cannot disagree. Pinned by
+  `test_a_coordinator_centered_intern_never_appears_on_a_supervisors_roster` —
+  before the clause, the intern **did** appear on a supervisor's own roster.
+- **Daily Time Record**: `DtrService::runsForEnrollment()` is the single answer
+  to "does the DTR run here?", and requires **both** the coordinator's
+  `dtr_enabled` **and** a supervisor-supported batch. Only a supervisor can
+  anchor a geofence at the workplace or vouch for a forgotten punch, and a
+  coordinator-centered batch has none — so hours come from the typed Weekly and
+  Time Log Summary, and an unclocked hour still stays unclocked.
+  `AuthUserPayload`'s `student_dtr_enabled` mirrors it inside the existing
+  `whereHas`, so the student's nav item never appears.
+
+### Frozen once anyone is enrolled
+
+`UpdateBatchRequest::withValidator()` refuses a CHANGE to `ojt_type` once
+`batchStudents()->exists()`. This is a data rule, not a UI nicety: flipping a
+live cohort would hand every journal already waiting on one reviewer to a
+different one mid-placement, and would strand enrollments pinning a
+`supervisor_id` the new mode says should not exist. **Re-stating the same value
+is always allowed**, because the batches page PUTs the whole form back including
+fields the coordinator never touched. `BatchController` returns
+`interns_count` so the form can disable the control rather than offer a change
+the server would refuse.
+
+### The coordinator's review surface
+
+`Coordinator/CoordinatorJournalReviewController` (`index`, `interns`,
+`notebook`, `show`, `pdf`, `approve`, `returnLog`; routes
+`coordinator/journal-review*`), page `CoordinatorJournalReviewPage.vue` at
+`/coordinator/journal-review`, nav label **"Journal Review"**.
+
+- **Deliberately NOT the same surface as `CoordinatorWeeklyJournalController`**,
+  which stays exactly as it was: read-only monitoring across EVERY batch in
+  scope. That page answers "how is my department doing?"; this one answers "what
+  is waiting on me?" and is the only coordinator surface that writes a verdict.
+  Keeping them apart is what stops a coordinator gaining approve/return over a
+  supervisor-supported batch, where the verdict belongs to the company.
+- **Scope is `coordinatorProgramIds()`**, matching every other coordinator page
+  rather than narrowing to `batches.coordinator_id` — a department's
+  coordinators already cover for each other everywhere else, and a cohort whose
+  coordinator is away must not have its journals stuck.
+- `authorizeReview()` keys off the **LOG'S OWN batch**, not the student: a
+  student may have been in a supervisor-supported cohort previously, and those
+  weeks were the company's to review and stay that way.
+- The **`interns` index** exists because the queue lists one status at a time,
+  so without it an intern with nothing currently pending would be unreachable.
+- **ROUTE ORDERING**: `journal-review/interns` and
+  `journal-review/interns/{student}` must stay ABOVE
+  `journal-review/{weeklyLog}`, the same hazard as `info-sheets/pending-count`.
+
+### One review implementation, two reviewers
+
+`App\Http\Controllers\Concerns\ReviewsWeeklyJournals` holds everything about
+reviewing that does not depend on WHO reviews: `isReviewable`/`assertReviewable`,
+the queue row shape, the week payload, the notebook payload, both verdict writes
+and the PDF. `SupervisorJournalController` and
+`CoordinatorJournalReviewController` supply **scope and nothing else**. Same
+reasoning as `WeeklyBundlingService::compileFor()` and `EnrollmentService`: a
+student's journal must not mean two different things depending on which of the
+two people opened it.
+
+**The per-intern notebook is shared at the FRONTEND too.**
+`SupervisorInternJournalsPage.vue` is mounted on **two routes** —
+`/supervisor/interns/:studentId/journals` and
+`/coordinator/journal-review/interns/:studentId` — and derives its API prefix,
+back-link and 403 wording from `route.path`, not from the signed-in user's role
+(the route is what the guard already gated, so the two cannot disagree). Forking
+it would be 679 lines of duplicate differing over six URLs.
 
 ## Intake & Enrollment
 
@@ -2315,6 +2442,60 @@ per-row overrides keyed by source id, `manual_rows[]` for missing data,
   per-company companion to the individual sheet, **filtered by COMPANY**. Persists
   in `group_info_sheets`, keyed `UNIQUE(coordinator_id, company_id, academic_year)`.
 
+### The two SIPP annexes are measured facsimiles too (2026-08-30)
+
+Annex "C" and Annex "D" were the last two official documents still estimated
+rather than measured. Their references are **Word files**, not PDFs —
+`docs/reference/ANNEX C - SIPP REPORT (2).docx` and
+`ANNEX D - SIPP REPORT (1).docx` — so the geometry was read out of each
+`word/document.xml` (Word stores lengths in **twips**, 1/20 pt) and now lives in
+**`App\Support\SippAnnexLayout`**, the same shape as `ExitInterviewFormLayout`.
+
+| measurement | reference | what the blades did before |
+|---|---|---|
+| page | 18711 x 12242 twips **landscape** = 935.55 x 612.1pt | Annex C: **no `setPaper()` at all** → dompdf's A4 **portrait**; Annex D: A4 landscape |
+| margins | 1440 twips = 72pt all round | `2cm 1.8cm` / `1.6cm 1.4cm` |
+| body type | 12pt | **12`px`** (~9pt) in Times New Roman |
+| rules | `w:sz 4` = 0.5pt | 1px |
+| cell padding | 108 twips = 5.4pt L/R | 5-8px all round |
+| Annex C cols | 6769 / 5225 / 3513 twips | equal `33.33%` thirds |
+| Annex D cols | 4957 / 3827 / 1797 / 1888 / 2753 twips | percentages by eye |
+
+**The page is the SAME long bond the exit interview prints on, turned
+landscape.** On A4 portrait the three-column Annex C table had 462pt of usable
+width instead of 792pt — every column ~40% too narrow, wrapping to a shape the
+real form never has. The portrait box is passed to `setPaper()` and
+`'landscape'` is what swaps it; passing the already-swapped box would rotate it
+back.
+
+- **The type is a SUBSTITUTION and is documented as one.** The reference's theme
+  font is **Aptos** (Office's current default) — proprietary, absent from the
+  Linux image, not redistributable. **Carlito** already ships here (SIL OFL) and
+  is registered for the weekly activity log, so it stands in at the same nominal
+  12pt. Carlito is metric-compatible with *Calibri*, **not** with Aptos; this is
+  the closest licensable face already in the project, not a metric match.
+- **`App\Http\Controllers\Concerns\RegistersCarlitoFonts`** now owns that
+  registration, extracted from `BuildsWeeklyActivityLogPdf` (which delegates to
+  it) so the three documents cannot drift on the two details that bite:
+  registration happens **in PHP, not `@font-face`** (a CSS `url()` to a local
+  `.ttf` does not survive a Windows drive-letter path), and it is **best-effort**
+  so a missing file degrades the type instead of 500-ing the download. Font
+  subsetting is switched on per instance — a filled annex is ~24KB.
+- **Column widths ride on the header row**, the only row with no `rowspan`, and
+  are written **content-box** (measured width minus 10.8pt of padding). dompdf
+  ignores `<colgroup>`, ignores a width on a spanning cell, and
+  `table-layout: fixed` distributes columns equally regardless — the same three
+  workarounds the GROUP info sheet documents.
+- Annex D's Host Establishment column still merges with `rowspan`; that is why
+  its widths must sit on the header row rather than the first data row.
+
+Coverage: `tests/Feature/Coordinator/SippAnnexPageGeometryTest` asserts the
+MediaBox on both downloads plus the raw measurements. **Verified to genuinely
+fail** when `setPaper()` is removed — it reports
+`MediaBox [0.000 0.000 595.280 841.890]`, i.e. A4 portrait. Every other test on
+these endpoints passed the whole time the pages were wrong, because a 200 with a
+valid PDF was all they checked.
+
 Both official report PDFs use a clean/white table header (no gray fill) and a
 "(Name and Signature)" caption under each signatory block.
 
@@ -2498,6 +2679,10 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
   creator column exists, so unlinked implies visible, keeping freshly-created
   companies in view). Includes the representatives and supervisor-login panels.
 - **Student Info Sheets** — the Accept/Reject queue; defaults to **All** statuses.
+- **Journal Review** (`/coordinator/journal-review`) — the coordinator's OWN
+  approve/return queue plus each intern's full notebook, for
+  **coordinator-centered batches only**. The only coordinator surface that
+  writes a review verdict. See OJT Type above.
 - **Student Exit Interviews** (`/coordinator/exit-interviews`) — every
   in-scope intern's exit interview, filterable by program / status / name,
   with a per-row and in-modal **Download PDF**. Read the fourteen answers and
@@ -3063,6 +3248,71 @@ to `whereBetween` on a range: the last day is dropped because
 `WeeklyBundlingService`, `WeeklyLogController::store()`, and
 `JournalCalendarController`'s month query before being fixed the same way.
 
+### `truncate` inside `TooltipWrap` does nothing without `max-w-full` on BOTH
+
+`TooltipWrap`'s root is `<span class="group relative inline-flex">`, and an
+inline-flex sizes to its CONTENT. So a child carrying `truncate` (which is just
+`overflow:hidden` + `text-overflow:ellipsis` + `whitespace:nowrap`) has no
+constrained width to truncate against — the text runs straight out of the `<td>`
+and paints over the next column, even under `table-fixed` with a `colgroup`.
+Nothing errors, `npm run build` is clean, and it only shows with real data long
+enough to overflow. Seen 2026-08-30 on the Journal Review tables, where a batch
+name and a company name overlapped each other.
+
+**The working pattern, already used by `AdminUsersPage`, needs the class on both
+elements:**
+
+```html
+<TooltipWrap :label="value" placement="top" class="max-w-full">
+  <span class="block max-w-full truncate">{{ value }}</span>
+</TooltipWrap>
+```
+
+`class="max-w-full"` constrains the wrapper to the cell; `block max-w-full` on
+the inner element is what gives `truncate` something to measure. Omitting either
+silently reverts to overflow. `TooltipWrap`'s own docblock says it is for
+icon-only controls — using it to truncate table text is a secondary use that
+only works when it is constrained.
+
+A cheap browser check catches the whole class:
+`[...document.querySelectorAll('td,th')].filter(e => e.scrollWidth > e.clientWidth + 1).length`
+should be **0**.
+
+Related: in a `table-fixed` `colgroup`, give the LEFTOVER width to the column
+holding the longest text. On that page every column was pinned except Student,
+so Company — the longest value in the table — ended up the narrowest cell at
+135px while Student had 230px of short names.
+
+### SQLite silently accepts a column that does not exist; MySQL 1054s
+
+Found 2026-08-30 building the coordinator's Journal Review page. An eager load
+written as `with('student:id,name,student_id_number,avatar_url')` looks
+reasonable — but **`avatar_url` is an accessor over `avatar_path`, not a
+column.** The whole 604-test suite passed, `npm run build` passed, and the page
+then 500'd on the very first real page load:
+
+```
+SQLSTATE[42S22]: Column not found: 1054 Unknown column 'avatar_url' in 'field list'
+```
+
+The reason the tests are blind to it is **not** that they missed the code path
+— `test_the_interns_index_...` exercises exactly that query. It is that
+`phpunit.xml` pins `DB_CONNECTION=sqlite`, and SQLite's double-quoted-identifier
+misfeature resolves an unknown `"avatar_url"` as a **string literal** instead of
+erroring. Verified directly, not assumed: a throwaway test doing
+`User::query()->get(['id', 'name', 'avatar_url'])` **passes** under SQLite.
+
+Same family as the `Cache::remember()` object bug (`ArrayStore` never
+serializes, so the failing warm read never ran under test): the test database is
+not the production database, and a class of error exists that only the real one
+raises.
+
+**Rule: a column list in `select()` / `with('rel:cols')` may only name real
+columns.** Anything derived — `avatar_url`, and any other accessor or appended
+attribute — must be omitted and left to the model. When a query is built by
+listing columns, open the page in a browser against MySQL before calling it
+done; PROJECT.md already requires that for other reasons, and this is one more.
+
 ### `??` does not null-safe a chained expression
 
 `$log->submitted_at?->toIso8601String() ?? null` still throws when `$log` itself
@@ -3553,6 +3803,19 @@ behaviour they describe:
 `WeeklyActivityLogTest::test_a_half_filled_row_is_saved_rather_than_lost`
 (a partially-typed grid row reaches the database).
 
+OJT-type coverage is two files, both added 2026-08-30.
+`tests/Feature/Coordinator/BatchOjtTypeTest` pins the rules that used to be
+unconditional — the default, enrolling at a company with no supervisor login,
+the 422 that still fires for a supervisor-supported batch, the freeze once
+anyone is enrolled (and that re-stating the same value is NOT a change), the
+DTR gate on both sides, and above all
+`test_a_coordinator_centered_intern_never_appears_on_a_supervisors_roster`,
+which covers the mixed-company case that motivated the null-supervisor filter.
+`tests/Feature/Coordinator/CoordinatorJournalReviewTest` covers the queue, both
+verdicts, the notebook (drafts excluded, week numbers matching the PDF), the
+interns index, the route-ordering hazard, and the boundary that matters most:
+a coordinator is **403** on a supervisor-supported log.
+
 DTR coverage lives in six files, and several of them exist to pin a bug that
 was real rather than hypothetical — do not delete them as redundant:
 `Unit/Support/GeoDistanceTest`, `Feature/Student/DtrPunchTest` (the toggle,
@@ -3591,6 +3854,7 @@ also works for accounts that have one).
 | `mdcsupervisor` | supervisor (TechPH Inc., `mdcstudent`'s company) |
 | `mdcbalsup` | CABM-B company supervisor — Tagbilaran Cooperative Bank |
 | `mdcbalintern1` · `mdcbalintern2` · `mdcbalintern3` | that supervisor's three interns |
+| `mdcfield1` · `mdcfield2` · `mdcfield3` | interns on the **coordinator-centered** batch (no supervisor) |
 | `system` | non-login automation account |
 
 **`CabmbSupervisorDemoSeeder` is the clean supervisor world under
@@ -3609,6 +3873,19 @@ login-bearing vs named-only split is visible with no setup.
 Both demo coordinators now have `dtr_enabled = true` so every role is testable
 end to end. The opt-out is demonstrated live by switching it off in the
 coordinator's own account menu, which is the real flow anyway.
+
+**Both OJT types are seeded**, and the contrast is the point — see OJT Type
+above. Every batch except one is supervisor-supported (`mdcbalsup` and the
+`cabmb.sup.*` logins review those); `CabmbCoordinatorCenteredDemoSeeder` adds
+**BSBA-OM 2026 Field Placement** under `mdcbalbero`, a coordinator-centered
+cohort at a company with **no login-bearing supervisor at all** — so the demo
+proves the branch in EnrollmentService rather than just showing a different
+pill. Its three interns (`mdcfield1..3`) have five weeks of journals whose
+approved/returned verdicts were given by the COORDINATOR, so
+`/coordinator/journal-review` and its per-intern notebooks are non-empty on a
+fresh seed. Deliberately a separate batch rather than flipping mdcbalsup’s:
+flipping it would strip that supervisor’s entire world and trade one empty demo
+for another.
 
 **Supervisor workload demo** — two seeders added 2026-08-28, both keyed to
 `mdcbalsup` and both running immediately after `CabmbSupervisorDemoSeeder`.

@@ -170,6 +170,22 @@ const router = createRouter({
           meta: { title: 'Weekly Journals' },
         },
         {
+          // The coordinator's OWN review queue, for coordinator-centered
+          // batches only. Distinct from weekly-journals above, which stays
+          // read-only monitoring across every batch in scope.
+          path: 'journal-review',
+          component: () => import('@/pages/coordinator/CoordinatorJournalReviewPage.vue'),
+          meta: { title: 'Journal Review' },
+        },
+        {
+          // The SAME notebook component the supervisor uses. Both roles read
+          // the same document and give the same two verdicts; only the API
+          // prefix differs, and the page derives that from this route's path.
+          path: 'journal-review/interns/:studentId',
+          component: () => import('@/pages/supervisor/SupervisorInternJournalsPage.vue'),
+          meta: { title: 'Intern Journals' },
+        },
+        {
           path: 'weekly-time-logs',
           component: () => import('@/pages/coordinator/CoordinatorWeeklyTimeLogsPage.vue'),
           meta: { title: 'Weekly and Time Log Summaries' },

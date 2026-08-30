@@ -17,6 +17,13 @@ const navItems = [
   { label: 'Users', to: '/coordinator/users', badge: '', icon: 'people' },
   { label: 'Daily Journal Activities', to: '/coordinator/journal-activities', badge: '', icon: 'calendar' },
   { label: 'Weekly Journals', to: '/coordinator/weekly-journals', badge: '', icon: 'stack' },
+  // Shown to every coordinator, NOT hidden behind "has a coordinator-centered
+  // batch" the way the student's DTR item is hidden. The two cases differ: a
+  // student cannot give themselves a clock-in page, so hiding it spares them a
+  // dead end — whereas a coordinator CAN put a batch into this mode, and hiding
+  // the item until they already have one makes the feature undiscoverable. The
+  // page's empty state explains how to get here instead.
+  { label: 'Journal Review', to: '/coordinator/journal-review', badge: '', icon: 'stack' },
   { label: 'Weekly and Time Log Summary', to: '/coordinator/weekly-time-logs', badge: '', icon: 'clock' },
   { label: 'Daily Time Record', to: '/coordinator/dtr', badge: '', icon: 'map-pin' },
   { label: 'Journal Templates', to: '/coordinator/journal-templates', badge: '', icon: 'journals' },

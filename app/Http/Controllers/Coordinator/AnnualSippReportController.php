@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Coordinator;
 
+use App\Http\Controllers\Concerns\RegistersCarlitoFonts;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Coordinator\SaveAnnualSippReportRequest;
 use App\Models\Batch;
 use App\Models\JournalEntry;
 use App\Models\Program;
 use App\Models\SippAnnualReport;
+use App\Support\SippAnnexLayout;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,6 +17,8 @@ use Illuminate\Http\Response;
 
 class AnnualSippReportController extends Controller
 {
+    use RegistersCarlitoFonts;
+
     /**
      * Default signatories per the official OJT Annual SIPP Report document.
      */
@@ -127,11 +131,18 @@ class AnnualSippReportController extends Controller
             ->filter(fn ($row) => $row['included'])
             ->values();
 
+        // 8.5in x 13in LANDSCAPE — Philippine long bond, the reference's own
+        // page. This call is load-bearing: without it dompdf falls back to A4
+        // PORTRAIT and the three-column table gets 462pt of width instead of
+        // 792pt, so every column wraps to a shape the real form never has.
+        // The portrait box is passed and 'landscape' swaps it.
         $pdf = Pdf::loadView('pdf.annual-sipp-report', [
             'academicYear' => $academicYear,
             'rows' => $rows,
             'meta' => $this->reportMeta($program, $report),
-        ]);
+        ])->setPaper([0, 0, SippAnnexLayout::PAGE_SHORT_EDGE, SippAnnexLayout::PAGE_LONG_EDGE], 'landscape');
+
+        $this->registerCarlitoFonts($pdf);
 
         $slug = $program->code ?: $program->id;
 

@@ -14,7 +14,11 @@ class BatchController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        // interns_count drives the OJT-type lock on the edit form: the type is
+        // settled while the roster is empty and frozen once anyone is enrolled
+        // (UpdateBatchRequest enforces the same rule server-side).
         $batches = Batch::with(['program.department', 'journalTemplate'])
+            ->withCount('batchStudents as interns_count')
             ->where('coordinator_id', $request->user()->id)
             ->orderByDesc('start_date')
             ->get();
@@ -32,7 +36,10 @@ class BatchController extends Controller
 
         SystemLog::record('Batch Created', "Created batch {$batch->name}");
 
-        return response()->json($batch->load(['program.department', 'journalTemplate']), 201);
+        return response()->json(
+            $batch->load(['program.department', 'journalTemplate'])->loadCount('batchStudents as interns_count'),
+            201,
+        );
     }
 
     public function update(UpdateBatchRequest $request, Batch $batch): JsonResponse
@@ -41,6 +48,8 @@ class BatchController extends Controller
 
         SystemLog::record('Batch Updated', "Updated batch {$batch->name}");
 
-        return response()->json($batch->fresh(['program.department', 'journalTemplate']));
+        return response()->json(
+            $batch->fresh(['program.department', 'journalTemplate'])->loadCount('batchStudents as interns_count'),
+        );
     }
 }

@@ -174,7 +174,7 @@ class StudentExitInterviewController extends Controller
      */
     private function suggestedTotalHours(BatchStudent $enrollment): ?float
     {
-        if (! $enrollment->batch?->coordinator?->dtr_enabled) {
+        if (! app(DtrService::class)->runsForEnrollment($enrollment)) {
             return null;
         }
 

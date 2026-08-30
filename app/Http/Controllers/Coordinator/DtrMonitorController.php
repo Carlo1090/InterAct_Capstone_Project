@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Coordinator;
 
 use App\Http\Controllers\Controller;
+use App\Models\Batch;
 use App\Models\BatchStudent;
 use App\Models\CompanyGeofence;
 use App\Models\DtrSession;
@@ -62,8 +63,14 @@ class DtrMonitorController extends Controller
             ->whereNull('archived_at')
             ->whereHas('batch', fn ($query) => $query->whereIn('program_id', $programIds))
             // Only batches whose coordinator opted into DTR have hours to
-            // report at all.
-            ->whereHas('batch.coordinator', fn ($query) => $query->where('dtr_enabled', true))
+            // report at all — AND only supervisor-supported ones, mirroring
+            // DtrService::runsForEnrollment(). Without the second clause a
+            // coordinator-centered cohort was listed here at zero hours and no
+            // sites, which reads as "these interns never clock in" rather than
+            // "the Daily Time Record does not apply to them".
+            ->whereHas('batch', fn ($query) => $query
+                ->where('ojt_type', Batch::OJT_TYPE_SUPERVISOR)
+                ->whereHas('coordinator', fn ($inner) => $inner->where('dtr_enabled', true)))
             ->get();
 
         // Every session figure for the whole page in ONE grouped query.

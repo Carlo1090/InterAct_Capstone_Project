@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Batch;
 use App\Models\BatchStudent;
 use App\Models\User;
 
@@ -61,9 +62,16 @@ class AuthUserPayload
             // DTR endpoint itself because StudentLayout filters the nav before
             // any page loads — without it the item would flash in and out for
             // the students who cannot use it. One exists() query.
+            // The batch condition mirrors DtrService::runsForEnrollment(): a
+            // coordinator-centered batch has no supervisor to anchor a site or
+            // correct a punch, so the DTR does not run for it whatever the
+            // coordinator's own preference says. Folded into the existing
+            // whereHas rather than added as a second query.
             $user->setAttribute('student_dtr_enabled', BatchStudent::where('student_id', $user->id)
                 ->where('status', 'active')
-                ->whereHas('batch.coordinator', fn ($query) => $query->where('dtr_enabled', true))
+                ->whereHas('batch', fn ($query) => $query
+                    ->where('ojt_type', Batch::OJT_TYPE_SUPERVISOR)
+                    ->whereHas('coordinator', fn ($inner) => $inner->where('dtr_enabled', true)))
                 ->exists());
         }
 

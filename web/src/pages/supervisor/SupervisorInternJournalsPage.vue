@@ -20,12 +20,50 @@ import type {
  * down the left, the selected week rendered as the document itself on the
  * right. The Journals page is the cross-intern review QUEUE (one status at a
  * time, whoever submitted most recently); this is the opposite cut — one
- * intern, every week, front to back, the way a supervisor reads a paper
+ * intern, every week, front to back, the way a reviewer reads a paper
  * notebook. Review actions are the same endpoints either way.
+ *
+ * THIS COMPONENT IS MOUNTED ON TWO ROUTES, and that is deliberate rather than
+ * incidental. On a supervisor-supported batch the company supervisor reviews
+ * the journals; on a coordinator-centered one there is no company supervisor
+ * at all and the coordinator does. They are reading the same notebook and
+ * giving the same two verdicts, so they get the same page — the only thing
+ * that differs is which API prefix serves it, and the backend already shares
+ * one builder behind both (ReviewsWeeklyJournals). Forking this file would be
+ * 679 lines of duplicate that could drift over six URLs.
  */
 
 const route = useRoute()
 const studentId = computed(() => Number(route.params.studentId))
+
+/**
+ * Which surface we are on, taken from the ROUTE rather than from the signed-in
+ * user's role — the route is what the router guard already gated, so the two
+ * can never disagree, and it keeps the component honest if the same person
+ * ever holds both roles.
+ */
+const isCoordinatorView = computed(() => route.path.startsWith('/coordinator/'))
+
+const notebookUrl = computed(() =>
+  isCoordinatorView.value
+    ? `/api/coordinator/journal-review/interns/${studentId.value}`
+    : `/api/supervisor/interns/${studentId.value}/journals`,
+)
+
+const weekUrl = (weeklyLogId: number) =>
+  isCoordinatorView.value
+    ? `/api/coordinator/journal-review/${weeklyLogId}`
+    : `/api/supervisor/journals/${weeklyLogId}`
+
+const backTo = computed(() => (isCoordinatorView.value ? '/coordinator/journal-review' : '/supervisor/interns'))
+
+const backLabel = computed(() => (isCoordinatorView.value ? 'Back to Journal Review' : 'Back to My Interns'))
+
+const notFoundMessage = computed(() =>
+  isCoordinatorView.value
+    ? 'This student is not on one of your coordinator-centered batches.'
+    : 'This student is not one of your interns.',
+)
 
 const notebook = ref<SupervisorInternNotebook | null>(null)
 const isLoading = ref(true)
@@ -203,7 +241,7 @@ const openWeek = async (week: SupervisorNotebookWeek) => {
   isDetailLoading.value = true
   detail.value = null
   try {
-    const { data } = await api.get<SupervisorJournalDetail>(`/api/supervisor/journals/${week.id}`)
+    const { data } = await api.get<SupervisorJournalDetail>(weekUrl(week.id))
     detailCache.set(week.id, data)
     // A slower earlier request must not paint over a week selected since.
     if (selectedId.value === week.id) detail.value = data
@@ -225,7 +263,7 @@ const load = async () => {
   isLoading.value = true
   errorMessage.value = ''
   try {
-    const { data } = await api.get<SupervisorInternNotebook>(`/api/supervisor/interns/${studentId.value}/journals`)
+    const { data } = await api.get<SupervisorInternNotebook>(notebookUrl.value)
     notebook.value = data
 
     const stillListed = data.weeks.some((week) => week.id === selectedId.value)
@@ -237,7 +275,7 @@ const load = async () => {
   } catch (error) {
     errorMessage.value =
       axios.isAxiosError(error) && error.response?.status === 403
-        ? 'This student is not one of your interns.'
+        ? notFoundMessage.value
         : 'Unable to load this intern\'s journals.'
   } finally {
     isLoading.value = false
@@ -246,7 +284,7 @@ const load = async () => {
 
 const downloadPdf = () => {
   if (!detail.value) return
-  window.open(`/api/supervisor/journals/${detail.value.id}/pdf`, '_blank')
+  window.open(`${weekUrl(detail.value.id)}/pdf`, '_blank')
 }
 
 /** Refresh both the row (status, tallies) and the cached document after a verdict. */
@@ -265,7 +303,7 @@ const approve = async () => {
   isSubmitting.value = true
   reviewError.value = ''
   try {
-    await api.post(`/api/supervisor/journals/${detail.value.id}/approve`)
+    await api.post(`${weekUrl(detail.value.id)}/approve`)
     showToast('Weekly journal approved.')
     await refreshAfterReview()
   } catch (error) {
@@ -295,7 +333,7 @@ const submitReturn = async () => {
 
   isSubmitting.value = true
   try {
-    await api.post(`/api/supervisor/journals/${detail.value.id}/return`, { supervisor_comment: returnComment.value })
+    await api.post(`${weekUrl(detail.value.id)}/return`, { supervisor_comment: returnComment.value })
     showToast('Weekly journal returned to the student.')
     showReturnForm.value = false
     returnComment.value = ''
@@ -329,13 +367,13 @@ onMounted(load)
     <ToastHost />
 
     <RouterLink
-      to="/supervisor/interns"
+      :to="backTo"
       class="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 transition hover:text-slate-900"
     >
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-4 w-4">
         <path d="M19 12H5M11 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
       </svg>
-      Back to Interns
+      {{ backLabel }}
     </RouterLink>
 
     <LoadStatus :loading="isLoading" :error="errorMessage" :retry="load">
