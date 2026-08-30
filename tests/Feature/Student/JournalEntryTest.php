@@ -253,7 +253,15 @@ class JournalEntryTest extends TestCase
         ]);
     }
 
-    public function test_a_bundled_week_locks_its_daily_entries(): void
+    /**
+     * The bug this pins: bundling used to be a one-way edit lock the moment a
+     * WeeklyLog row existed — and one is stamped for EVERY active student every
+     * Monday. So a student who filed Friday's entry on Monday morning, or who
+     * came back to catch up on a fortnight, found the week frozen and had no
+     * way to write it. Compilation is reversible now (the student can recompile
+     * the week themselves), so it no longer freezes anything.
+     */
+    public function test_a_compiled_but_unsubmitted_week_leaves_its_daily_entries_writable(): void
     {
         $student = $this->enrolledStudent();
         Sanctum::actingAs($student, ['*']);
@@ -266,26 +274,52 @@ class JournalEntryTest extends TestCase
             'content' => ['task_performed' => 'First submission.'],
         ])->assertOk();
 
-        $enrollment = BatchStudent::where('student_id', $student->id)->firstOrFail();
-        $monday = Carbon::parse($entryDate)->startOfWeek(Carbon::MONDAY);
+        $this->compiledWeekFor($student->id, $entryDate);
 
-        WeeklyLog::create([
-            'batch_id' => $enrollment->batch_id,
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'Catching up after the week was compiled.'],
+        ])->assertOk();
+
+        $this->assertDatabaseHas('journal_entries', [
             'student_id' => $student->id,
-            'week_start' => $monday->toDateString(),
-            'week_end' => $monday->copy()->addDays(4)->toDateString(),
-            'status' => 'pending',
-            'narrative' => 'Compiled narrative.',
+            'content->task_performed' => 'Catching up after the week was compiled.',
         ]);
+
+        $showResponse = $this->getJson("/api/student/journal-entries/{$entryDate}");
+        $showResponse->assertOk();
+        $showResponse->assertJsonPath('editable', true);
+        $showResponse->assertJsonPath('locked_reason', null);
+    }
+
+    /**
+     * Where the line actually sits now: once the week is with the supervisor,
+     * its daily entries are frozen — the narrative they are reading must not
+     * shift underneath them.
+     */
+    public function test_a_week_submitted_to_the_supervisor_locks_its_daily_entries(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $entryDate = now()->toDateString();
+
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'First submission.'],
+        ])->assertOk();
+
+        $this->compiledWeekFor($student->id, $entryDate, ['submitted_at' => now(), 'status' => 'pending']);
 
         $response = $this->postJson('/api/student/journal-entries', [
             'entry_date' => $entryDate,
             'status' => 'submitted',
-            'content' => ['task_performed' => 'Trying to change it after bundling.'],
+            'content' => ['task_performed' => 'Trying to change it after submitting the week.'],
         ]);
 
         $response->assertStatus(422);
-        $response->assertJsonPath('message', 'This week has already been compiled into your Weekly Log and can no longer be edited.');
         $this->assertDatabaseHas('journal_entries', [
             'student_id' => $student->id,
             'content->task_performed' => 'First submission.',
@@ -294,7 +328,61 @@ class JournalEntryTest extends TestCase
         $showResponse = $this->getJson("/api/student/journal-entries/{$entryDate}");
         $showResponse->assertOk();
         $showResponse->assertJsonPath('editable', false);
-        $showResponse->assertJsonPath('locked_reason', 'bundled');
+        $showResponse->assertJsonPath('locked_reason', 'week_submitted');
+    }
+
+    /**
+     * A supervisor returning the week hands it back, so the daily entries
+     * behind it reopen too — otherwise "fix it and resubmit" would only ever
+     * mean rewriting the narrative by hand.
+     */
+    public function test_a_returned_week_reopens_its_daily_entries(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $entryDate = now()->toDateString();
+
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'First submission.'],
+        ])->assertOk();
+
+        $this->compiledWeekFor($student->id, $entryDate, [
+            'submitted_at' => now(),
+            'status' => 'returned',
+            'supervisor_comment' => 'Please add more detail to Wednesday.',
+        ]);
+
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'Revised after the supervisor returned the week.'],
+        ])->assertOk();
+
+        $this->getJson("/api/student/journal-entries/{$entryDate}")
+            ->assertOk()
+            ->assertJsonPath('locked_reason', null);
+    }
+
+    /**
+     * A WeeklyLog covering the Mon-Sun week that contains $date.
+     */
+    private function compiledWeekFor(int $studentId, string $date, array $overrides = []): WeeklyLog
+    {
+        $enrollment = BatchStudent::where('student_id', $studentId)->firstOrFail();
+        $monday = Carbon::parse($date)->startOfWeek(Carbon::MONDAY);
+
+        return WeeklyLog::create([
+            'batch_id' => $enrollment->batch_id,
+            'student_id' => $studentId,
+            'week_start' => $monday->toDateString(),
+            'week_end' => $monday->copy()->addDays(6)->toDateString(),
+            'status' => 'pending',
+            'narrative' => 'Compiled narrative.',
+            ...$overrides,
+        ]);
     }
 
     /**

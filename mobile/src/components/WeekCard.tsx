@@ -1,5 +1,6 @@
 import { View, Text, Pressable } from 'react-native';
 import { colors } from '../constants/colors';
+import { dateRangeLabel } from '../lib/datetime';
 import { WeekState } from '../types/api';
 
 export const weekStatusStyle: Record<WeekState, { bg: string; tx: string; label: string }> = {
@@ -8,13 +9,6 @@ export const weekStatusStyle: Record<WeekState, { bg: string; tx: string; label:
   approved: { bg: colors.greenBg, tx: colors.greenTx, label: 'Approved by Supervisor' },
   returned: { bg: colors.redBg, tx: colors.redTx, label: 'Returned for Revision' },
 };
-
-function dateRangeLabel(start: string, end: string) {
-  const s = new Date(`${start.slice(0, 10)}T00:00:00`);
-  const e = new Date(`${end.slice(0, 10)}T00:00:00`);
-  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  return `${fmt(s)} – ${fmt(e)}, ${e.getFullYear()}`;
-}
 
 export function WeekCard({
   weekStart,

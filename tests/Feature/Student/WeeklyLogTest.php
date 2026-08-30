@@ -347,4 +347,167 @@ class WeeklyLogTest extends TestCase
 
         $response->assertOk();
     }
+
+    // ------------------------------------------------------- manual bundling
+
+    /**
+     * The whole point of the on-demand compile: an entry filed AFTER the
+     * overnight job has already run for that week still reaches the narrative,
+     * because the student can ask for it.
+     */
+    public function test_student_can_compile_their_own_week_from_submitted_daily_entries(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $weekStart = Carbon::now()->startOfWeek(Carbon::MONDAY);
+
+        $this->submitDailyEntry($student, $weekStart, 'Set up the reporting module.');
+        $this->submitDailyEntry($student, $weekStart->copy()->addDay(), 'Wrote the acceptance tests.');
+
+        $response = $this->postJson("/api/student/weekly-logs/{$weekStart->toDateString()}/bundle");
+
+        $response->assertOk();
+        $narrative = $response->json('narrative');
+
+        $this->assertStringContainsString("MONDAY\nSet up the reporting module.", $narrative);
+        $this->assertStringContainsString("TUESDAY\nWrote the acceptance tests.", $narrative);
+
+        $this->assertDatabaseHas('weekly_logs', [
+            'student_id' => $student->id,
+            'narrative' => $narrative,
+        ]);
+    }
+
+    /**
+     * Compiling replaces the narrative box, and the whole reason the student
+     * needs it is to pick up entries written late — including ones written
+     * after a first compile.
+     */
+    public function test_compiling_again_picks_up_an_entry_written_late(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $weekStart = Carbon::now()->startOfWeek(Carbon::MONDAY);
+
+        $this->submitDailyEntry($student, $weekStart, 'Monday work.');
+        $this->postJson("/api/student/weekly-logs/{$weekStart->toDateString()}/bundle")->assertOk();
+
+        $this->submitDailyEntry($student, $weekStart->copy()->addDays(2), 'Wednesday, written a week late.');
+
+        $narrative = $this->postJson("/api/student/weekly-logs/{$weekStart->toDateString()}/bundle")
+            ->assertOk()
+            ->json('narrative');
+
+        $this->assertStringContainsString("MONDAY\nMonday work.", $narrative);
+        $this->assertStringContainsString("WEDNESDAY\nWednesday, written a week late.", $narrative);
+    }
+
+    public function test_compiling_a_week_with_no_submitted_entries_is_refused(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $weekStart = Carbon::now()->startOfWeek(Carbon::MONDAY);
+
+        // A draft is not a submission, so there is still nothing to compile.
+        JournalEntry::create([
+            'student_id' => $student->id,
+            'batch_id' => $student->batchEnrollment->batch_id,
+            'entry_date' => $weekStart->toDateString(),
+            'content' => ['daily_accomplishment' => 'Half-written.'],
+            'status' => 'draft',
+        ]);
+
+        $this->postJson("/api/student/weekly-logs/{$weekStart->toDateString()}/bundle")
+            ->assertStatus(422);
+
+        $this->assertDatabaseMissing('weekly_logs', ['student_id' => $student->id]);
+    }
+
+    /**
+     * A log under review belongs to the supervisor — the student cannot pull it
+     * back by recompiling it.
+     */
+    public function test_compiling_a_submitted_week_is_refused(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $weekStart = Carbon::now()->startOfWeek(Carbon::MONDAY);
+        $this->submitDailyEntry($student, $weekStart, 'Monday work.');
+
+        WeeklyLog::create([
+            'student_id' => $student->id,
+            'batch_id' => $student->batchEnrollment->batch_id,
+            'week_start' => $weekStart->toDateString(),
+            'week_end' => $weekStart->copy()->addDays(6)->toDateString(),
+            'narrative' => 'What the supervisor is reading.',
+            'status' => 'pending',
+            'submitted_at' => now(),
+        ]);
+
+        $this->postJson("/api/student/weekly-logs/{$weekStart->toDateString()}/bundle")
+            ->assertStatus(422);
+
+        $this->assertDatabaseHas('weekly_logs', [
+            'student_id' => $student->id,
+            'narrative' => 'What the supervisor is reading.',
+        ]);
+    }
+
+    /**
+     * ...but a RETURNED one is back in the student's hands, so recompiling it
+     * after fixing the daily entries is exactly the revision path.
+     */
+    public function test_compiling_a_returned_week_is_allowed(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $weekStart = Carbon::now()->startOfWeek(Carbon::MONDAY);
+        $this->submitDailyEntry($student, $weekStart, 'Rewritten with the detail the supervisor asked for.');
+
+        WeeklyLog::create([
+            'student_id' => $student->id,
+            'batch_id' => $student->batchEnrollment->batch_id,
+            'week_start' => $weekStart->toDateString(),
+            'week_end' => $weekStart->copy()->addDays(6)->toDateString(),
+            'narrative' => 'Too thin.',
+            'status' => 'returned',
+            'submitted_at' => now()->subDay(),
+            'supervisor_comment' => 'Please expand this.',
+        ]);
+
+        $narrative = $this->postJson("/api/student/weekly-logs/{$weekStart->toDateString()}/bundle")
+            ->assertOk()
+            ->json('narrative');
+
+        $this->assertStringContainsString('Rewritten with the detail the supervisor asked for.', $narrative);
+    }
+
+    public function test_compiling_a_week_that_has_not_started_is_refused(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $nextWeek = Carbon::now()->startOfWeek(Carbon::MONDAY)->addWeek();
+
+        $this->postJson("/api/student/weekly-logs/{$nextWeek->toDateString()}/bundle")
+            ->assertStatus(422);
+    }
+
+    private function submitDailyEntry($student, Carbon $date, string $text): JournalEntry
+    {
+        return JournalEntry::create([
+            'student_id' => $student->id,
+            'batch_id' => $student->batchEnrollment->batch_id,
+            'entry_date' => $date->toDateString(),
+            // Bundling compiles from daily_accomplishment specifically.
+            'content' => ['daily_accomplishment' => $text],
+            'status' => 'submitted',
+            'submitted_at' => now(),
+        ]);
+    }
 }

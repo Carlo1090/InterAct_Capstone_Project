@@ -1,5 +1,6 @@
-import { View, Text, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Button } from './Button';
 import { colors } from '../constants/colors';
 
 /**
@@ -13,18 +14,7 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry: () 
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 }}>
       <Ionicons name="cloud-offline-outline" size={32} color={colors.gray400} />
       <Text style={{ fontSize: 13, color: colors.gray600, textAlign: 'center', lineHeight: 19 }}>{message}</Text>
-      <Pressable
-        onPress={onRetry}
-        style={{
-          marginTop: 8,
-          paddingVertical: 10,
-          paddingHorizontal: 20,
-          borderRadius: 10,
-          backgroundColor: colors.blue600,
-        }}
-      >
-        <Text style={{ color: 'white', fontSize: 13, fontWeight: '600' }}>Retry</Text>
-      </Pressable>
+      <Button label="Retry" icon="refresh" size="sm" onPress={onRetry} style={{ marginTop: 8 }} />
     </View>
   );
 }

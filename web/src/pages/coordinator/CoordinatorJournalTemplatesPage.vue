@@ -356,47 +356,76 @@ onMounted(load)
       You have no programs assigned yet. Ask an admin to assign you to a department.
     </p>
 
-    <div v-else class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
-      <table class="min-w-full divide-y divide-slate-200">
-        <thead class="bg-slate-50">
-          <tr>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Name</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Programs</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Sections</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-200">
-          <tr v-if="templates.length === 0">
-            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="5">No journal templates yet.</td>
-          </tr>
-          <tr v-for="template in templates" :key="template.id">
-            <td class="px-4 py-3 text-sm font-medium text-slate-900">{{ template.name }}</td>
-            <td class="px-4 py-3 text-sm text-slate-700">{{ programNames(template) }}</td>
-            <td class="px-4 py-3 text-sm text-slate-700">{{ template.sections.length }}</td>
-            <td class="px-4 py-3 text-sm">
-              <span
-                class="rounded-full px-3 py-1 text-xs font-bold"
-                :class="template.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
-              >
-                {{ template.is_active ? 'Available' : 'Off' }}
-              </span>
-            </td>
-            <td class="px-4 py-3 text-sm">
-              <div class="flex gap-2">
-                <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="openEditModal(template)">
-                  Edit
-                </button>
-                <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="toggleActive(template)">
-                  {{ template.is_active ? 'Turn Off' : 'Turn On' }}
-                </button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <template v-else>
+      <!-- md and up: aligned table. -->
+      <div class="hidden overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200 md:block">
+        <table class="min-w-full divide-y divide-slate-200">
+          <thead class="bg-slate-50">
+            <tr>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Name</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Programs</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Sections</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-200">
+            <tr v-if="templates.length === 0">
+              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="5">No journal templates yet.</td>
+            </tr>
+            <tr v-for="template in templates" :key="template.id">
+              <td class="px-4 py-3 text-sm font-medium text-slate-900">{{ template.name }}</td>
+              <td class="px-4 py-3 text-sm text-slate-700">{{ programNames(template) }}</td>
+              <td class="px-4 py-3 text-sm text-slate-700">{{ template.sections.length }}</td>
+              <td class="px-4 py-3 text-sm">
+                <span
+                  class="rounded-full px-3 py-1 text-xs font-bold"
+                  :class="template.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
+                >
+                  {{ template.is_active ? 'Available' : 'Off' }}
+                </span>
+              </td>
+              <td class="px-4 py-3 text-sm">
+                <div class="flex gap-2">
+                  <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="openEditModal(template)">
+                    Edit
+                  </button>
+                  <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="toggleActive(template)">
+                    {{ template.is_active ? 'Turn Off' : 'Turn On' }}
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Below md: one stacked card per template, so nothing scrolls sideways. -->
+      <ul class="divide-y divide-slate-100 rounded-lg bg-white px-4 shadow-sm ring-1 ring-slate-200 md:hidden">
+        <li v-if="templates.length === 0" class="py-6 text-center text-sm text-slate-500">No journal templates yet.</li>
+        <li v-for="template in templates" :key="template.id" class="py-4">
+          <div class="flex items-start justify-between gap-3">
+            <p class="min-w-0 truncate text-sm font-semibold text-slate-900">{{ template.name }}</p>
+            <span
+              class="shrink-0 rounded-full px-3 py-1 text-xs font-bold"
+              :class="template.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
+            >
+              {{ template.is_active ? 'Available' : 'Off' }}
+            </span>
+          </div>
+          <p class="mt-1 truncate text-xs text-slate-500">{{ programNames(template) }}</p>
+          <p class="mt-0.5 text-xs text-slate-400">{{ template.sections.length }} section{{ template.sections.length === 1 ? '' : 's' }}</p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="openEditModal(template)">
+              Edit
+            </button>
+            <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="toggleActive(template)">
+              {{ template.is_active ? 'Turn Off' : 'Turn On' }}
+            </button>
+          </div>
+        </li>
+      </ul>
+    </template>
 
     <!-- Template modal: capped height, header/footer pinned, body scrolls internally so the whole form is reachable top-to-bottom. -->
     <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4 py-8">

@@ -123,16 +123,22 @@ const toRowModel = (entry: WeeklyActivityEntryRecord): RowModel => ({
   supervisor_position: entry.supervisor_position ?? '',
 })
 
-/** A draft row can only be created once the server's required fields are present. */
-const isRowCreatable = (row: RowModel): boolean =>
-  row.inclusive_date_start !== '' && row.inclusive_date_end !== '' && row.activities.trim() !== ''
-
-/** A draft the student has not touched at all — never saved, never warned about. */
+/** A draft the student has not touched at all — never saved, nothing to lose. */
 const isRowUntouched = (row: RowModel): boolean =>
-  row.id === null &&
   !row.inclusive_date_start && !row.inclusive_date_end &&
-  !row.activities && !row.documents_records && !row.objectives &&
-  !row.supervisor_name && !row.supervisor_position
+  !row.activities.trim() && !row.documents_records.trim() && !row.objectives.trim() &&
+  !row.supervisor_name.trim() && !row.supervisor_position.trim()
+
+/**
+ * A draft row is created as soon as ANY cell has something in it.
+ *
+ * It used to require both dates plus the Activities text, because those three
+ * columns were NOT NULL — so a half-typed row lived only in this browser tab
+ * and vanished on logout with nothing on screen admitting it. The columns are
+ * nullable now and the server only refuses a completely blank row, so the two
+ * rules line up and nothing typed is left unsaved.
+ */
+const isRowCreatable = (row: RowModel): boolean => !isRowUntouched(row)
 
 /** One page-level status, so the student always knows where their work stands. */
 const saveState = computed<SaveStatus>(() => {
@@ -152,9 +158,17 @@ const saveStateLabel = computed(() => ({
   error: 'Could not save — check the highlighted fields',
 }[saveState.value]))
 
-/** A draft row that is started but not yet complete enough to be created. */
-const incompleteDraftCount = computed(
-  () => rows.value.filter((r) => r.id === null && !isRowUntouched(r) && !isRowCreatable(r)).length,
+/**
+ * Anything typed that the server has not confirmed yet — a debounce still
+ * running, a request in flight, or a row whose last save failed. Used to warn
+ * before the tab closes; see the beforeunload handler.
+ */
+const hasUnsavedWork = computed(
+  () =>
+    headerStatus.value === 'pending' ||
+    headerStatus.value === 'saving' ||
+    headerStatus.value === 'error' ||
+    rows.value.some((row) => ['pending', 'saving', 'error'].includes(row.status)),
 )
 
 async function load() {
@@ -282,10 +296,13 @@ async function flushRow(row: RowModel) {
   row.status = 'saving'
   row.errors = {}
 
+  // Empty means "not filled in yet", not an empty string — a bare '' would
+  // fail the `date` rule and reject the whole row over a cell the student has
+  // simply not reached.
   const payload = {
-    inclusive_date_start: row.inclusive_date_start,
-    inclusive_date_end: row.inclusive_date_end,
-    activities: row.activities,
+    inclusive_date_start: row.inclusive_date_start || null,
+    inclusive_date_end: row.inclusive_date_end || null,
+    activities: row.activities || null,
     documents_records: row.documents_records || null,
     objectives: row.objectives || null,
     supervisor_name: row.supervisor_name || null,
@@ -368,8 +385,40 @@ async function deleteRow(row: RowModel, index: number) {
   }
 }
 
-onMounted(load)
-onBeforeUnmount(flushPending)
+/**
+ * Two extra safety nets over the unmount flush, both aimed at the same failure:
+ * work sitting inside an 800ms debounce when the student leaves.
+ *
+ * `visibilitychange` fires when the tab is backgrounded or the phone is
+ * locked — the point at which a browser is free to freeze or discard the page —
+ * and unlike `beforeunload` it is reliable on mobile. `beforeunload` then
+ * covers a hard close or reload, and only speaks up when there is genuinely
+ * something unconfirmed: a prompt on every navigation would be noise, and
+ * students would learn to click through it.
+ */
+function onVisibilityChange() {
+  if (document.visibilityState === 'hidden') flushPending()
+}
+
+function onBeforeUnload(event: BeforeUnloadEvent) {
+  flushPending()
+  if (!hasUnsavedWork.value) return
+  event.preventDefault()
+  // Legacy browsers need returnValue set; the string itself is never shown.
+  event.returnValue = ''
+}
+
+onMounted(() => {
+  document.addEventListener('visibilitychange', onVisibilityChange)
+  window.addEventListener('beforeunload', onBeforeUnload)
+  void load()
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  window.removeEventListener('beforeunload', onBeforeUnload)
+  flushPending()
+})
 </script>
 
 <template>
@@ -571,7 +620,10 @@ onBeforeUnmount(flushPending)
                 </p>
               </div>
 
-              <div class="overflow-x-auto px-6 py-5">
+              <p class="px-6 pt-4 text-xs text-slate-400 sm:hidden">
+                ↔ This table is wide — scroll sideways to see every column.
+              </p>
+              <div class="overflow-x-auto px-2 py-5 sm:px-6">
                 <table class="w-full min-w-248 table-fixed border-collapse text-sm">
                   <colgroup>
                     <col class="w-10" />
@@ -742,8 +794,8 @@ onBeforeUnmount(flushPending)
                   </svg>
                   Add Another Row
                 </button>
-                <p v-if="incompleteDraftCount" class="text-xs text-slate-500">
-                  A row is saved once it has both dates and an activity.
+                <p class="text-xs text-slate-500">
+                  Rows save on their own as you type — even half-filled ones. Nothing here is lost if you log out.
                 </p>
               </div>
             </div>

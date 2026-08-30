@@ -27,6 +27,9 @@ type Geofence = {
   captured_accuracy: number | null
   accuracy_is_poor: boolean
   is_active: boolean
+  // Punches taken at this site. Zero is what makes permanent delete lossless,
+  // and therefore what makes it available at all.
+  sessions_count: number
   scan_url: string
 }
 
@@ -201,11 +204,19 @@ const updateRadius = async (geofence: Geofence, radius: number) => {
   }
 }
 
+/**
+ * Step one of two. Retiring switches the site off — the QR stops working —
+ * without touching anything. It is reversible, and the copy now says so,
+ * because the old wording read like a delete and made a recoverable action
+ * feel final.
+ */
 const retireGeofence = async (geofence: Geofence) => {
   const confirmed = await confirmAction({
     title: `Retire "${geofence.label}"?`,
     message:
-      'Its QR code will stop working immediately. Time records already taken there are kept and still count.',
+      'Its QR code stops working immediately, and interns can no longer clock in there.\n\n'
+      + 'Time records already taken at this site are kept and still count. You can restore the site later '
+      + 'from Retired sites, and its existing QR codes will work again.',
     confirmLabel: 'Retire site',
     tone: 'danger',
   })
@@ -215,9 +226,77 @@ const retireGeofence = async (geofence: Geofence) => {
   try {
     await api.delete(`/api/supervisor/dtr/geofences/${geofence.id}`)
     geofence.is_active = false
-    showToast('Clock-in site retired.', 'success')
+    // Open the section it just moved into, so it does not appear to vanish.
+    retiredOpen.value = true
+    showToast('Clock-in site retired. You can restore it from Retired sites.', 'success')
   } catch (err) {
     showToast(categorizeError(err, 'The site could not be retired.').message, 'error')
+  }
+}
+
+/** Undo a retire. Same token, so codes already handed out start working again. */
+const restoreGeofence = async (geofence: Geofence) => {
+  const confirmed = await confirmAction({
+    title: `Restore "${geofence.label}"?`,
+    message:
+      'Interns will be able to clock in here again, and any QR code printed from this site before it was '
+      + 'retired starts working again.',
+    confirmLabel: 'Restore site',
+  })
+
+  if (!confirmed) return
+
+  try {
+    await api.post(`/api/supervisor/dtr/geofences/${geofence.id}/restore`)
+    geofence.is_active = true
+    showToast(`"${geofence.label}" is active again.`, 'success')
+  } catch (err) {
+    showToast(categorizeError(err, 'The site could not be restored.').message, 'error')
+  }
+}
+
+/**
+ * Step two, and the only irreversible action on this page.
+ *
+ * The confirmation is deliberately heavier than every other one in the app: a
+ * type-to-confirm prompt in the danger tone, where the supervisor writes the
+ * site's own name back. Every other destructive action here is recoverable —
+ * a retire can be restored, an adjusted session can be adjusted again, a void
+ * leaves the row — so a single "are you sure?" is proportionate to them. This
+ * one erases a row that cannot be brought back, so the gesture is made
+ * specific to THIS site rather than a reflex click on a button in a familiar
+ * position. It is offered only where the API would allow it (retired, zero
+ * punches), so the dialog never asks someone to type a name for an action
+ * that then fails.
+ */
+const deleteGeofenceForever = async (geofence: Geofence) => {
+  const typed = await promptAction({
+    title: `Permanently delete "${geofence.label}"?`,
+    message:
+      'This cannot be undone. The site, its coordinates and its QR code are erased, and any printed copy of '
+      + `that code becomes permanently dead.\n\nType the site name to confirm: ${geofence.label}`,
+    placeholder: geofence.label,
+    confirmLabel: 'Delete forever',
+    tone: 'danger',
+    multiline: false,
+    required: true,
+    requiredError: 'Type the site name to confirm.',
+    // Case- and whitespace-insensitive: the point is to prove the supervisor
+    // read WHICH site they are erasing, not to test their typing.
+    validate: (value) =>
+      value.trim().toLowerCase() === geofence.label.trim().toLowerCase()
+        ? null
+        : `That does not match. Type "${geofence.label}" exactly to confirm.`,
+  })
+
+  if (typed === null) return
+
+  try {
+    await api.delete(`/api/supervisor/dtr/geofences/${geofence.id}/permanent`)
+    geofences.value = geofences.value.filter((site) => site.id !== geofence.id)
+    showToast(`"${geofence.label}" was deleted.`, 'success')
+  } catch (err) {
+    showToast(categorizeError(err, 'The site could not be deleted.').message, 'error')
   }
 }
 
@@ -312,6 +391,16 @@ const changeFilter = async (value: typeof sessionFilter.value) => {
 }
 
 const activeSites = computed(() => geofences.value.filter((site) => site.is_active))
+
+/**
+ * Retired sites used to sit in the same grid as live ones at 60% opacity with
+ * every action stripped off — inert cards that could never be removed and only
+ * accumulated. They get their own collapsed section instead, where the two
+ * things you can actually do to one (put it back, or erase it) live.
+ */
+const retiredSites = computed(() => geofences.value.filter((site) => !site.is_active))
+const retiredOpen = ref(false)
+
 const hasMultipleCompanies = computed(() => companies.value.length > 1)
 
 const formatDate = (value: string | null): string => (value ? value.slice(0, 10) : '—')
@@ -405,28 +494,24 @@ onMounted(load)
           Clock-in sites ({{ activeSites.length }} active)
         </h2>
 
-        <div v-if="!geofences.length" class="rounded-xl bg-white p-6 text-sm text-slate-500 shadow-sm ring-1 ring-slate-200/70">
-          No clock-in sites yet. Create one above so your interns can start recording time.
+        <div v-if="!activeSites.length" class="rounded-xl bg-white p-6 text-sm text-slate-500 shadow-sm ring-1 ring-slate-200/70">
+          <template v-if="retiredSites.length">
+            No active clock-in sites. Create one above, or restore a retired site below.
+          </template>
+          <template v-else>
+            No clock-in sites yet. Create one above so your interns can start recording time.
+          </template>
         </div>
 
         <div v-else class="grid gap-4 md:grid-cols-2">
           <div
-            v-for="site in geofences"
+            v-for="site in activeSites"
             :key="site.id"
             class="flex h-full flex-col rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70"
-            :class="{ 'opacity-60': !site.is_active }"
           >
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <h3 class="truncate text-sm font-semibold text-slate-900">{{ site.label }}</h3>
-                <p class="text-xs text-slate-500">{{ site.company }} &middot; {{ site.radius_meters }}m radius</p>
-              </div>
-              <span
-                v-if="!site.is_active"
-                class="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500"
-              >
-                Retired
-              </span>
+            <div class="min-w-0">
+              <h3 class="truncate text-sm font-semibold text-slate-900">{{ site.label }}</h3>
+              <p class="text-xs text-slate-500">{{ site.company }} &middot; {{ site.radius_meters }}m radius</p>
             </div>
 
             <p
@@ -441,7 +526,7 @@ onMounted(load)
               {{ site.latitude.toFixed(6) }}, {{ site.longitude.toFixed(6) }}
             </p>
 
-            <label v-if="site.is_active" class="mt-3 flex items-center gap-2 text-xs text-slate-600">
+            <label class="mt-3 flex items-center gap-2 text-xs text-slate-600">
               Allowed range
               <select
                 :value="site.radius_meters"
@@ -457,7 +542,7 @@ onMounted(load)
               <span v-if="site.accuracy_is_poor" class="text-amber-700">widen if interns are refused</span>
             </label>
 
-            <div v-if="site.is_active" class="mt-4 flex items-center justify-end gap-2 whitespace-nowrap">
+            <div class="mt-4 flex items-center justify-end gap-2 whitespace-nowrap">
               <button
                 type="button"
                 class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition hover:bg-slate-50"
@@ -472,15 +557,99 @@ onMounted(load)
               >
                 PNG
               </button>
-              <button
-                type="button"
-                class="rounded-md px-3 py-1.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
-                @click="retireGeofence(site)"
-              >
-                Retire
-              </button>
+              <TooltipWrap label="Switch this site off. You can restore it later." placement="top" align="end">
+                <button
+                  type="button"
+                  class="rounded-md px-3 py-1.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+                  @click="retireGeofence(site)"
+                >
+                  Retire
+                </button>
+              </TooltipWrap>
             </div>
           </div>
+        </div>
+
+        <!--
+          Retired sites, out of the way but reachable. Collapsed by default:
+          they are history, not work — but this is the only place a site can be
+          put back or finally erased, so they cannot simply be hidden.
+        -->
+        <div v-if="retiredSites.length" class="mt-4 rounded-xl bg-white shadow-sm ring-1 ring-slate-200/70">
+          <button
+            type="button"
+            class="flex w-full items-center justify-between gap-3 px-5 py-3 text-left transition hover:bg-slate-50"
+            :aria-expanded="retiredOpen"
+            @click="retiredOpen = !retiredOpen"
+          >
+            <span class="text-xs font-medium uppercase tracking-wide text-slate-400">
+              Retired sites ({{ retiredSites.length }})
+            </span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              class="h-4 w-4 shrink-0 text-slate-400 transition-transform"
+              :class="retiredOpen && 'rotate-180'"
+            >
+              <path d="m6 9.5 6 6 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+
+          <ul v-if="retiredOpen" class="divide-y divide-slate-100 border-t border-slate-100">
+            <li v-for="site in retiredSites" :key="site.id" class="px-5 py-4">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <h3 class="truncate text-sm font-semibold text-slate-700">{{ site.label }}</h3>
+                    <span class="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+                      Retired
+                    </span>
+                  </div>
+                  <p class="mt-0.5 text-xs text-slate-500">{{ site.company }} &middot; {{ site.radius_meters }}m radius</p>
+                  <p class="mt-1 font-mono text-xs text-slate-400">
+                    {{ site.latitude.toFixed(6) }}, {{ site.longitude.toFixed(6) }}
+                  </p>
+                </div>
+
+                <div class="flex shrink-0 items-center gap-2 whitespace-nowrap">
+                  <button
+                    type="button"
+                    class="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition hover:bg-slate-50"
+                    @click="restoreGeofence(site)"
+                  >
+                    Restore
+                  </button>
+                  <!--
+                    Offered ONLY at zero punches, the only case where erasing
+                    the row loses nothing. A used site keeps its Delete button
+                    hidden and says why in its place, rather than showing a
+                    button that answers 422.
+                  -->
+                  <TooltipWrap
+                    v-if="site.sessions_count === 0"
+                    label="Erase this site for good. It has no time records, so nothing is lost."
+                    placement="top"
+                    align="end"
+                  >
+                    <button
+                      type="button"
+                      class="rounded-md px-3 py-1.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+                      @click="deleteGeofenceForever(site)"
+                    >
+                      Delete permanently
+                    </button>
+                  </TooltipWrap>
+                </div>
+              </div>
+
+              <p v-if="site.sessions_count > 0" class="mt-2 text-xs text-slate-500">
+                Kept because {{ site.sessions_count }}
+                {{ site.sessions_count === 1 ? 'time record was' : 'time records were' }} taken here — deleting
+                the site would strip the location off {{ site.sessions_count === 1 ? 'it' : 'them' }}.
+              </p>
+            </li>
+          </ul>
         </div>
       </div>
 

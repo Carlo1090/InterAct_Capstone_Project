@@ -122,6 +122,24 @@ export type PromptOptions = {
   /** When true, an empty/whitespace value is rejected with `requiredError`. */
   required?: boolean
   requiredError?: string
+  /**
+   * Prompts default to the neutral tone. Pass 'danger' for a prompt that is
+   * itself the confirmation of a destructive act — a type-to-confirm delete,
+   * where the typing IS the safety and the dialog should look like it.
+   */
+  tone?: ConfirmTone
+  /**
+   * Reject the entered value with a message shown inline, keeping the dialog
+   * open. Return null to accept. This is what makes type-to-confirm possible
+   * without every caller re-implementing "wrong text, try again".
+   */
+  validate?: (value: string) => string | null
+  /**
+   * Prompts render a 3-row textarea by default (they were built for reasons
+   * and comments). A short exact value — a name typed back to confirm a
+   * delete — belongs in a single-line input instead.
+   */
+  multiline?: boolean
 }
 
 type DialogMode = 'confirm' | 'prompt'
@@ -139,6 +157,8 @@ type DialogState = {
   required: boolean
   requiredError: string
   inputError: string
+  multiline: boolean
+  validate: ((value: string) => string | null) | null
   resolver: ((value: boolean | string | null) => void) | null
 }
 
@@ -155,6 +175,8 @@ const dialog = reactive<DialogState>({
   required: false,
   requiredError: 'This field is required.',
   inputError: '',
+  multiline: true,
+  validate: null,
   resolver: null,
 })
 
@@ -209,11 +231,13 @@ export function promptAction(input: string | PromptOptions): Promise<string | nu
     dialog.message = opts.message
     dialog.confirmLabel = opts.confirmLabel ?? 'Submit'
     dialog.cancelLabel = opts.cancelLabel ?? 'Cancel'
-    dialog.tone = 'default'
+    dialog.tone = opts.tone ?? 'default'
     dialog.placeholder = opts.placeholder ?? ''
     dialog.inputValue = opts.initialValue ?? ''
     dialog.required = opts.required ?? false
     dialog.requiredError = opts.requiredError ?? 'This field is required.'
+    dialog.multiline = opts.multiline ?? true
+    dialog.validate = opts.validate ?? null
     dialog.inputError = ''
     dialog.open = true
     dialog.resolver = (value) => resolve(typeof value === 'string' ? value : null)
@@ -226,6 +250,16 @@ export function acceptDialog(): void {
     const value = dialog.inputValue.trim()
     if (dialog.required && value === '') {
       dialog.inputError = dialog.requiredError
+      return
+    }
+    // Caller-supplied validation runs after the required check, so an empty
+    // value reports "this is required" rather than a validator's own wording.
+    // A failure leaves the dialog OPEN with the message inline: a wrong entry
+    // on a destructive confirm is a slip to correct, not a reason to make the
+    // user start the whole action again.
+    const invalid = dialog.validate?.(value) ?? null
+    if (invalid !== null) {
+      dialog.inputError = invalid
       return
     }
     settle(value)

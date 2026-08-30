@@ -2,6 +2,8 @@ import axios, { AxiosError } from 'axios';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as SecureStore from 'expo-secure-store';
+// Safe: endpoints.ts imports nothing, so there is no cycle back into here.
+import { endpoints } from './endpoints';
 
 // 10.0.2.2 = Android emulator alias for the host machine's localhost.
 // Swap for your machine's LAN IP (e.g. http://192.168.1.20:8000) when
@@ -134,5 +136,56 @@ export async function downloadAndSharePdf(path: string, filename: string): Promi
 
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(result.uri, { mimeType: 'application/pdf' });
+  }
+}
+
+/**
+ * Uploads a picked image as the user's avatar.
+ *
+ * Sent as real multipart/form-data rather than base64 JSON: the backend's
+ * rule is `['required','image','mimes:jpeg,jpg,png,webp','max:2048']`, and
+ * `image`/`mimes` validate an uploaded FILE — a base64 string would fail
+ * before ever reaching AvatarProcessingService.
+ *
+ * The Content-Type header is deliberately NOT set. React Native's fetch adds
+ * the multipart boundary itself, and setting the header by hand omits that
+ * boundary, which makes the server parse zero fields and report the photo as
+ * missing.
+ */
+export async function uploadAvatar(uri: string, mimeType?: string | null): Promise<void> {
+  const token = await SecureStore.getItemAsync(TOKEN_KEY);
+
+  // Derive a filename with a real extension — Laravel's `mimes:` rule reads
+  // the uploaded name's extension as well as the sniffed type.
+  const extensionFromUri = uri.split('.').pop()?.split('?')[0]?.toLowerCase();
+  const extension = ['jpg', 'jpeg', 'png', 'webp'].includes(extensionFromUri ?? '')
+    ? (extensionFromUri as string)
+    : 'jpg';
+
+  const form = new FormData();
+  form.append('photo', {
+    uri,
+    name: `avatar.${extension}`,
+    type: mimeType || `image/${extension === 'jpg' ? 'jpeg' : extension}`,
+  } as unknown as Blob);
+
+  const response = await fetch(`${API_BASE_URL}${endpoints.profilePhoto}`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: form,
+  });
+
+  if (!response.ok) {
+    let message = 'Could not upload your photo. Please try again.';
+    try {
+      const body = await response.json();
+      message = body?.errors?.photo?.[0] ?? body?.message ?? message;
+    } catch {
+      // Non-JSON error body — keep the default wording.
+    }
+    throw new ApiError(message, response.status);
   }
 }

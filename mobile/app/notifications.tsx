@@ -6,6 +6,7 @@ import { ErrorState, LoadingState } from '../src/components/ErrorState';
 import { useNotifications } from '../src/hooks/useNotifications';
 import { NotificationItem } from '../src/types/api';
 import { colors } from '../src/constants/colors';
+import { OfflineNotice } from '../src/components/OfflineNotice';
 
 const toneForType: Record<string, { icon: keyof typeof Ionicons.glyphMap; color: string }> = {
   email: { icon: 'mail-outline', color: colors.blue600 },
@@ -20,7 +21,7 @@ function formatSentAt(iso: string) {
 }
 
 export default function Notifications() {
-  const { notifications, unreadCount, loading, error, reload, markAllRead, clearAll } = useNotifications();
+  const { notifications, unreadCount, loading, error, isOffline, reload, markAllRead, clearAll } = useNotifications();
 
   // Matches the web bell's behavior: opening the list marks everything read.
   useEffect(() => {
@@ -57,6 +58,8 @@ export default function Notifications() {
           </Pressable>
         ) : null}
       </View>
+
+      <OfflineNotice feature="notifications" show={isOffline && notifications.length > 0} />
 
       {loading && notifications.length === 0 ? (
         <LoadingState />

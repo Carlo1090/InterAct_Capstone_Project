@@ -320,9 +320,12 @@ onMounted(loadIndex)
       <p v-else-if="isLoadingSheet" class="text-sm text-slate-500">Loading sheet...</p>
 
       <!-- PREVIEW — read-only document -->
-      <div v-else-if="mode === 'preview'" class="overflow-x-auto rounded-lg bg-slate-100 p-4 sm:p-6">
-        <GroupInfoSheetPaperView :department-line="departmentLine" :company="company" :rows="rows" />
-      </div>
+      <template v-else-if="mode === 'preview'">
+        <p class="mb-2 text-xs text-slate-400 sm:hidden">↔ The roster table is wide — scroll sideways to see every column.</p>
+        <div class="overflow-x-auto rounded-lg bg-slate-100 p-4 sm:p-6">
+          <GroupInfoSheetPaperView :department-line="departmentLine" :company="company" :rows="rows" />
+        </div>
+      </template>
 
       <template v-else>
         <!-- Document header line -->

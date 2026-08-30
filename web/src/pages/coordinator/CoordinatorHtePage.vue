@@ -283,55 +283,112 @@ onMounted(loadIndex)
             No enrolled interns were found for this academic year. Use “Add Row” to enter one manually.
           </p>
 
-          <div v-else class="mt-4 overflow-x-auto">
-            <table class="min-w-full border-collapse text-sm">
-              <thead>
-                <tr class="border-b border-slate-200 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
-                  <th class="w-20 px-2 py-2">Include</th>
-                  <th class="px-2 py-2">Host Establishment</th>
-                  <th class="px-2 py-2">Student Intern</th>
-                  <th class="w-28 px-2 py-2">Program</th>
-                  <th class="w-28 px-2 py-2">Gender</th>
-                  <th class="px-2 py-2">Duration</th>
-                  <th class="w-16 px-2 py-2"></th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-100">
-                <tr v-for="row in rows" :key="row.id" :class="row.included ? '' : 'opacity-50'">
-                  <td class="px-2 py-3 align-top">
-                    <label class="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                      <input v-model="row.included" type="checkbox" />
-                      {{ row.included ? 'In' : 'Out' }}
+          <div v-else class="mt-4">
+            <!-- md and up: aligned table. -->
+            <div class="hidden overflow-x-auto md:block">
+              <table class="min-w-full border-collapse text-sm">
+                <thead>
+                  <tr class="border-b border-slate-200 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
+                    <th class="w-20 px-2 py-2">Include</th>
+                    <th class="px-2 py-2">Host Establishment</th>
+                    <th class="px-2 py-2">Student Intern</th>
+                    <th class="w-28 px-2 py-2">Program</th>
+                    <th class="w-28 px-2 py-2">Gender</th>
+                    <th class="px-2 py-2">Duration</th>
+                    <th class="w-16 px-2 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr v-for="row in rows" :key="row.id" :class="row.included ? '' : 'opacity-50'">
+                    <td class="px-2 py-3 align-top">
+                      <label class="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                        <input v-model="row.included" type="checkbox" />
+                        {{ row.included ? 'In' : 'Out' }}
+                      </label>
+                      <span v-if="row.is_manual" class="mt-1 inline-block rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">Manual</span>
+                    </td>
+                    <td class="px-2 py-3 align-top">
+                      <input v-model="row.host_establishment" type="text" maxlength="200" class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs" />
+                    </td>
+                    <td class="px-2 py-3 align-top">
+                      <input v-model="row.student_name" type="text" maxlength="200" class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs" />
+                    </td>
+                    <td class="px-2 py-3 align-top">
+                      <input v-model="row.program" type="text" maxlength="100" class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs" />
+                    </td>
+                    <td class="px-2 py-3 align-top">
+                      <select v-model="row.gender" class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs">
+                        <option value="">—</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                      </select>
+                    </td>
+                    <td class="px-2 py-3 align-top">
+                      <input v-model="row.duration" type="text" maxlength="100" class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs" />
+                    </td>
+                    <td class="px-2 py-3 text-right align-top">
+                      <button type="button" class="text-xs font-semibold text-red-600 hover:text-red-700" @click="deleteRow(row)">
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Below md: one full-width card per row — each field gets the whole
+                 screen width instead of a cramped table cell. -->
+            <ul class="space-y-3 md:hidden">
+              <li
+                v-for="row in rows"
+                :key="row.id"
+                class="rounded-lg border border-slate-200 p-3"
+                :class="row.included ? '' : 'opacity-50'"
+              >
+                <div class="flex items-center justify-between gap-3">
+                  <label class="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                    <input v-model="row.included" type="checkbox" />
+                    {{ row.included ? 'In' : 'Out' }}
+                  </label>
+                  <span v-if="row.is_manual" class="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">Manual</span>
+                </div>
+
+                <div class="mt-3 space-y-3">
+                  <label class="block">
+                    <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Host Establishment</span>
+                    <input v-model="row.host_establishment" type="text" maxlength="200" class="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs" />
+                  </label>
+                  <label class="block">
+                    <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Student Intern</span>
+                    <input v-model="row.student_name" type="text" maxlength="200" class="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs" />
+                  </label>
+                  <div class="grid grid-cols-2 gap-3">
+                    <label class="block">
+                      <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Program</span>
+                      <input v-model="row.program" type="text" maxlength="100" class="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs" />
                     </label>
-                    <span v-if="row.is_manual" class="mt-1 inline-block rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">Manual</span>
-                  </td>
-                  <td class="px-2 py-3 align-top">
-                    <input v-model="row.host_establishment" type="text" maxlength="200" class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs" />
-                  </td>
-                  <td class="px-2 py-3 align-top">
-                    <input v-model="row.student_name" type="text" maxlength="200" class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs" />
-                  </td>
-                  <td class="px-2 py-3 align-top">
-                    <input v-model="row.program" type="text" maxlength="100" class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs" />
-                  </td>
-                  <td class="px-2 py-3 align-top">
-                    <select v-model="row.gender" class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs">
-                      <option value="">—</option>
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                    </select>
-                  </td>
-                  <td class="px-2 py-3 align-top">
-                    <input v-model="row.duration" type="text" maxlength="100" class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs" />
-                  </td>
-                  <td class="px-2 py-3 text-right align-top">
-                    <button type="button" class="text-xs font-semibold text-red-600 hover:text-red-700" @click="deleteRow(row)">
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+                    <label class="block">
+                      <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Gender</span>
+                      <select v-model="row.gender" class="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs">
+                        <option value="">—</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label class="block">
+                    <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Duration</span>
+                    <input v-model="row.duration" type="text" maxlength="100" class="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs" />
+                  </label>
+                </div>
+
+                <div class="mt-3 text-right">
+                  <button type="button" class="text-xs font-semibold text-red-600 hover:text-red-700" @click="deleteRow(row)">
+                    Delete
+                  </button>
+                </div>
+              </li>
+            </ul>
 
             <p class="mt-2 text-xs text-slate-400">Only included rows appear in the exported PDF. Deletes and edits are saved when you Save/Finalize.</p>
           </div>

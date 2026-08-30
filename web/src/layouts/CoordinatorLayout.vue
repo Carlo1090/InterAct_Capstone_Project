@@ -17,12 +17,14 @@ const navItems = [
   { label: 'Users', to: '/coordinator/users', badge: '', icon: 'people' },
   { label: 'Daily Journal Activities', to: '/coordinator/journal-activities', badge: '', icon: 'calendar' },
   { label: 'Weekly Journals', to: '/coordinator/weekly-journals', badge: '', icon: 'stack' },
+  { label: 'Weekly and Time Log Summary', to: '/coordinator/weekly-time-logs', badge: '', icon: 'clock' },
   { label: 'Daily Time Record', to: '/coordinator/dtr', badge: '', icon: 'map-pin' },
   { label: 'Journal Templates', to: '/coordinator/journal-templates', badge: '', icon: 'journals' },
   { label: 'Batches', to: '/coordinator/batches', badge: '', icon: 'briefcase' },
   { label: 'Partner Companies', to: '/coordinator/companies', badge: '', icon: 'building' },
   { label: 'Student Info Sheets', to: '/coordinator/info-sheets', badge: '', icon: 'id-card' },
   { label: 'Group Info Sheets', to: '/coordinator/group-info-sheets', badge: '', icon: 'id-card' },
+  { label: 'Student Exit Interviews', to: '/coordinator/exit-interviews', badge: '', icon: 'exit' },
   { label: 'Annual SIPP Report', to: '/coordinator/annual-sipp', badge: '', icon: 'chart' },
   { label: 'HTE & Student Interns List', to: '/coordinator/hte', badge: '', icon: 'clipboard' },
 ]
@@ -156,6 +158,10 @@ onBeforeUnmount(() => {
             />
             <path v-if="item.icon === 'stack'" d="m4 13.5 8 4.5 8-4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
 
+            <!-- Same glyph the student layout uses for their own copy of this form. -->
+            <circle v-if="item.icon === 'clock'" cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.6" />
+            <path v-if="item.icon === 'clock'" d="M12 7.5V12l3 1.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+
             <rect v-if="item.icon === 'journals'" x="4.5" y="3.5" width="15" height="17" rx="1.5" stroke="currentColor" stroke-width="1.6" />
             <path v-if="item.icon === 'journals'" d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
 
@@ -169,6 +175,9 @@ onBeforeUnmount(() => {
             <rect v-if="item.icon === 'id-card'" x="3.5" y="5.5" width="17" height="13" rx="2" stroke="currentColor" stroke-width="1.6" />
             <circle v-if="item.icon === 'id-card'" cx="9" cy="11.5" r="2" stroke="currentColor" stroke-width="1.6" />
             <path v-if="item.icon === 'id-card'" d="M6.5 15.5c.6-1.4 1.8-2 2.5-2s1.9.6 2.5 2M14 10h4M14 13h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+
+            <path v-if="item.icon === 'exit'" d="M14 4.5H6.5A1.5 1.5 0 0 0 5 6v12a1.5 1.5 0 0 0 1.5 1.5H14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+            <path v-if="item.icon === 'exit'" d="M15.5 8.5 19 12l-3.5 3.5M10.5 12H19" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
 
             <path v-if="item.icon === 'chart'" d="M4 20V9M10 20V4M16 20v-7M4 20h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
 

@@ -507,51 +507,80 @@ onMounted(load)
       You have no programs assigned yet. Ask an admin to assign you to a department.
     </p>
 
-    <div v-else class="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
-      <table class="min-w-full divide-y divide-slate-200">
-        <thead class="bg-slate-50">
-          <tr>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Batch</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">AY / Semester</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Start</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">End</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
-            <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-100">
-          <tr v-if="batches.length === 0">
-            <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="7">No batches yet.</td>
-          </tr>
-          <tr v-for="batch in batches" :key="batch.id">
-            <td class="px-4 py-3 text-sm font-semibold text-slate-900">{{ batch.name }}</td>
-            <td class="px-4 py-3 text-sm text-slate-700">{{ batch.program?.name ?? '—' }}</td>
-            <td class="px-4 py-3 text-sm text-slate-500">{{ batch.academic_year }} · {{ batch.semester }}</td>
-            <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-500">{{ formatDate(batch.start_date) }}</td>
-            <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-500">{{ formatDate(batch.end_date) }}</td>
-            <td class="px-4 py-3">
-              <span
-                class="rounded-full px-3 py-1 text-xs font-bold"
-                :class="batch.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
-              >
-                {{ batch.is_active ? 'Active' : 'Inactive' }}
-              </span>
-            </td>
-            <td class="px-4 py-3">
-              <div class="flex gap-2">
-                <button type="button" class="rounded-md border border-blue-600 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-50" @click="openRoster(batch)">
-                  View Interns
-                </button>
-                <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="openEditModal(batch)">
-                  Edit
-                </button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <template v-else>
+      <!-- md and up: aligned table. -->
+      <div class="hidden overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200 md:block">
+        <table class="min-w-full divide-y divide-slate-200">
+          <thead class="bg-slate-50">
+            <tr>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Batch</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">AY / Semester</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Start</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">End</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <tr v-if="batches.length === 0">
+              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="7">No batches yet.</td>
+            </tr>
+            <tr v-for="batch in batches" :key="batch.id">
+              <td class="px-4 py-3 text-sm font-semibold text-slate-900">{{ batch.name }}</td>
+              <td class="px-4 py-3 text-sm text-slate-700">{{ batch.program?.name ?? '—' }}</td>
+              <td class="px-4 py-3 text-sm text-slate-500">{{ batch.academic_year }} · {{ batch.semester }}</td>
+              <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-500">{{ formatDate(batch.start_date) }}</td>
+              <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-500">{{ formatDate(batch.end_date) }}</td>
+              <td class="px-4 py-3">
+                <span
+                  class="rounded-full px-3 py-1 text-xs font-bold"
+                  :class="batch.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
+                >
+                  {{ batch.is_active ? 'Active' : 'Inactive' }}
+                </span>
+              </td>
+              <td class="px-4 py-3">
+                <div class="flex gap-2">
+                  <button type="button" class="rounded-md border border-blue-600 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-50" @click="openRoster(batch)">
+                    View Interns
+                  </button>
+                  <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="openEditModal(batch)">
+                    Edit
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Below md: one stacked card per batch, so nothing scrolls sideways. -->
+      <ul class="divide-y divide-slate-100 rounded-lg bg-white px-4 shadow-sm ring-1 ring-slate-200 md:hidden">
+        <li v-if="batches.length === 0" class="py-6 text-center text-sm text-slate-500">No batches yet.</li>
+        <li v-for="batch in batches" :key="batch.id" class="py-4">
+          <div class="flex items-start justify-between gap-3">
+            <p class="min-w-0 truncate text-sm font-semibold text-slate-900">{{ batch.name }}</p>
+            <span
+              class="shrink-0 rounded-full px-3 py-1 text-xs font-bold"
+              :class="batch.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
+            >
+              {{ batch.is_active ? 'Active' : 'Inactive' }}
+            </span>
+          </div>
+          <p class="mt-1 truncate text-xs text-slate-500">{{ batch.program?.name ?? '—' }} · {{ batch.academic_year }} · {{ batch.semester }}</p>
+          <p class="mt-1 text-xs text-slate-500">{{ formatDate(batch.start_date) }} – {{ formatDate(batch.end_date) }}</p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button type="button" class="rounded-md border border-blue-600 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-50" @click="openRoster(batch)">
+              View Interns
+            </button>
+            <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="openEditModal(batch)">
+              Edit
+            </button>
+          </div>
+        </li>
+      </ul>
+    </template>
     </LoadStatus>
 
     <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
@@ -790,7 +819,8 @@ onMounted(load)
         <div v-else class="mt-5 space-y-5">
           <div>
             <p class="mb-2 text-sm font-semibold text-slate-800">Active interns ({{ activeRoster.length }})</p>
-            <div class="overflow-x-auto rounded-md ring-1 ring-slate-200">
+            <!-- md and up: aligned table. -->
+            <div class="hidden overflow-x-auto rounded-md ring-1 ring-slate-200 md:block">
               <table class="min-w-full divide-y divide-slate-200 text-sm">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
@@ -823,12 +853,30 @@ onMounted(load)
                 </tbody>
               </table>
             </div>
+            <!-- Below md: one stacked card per intern. -->
+            <ul class="divide-y divide-slate-100 rounded-md ring-1 ring-slate-200 md:hidden">
+              <li v-if="activeRoster.length === 0" class="px-3 py-4 text-center text-sm text-slate-500">No active interns in this batch.</li>
+              <li v-for="row in activeRoster" :key="row.id" class="px-3 py-3">
+                <p class="font-semibold text-slate-900">{{ row.student.name }}</p>
+                <p class="font-mono text-xs text-slate-400">{{ row.student.student_id_number ?? '—' }}</p>
+                <p class="mt-1 text-xs text-slate-500">{{ row.company?.name ?? '—' }} · {{ row.supervisor?.name ?? '—' }}</p>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <button type="button" class="rounded-md border border-blue-600 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50" @click="completeIntern(row)">
+                    Mark Completed
+                  </button>
+                  <button type="button" class="rounded-md border border-amber-500 px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-50" @click="removeIntern(row)">
+                    Remove
+                  </button>
+                </div>
+              </li>
+            </ul>
           </div>
 
           <!-- Completed interns (journal window frozen; can be reopened) -->
           <div v-if="completedRoster.length">
             <p class="mb-2 text-sm font-semibold text-slate-800">Completed ({{ completedRoster.length }})</p>
-            <div class="overflow-x-auto rounded-md ring-1 ring-slate-200">
+            <!-- md and up: aligned table. -->
+            <div class="hidden overflow-x-auto rounded-md ring-1 ring-slate-200 md:block">
               <table class="min-w-full divide-y divide-slate-200 text-sm">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
@@ -860,12 +908,34 @@ onMounted(load)
                 </tbody>
               </table>
             </div>
+            <!-- Below md: one stacked card per intern. -->
+            <ul class="divide-y divide-slate-100 rounded-md ring-1 ring-slate-200 md:hidden">
+              <li v-for="row in completedRoster" :key="row.id" class="px-3 py-3">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="truncate font-semibold text-slate-900">{{ row.student.name }}</p>
+                    <p class="font-mono text-xs text-slate-400">{{ row.student.student_id_number ?? '—' }}</p>
+                  </div>
+                  <span class="shrink-0 inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-200">Completed</span>
+                </div>
+                <p class="mt-1 truncate text-xs text-slate-500">{{ row.company?.name ?? '—' }}</p>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <button type="button" class="rounded-md border border-green-600 px-3 py-1 text-xs font-semibold text-green-700 hover:bg-green-50" @click="reopenIntern(row)">
+                    Reopen
+                  </button>
+                  <button type="button" class="rounded-md border border-red-500 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50" @click="archiveIntern(row)">
+                    Archive
+                  </button>
+                </div>
+              </li>
+            </ul>
           </div>
 
           <!-- Dropped interns (can be archived) -->
           <div v-if="droppedRoster.length">
             <p class="mb-2 text-sm font-semibold text-slate-800">Dropped ({{ droppedRoster.length }})</p>
-            <div class="overflow-x-auto rounded-md ring-1 ring-slate-200">
+            <!-- md and up: aligned table. -->
+            <div class="hidden overflow-x-auto rounded-md ring-1 ring-slate-200 md:block">
               <table class="min-w-full divide-y divide-slate-200 text-sm">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
@@ -890,12 +960,28 @@ onMounted(load)
                 </tbody>
               </table>
             </div>
+            <!-- Below md: one stacked card per intern. -->
+            <ul class="divide-y divide-slate-100 rounded-md ring-1 ring-slate-200 md:hidden">
+              <li v-for="row in droppedRoster" :key="row.id" class="px-3 py-3">
+                <p class="text-sm text-slate-700">{{ row.student.name }}</p>
+                <p class="mt-0.5 text-xs text-slate-500">{{ row.company?.name ?? '—' }}</p>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <button type="button" class="rounded-md border border-green-600 px-3 py-1 text-xs font-semibold text-green-700 hover:bg-green-50" @click="reactivateIntern(row)">
+                    Reactivate
+                  </button>
+                  <button type="button" class="rounded-md border border-red-500 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50" @click="archiveIntern(row)">
+                    Archive
+                  </button>
+                </div>
+              </li>
+            </ul>
           </div>
 
           <!-- Archived interns (reversible for 30 days, then auto-purged) -->
           <div v-if="archivedRoster.length">
             <p class="mb-2 text-sm font-semibold text-slate-800">Archived ({{ archivedRoster.length }})</p>
-            <div class="overflow-x-auto rounded-md ring-1 ring-slate-200">
+            <!-- md and up: aligned table. -->
+            <div class="hidden overflow-x-auto rounded-md ring-1 ring-slate-200 md:block">
               <table class="min-w-full divide-y divide-slate-200 text-sm">
                 <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
@@ -922,6 +1008,23 @@ onMounted(load)
                 </tbody>
               </table>
             </div>
+            <!-- Below md: one stacked card per intern. -->
+            <ul class="divide-y divide-slate-100 rounded-md ring-1 ring-slate-200 md:hidden">
+              <li v-for="row in archivedRoster" :key="row.id" class="px-3 py-3">
+                <p class="text-sm text-slate-700">{{ row.student.name }}</p>
+                <p class="mt-0.5 text-xs text-slate-500">
+                  {{ row.company?.name ?? '—' }} · {{ row.status === 'completed' ? 'Completed' : 'Dropped' }}
+                </p>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <button type="button" class="rounded-md border border-green-600 px-3 py-1 text-xs font-semibold text-green-700 hover:bg-green-50" @click="restoreIntern(row)">
+                    Restore
+                  </button>
+                  <button type="button" class="rounded-md border border-red-500 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50" @click="deleteForeverIntern(row)">
+                    Delete Forever
+                  </button>
+                </div>
+              </li>
+            </ul>
           </div>
         </div>
       </section>

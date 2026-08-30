@@ -146,6 +146,109 @@ class WeeklyActivityLogTest extends TestCase
         }
     }
 
+    /**
+     * The bug this pins: the grid auto-saves as the student types, but a row
+     * could only be created once both dates AND the Activities text were
+     * present. A half-filled row therefore lived only in the browser tab and
+     * was thrown away on logout, with nothing on screen warning that it would
+     * be. Any single filled cell is now enough to make the row real.
+     */
+    public function test_a_half_filled_row_is_saved_rather_than_lost(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $logId = $this->postJson('/api/student/weekly-activity-logs', [
+            'week_start' => now()->startOfWeek()->toDateString(),
+            'week_end' => now()->startOfWeek()->addDays(6)->toDateString(),
+        ])->json('id');
+
+        // Only the Activities cell typed so far — no dates yet.
+        $this->postJson("/api/student/weekly-activity-logs/{$logId}/entries", [
+            'inclusive_date_start' => null,
+            'inclusive_date_end' => null,
+            'activities' => 'Started writing this up...',
+            'documents_records' => null,
+            'objectives' => null,
+            'supervisor_name' => null,
+            'supervisor_position' => null,
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('weekly_activity_entries', [
+            'weekly_activity_log_id' => $logId,
+            'activities' => 'Started writing this up...',
+            'inclusive_date_start' => null,
+        ]);
+
+        // ...and the other way round: dates first, activities not yet.
+        $this->postJson("/api/student/weekly-activity-logs/{$logId}/entries", [
+            'inclusive_date_start' => now()->startOfWeek()->toDateString(),
+            'inclusive_date_end' => now()->startOfWeek()->addDay()->toDateString(),
+            'activities' => null,
+        ])->assertCreated();
+
+        $this->getJson("/api/student/weekly-activity-logs/{$logId}")
+            ->assertOk()
+            ->assertJsonCount(2, 'entries');
+    }
+
+    /**
+     * The guard did not disappear, it moved up a layer: a row with nothing in
+     * any column is still refused, so the blank template row at the bottom of
+     * the grid never becomes a database row on its own.
+     */
+    public function test_a_completely_blank_row_is_still_refused(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $logId = $this->postJson('/api/student/weekly-activity-logs', [
+            'week_start' => now()->startOfWeek()->toDateString(),
+            'week_end' => now()->startOfWeek()->addDays(6)->toDateString(),
+        ])->json('id');
+
+        $this->postJson("/api/student/weekly-activity-logs/{$logId}/entries", [
+            'inclusive_date_start' => null,
+            'inclusive_date_end' => null,
+            'activities' => null,
+            'documents_records' => null,
+            'objectives' => null,
+            'supervisor_name' => null,
+            'supervisor_position' => null,
+        ])->assertStatus(422);
+
+        $this->assertDatabaseCount('weekly_activity_entries', 0);
+    }
+
+    /**
+     * An end date typed before its start date is still caught — but only when
+     * there IS a start date. `after_or_equal:<field>` silently compares against
+     * NOW when the referenced field is absent, which would reject every past
+     * date on a row whose start cell has not been typed yet.
+     */
+    public function test_an_end_date_before_its_start_date_is_refused_but_a_lone_past_end_date_is_not(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $logId = $this->postJson('/api/student/weekly-activity-logs', [
+            'week_start' => now()->startOfWeek()->toDateString(),
+            'week_end' => now()->startOfWeek()->addDays(6)->toDateString(),
+        ])->json('id');
+
+        $this->postJson("/api/student/weekly-activity-logs/{$logId}/entries", [
+            'inclusive_date_start' => now()->toDateString(),
+            'inclusive_date_end' => now()->subWeek()->toDateString(),
+            'activities' => 'Backwards dates.',
+        ])->assertStatus(422)->assertJsonValidationErrors('inclusive_date_end');
+
+        $this->postJson("/api/student/weekly-activity-logs/{$logId}/entries", [
+            'inclusive_date_start' => null,
+            'inclusive_date_end' => now()->subWeek()->toDateString(),
+            'activities' => null,
+        ])->assertCreated();
+    }
+
     public function test_student_cannot_access_another_students_weekly_activity_log(): void
     {
         $studentA = $this->enrolledStudent();

@@ -3,12 +3,8 @@ import { useFocusEffect } from 'expo-router';
 import { apiGet, ApiError } from '../services/api';
 import { endpoints } from '../services/endpoints';
 import { getCached, setCached } from '../services/offlineCache';
+import { currentMonth, shiftMonthString } from '../lib/datetime';
 import { JournalEntrySummary, Paginated, CalendarDay, CalendarResponse } from '../types/api';
-
-function currentMonth(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-}
 
 const LIST_CACHE_KEY = 'journal_list';
 
@@ -80,9 +76,7 @@ export function useJournalCalendar() {
   );
 
   function shiftMonth(delta: number) {
-    const [y, m] = month.split('-').map(Number);
-    const d = new Date(y, m - 1 + delta, 1);
-    setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    setMonth((prev) => shiftMonthString(prev, delta));
   }
 
   return { days, loading, error, isOffline, month, shiftMonth, reload: () => load(month) };

@@ -4,6 +4,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { Banner } from '../../src/components/Banner';
+import { Button } from '../../src/components/Button';
 import { Card } from '../../src/components/Card';
 import { ErrorState, LoadingState } from '../../src/components/ErrorState';
 import { TopBar } from '../../src/components/TopBar';
@@ -11,6 +12,7 @@ import { colors } from '../../src/constants/colors';
 import { apiGet, apiPost, ApiError } from '../../src/services/api';
 import { endpoints } from '../../src/services/endpoints';
 import { useDtr } from '../../src/hooks/useDtr';
+import { formatDate, formatTime } from '../../src/lib/datetime';
 import { DtrPunchResult, DtrScanPreview, DtrSession } from '../../src/types/api';
 
 /**
@@ -32,13 +34,6 @@ function extractSiteToken(raw: string): string | null {
   if (/^[A-Za-z0-9]{32}$/.test(value)) return value;
 
   return null;
-}
-
-function formatTime(iso: string | null) {
-  if (!iso) return '—';
-  // Instants from the API carry a real offset marker, so parsing is safe here
-  // (unlike the marker-less strings this project warns about elsewhere).
-  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
 function formatHours(minutes: number | null) {
@@ -209,31 +204,14 @@ export default function Scan() {
         ) : null}
 
         <View style={{ alignItems: 'center', marginTop: 24, paddingHorizontal: 20 }}>
-          <Pressable
-            onPress={openCamera}
+          <Button
+            label={open ? 'Scan to Clock Out' : 'Scan to Clock In'}
+            icon="qr-code-outline"
+            loading={resolving}
             disabled={resolving || isOffline}
-            style={{
-              width: '100%',
-              backgroundColor: isOffline ? colors.gray300 : colors.blue600,
-              borderRadius: 14,
-              paddingVertical: 18,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 10,
-            }}
-          >
-            {resolving ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <>
-                <Ionicons name="qr-code-outline" size={22} color="white" />
-                <Text style={{ color: 'white', fontSize: 15, fontWeight: '700' }}>
-                  {open ? 'Scan to Clock Out' : 'Scan to Clock In'}
-                </Text>
-              </>
-            )}
-          </Pressable>
+            onPress={openCamera}
+            style={{ width: '100%', paddingVertical: 18 }}
+          />
           <Text style={{ fontSize: 11.5, color: colors.gray500, marginTop: 10, textAlign: 'center' }}>
             Scan the Daily Time Record code shown by your supervisor.
           </Text>
@@ -290,7 +268,7 @@ export default function Scan() {
               >
                 <View style={{ flex: 1, paddingRight: 10 }}>
                   <Text style={{ fontSize: 12.5, fontWeight: '600', color: colors.black }}>
-                    {session.work_date ?? '—'}
+                    {session.work_date ? formatDate(session.work_date, { month: 'short', day: 'numeric' }) : '—'}
                   </Text>
                   <Text style={{ fontSize: 11, color: colors.gray500, marginTop: 2 }}>
                     {formatTime(session.time_in)} – {session.time_out ? formatTime(session.time_out) : 'open'}
@@ -327,20 +305,12 @@ export default function Scan() {
               Point at the Daily Time Record code
             </Text>
           </View>
-          <Pressable
+          <Button
+            label="Cancel"
+            variant="secondary"
             onPress={closeCamera}
-            style={{
-              position: 'absolute',
-              bottom: 48,
-              alignSelf: 'center',
-              paddingVertical: 12,
-              paddingHorizontal: 28,
-              borderRadius: 24,
-              backgroundColor: 'rgba(255,255,255,0.9)',
-            }}
-          >
-            <Text style={{ fontSize: 14, fontWeight: '600', color: colors.black }}>Cancel</Text>
-          </Pressable>
+            style={{ position: 'absolute', bottom: 48, alignSelf: 'center', paddingHorizontal: 32 }}
+          />
         </View>
       </Modal>
 
@@ -392,42 +362,22 @@ export default function Scan() {
                 )}
 
                 <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <Pressable
+                  <Button
+                    label="Cancel"
+                    variant="secondary"
+                    fullWidth
                     onPress={() => {
                       setPreview(null);
                       setToken(null);
                     }}
-                    style={{
-                      flex: 1,
-                      paddingVertical: 12,
-                      borderRadius: 10,
-                      borderWidth: 1.5,
-                      borderColor: colors.gray200,
-                      alignItems: 'center',
-                    }}
-                  >
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: colors.gray600 }}>Cancel</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={confirmPunch}
+                  />
+                  <Button
+                    label={NEXT_ACTION_LABEL[preview.next_action]}
+                    fullWidth
+                    loading={punching}
                     disabled={punching || preview.next_action === 'blocked_other_site'}
-                    style={{
-                      flex: 1,
-                      paddingVertical: 12,
-                      borderRadius: 10,
-                      alignItems: 'center',
-                      backgroundColor:
-                        preview.next_action === 'blocked_other_site' ? colors.gray300 : colors.blue600,
-                    }}
-                  >
-                    {punching ? (
-                      <ActivityIndicator color="white" />
-                    ) : (
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: 'white' }}>
-                        {NEXT_ACTION_LABEL[preview.next_action]}
-                      </Text>
-                    )}
-                  </Pressable>
+                    onPress={confirmPunch}
+                  />
                 </View>
               </>
             ) : null}

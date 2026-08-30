@@ -322,65 +322,130 @@ onMounted(loadIndex)
             enter one manually.
           </p>
 
-          <div v-else class="mt-4 overflow-x-auto">
-            <table class="min-w-full border-collapse text-sm">
-              <thead>
-                <tr class="border-b border-slate-200 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
-                  <th class="w-24 px-2 py-2">Include</th>
-                  <th class="w-40 px-2 py-2">Student / Date</th>
-                  <th class="px-2 py-2">Issues &amp; Concerns</th>
-                  <th class="px-2 py-2">Solutions</th>
-                  <th class="px-2 py-2">Recommendations</th>
-                  <th class="w-16 px-2 py-2"></th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-100">
-                <tr v-for="row in rows" :key="row.id" :class="row.included ? '' : 'opacity-50'">
-                  <td class="px-2 py-3 align-top">
-                    <label class="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                      <input v-model="row.included" type="checkbox" />
-                      {{ row.included ? 'In' : 'Out' }}
-                    </label>
-                  </td>
-                  <td class="px-2 py-3 align-top">
-                    <p class="font-semibold text-slate-800">{{ row.student_name }}</p>
+          <div v-else class="mt-4">
+            <!-- md and up: aligned table. -->
+            <div class="hidden overflow-x-auto md:block">
+              <table class="min-w-full border-collapse text-sm">
+                <thead>
+                  <tr class="border-b border-slate-200 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
+                    <th class="w-24 px-2 py-2">Include</th>
+                    <th class="w-40 px-2 py-2">Student / Date</th>
+                    <th class="px-2 py-2">Issues &amp; Concerns</th>
+                    <th class="px-2 py-2">Solutions</th>
+                    <th class="px-2 py-2">Recommendations</th>
+                    <th class="w-16 px-2 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr v-for="row in rows" :key="row.id" :class="row.included ? '' : 'opacity-50'">
+                    <td class="px-2 py-3 align-top">
+                      <label class="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                        <input v-model="row.included" type="checkbox" />
+                        {{ row.included ? 'In' : 'Out' }}
+                      </label>
+                    </td>
+                    <td class="px-2 py-3 align-top">
+                      <p class="font-semibold text-slate-800">{{ row.student_name }}</p>
+                      <p class="text-xs text-slate-400">{{ row.entry_date }}</p>
+                    </td>
+                    <td class="px-2 py-3 align-top">
+                      <textarea
+                        v-model="row.issues_concerns"
+                        :maxlength="SIPP_CHAR_LIMIT"
+                        rows="3"
+                        class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs leading-5"
+                      />
+                      <span class="text-[10px] text-slate-400">{{ row.issues_concerns.length }}/{{ SIPP_CHAR_LIMIT }}</span>
+                    </td>
+                    <td class="px-2 py-3 align-top">
+                      <textarea
+                        v-model="row.solutions"
+                        :maxlength="SIPP_CHAR_LIMIT"
+                        rows="3"
+                        class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs leading-5"
+                      />
+                      <span class="text-[10px] text-slate-400">{{ row.solutions.length }}/{{ SIPP_CHAR_LIMIT }}</span>
+                    </td>
+                    <td class="px-2 py-3 align-top">
+                      <textarea
+                        v-model="row.recommendations"
+                        :maxlength="SIPP_CHAR_LIMIT"
+                        rows="3"
+                        class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs leading-5"
+                      />
+                      <span class="text-[10px] text-slate-400">{{ row.recommendations.length }}/{{ SIPP_CHAR_LIMIT }}</span>
+                    </td>
+                    <td class="px-2 py-3 text-right align-top">
+                      <button type="button" class="text-xs font-semibold text-red-600 hover:text-red-700" @click="deleteRow(row)">
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Below md: one full-width card per row — every textarea gets the whole
+                 screen width to type into, instead of a cramped table cell. -->
+            <ul class="space-y-3 md:hidden">
+              <li
+                v-for="row in rows"
+                :key="row.id"
+                class="rounded-lg border border-slate-200 p-3"
+                :class="row.included ? '' : 'opacity-50'"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="truncate text-sm font-semibold text-slate-800">{{ row.student_name }}</p>
                     <p class="text-xs text-slate-400">{{ row.entry_date }}</p>
-                  </td>
-                  <td class="px-2 py-3 align-top">
+                  </div>
+                  <label class="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-slate-600">
+                    <input v-model="row.included" type="checkbox" />
+                    {{ row.included ? 'In' : 'Out' }}
+                  </label>
+                </div>
+
+                <div class="mt-3 space-y-3">
+                  <div>
+                    <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Issues &amp; Concerns</span>
                     <textarea
                       v-model="row.issues_concerns"
                       :maxlength="SIPP_CHAR_LIMIT"
                       rows="3"
-                      class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs leading-5"
+                      class="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs leading-5"
                     />
                     <span class="text-[10px] text-slate-400">{{ row.issues_concerns.length }}/{{ SIPP_CHAR_LIMIT }}</span>
-                  </td>
-                  <td class="px-2 py-3 align-top">
+                  </div>
+                  <div>
+                    <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Solutions</span>
                     <textarea
                       v-model="row.solutions"
                       :maxlength="SIPP_CHAR_LIMIT"
                       rows="3"
-                      class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs leading-5"
+                      class="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs leading-5"
                     />
                     <span class="text-[10px] text-slate-400">{{ row.solutions.length }}/{{ SIPP_CHAR_LIMIT }}</span>
-                  </td>
-                  <td class="px-2 py-3 align-top">
+                  </div>
+                  <div>
+                    <span class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Recommendations</span>
                     <textarea
                       v-model="row.recommendations"
                       :maxlength="SIPP_CHAR_LIMIT"
                       rows="3"
-                      class="w-full rounded-md border border-slate-300 px-2 py-1 text-xs leading-5"
+                      class="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs leading-5"
                     />
                     <span class="text-[10px] text-slate-400">{{ row.recommendations.length }}/{{ SIPP_CHAR_LIMIT }}</span>
-                  </td>
-                  <td class="px-2 py-3 text-right align-top">
-                    <button type="button" class="text-xs font-semibold text-red-600 hover:text-red-700" @click="deleteRow(row)">
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+                  </div>
+                </div>
+
+                <div class="mt-3 text-right">
+                  <button type="button" class="text-xs font-semibold text-red-600 hover:text-red-700" @click="deleteRow(row)">
+                    Delete
+                  </button>
+                </div>
+              </li>
+            </ul>
+
             <p class="mt-2 text-xs text-slate-400">Only included rows appear in the exported PDF. Deletes are saved when you Save/Finalize.</p>
           </div>
         </section>

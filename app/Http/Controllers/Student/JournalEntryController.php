@@ -20,6 +20,16 @@ class JournalEntryController extends Controller
 {
     use ResolvesStudentEnrollment;
 
+    /**
+     * One message per lockedReason() token, so show()'s banner and store()'s
+     * rejection can never explain the same lock two different ways.
+     */
+    private const LOCK_MESSAGES = [
+        'not_active' => 'Your OJT enrollment is no longer active, so journal entries can no longer be edited.',
+        'range' => 'This date is outside your OJT range or is a future date.',
+        'week_submitted' => 'This week has already been submitted to your supervisor. Ask them to return it if you need to change a daily entry.',
+    ];
+
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -84,12 +94,8 @@ class JournalEntryController extends Controller
         $validated = $request->validated();
         $entryDate = Carbon::parse($validated['entry_date'])->startOfDay();
 
-        if ($this->isBundledWeek($enrollment->student_id, $enrollment->batch_id, $entryDate)) {
-            return response()->json(['message' => 'This week has already been compiled into your Weekly Log and can no longer be edited.'], 422);
-        }
-
-        if (! $this->isEditableDate($entryDate, $enrollment)) {
-            return response()->json(['message' => 'This date is outside your OJT range or is a future date.'], 422);
+        if ($reason = $this->lockedReason($entryDate, $enrollment)) {
+            return response()->json(['message' => self::LOCK_MESSAGES[$reason]], 422);
         }
 
         $existing = JournalEntry::where('student_id', $user->id)
@@ -163,8 +169,8 @@ class JournalEntryController extends Controller
     /**
      * A date is writable only while the enrollment is still active (a
      * completed/dropped student reads but never writes), only for dates
-     * inside the real-time window: batch start .. today, and only until
-     * the week it belongs to has been bundled into a WeeklyLog.
+     * inside the real-time window (batch start .. today), and only until the
+     * week it belongs to has actually been SUBMITTED for supervisor review.
      */
     private function isEditableDate(Carbon $date, BatchStudent $enrollment): bool
     {
@@ -172,21 +178,28 @@ class JournalEntryController extends Controller
     }
 
     /**
-     * True once a WeeklyLog row exists for the Mon-Fri week containing this
-     * date, for this student+batch — i.e. WeeklyBundlingService has compiled
-     * this week at least once (via the Saturday-midnight schedule or the
-     * admin on-demand trigger). This is a one-way lock: even if the
-     * resulting WeeklyLog is later returned by a supervisor for revision,
-     * the underlying daily entries stay locked — corrections happen on the
-     * weekly narrative itself, not by reopening daily entries.
+     * True once the WeeklyLog covering this date has been submitted for review
+     * and is still pending or approved — i.e. the supervisor is looking at it,
+     * or has already signed it off.
+     *
+     * The mere EXISTENCE of a WeeklyLog is deliberately NOT a lock any more.
+     * WeeklyBundlingService stamps one every Monday for every active student,
+     * so the old rule meant a student who fell a single day behind could never
+     * write last week's entries again — the exact catching-up the coordinator
+     * needs them to be able to do. Compilation is now reversible (a student can
+     * recompile the week themselves); a supervisor's review is not, which is
+     * why that is where the line sits. A 'returned' log reopens its week, so
+     * revision after a return works the same way it does on the narrative.
      */
-    private function isBundledWeek(int $studentId, int $batchId, Carbon $date): bool
+    private function isWeekUnderReview(int $studentId, int $batchId, Carbon $date): bool
     {
         $monday = $date->copy()->startOfWeek(Carbon::MONDAY);
 
         return WeeklyLog::where('student_id', $studentId)
             ->where('batch_id', $batchId)
             ->whereDate('week_start', $monday->toDateString())
+            ->whereNotNull('submitted_at')
+            ->whereIn('status', ['pending', 'approved'])
             ->exists();
     }
 
@@ -204,8 +217,8 @@ class JournalEntryController extends Controller
             return 'range';
         }
 
-        if ($this->isBundledWeek($enrollment->student_id, $enrollment->batch_id, $date)) {
-            return 'bundled';
+        if ($this->isWeekUnderReview($enrollment->student_id, $enrollment->batch_id, $date)) {
+            return 'week_submitted';
         }
 
         return null;

@@ -206,7 +206,7 @@ onMounted(load)
   <section class="space-y-5">
     <ToastHost />
 
-    <div class="rounded-xl border border-blue-100 bg-blue-50 p-6 text-sm text-blue-800">
+    <div class="rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
       Review your interns' <strong>weekly narrative journals</strong>. Approve a journal, or return it with a comment so
       the student can revise it.
     </div>
@@ -225,85 +225,92 @@ onMounted(load)
     </div>
 
     <LoadStatus :loading="isLoading" :error="errorMessage" :retry="load">
-      <p v-if="logs.length === 0" class="rounded-xl bg-white px-6 py-8 text-center text-sm text-slate-500 shadow-sm ring-1 ring-slate-200/70">
-        {{ EMPTY_STATE[activeStatus] }}
-      </p>
-
-      <template v-else>
-        <!-- md and up: aligned table. `table-fixed` makes the colgroup binding. -->
-        <div class="hidden overflow-x-auto rounded-xl bg-white px-6 shadow-sm ring-1 ring-slate-200/70 md:block">
-          <table class="w-full table-fixed">
-            <colgroup>
-              <col />
-              <col class="w-[220px]" />
-              <col class="w-[120px]" />
-              <col class="w-[150px]" />
-              <col class="w-[110px]" />
-            </colgroup>
-            <thead>
-              <tr class="text-xs font-medium uppercase tracking-wide text-slate-400">
-                <th class="whitespace-nowrap border-b border-slate-200 pb-3 pl-0 pr-4 pt-4 text-left font-medium">Student</th>
-                <th class="whitespace-nowrap border-b border-slate-200 px-4 pb-3 pt-4 text-left font-medium">Week</th>
-                <th class="whitespace-nowrap border-b border-slate-200 px-4 pb-3 pt-4 text-left font-medium">Daily Entries</th>
-                <th class="whitespace-nowrap border-b border-slate-200 px-4 pb-3 pt-4 text-right font-medium">Submitted</th>
-                <th class="whitespace-nowrap border-b border-slate-200 pb-3 pl-4 pr-0 pt-4 text-right font-medium">Action</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-100">
-              <tr v-for="log in logs" :key="log.id" class="transition-colors hover:bg-slate-50/70">
-                <td class="py-3.5 pl-0 pr-4">
-                  <p class="truncate text-sm font-medium text-slate-900">{{ log.student_name }}</p>
-                  <p class="truncate text-xs text-slate-400">{{ log.student_id_number ?? '—' }}</p>
-                </td>
-                <td class="whitespace-nowrap px-4 py-3.5 text-sm tabular-nums text-slate-500">
-                  {{ dateOnly(log.week_start) ?? '—' }} – {{ dateOnly(log.week_end) ?? '—' }}
-                </td>
-                <td class="whitespace-nowrap px-4 py-3.5">
-                  <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{{ log.entries_count }} entries</span>
-                </td>
-                <td class="whitespace-nowrap px-4 py-3.5 text-right text-sm tabular-nums text-slate-500">
-                  <TooltipWrap v-if="formatInstant(log.submitted_at)" :label="log.submitted_at ?? ''" placement="top" align="end">
-                    <span>{{ formatInstant(log.submitted_at) }}</span>
-                  </TooltipWrap>
-                  <span v-else class="text-slate-300">—</span>
-                </td>
-                <td class="whitespace-nowrap py-3.5 pl-4 pr-0 text-right">
+      <!--
+        md and up: aligned table. Fixed columns are sized to their longest real
+        value (an ISO date range, the Review button); Student carries no width
+        and takes the remainder. No `min-w` floor — it would scroll the Action
+        column out of reach.
+      -->
+      <div class="hidden overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200 md:block">
+        <table class="w-full table-fixed divide-y divide-slate-200">
+          <colgroup>
+            <col />
+            <col class="w-[220px]" />
+            <col class="w-[120px]" />
+            <col class="w-[150px]" />
+            <col class="w-[110px]" />
+          </colgroup>
+          <thead class="bg-slate-50">
+            <tr>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Student</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Week</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Daily Entries</th>
+              <th class="whitespace-nowrap px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-slate-500">Submitted</th>
+              <th class="whitespace-nowrap px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-slate-500">Action</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            <tr v-if="logs.length === 0">
+              <td colspan="5" class="px-4 py-6 text-center text-sm text-slate-500">{{ EMPTY_STATE[activeStatus] }}</td>
+            </tr>
+            <tr v-for="log in logs" :key="log.id" class="transition-colors hover:bg-slate-50/70">
+              <td class="px-4 py-3">
+                <p class="truncate text-sm font-semibold text-slate-900">{{ log.student_name }}</p>
+                <p class="truncate font-mono text-xs text-slate-400">{{ log.student_id_number ?? '—' }}</p>
+              </td>
+              <td class="whitespace-nowrap px-4 py-3 text-sm tabular-nums text-slate-500">
+                {{ dateOnly(log.week_start) ?? '—' }} – {{ dateOnly(log.week_end) ?? '—' }}
+              </td>
+              <td class="whitespace-nowrap px-4 py-3">
+                <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{{ log.entries_count }} entries</span>
+              </td>
+              <td class="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-slate-500">
+                <TooltipWrap v-if="formatInstant(log.submitted_at)" :label="log.submitted_at ?? ''" placement="top" align="end">
+                  <span>{{ formatInstant(log.submitted_at) }}</span>
+                </TooltipWrap>
+                <span v-else class="text-slate-300">—</span>
+              </td>
+              <td class="px-4 py-3">
+                <div class="flex items-center justify-end gap-2 whitespace-nowrap">
                   <button
                     type="button"
-                    class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                    class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                     @click="openReview(log)"
                   >
                     Review
                   </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-        <!-- Below md: one stacked block per journal, so nothing scrolls sideways. -->
-        <ul class="divide-y divide-slate-100 rounded-xl bg-white px-6 shadow-sm ring-1 ring-slate-200/70 md:hidden">
-          <li v-for="log in logs" :key="log.id" class="py-4">
-            <div class="flex items-start justify-between gap-3">
-              <p class="min-w-0 truncate text-sm font-medium text-slate-900">{{ log.student_name }}</p>
-              <span class="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
-                {{ log.entries_count }} entries
-              </span>
-            </div>
-            <p class="mt-1 text-xs tabular-nums text-slate-500">
-              {{ dateOnly(log.week_start) ?? '—' }} – {{ dateOnly(log.week_end) ?? '—' }}
-            </p>
-            <p class="mt-1 text-xs text-slate-400">Submitted {{ formatInstant(log.submitted_at) ?? '—' }}</p>
+      <!-- Below md: one stacked block per journal, so nothing scrolls sideways. -->
+      <ul class="divide-y divide-slate-100 rounded-lg bg-white px-4 shadow-sm ring-1 ring-slate-200 md:hidden">
+        <li v-if="logs.length === 0" class="py-6 text-center text-sm text-slate-500">{{ EMPTY_STATE[activeStatus] }}</li>
+        <li v-for="log in logs" :key="log.id" class="py-4">
+          <div class="flex items-start justify-between gap-3">
+            <p class="min-w-0 truncate text-sm font-semibold text-slate-900">{{ log.student_name }}</p>
+            <span class="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+              {{ log.entries_count }} entries
+            </span>
+          </div>
+          <p class="mt-1 text-xs tabular-nums text-slate-500">
+            {{ dateOnly(log.week_start) ?? '—' }} – {{ dateOnly(log.week_end) ?? '—' }}
+          </p>
+          <p class="mt-1 text-xs text-slate-400">Submitted {{ formatInstant(log.submitted_at) ?? '—' }}</p>
+          <div class="mt-3">
             <button
               type="button"
-              class="mt-3 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
               @click="openReview(log)"
             >
               Review
             </button>
-          </li>
-        </ul>
-      </template>
+          </div>
+        </li>
+      </ul>
     </LoadStatus>
 
     <!-- Review modal: three-part flex shell, body is the only scroller. -->
@@ -316,6 +323,21 @@ onMounted(load)
               <p v-if="detail" class="mt-0.5 text-sm text-slate-500">
                 Week {{ dateOnly(detail.week_start) ?? '—' }} – {{ dateOnly(detail.week_end) ?? '—' }}
               </p>
+              <!--
+                One week rarely stands on its own — the way to judge it is
+                against the weeks around it. This is the same notebook the
+                Interns page opens, entered from the week being reviewed.
+              -->
+              <RouterLink
+                v-if="detail"
+                :to="`/supervisor/interns/${detail.student.id}/journals`"
+                class="mt-1 inline-flex items-center gap-1 text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+              >
+                Open full notebook
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-3.5 w-3.5">
+                  <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </RouterLink>
             </div>
             <button type="button" class="shrink-0 text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeDetail">
               Close

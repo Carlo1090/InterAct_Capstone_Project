@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import { View, Text, FlatList, Pressable } from 'react-native';
 import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { TopBar } from '../../src/components/TopBar';
 import { Banner } from '../../src/components/Banner';
 import { WeekCard } from '../../src/components/WeekCard';
 import { ErrorState, LoadingState } from '../../src/components/ErrorState';
+import { OfflineNotice } from '../../src/components/OfflineNotice';
 import { useWeeklyLogs } from '../../src/hooks/useWeeklyLogs';
 import { deriveWeekState, WeekState } from '../../src/types/api';
 import { colors } from '../../src/constants/colors';
@@ -18,7 +20,7 @@ const FILTERS: { label: string; value: WeekState | 'all' }[] = [
 ];
 
 export default function Weekly() {
-  const { logs, loading, error, reload } = useWeeklyLogs();
+  const { logs, loading, error, isOffline, reload } = useWeeklyLogs();
   const [filterIndex, setFilterIndex] = useState(0);
   const filter = FILTERS[filterIndex];
 
@@ -50,10 +52,36 @@ export default function Weekly() {
         </Pressable>
       </View>
 
+      <OfflineNotice feature="weeklyLogs" show={isOffline && logs.length > 0} />
+
       <Banner variant="info">
         Weekly compilations are auto-generated every Monday at 12:00 AM. Approved journals are forwarded to your
         coordinator.
       </Banner>
+
+      {/* The Time Log Summary is the other weekly artifact, so it is reachable
+          from here as well as from Profile. */}
+      <Pressable
+        onPress={() => router.push('/weekly-activity')}
+        style={{
+          marginHorizontal: 20,
+          marginTop: 12,
+          padding: 14,
+          borderRadius: 12,
+          borderWidth: 1.5,
+          borderColor: colors.blue200,
+          backgroundColor: colors.white,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 10,
+        }}
+      >
+        <Ionicons name="time-outline" size={18} color={colors.blue600} />
+        <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: colors.blue600 }}>
+          Weekly and Time Log Summary
+        </Text>
+        <Ionicons name="chevron-forward" size={16} color={colors.blue400} />
+      </Pressable>
 
       {loading && logs.length === 0 ? (
         <LoadingState />

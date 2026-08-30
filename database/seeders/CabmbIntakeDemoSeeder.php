@@ -135,6 +135,15 @@ class CabmbIntakeDemoSeeder extends Seeder
                     'intern_duty_schedule' => 'Mon-Fri, 8:00 AM - 5:00 PM',
                     'supervisor_name' => 'Mr. Ramon Delgado',
                     'office_designation' => 'Accounting Team Lead',
+                    // A real point in Tagbilaran, so the "Sketch of Internship
+                    // Company Location" box on the demo PDF shows the pinned
+                    // map rather than the blank square. Coordinates only —
+                    // nothing is fetched at seed time; the tiles are pulled
+                    // when someone actually downloads the sheet.
+                    'location_lat' => 9.6419184,
+                    'location_lng' => 123.855035,
+                    'location_zoom' => 17,
+                    'location_label' => 'Carlos P. Garcia North Avenue, Tagbilaran City, Bohol',
                 ] : [],
                 'emergency_contact' => null,
             ]

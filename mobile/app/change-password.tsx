@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { View, Text, TextInput, Pressable, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Banner } from '../src/components/Banner';
+import { Button } from '../src/components/Button';
 import { colors } from '../src/constants/colors';
 import { apiPut, ApiError } from '../src/services/api';
 import { endpoints } from '../src/services/endpoints';
@@ -90,20 +91,7 @@ export default function ChangePassword() {
         <Text style={{ fontSize: 11, color: colors.gray400 }}>At least 8 characters.</Text>
       </View>
 
-      <Pressable
-        onPress={onSave}
-        disabled={saving || !canSubmit}
-        style={{
-          marginHorizontal: 20,
-          marginTop: 20,
-          paddingVertical: 14,
-          borderRadius: 12,
-          alignItems: 'center',
-          backgroundColor: saving || !canSubmit ? colors.gray300 : colors.blue600,
-        }}
-      >
-        {saving ? <ActivityIndicator color="white" /> : <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>Save Password</Text>}
-      </Pressable>
+      <Button label="Save Password" icon="key-outline" loading={saving} disabled={saving || !canSubmit} onPress={onSave} style={{ marginHorizontal: 20, marginTop: 20 }} />
     </ScrollView>
   );
 }

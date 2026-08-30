@@ -404,4 +404,146 @@ class DtrGeofenceAndReviewTest extends TestCase
         $this->assertCount(1, $response->json('data'));
         $this->assertSame($stale->id, $response->json('data.0.id'));
     }
+
+    /**
+     * The other half of retiring: putting it back. Without this, a mis-click
+     * on a busy site was permanent, and the only recovery was creating a new
+     * site — which issues a new token and so kills every QR already printed.
+     * The token must therefore survive a retire/restore round trip.
+     */
+    public function test_a_retired_site_can_be_restored_and_keeps_its_token(): void
+    {
+        $world = $this->world();
+        $geofence = $this->geofence($world, isActive: false);
+        $token = $geofence->token;
+
+        Sanctum::actingAs($world['supervisor']);
+
+        $this->postJson("/api/supervisor/dtr/geofences/{$geofence->id}/restore")
+            ->assertOk()
+            ->assertJsonPath('geofence.is_active', true);
+
+        $geofence->refresh();
+        $this->assertTrue($geofence->is_active);
+        $this->assertSame($token, $geofence->token, 'Restoring must not reissue the token, or printed QR codes stay dead.');
+    }
+
+    /**
+     * Permanent delete is for a site created by mistake, so it is offered only
+     * where it loses nothing.
+     */
+    public function test_an_unused_retired_site_can_be_permanently_deleted(): void
+    {
+        $world = $this->world();
+        $geofence = $this->geofence($world, isActive: false);
+
+        Sanctum::actingAs($world['supervisor']);
+
+        $this->deleteJson("/api/supervisor/dtr/geofences/{$geofence->id}/permanent")->assertOk();
+
+        $this->assertDatabaseMissing('company_geofences', ['id' => $geofence->id]);
+    }
+
+    /**
+     * THE GUARD THAT MATTERS. `dtr_sessions.geofence_id` is nullOnDelete, so
+     * deleting a used site does not remove the punches — it silently strips
+     * the location off every one of them, which is the audit trail the
+     * geofence exists to produce. Refused, and the punch keeps its site.
+     */
+    public function test_a_site_with_time_records_cannot_be_permanently_deleted(): void
+    {
+        $world = $this->world();
+        $geofence = $this->geofence($world, isActive: false);
+
+        DtrSession::create([
+            'student_id' => $world['student']->id,
+            'batch_id' => $world['batch']->id,
+            'geofence_id' => $geofence->id,
+            'work_date' => now()->subDay()->toDateString(),
+            'time_in' => now()->subDay()->setTime(8, 0),
+            'time_in_lat' => self::SITE_LAT,
+            'time_in_lng' => self::SITE_LNG,
+            'time_out' => now()->subDay()->setTime(17, 0),
+            'minutes_worked' => 480,
+            'status' => 'closed',
+        ]);
+
+        Sanctum::actingAs($world['supervisor']);
+
+        $this->deleteJson("/api/supervisor/dtr/geofences/{$geofence->id}/permanent")->assertStatus(422);
+
+        $this->assertDatabaseHas('company_geofences', ['id' => $geofence->id]);
+        $this->assertDatabaseHas('dtr_sessions', ['geofence_id' => $geofence->id]);
+    }
+
+    /**
+     * Retire-before-delete, the same shape as the batch roster's
+     * archive-before-delete rule: a live site is one interns may be standing
+     * in front of right now, so killing its QR has to be a deliberate two-step.
+     */
+    public function test_an_active_site_cannot_be_permanently_deleted(): void
+    {
+        $world = $this->world();
+        $geofence = $this->geofence($world, isActive: true);
+
+        Sanctum::actingAs($world['supervisor']);
+
+        $this->deleteJson("/api/supervisor/dtr/geofences/{$geofence->id}/permanent")->assertStatus(422);
+
+        $this->assertDatabaseHas('company_geofences', ['id' => $geofence->id, 'is_active' => true]);
+    }
+
+    /** The site list reports the punch count the SPA gates Delete on. */
+    public function test_the_site_list_reports_how_many_time_records_each_site_holds(): void
+    {
+        $world = $this->world();
+        $geofence = $this->geofence($world, isActive: true);
+
+        DtrSession::create([
+            'student_id' => $world['student']->id,
+            'batch_id' => $world['batch']->id,
+            'geofence_id' => $geofence->id,
+            'work_date' => now()->subDay()->toDateString(),
+            'time_in' => now()->subDay()->setTime(8, 0),
+            'time_in_lat' => self::SITE_LAT,
+            'time_in_lng' => self::SITE_LNG,
+            'time_out' => now()->subDay()->setTime(17, 0),
+            'minutes_worked' => 480,
+            'status' => 'closed',
+        ]);
+
+        Sanctum::actingAs($world['supervisor']);
+
+        $this->getJson('/api/supervisor/dtr/geofences')
+            ->assertOk()
+            ->assertJsonPath('geofences.0.sessions_count', 1);
+    }
+
+    public function test_restoring_or_deleting_another_companys_site_is_forbidden(): void
+    {
+        $world = $this->world();
+        $geofence = $this->geofence($world, isActive: false);
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'supervisor']));
+
+        $this->postJson("/api/supervisor/dtr/geofences/{$geofence->id}/restore")->assertStatus(403);
+        $this->deleteJson("/api/supervisor/dtr/geofences/{$geofence->id}/permanent")->assertStatus(403);
+
+        $this->assertDatabaseHas('company_geofences', ['id' => $geofence->id]);
+    }
+
+    /**
+     * @param  array{supervisor: User, company: Company, student: User, batch: Batch}  $world
+     */
+    private function geofence(array $world, bool $isActive): CompanyGeofence
+    {
+        return CompanyGeofence::create([
+            'company_id' => $world['company']->id,
+            'label' => 'Main Office',
+            'latitude' => self::SITE_LAT,
+            'longitude' => self::SITE_LNG,
+            'radius_meters' => 150,
+            'is_active' => $isActive,
+        ]);
+    }
 }

@@ -14,6 +14,7 @@ import {
 import { Redirect, router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { Button } from '../src/components/Button';
 import { useAuth } from '../src/hooks/useAuth';
 import { colors } from '../src/constants/colors';
 import { apiGet } from '../src/services/api';
@@ -172,31 +173,13 @@ export default function Login() {
                 </Pressable>
               </View>
 
-              <Pressable onPress={onSubmit} disabled={submitting || !identifier || !password}>
-                <LinearGradient
-                  colors={[colors.blue600, colors.blue500]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={{
-                    borderRadius: 12,
-                    paddingVertical: 14,
-                    alignItems: 'center',
-                    flexDirection: 'row',
-                    justifyContent: 'center',
-                    gap: 8,
-                    opacity: submitting || !identifier || !password ? 0.6 : 1,
-                  }}
-                >
-                  {submitting ? (
-                    <ActivityIndicator color="white" />
-                  ) : (
-                    <>
-                      <Ionicons name="log-in-outline" size={16} color="white" />
-                      <Text style={{ color: 'white', fontWeight: '600', fontSize: 14 }}>Login</Text>
-                    </>
-                  )}
-                </LinearGradient>
-              </Pressable>
+              <Button
+                label="Login"
+                icon="log-in-outline"
+                loading={submitting}
+                disabled={submitting || !identifier || !password}
+                onPress={onSubmit}
+              />
 
               <View
                 style={{

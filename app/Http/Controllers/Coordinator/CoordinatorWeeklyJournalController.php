@@ -98,8 +98,12 @@ class CoordinatorWeeklyJournalController extends Controller
     {
         $this->authorizeLog($request, $weeklyLog);
 
+        // whereDate on both bounds, never whereBetween: entry_date is a
+        // date-cast column and SQLite stores it WITH a time component, which
+        // sorts after a bare upper bound and drops the last day of the week.
         $dailyEntries = JournalEntry::where('student_id', $weeklyLog->student_id)
-            ->whereBetween('entry_date', [$weeklyLog->week_start->toDateString(), $weeklyLog->week_end->toDateString()])
+            ->whereDate('entry_date', '>=', $weeklyLog->week_start->toDateString())
+            ->whereDate('entry_date', '<=', $weeklyLog->week_end->toDateString())
             ->orderBy('entry_date')
             ->get(['entry_date', 'status', 'content']);
 
