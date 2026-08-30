@@ -12,6 +12,7 @@ import { colors } from '../../src/constants/colors';
 import { apiGet, apiPost, ApiError } from '../../src/services/api';
 import { endpoints } from '../../src/services/endpoints';
 import { useDtr } from '../../src/hooks/useDtr';
+import { formatDate, formatTime } from '../../src/lib/datetime';
 import { DtrPunchResult, DtrScanPreview, DtrSession } from '../../src/types/api';
 
 /**
@@ -33,13 +34,6 @@ function extractSiteToken(raw: string): string | null {
   if (/^[A-Za-z0-9]{32}$/.test(value)) return value;
 
   return null;
-}
-
-function formatTime(iso: string | null) {
-  if (!iso) return '—';
-  // Instants from the API carry a real offset marker, so parsing is safe here
-  // (unlike the marker-less strings this project warns about elsewhere).
-  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
 function formatHours(minutes: number | null) {
@@ -274,7 +268,7 @@ export default function Scan() {
               >
                 <View style={{ flex: 1, paddingRight: 10 }}>
                   <Text style={{ fontSize: 12.5, fontWeight: '600', color: colors.black }}>
-                    {session.work_date ?? '—'}
+                    {session.work_date ? formatDate(session.work_date, { month: 'short', day: 'numeric' }) : '—'}
                   </Text>
                   <Text style={{ fontSize: 11, color: colors.gray500, marginTop: 2 }}>
                     {formatTime(session.time_in)} – {session.time_out ? formatTime(session.time_out) : 'open'}

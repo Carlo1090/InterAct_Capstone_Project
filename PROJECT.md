@@ -35,8 +35,18 @@ This is a **monorepo** with three parts:
   (`POST /api/mobile/login`), with offline caching, a queued-write outbox,
   on-device local reminder alarms, and a **QR scanner for the Daily Time
   Record**, and it ships as an installable Android APK built on EAS. Its tab
-  bar is Dashboard · Calendar · **Scan** · Journals · Weekly, with Info Sheet in
-  the header beside the notification bell. It has its own
+  bar is Dashboard · Calendar · **Scan** · Journals · Weekly; Info Sheet,
+  **Weekly and Time Log Summary** and **Exit Interview** live in Profile, which
+  also supports changing the profile photo. A launch splash warms every read
+  cache in one pass (`src/services/preload.ts`) so offline coverage is not
+  limited to screens the student happened to visit. **What each feature can do
+  offline — read-only vs read-and-write — is declared in ONE place,
+  `mobile/src/lib/offlineCapability.ts`**, and rendered by `OfflineNotice`;
+  only the Daily Journal is read-write offline (see the DTR section for why a
+  punch deliberately is not). All dates and times go through
+  `mobile/src/lib/datetime.ts` — never `toISOString()` for "today", which is
+  UTC and was silently a day behind for the first eight hours of every Manila
+  day. It has its own
   `mobile/CLAUDE.md` (importing `mobile/AGENTS.md`) requiring the versioned docs
   at `docs.expo.dev/versions/v54.0.0/` be checked before any mobile code.
 

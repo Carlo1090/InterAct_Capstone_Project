@@ -4,7 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { TopBar } from '../../src/components/TopBar';
 import { Banner } from '../../src/components/Banner';
 import { ErrorState, LoadingState } from '../../src/components/ErrorState';
+import { OfflineNotice } from '../../src/components/OfflineNotice';
 import { useJournalCalendar } from '../../src/hooks/useJournals';
+import { monthLabel, parseISODate, todayISO } from '../../src/lib/datetime';
 import { colors } from '../../src/constants/colors';
 import { CalendarDayStatus } from '../../src/types/api';
 
@@ -21,18 +23,17 @@ const dayStyle: Record<CalendarDayStatus, { bg: string; tx: string }> = {
 
 const weekdayHeaders = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-function monthLabel(month: string) {
-  const [y, m] = month.split('-').map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-}
-
-const todayISO = new Date().toISOString().slice(0, 10);
-
 export default function CalendarScreen() {
   const { days, loading, error, isOffline, month, shiftMonth, reload } = useJournalCalendar();
 
+  // Recomputed on every render, and from the LOCAL date. It used to be a
+  // module-scope `new Date().toISOString()`: UTC (so wrong for the first
+  // eight hours of every Manila day) and frozen at bundle load (so an app
+  // left open across midnight never moved off yesterday).
+  const today = todayISO();
+
   // Leading blank cells so the 1st lands under the correct weekday column.
-  const firstDay = days[0] ? new Date(`${days[0].date}T00:00:00`).getDay() : 0;
+  const firstDay = days[0] ? parseISODate(days[0].date).getDay() : 0;
   const leadingBlanks = Array.from({ length: firstDay });
 
   return (
@@ -61,9 +62,7 @@ export default function CalendarScreen() {
         </View>
       </View>
 
-      {isOffline && days.length > 0 ? (
-        <Banner variant="neutral">You're offline — showing your last saved calendar.</Banner>
-      ) : null}
+      <OfflineNotice feature="calendar" show={isOffline && days.length > 0} />
 
       <View style={{ flexDirection: 'row', gap: 14, marginHorizontal: 20, marginTop: 16, flexWrap: 'wrap' }}>
         <Legend color={colors.green} label="Submitted" />
@@ -88,7 +87,7 @@ export default function CalendarScreen() {
           ))}
           {days.map((d) => {
             const s = dayStyle[d.status];
-            const isToday = d.date === todayISO;
+            const isToday = d.date === today;
             const dayNum = Number(d.date.slice(8, 10));
             return (
               <Pressable

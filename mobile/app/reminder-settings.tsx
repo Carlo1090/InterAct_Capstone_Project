@@ -8,6 +8,7 @@ import { Button } from '../src/components/Button';
 import { ErrorState, LoadingState } from '../src/components/ErrorState';
 import { colors } from '../src/constants/colors';
 import { useReminderPreferences } from '../src/hooks/useReminderPreferences';
+import { OfflineNotice } from '../src/components/OfflineNotice';
 
 const DAYS: { iso: number; label: string }[] = [
   { iso: 1, label: 'Mon' },
@@ -20,7 +21,7 @@ const DAYS: { iso: number; label: string }[] = [
 ];
 
 export default function ReminderSettings() {
-  const { data, loading, error, reload, save } = useReminderPreferences();
+  const { data, loading, error, isOffline, reload, save } = useReminderPreferences();
   const [enabled, setEnabled] = useState(true);
   const [days, setDays] = useState<number[] | null>(null);
   const [time, setTime] = useState<string | null>(null);
@@ -67,6 +68,8 @@ export default function ReminderSettings() {
         </Pressable>
         <Text style={{ fontSize: 20, fontWeight: '700', color: colors.black }}>Reminder Settings</Text>
       </View>
+
+      <OfflineNotice feature="reminderSettings" show={isOffline} />
 
       <Banner variant="info">
         We'll nudge you if a working day's journal entry is still missing. Turn this off entirely, or customize

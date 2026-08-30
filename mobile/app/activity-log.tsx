@@ -5,6 +5,7 @@ import { ErrorState, LoadingState } from '../src/components/ErrorState';
 import { useActivityLog } from '../src/hooks/useActivityLog';
 import { SystemLogEntry } from '../src/types/api';
 import { colors } from '../src/constants/colors';
+import { OfflineNotice } from '../src/components/OfflineNotice';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -26,7 +27,7 @@ function formatLoggedAt(raw: string) {
 }
 
 export default function ActivityLog() {
-  const { entries, loading, error, reload } = useActivityLog();
+  const { entries, loading, error, isOffline, reload } = useActivityLog();
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.gray50 }}>
@@ -45,6 +46,8 @@ export default function ActivityLog() {
         </Pressable>
         <Text style={{ fontSize: 20, fontWeight: '700', color: colors.black }}>Activity Log</Text>
       </View>
+
+      <OfflineNotice feature="activityLog" show={isOffline && entries.length > 0} />
 
       {loading && entries.length === 0 ? (
         <LoadingState />

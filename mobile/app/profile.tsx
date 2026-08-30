@@ -1,7 +1,11 @@
-import { ScrollView, View, Text, Pressable } from 'react-native';
+import { useState } from 'react';
+import { ScrollView, View, Text, Pressable, Image, ActivityIndicator, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { Button } from '../src/components/Button';
+import { OfflineNotice } from '../src/components/OfflineNotice';
+import { uploadAvatar, ApiError } from '../src/services/api';
 import { InfoSectionTitle, ProfileRow } from '../src/components/InfoField';
 import { ErrorState, LoadingState } from '../src/components/ErrorState';
 import { useCurrentUser } from '../src/hooks/useCurrentUser';
@@ -18,7 +22,48 @@ function initialsFor(name: string | undefined) {
 
 export default function Profile() {
   const { logout } = useAuth();
-  const { user, loading: userLoading, error: userError, refetch } = useCurrentUser();
+  const { user, loading: userLoading, error: userError, isOffline, refetch } = useCurrentUser();
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  async function onChangePhoto() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        'Photo access needed',
+        'InternTrack needs access to your photos so you can choose a profile picture.'
+      );
+      return;
+    }
+
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      // The server center-crops to a square anyway (AvatarProcessingService),
+      // so cropping here just lets the student choose WHICH square.
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (picked.canceled || !picked.assets?.[0]) return;
+
+    const asset = picked.assets[0];
+    setUploadingPhoto(true);
+    try {
+      await uploadAvatar(asset.uri, asset.mimeType);
+      await refetch();
+      Alert.alert('Profile photo updated');
+    } catch (err) {
+      const apiErr = err as ApiError;
+      Alert.alert(
+        'Could not update your photo',
+        apiErr.status === null
+          ? 'You appear to be offline. Try again once you have a connection.'
+          : apiErr.message
+      );
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
   // Company/supervisor/coordinator aren't returned by /api/user — the
   // dashboard endpoint is the only place they exist server-side today, and
   // Profile is only reachable in the normal (non-gated/paused) state, where
@@ -48,7 +93,10 @@ export default function Profile() {
           gap: 10,
         }}
       >
-        <View
+        <Pressable
+          onPress={onChangePhoto}
+          disabled={uploadingPhoto}
+          accessibilityLabel="Change profile photo"
           style={{
             width: 72,
             height: 72,
@@ -58,10 +106,22 @@ export default function Profile() {
             borderColor: colors.blue400,
             alignItems: 'center',
             justifyContent: 'center',
+            overflow: 'hidden',
           }}
         >
-          <Text style={{ color: 'white', fontSize: 26, fontWeight: '700' }}>{initialsFor(user.name)}</Text>
-        </View>
+          {uploadingPhoto ? (
+            <ActivityIndicator color="white" />
+          ) : user.avatar_url ? (
+            <Image source={{ uri: user.avatar_url }} style={{ width: '100%', height: '100%' }} />
+          ) : (
+            <Text style={{ color: 'white', fontSize: 26, fontWeight: '700' }}>{initialsFor(user.name)}</Text>
+          )}
+        </Pressable>
+        <Pressable onPress={onChangePhoto} disabled={uploadingPhoto} hitSlop={6}>
+          <Text style={{ color: colors.blue200, fontSize: 11.5, fontWeight: '600' }}>
+            {uploadingPhoto ? 'Uploading…' : 'Change photo'}
+          </Text>
+        </Pressable>
         <Text style={{ color: 'white', fontSize: 18, fontWeight: '700' }}>{user.name}</Text>
         <Text style={{ color: colors.blue200, fontSize: 12 }}>
           Student{user.program?.department?.name ? ` · ${user.program.department.name}` : ''}
@@ -72,6 +132,8 @@ export default function Profile() {
           </View>
         ) : null}
       </View>
+
+      <OfflineNotice feature="profile" show={isOffline} />
 
       <InfoSectionTitle>Account</InfoSectionTitle>
       <ProfileRow label="Username" value={user.username} />
@@ -100,6 +162,12 @@ export default function Profile() {
           placement, so it belongs with the placement's own details rather
           than as a permanent icon next to the notification bell. */}
       <MenuRow icon="clipboard-outline" label="Student Info Sheet" onPress={() => router.push('/infosheet')} />
+      <MenuRow
+        icon="time-outline"
+        label="Weekly and Time Log Summary"
+        onPress={() => router.push('/weekly-activity')}
+      />
+      <MenuRow icon="exit-outline" label="Exit Interview" onPress={() => router.push('/exit-interview')} />
 
       <InfoSectionTitle>Settings</InfoSectionTitle>
       <MenuRow icon="notifications-outline" label="Reminder Settings" onPress={() => router.push('/reminder-settings')} />

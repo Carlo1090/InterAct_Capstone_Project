@@ -271,3 +271,82 @@ export type DtrPunchResult = {
   auto_closed_previous: boolean;
   message: string;
 };
+
+// --- Weekly Activity Log and Time Log Summary ----------------------------
+// The official MDC paper form. Shapes read from
+// App\Http\Controllers\Student\WeeklyActivityLogController.
+
+export type WeeklyActivityEntry = {
+  id: number;
+  weekly_activity_log_id: number;
+  inclusive_date_start: string | null;
+  inclusive_date_end: string | null;
+  activities: string | null;
+  documents_records: string | null;
+  objectives: string | null;
+  supervisor_name: string | null;
+  supervisor_position: string | null;
+  sort_order: number;
+};
+
+export type WeeklyActivityLogSummary = {
+  id: number;
+  week_start: string;
+  week_end: string;
+  area_assigned: string | null;
+  no_of_hours: string | number | null;
+  status: 'draft' | 'submitted';
+  submitted_at: string | null;
+};
+
+/** Read-only, resolved from the active enrollment — the student never types
+ *  these. `faculty_adviser` is the batch coordinator: the paper form says
+ *  "Faculty Adviser" and this system has no adviser role. */
+export type WeeklyActivityLogHeader = {
+  student_name: string | null;
+  program: string | null;
+  year_level: string | null;
+  coordinator_name: string | null;
+  company_name: string | null;
+  supervisor_name: string | null;
+  area_assigned: string | null;
+  department_line: string;
+  unit_line: string;
+  program_and_year: string;
+  faculty_adviser: string | null;
+};
+
+export type WeeklyActivityLogDetail = WeeklyActivityLogSummary & {
+  entries: WeeklyActivityEntry[];
+  header: WeeklyActivityLogHeader;
+  /** Advisory only — what the DTR recorded for this period, so the student
+   *  can see if it disagrees with what they typed. Null when DTR is off. */
+  dtr_hours: number | null;
+};
+
+// --- Exit Interview -------------------------------------------------------
+
+export type ExitInterviewChoice = 'yes' | 'no';
+
+export type ExitInterviewRecord = {
+  id: number;
+  submission_status: 'draft' | 'submitted' | 'reviewed';
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  student_info: Record<string, string>;
+  responses: Record<string, string>;
+};
+
+export type ExitInterviewResponse = {
+  interview: ExitInterviewRecord | null;
+  header: Record<string, string | null>;
+  suggested_total_hours: string | number | null;
+  /** Per-question, because question 7 has four printed lines and the rest
+   *  have five — the form's own geometry, not an arbitrary cap. */
+  answer_char_limits: Record<string, number>;
+  answer_char_limit: number;
+  /** The placement should be over before this means anything, but the
+   *  student is warned rather than blocked — a coordinator may ask for it
+   *  during the final week. */
+  ojt_completed: boolean;
+};

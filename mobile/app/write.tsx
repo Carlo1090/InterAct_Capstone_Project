@@ -11,20 +11,11 @@ import { apiGet, apiPost, downloadAndSharePdf, ApiError } from '../src/services/
 import { endpoints } from '../src/services/endpoints';
 import { getCached, setCached } from '../src/services/offlineCache';
 import { queueEntry, getQueuedEntry, removeQueued } from '../src/services/journalOutbox';
+import { formatDate, todayISO, weekdayLong } from '../src/lib/datetime';
 import { JournalEntryDetail } from '../src/types/api';
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function dateLabelFor(iso: string) {
-  const d = new Date(iso + 'T00:00:00');
-  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-}
-
-/** Matches the server's own `day_label`, which is just `format('l')`. */
-function weekdayLabelFor(iso: string) {
-  return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' });
+  return formatDate(iso, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 }
 
 /**
@@ -60,7 +51,7 @@ function blankEntryFrom(template: JournalTemplate, date: string): JournalEntryDe
     submitted_at: null,
     editable: true,
     locked_reason: null,
-    day_label: weekdayLabelFor(date),
+    day_label: weekdayLong(date),
   };
 }
 

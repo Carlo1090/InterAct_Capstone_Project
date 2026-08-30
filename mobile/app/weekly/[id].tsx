@@ -9,6 +9,7 @@ import { weekStatusStyle } from '../../src/components/WeekCard';
 import { ErrorState, LoadingState } from '../../src/components/ErrorState';
 import { useWeeklyLogDetail } from '../../src/hooks/useWeeklyLogs';
 import { deriveWeekState } from '../../src/types/api';
+import { dateRangeLabel, formatDate } from '../../src/lib/datetime';
 import { downloadAndSharePdf, ApiError } from '../../src/services/api';
 import { endpoints } from '../../src/services/endpoints';
 import { colors } from '../../src/constants/colors';
@@ -21,15 +22,7 @@ const dailyStatusStyle = {
 };
 
 function formatShortDate(raw: string) {
-  const d = new Date(`${raw.slice(0, 10)}T00:00:00`);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function dateRangeLabel(start: string, end: string) {
-  const s = new Date(`${start.slice(0, 10)}T00:00:00`);
-  const e = new Date(`${end.slice(0, 10)}T00:00:00`);
-  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  return `${fmt(s)} – ${fmt(e)}`;
+  return formatDate(raw, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 /** Mirrors web's `Object.values(entry.content)[0] ?? ''` — the reference

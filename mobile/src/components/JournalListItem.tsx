@@ -1,22 +1,19 @@
 import { View, Text, Pressable } from 'react-native';
 import { colors } from '../constants/colors';
+import { formatDate, weekdayShort } from '../lib/datetime';
 import { JournalEntrySummary } from '../types/api';
 
 const statusStyle = {
-  submitted: { bg: colors.blue100, tx: colors.blue700, label: 'Submitted' },
+  // Green matches the journal calendar's own Submitted colour.
+  submitted: { bg: colors.greenBg, tx: colors.greenTx, label: 'Submitted' },
   draft: { bg: colors.gray100, tx: colors.gray600, label: 'Draft' },
 };
 
 function dayParts(dateISO: string) {
-  // Slice, never parse — entry_date is a date-cast column serialized at
-  // midnight UTC; parsing with `new Date()` can land a day earlier once the
-  // device timezone differs from the server's.
-  const [, month, day] = dateISO.slice(0, 10).split('-');
-  const d = new Date(Number(dateISO.slice(0, 4)), Number(month) - 1, Number(day));
   return {
-    day: String(Number(day)),
-    dayName: d.toLocaleDateString('en-US', { weekday: 'short' }),
-    dateLabel: d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+    day: String(Number(dateISO.slice(8, 10))),
+    dayName: weekdayShort(dateISO),
+    dateLabel: formatDate(dateISO),
   };
 }
 

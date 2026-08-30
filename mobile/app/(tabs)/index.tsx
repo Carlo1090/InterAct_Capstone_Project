@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { TopBar } from '../../src/components/TopBar';
 import { Banner } from '../../src/components/Banner';
 import { Button } from '../../src/components/Button';
+import { OfflineNotice } from '../../src/components/OfflineNotice';
 import { StatCard } from '../../src/components/StatCard';
 import { Card } from '../../src/components/Card';
 import { ProgressRow } from '../../src/components/ProgressRow';
@@ -50,9 +51,7 @@ export default function Dashboard() {
         <Button label="Write Today" icon="add" size="sm" onPress={() => router.push('/write')} />
       </View>
 
-      {isOffline ? (
-        <Banner variant="neutral">You're offline — showing your last saved data. It'll refresh automatically once you're back online.</Banner>
-      ) : null}
+      <OfflineNotice feature="dashboard" show={isOffline} />
 
       {data.stats.missing_this_week > 0 ? (
         <Banner variant="warn">

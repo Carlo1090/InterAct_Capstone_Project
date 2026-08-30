@@ -1,37 +1,35 @@
-import { useCallback, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useCallback } from 'react';
 import { apiGet, apiPost, ApiError } from '../services/api';
 import { endpoints } from '../services/endpoints';
+import { useCachedResource } from './useCachedResource';
 import { InfoSheet, CompanyOption } from '../types/api';
 
-export function useStudentInfo() {
-  const [data, setData] = useState<InfoSheet | null>(null);
-  const [companies, setCompanies] = useState<CompanyOption[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<ApiError | null>(null);
+/** Sheet and company list are cached together — the company dropdown is
+ *  useless without the sheet and vice versa, so one cache entry keeps the
+ *  two from ever being restored out of step. */
+type InfoSheetBundle = { sheet: InfoSheet; companies: CompanyOption[] };
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [sheet, companyList] = await Promise.all([
+export function useStudentInfo() {
+  const {
+    data: bundle,
+    loading,
+    error,
+    isOffline,
+    reload,
+    setData,
+  } = useCachedResource<InfoSheetBundle>(
+    'info_sheet',
+    useCallback(async () => {
+      const [sheet, companies] = await Promise.all([
         apiGet<InfoSheet>(endpoints.infoSheet),
         apiGet<CompanyOption[]>(endpoints.companies),
       ]);
-      setData(sheet);
-      setCompanies(companyList);
-    } catch (err) {
-      setError(err as ApiError);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load])
+      return { sheet, companies };
+    }, [])
   );
+
+  const data = bundle?.sheet ?? null;
+  const companies = bundle?.companies ?? [];
 
   async function save(payload: {
     status: 'draft' | 'submitted';
@@ -42,7 +40,9 @@ export function useStudentInfo() {
   }): Promise<{ ok: true } | { ok: false; error: string; fieldErrors?: Record<string, string[]> }> {
     try {
       const saved = await apiPost<InfoSheet>(endpoints.infoSheet, payload);
-      setData(saved);
+      // Keep the cached companies alongside the freshly-saved sheet rather
+      // than dropping them — the save response carries no company list.
+      setData((prev) => ({ sheet: saved, companies: prev?.companies ?? [] }));
       return { ok: true };
     } catch (err) {
       const apiErr = err as ApiError;
@@ -50,5 +50,5 @@ export function useStudentInfo() {
     }
   }
 
-  return { data, companies, loading, error, reload: load, save };
+  return { data, companies, loading, error, isOffline, reload, save };
 }

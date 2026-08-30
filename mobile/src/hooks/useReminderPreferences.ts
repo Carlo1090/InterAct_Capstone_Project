@@ -1,35 +1,17 @@
-import { useCallback, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useCallback } from 'react';
 import { apiGet, apiPut, ApiError } from '../services/api';
 import { endpoints } from '../services/endpoints';
 import { setCached } from '../services/offlineCache';
 import { syncLocalReminders } from '../services/localReminders';
+import { useCachedResource } from './useCachedResource';
 import { ReminderPreferences } from '../types/api';
 
 const CACHE_KEY = 'reminder_preferences';
 
 export function useReminderPreferences() {
-  const [data, setData] = useState<ReminderPreferences | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<ApiError | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await apiGet<ReminderPreferences>(endpoints.reminderPreferences);
-      setData(res);
-    } catch (err) {
-      setError(err as ApiError);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load])
+  const { data, loading, error, isOffline, reload, setData } = useCachedResource<ReminderPreferences>(
+    CACHE_KEY,
+    useCallback(() => apiGet<ReminderPreferences>(endpoints.reminderPreferences), [])
   );
 
   async function save(payload: {
@@ -54,5 +36,5 @@ export function useReminderPreferences() {
     }
   }
 
-  return { data, loading, error, reload: load, save };
+  return { data, loading, error, isOffline, reload, save };
 }

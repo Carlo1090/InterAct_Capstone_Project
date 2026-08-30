@@ -11,6 +11,7 @@ import { downloadAndSharePdf, ApiError } from '../src/services/api';
 import { endpoints } from '../src/services/endpoints';
 import { InfoSheet, InfoSheetPersonal, InfoSheetAcademic, InfoSheetOjt } from '../src/types/api';
 import { colors } from '../src/constants/colors';
+import { OfflineNotice } from '../src/components/OfflineNotice';
 
 const YEAR_LEVELS: { value: string; label: string }[] = [
   { value: '1st-year', label: '1st Year' },
@@ -30,7 +31,7 @@ function findMissingRequired(personal: InfoSheetPersonal, academic: InfoSheetAca
 }
 
 export default function InfoSheetScreen() {
-  const { data, companies, loading, error, reload, save } = useStudentInfo();
+  const { data, companies, loading, error, isOffline, reload, save } = useStudentInfo();
   const [editing, setEditing] = useState(false);
   const [personal, setPersonal] = useState<InfoSheetPersonal | null>(null);
   const [academic, setAcademic] = useState<InfoSheetAcademic | null>(null);
@@ -157,6 +158,8 @@ export default function InfoSheetScreen() {
           </View>
         )}
       </View>
+
+      <OfflineNotice feature="infoSheet" show={isOffline} />
 
       <StatusBanner status={data.submission_status} rejectionReason={data.rejection_reason} editing={editing} />
 

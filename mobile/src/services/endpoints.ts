@@ -19,6 +19,17 @@ export const endpoints = {
   weeklyLogSubmit: (weekStart: string) => `/api/student/weekly-logs/${weekStart}/submit`,
   weeklyLogPdf: (weekStart: string) => `/api/student/weekly-logs/${weekStart}/pdf`,
 
+  // Weekly Activity Log and Time Log Summary — the official MDC paper form.
+  weeklyActivityLogs: '/api/student/weekly-activity-logs',
+  weeklyActivityLog: (id: number) => `/api/student/weekly-activity-logs/${id}`,
+  weeklyActivityLogPdf: (id: number) => `/api/student/weekly-activity-logs/${id}/pdf`,
+  weeklyActivityEntries: (id: number) => `/api/student/weekly-activity-logs/${id}/entries`,
+  weeklyActivityEntry: (id: number, entryId: number) =>
+    `/api/student/weekly-activity-logs/${id}/entries/${entryId}`,
+
+  exitInterview: '/api/student/exit-interview',
+  exitInterviewPdf: '/api/student/exit-interview/pdf',
+
   infoSheet: '/api/student/info-sheet',
   infoSheetPdf: '/api/student/info-sheet/pdf',
   companies: '/api/student/companies',

@@ -5,6 +5,7 @@ import { TopBar } from '../../src/components/TopBar';
 import { Banner } from '../../src/components/Banner';
 import { JournalListItem } from '../../src/components/JournalListItem';
 import { ErrorState, LoadingState } from '../../src/components/ErrorState';
+import { OfflineNotice } from '../../src/components/OfflineNotice';
 import { useJournalList } from '../../src/hooks/useJournals';
 import { colors } from '../../src/constants/colors';
 
@@ -35,7 +36,7 @@ export default function Journals() {
       </View>
 
       {isOffline && entries.length > 0 ? (
-        <Banner variant="neutral">You're offline — showing your last saved journals.</Banner>
+        <OfflineNotice feature="journalList" />
       ) : (
         <Banner variant="info">
           Daily entries track submission status. Review happens after entries compile into your weekly journal.
