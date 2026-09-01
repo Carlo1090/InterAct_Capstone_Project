@@ -58,14 +58,74 @@ class CoordinatorJournalReviewController extends Controller
     }
 
     /**
-     * @return Collection<int, int>
+     * The batch / company / status the caller asked for.
+     *
+     * Status keeps its lenient default rather than 422ing an unknown value:
+     * **pending is the default view** and always has been, because "what is
+     * waiting on me" is the reason to open this page at all. Batch and company
+     * are validated as integers but deliberately NOT checked against the
+     * coordinator's scope — they only ever NARROW a query that is already
+     * scoped, so an out-of-scope id yields an empty list rather than leaking
+     * anything, and a 403 would be a worse answer to a stale bookmark.
+     *
+     * @return array{status: string, batch_id: ?int, company_id: ?int}
      */
-    private function reviewableStudentIds(User $coordinator): Collection
+    private function filtersFrom(Request $request): array
     {
-        return $this->reviewableEnrollments($coordinator)
-            ->pluck('student_id')
-            ->unique()
-            ->values();
+        $request->validate([
+            'batch_id' => ['nullable', 'integer'],
+            'company_id' => ['nullable', 'integer'],
+        ]);
+
+        $status = $request->query('status');
+
+        return [
+            'status' => in_array($status, ['pending', 'approved', 'returned'], true) ? $status : 'pending',
+            'batch_id' => $request->integer('batch_id') ?: null,
+            'company_id' => $request->integer('company_id') ?: null,
+        ];
+    }
+
+    /**
+     * Narrow a set of already-scoped enrollments by the batch/company filters.
+     *
+     * Done on the COLLECTION rather than in SQL because index() needs the
+     * unfiltered set anyway — it is what populates the two dropdowns, which
+     * must keep offering every option regardless of what is currently selected
+     * (a filter list that shrinks to the current selection cannot be changed
+     * without clearing it first).
+     *
+     * @param  Collection<int, BatchStudent>  $enrollments
+     * @param  array{status: string, batch_id: ?int, company_id: ?int}  $filters
+     * @return Collection<int, BatchStudent>
+     */
+    private function applyFilters(Collection $enrollments, array $filters): Collection
+    {
+        return $enrollments
+            ->when($filters['batch_id'], fn (Collection $rows, int $id) => $rows->where('batch_id', $id))
+            ->when($filters['company_id'], fn (Collection $rows, int $id) => $rows->where('company_id', $id));
+    }
+
+    /**
+     * Submitted weekly logs belonging to a given set of enrollments.
+     *
+     * Constrained by student AND batch so a filter cannot leak a week the
+     * student wrote on a different cohort. An empty set produces an empty
+     * `whereIn`, which correctly matches nothing.
+     *
+     * @param  Collection<int, BatchStudent>  $enrollments
+     */
+    private function logsFor(User $coordinator, Collection $enrollments): Builder
+    {
+        return WeeklyLog::whereIn('student_id', $enrollments->pluck('student_id')->unique())
+            ->whereIn('batch_id', $enrollments->pluck('batch_id')->unique())
+            ->whereHas(
+                'batch',
+                fn (Builder $query) => $query
+                    ->whereIn('program_id', $coordinator->coordinatorProgramIds())
+                    ->where('ojt_type', Batch::OJT_TYPE_COORDINATOR)
+            )
+            ->whereNotNull('submitted_at');
     }
 
     /**
@@ -90,39 +150,62 @@ class CoordinatorJournalReviewController extends Controller
 
     /**
      * The review queue: submitted weekly logs on coordinator-centered batches,
-     * one status at a time (default pending), most recently submitted first.
+     * one status at a time (default pending), most recently submitted first,
+     * optionally narrowed to one batch and/or one host company.
      * Never-submitted drafts are excluded, matching every other review surface.
      */
     public function index(Request $request): JsonResponse
     {
-        $status = $request->query('status');
-        $status = in_array($status, ['pending', 'approved', 'returned'], true) ? $status : 'pending';
-
         $coordinator = $request->user();
+        $filters = $this->filtersFrom($request);
 
-        $logs = WeeklyLog::whereIn('student_id', $this->reviewableStudentIds($coordinator))
-            ->whereHas(
-                'batch',
-                fn (Builder $query) => $query
-                    ->whereIn('program_id', $coordinator->coordinatorProgramIds())
-                    ->where('ojt_type', Batch::OJT_TYPE_COORDINATOR)
-            )
-            ->whereNotNull('submitted_at')
-            ->where('status', $status)
+        // NOT avatar_url — that is an accessor over `avatar_path`, not a
+        // column, and naming it in a column list is a hard SQL error.
+        $allEnrollments = $this->reviewableEnrollments($coordinator)
+            ->with(['batch:id,name', 'company:id,name'])
+            ->get();
+
+        $enrollments = $this->applyFilters($allEnrollments, $filters);
+
+        // The company is carried on the ENROLLMENT, not on the weekly log, so
+        // it is resolved per (student, batch) pair — the same pair the log
+        // itself is keyed by. Shown under the batch name rather than in a
+        // column of its own: a seventh column would push this table into
+        // horizontal scroll, and the company filter still needs to be visible
+        // in its results to be worth having.
+        $companyByPair = $enrollments->mapWithKeys(fn (BatchStudent $enrollment) => [
+            $enrollment->student_id.':'.$enrollment->batch_id => $enrollment->company?->name ?? '',
+        ]);
+
+        $base = $this->logsFor($coordinator, $enrollments);
+
+        $logs = $base->clone()
+            ->where('status', $filters['status'])
             ->with(['student:id,name,student_id_number', 'batch:id,name'])
             ->orderByDesc('submitted_at')
             ->get();
 
-        $rows = $this->weeklyLogRows($logs)->map(function (array $row) use ($logs) {
-            $row['batch'] = $logs->firstWhere('id', $row['id'])?->batch?->name ?? '';
+        $rows = $this->weeklyLogRows($logs)->map(function (array $row) use ($logs, $companyByPair) {
+            $log = $logs->firstWhere('id', $row['id']);
+            $row['batch'] = $log?->batch?->name ?? '';
+            $row['company'] = $companyByPair[$log?->student_id.':'.$log?->batch_id] ?? '';
 
             return $row;
         });
 
         return response()->json([
-            'status' => $status,
+            'status' => $filters['status'],
+            'batch_id' => $filters['batch_id'],
+            'company_id' => $filters['company_id'],
             'logs' => $rows->values(),
-            'counts' => $this->statusCounts($coordinator),
+            'counts' => $this->statusCounts($base),
+            // Every batch and company that actually hosts a coordinator-centered
+            // intern in scope — derived from the UNFILTERED set, so selecting
+            // one never removes the others from the dropdown.
+            'filters' => [
+                'batches' => $this->options($allEnrollments, 'batch'),
+                'companies' => $this->options($allEnrollments, 'company'),
+            ],
             // Lets the page tell 'you have no coordinator-centered batches'
             // apart from 'you have one, nobody is enrolled yet'. Without it the
             // empty state told a coordinator staring at their own
@@ -134,22 +217,38 @@ class CoordinatorJournalReviewController extends Controller
     }
 
     /**
+     * The distinct related records behind a set of enrollments, as dropdown
+     * options. A row with no company (possible — `company_id` is only pinned at
+     * enrollment) simply contributes nothing.
+     *
+     * @param  Collection<int, BatchStudent>  $enrollments
+     * @return Collection<int, array{id: int, name: string}>
+     */
+    private function options(Collection $enrollments, string $relation): Collection
+    {
+        return $enrollments
+            ->pluck($relation)
+            ->filter()
+            ->unique('id')
+            ->sortBy('name')
+            ->map(fn ($record) => ['id' => $record->id, 'name' => $record->name])
+            ->values();
+    }
+
+    /**
      * Tallies for the queue's three tabs, in ONE grouped query rather than
      * three round trips — the same reasoning as DtrMonitorController's
      * sessionTallies().
      *
+     * It takes the SAME filtered base query the list does, so the pill counts
+     * describe what each tab will actually show. Counting unfiltered would let
+     * "Approved 7" open onto an empty table with a batch filter set.
+     *
      * @return array<string, int>
      */
-    private function statusCounts(User $coordinator): array
+    private function statusCounts(Builder $base): array
     {
-        $counts = WeeklyLog::whereIn('student_id', $this->reviewableStudentIds($coordinator))
-            ->whereHas(
-                'batch',
-                fn (Builder $query) => $query
-                    ->whereIn('program_id', $coordinator->coordinatorProgramIds())
-                    ->where('ojt_type', Batch::OJT_TYPE_COORDINATOR)
-            )
-            ->whereNotNull('submitted_at')
+        $counts = $base->clone()
             ->selectRaw('status, COUNT(*) as aggregate')
             ->groupBy('status')
             ->pluck('aggregate', 'status');
@@ -163,7 +262,9 @@ class CoordinatorJournalReviewController extends Controller
 
     /**
      * Every intern on a coordinator-centered batch in scope, with their own
-     * tallies — the index into the notebooks.
+     * tallies — the index into the notebooks. Honours the same batch/company
+     * filters as the queue, since the page carries one filter bar across both
+     * tabs and they would otherwise disagree about what is being looked at.
      *
      * Without this an intern with nothing currently pending would be
      * unreachable: the queue only ever lists one status at a time, so "read
@@ -173,12 +274,16 @@ class CoordinatorJournalReviewController extends Controller
     public function interns(Request $request): JsonResponse
     {
         $coordinator = $request->user();
+        $filters = $this->filtersFrom($request);
 
-        $enrollments = $this->reviewableEnrollments($coordinator)
-            // NOT avatar_url — that is an accessor over `avatar_path`, not a
-            // column, and naming it in a column list is a hard SQL error.
-            ->with(['student:id,name,student_id_number', 'batch:id,name', 'company:id,name'])
-            ->get();
+        $enrollments = $this->applyFilters(
+            $this->reviewableEnrollments($coordinator)
+                // NOT avatar_url — that is an accessor over `avatar_path`, not
+                // a column, and naming it in a column list is a hard SQL error.
+                ->with(['student:id,name,student_id_number', 'batch:id,name', 'company:id,name'])
+                ->get(),
+            $filters,
+        );
 
         $tallies = WeeklyLog::whereIn('student_id', $enrollments->pluck('student_id')->unique())
             ->whereNotNull('submitted_at')

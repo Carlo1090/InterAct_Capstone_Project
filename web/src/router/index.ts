@@ -376,6 +376,31 @@ router.beforeEach(async (to) => {
   // auth.user.must_change_password itself and locks the user into its Change
   // Password view with a blocking backdrop until they save a new one.
 
+  // Two coordinator sections exist only when the coordinator has a cohort of
+  // the matching OJT type. The sidebar already hides each item (see
+  // CONDITIONAL_NAV_ITEMS in CoordinatorLayout.vue); these guards close the
+  // bookmark/back-button hole, so the route cannot be reached without a way
+  // back to it — which is what "the tab should not exist" has to mean to be
+  // true. `startsWith` so each covers its own sub-pages (the per-intern
+  // notebook under journal-review). The backend still scopes every one of
+  // these endpoints on its own; this is navigation, not authorization.
+  //
+  // THE TWO CONDITIONS ARE OPPOSITES ON PURPOSE — journals are reviewed by the
+  // coordinator on coordinator-centered cohorts, while the Daily Time Record
+  // only runs on supervisor-supported ones.
+  if (auth.user?.role === 'coordinator') {
+    const gated: [string, 'coordinator_has_centered_batch' | 'coordinator_has_supervised_batch'][] = [
+      ['/coordinator/journal-review', 'coordinator_has_centered_batch'],
+      ['/coordinator/dtr', 'coordinator_has_supervised_batch'],
+    ]
+
+    for (const [prefix, flag] of gated) {
+      if (to.path.startsWith(prefix) && auth.user?.[flag] !== true) {
+        return '/coordinator/dashboard'
+      }
+    }
+  }
+
   // Info-sheet enrollment gate: a not-yet-approved student may only reach the
   // info-sheet page. Backend enforces this too. (The account popover — Edit
   // Profile/Change Password/Activity Log — stays reachable regardless, since

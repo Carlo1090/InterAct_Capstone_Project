@@ -366,9 +366,102 @@ the server would refuse.
   weeks were the company's to review and stay that way.
 - The **`interns` index** exists because the queue lists one status at a time,
   so without it an intern with nothing currently pending would be unreachable.
+- **Filters (added 2026-09-01): batch, company, and status, with status
+  defaulting to `pending`.** A department can run several coordinator-centered
+  cohorts at several host companies at once, and collecting one batch's journals
+  should not mean reading past the others.
+  - **Batch and company narrow BOTH tabs** — `index` and `interns` take the same
+    two params — because the page carries ONE filter bar above the tab strip.
+    Applying them to the queue alone would let switching tabs silently change
+    what is being looked at. Status stays with the queue, since the intern index
+    shows all three tallies at once.
+  - **`pending` remains the default and is echoed back as `status`.** "What is
+    waiting on me" is the reason to open this page; an unknown status still
+    falls back to pending rather than 422ing.
+  - **The pill counts come from the SAME filtered query the table does.**
+    Counting unfiltered would let "Approved 7" open onto an empty table whenever
+    a batch filter is set.
+  - **The dropdown options come from the UNFILTERED enrollment set**, so
+    selecting one never removes the others — a filter list that narrows to its
+    own selection cannot be changed without clearing it first. They list only
+    batches/companies that actually host a coordinator-centered intern in scope,
+    never the whole department.
+  - `batch_id`/`company_id` are validated as integers but deliberately **not**
+    scope-checked (unlike `CoordinatorWeeklyJournalController`'s `program_id`,
+    which 403s): they only ever NARROW a query that is already scoped, so an
+    out-of-scope id yields an empty list rather than leaking anything, and a 403
+    is a worse answer to a stale bookmark.
+  - The queue is constrained by **student AND batch**, so a company filter
+    cannot leak a week the same student wrote on a different cohort.
+  - **The company renders UNDER the batch name, not in a seventh column** — the
+    queue table is already six columns wide at its documented widths, and a
+    filter whose effect is invisible in its own results is not worth having.
+    `weekly_logs` has no company; it is resolved per (student, batch) pair from
+    the enrollment, which is the same pair the log is keyed by.
 - **ROUTE ORDERING**: `journal-review/interns` and
   `journal-review/interns/{student}` must stay ABOVE
   `journal-review/{weeklyLog}`, the same hazard as `info-sheets/pending-count`.
+
+#### Two nav items exist only for the OJT type they belong to (2026-09-01)
+
+**This reverses the original decision, at the project owner's request.**
+Journal Review used to be shown to every coordinator, on the argument that
+hiding it made the OJT-type feature undiscoverable. In practice, for the
+majority who run only supervisor-supported cohorts, it was a permanent sidebar
+entry whose only content was an explanation of why it was empty. The OJT Type
+control on the Batches page is where the mode is genuinely discovered. The same
+treatment was then extended to the coordinator's Daily Time Record.
+
+**THE TWO CONDITIONS ARE OPPOSITES, and that is the whole subtlety here:**
+
+| Nav item | Shown when the coordinator has | Because |
+|---|---|---|
+| **Journal Review** | a **coordinator-centered** batch | those journals are theirs to approve; a supervisor-supported cohort's verdict belongs to the company |
+| **Daily Time Record** | a **supervisor-supported** batch | `DtrService::runsForEnrollment()` requires one — the whole scheme rests on a company supervisor being on site to anchor a geofence and vouch for a forgotten punch, so a coordinator-centered cohort has no intern who can clock in at all |
+
+**The DTR half came from the client, not from the code.** The project owner
+reported (2026-09-01) that their client runs coordinator-centered placements and
+had told them the Daily Time Record is not supported for her — which is exactly
+what `runsForEnrollment()` already says. The page was a permanently empty table
+for that department, so the item goes.
+
+Wiring both to one flag is the mistake this table exists to prevent: it would
+hide the DTR from exactly the coordinators whose interns DO clock in (a
+department running only supervisor-supported cohorts — the common case, and the
+one `mdccore` demonstrates on seeded data with three real intern rows), and show
+it to the one department where it applies to nobody. That literal-but-inverted
+version was briefly built and reverted; do not reintroduce it.
+
+- **`AuthUserPayload` gains `coordinator_has_centered_batch` and
+  `coordinator_has_supervised_batch`**, resolved from **one** `distinct()`
+  pluck of `ojt_type` over the already-cached `coordinatorProgramIds()` rather
+  than two `exists()` round trips. They ride on the payload for the same reason
+  `student_dtr_enabled` does: `CoordinatorLayout` filters the nav **before** any
+  page loads, so without them the items would flash in and then vanish.
+- **The DTR flag is deliberately NOT also gated on the coordinator's own
+  `dtr_enabled`.** `/coordinator/dtr` is the ONE place that switch is set (the
+  account-menu panel was deleted in 2026-08-20), so hiding the page whenever the
+  DTR is off would make switching it off irreversible. The page's own "off"
+  state — the consequence, the switch and the reason fields — is unchanged.
+- **`router.beforeEach` carries both guards** and bounces
+  `/coordinator/journal-review*` and `/coordinator/dtr*` to the dashboard.
+  Hiding an item alone would leave a bookmark reaching a page with no way back
+  to it, which is not what "the tab should not exist" means. This is navigation,
+  not authorization — every endpoint still scopes itself, and
+  `DtrMonitorController` (which already excludes coordinator-centered batches
+  from its rows) is untouched.
+- The layout keeps the route→flag map in **one** place
+  (`CONDITIONAL_NAV_ITEMS`), so a third conditional item is a line rather than
+  another bespoke `filter` clause.
+- **`CoordinatorBatchesPage::save()` re-fetches the auth user** after a
+  successful save (non-fatally, since the batch is already written). Creating a
+  batch is the only way either flag can flip, and without the refresh a
+  coordinator creating their first batch would be told it worked and then have
+  no way to reach the matching surface until they signed in again.
+- Pinned by `CoordinatorJournalReviewTest::test_the_auth_payload_reports_which_kinds_of_cohort_the_coordinator_runs`
+  and `..._a_coordinator_with_only_centered_cohorts_loses_the_daily_time_record`
+  — the second exists purely to fail if the two flags are ever collapsed into
+  one.
 
 ### One review implementation, two reviewers
 
@@ -2681,8 +2774,11 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
 - **Student Info Sheets** — the Accept/Reject queue; defaults to **All** statuses.
 - **Journal Review** (`/coordinator/journal-review`) — the coordinator's OWN
   approve/return queue plus each intern's full notebook, for
-  **coordinator-centered batches only**. The only coordinator surface that
-  writes a review verdict. See OJT Type above.
+  **coordinator-centered batches only**, filterable by batch, company and
+  status (status defaults to **Pending**). The only coordinator surface that
+  writes a review verdict. **Its nav item does not exist for a coordinator with
+  no coordinator-centered batch**, and the route bounces to the dashboard. See
+  OJT Type above.
 - **Student Exit Interviews** (`/coordinator/exit-interviews`) — every
   in-scope intern's exit interview, filterable by program / status / name,
   with a per-row and in-modal **Download PDF**. Read the fourteen answers and
@@ -2698,6 +2794,10 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
   generated somewhere other than the workplace can be spotted. With the DTR off
   the page explains the consequence and captures WHY instead of rendering an
   empty table. No adjust/void here; corrections belong to supervisors.
+  **Its nav item does not exist for a coordinator with no SUPERVISOR-SUPPORTED
+  batch** — the DTR runs on no other kind — and the route bounces to the
+  dashboard. That is the OPPOSITE condition to Journal Review's, not the same
+  one; see OJT Type above.
 - **Users page** (`/coordinator/users`) — a secondary nav with an **Interns** tab
   (every in-scope student regardless of enrollment, each badged ENROLLED /
   NOT ENROLLED) and a **Supervisors** tab. With **no `created_by` column** on
@@ -3283,6 +3383,50 @@ holding the longest text. On that page every column was pinned except Student,
 so Company — the longest value in the table — ended up the narrowest cell at
 135px while Student had 230px of short names.
 
+**A `whitespace-nowrap` cell with NO `truncate` does not clip — it SPILLS.**
+Same family, opposite failure. `truncate` at least stops at the cell edge; a
+bare `whitespace-nowrap` `<td>` paints its overflow across the next column, and
+`table-fixed` will not widen to save it. Any pinned column holding a formatted
+value therefore needs a width measured against that value's real width, not
+against its heading. Found 2026-09-01 on the Journal Review queue, where the
+Week column (two full ISO dates and an en dash, 174px of content) had been
+trimmed to 165px to make room elsewhere.
+
+### A native `<select>` is as wide as its widest OPTION, and flex-wrap cannot shrink it
+
+Found 2026-09-01 adding the batch/company filters to Journal Review. A
+`<select>`'s intrinsic width comes from its longest `<option>`, not from the
+selected one — so a filter listing a company called "Bohol Provincial
+Cooperative Development Office" is ~46 characters wide **whatever is currently
+chosen**, and no amount of `flex-wrap` on the row will shrink it. On a 390px
+phone that pushed the filter row 8px past the viewport, and since
+`web/src/style.css` sets no global `overflow-x` guard (deliberately — see the
+mobile-overflow section above), it bled rather than being contained.
+
+The rule for any filter `<select>` whose options are user-entered names
+(companies, batches, students — as opposed to a fixed vocabulary like
+program codes): **`w-full max-w-full` with `sm:w-auto`**, and `w-full min-w-0
+sm:w-auto` on the wrapping `<label>`. Below `sm` each control takes the column;
+above it the intrinsic width returns, still capped by `max-w-full`. Existing
+filter bars elsewhere in the coordinator section share the unguarded pattern and
+have simply not met a long enough option yet.
+
+**Also: `@change="load"` passes the change EVENT into the handler's first
+parameter.** A handler with an optional flag (`load(initial = false)`) then
+receives a truthy `Event` and takes the wrong branch — here it meant every
+filter change ran the FIRST-load path and blanked the page into its spinner.
+Write `@change="load()"`. The same applies to `:retry` on `LoadStatus`, which is
+why that page passes a separate unary `reload`.
+
+**A filter control that lives INSIDE its own page's `<LoadStatus>` must not
+flip the loading flag it is wrapped by.** Doing so unmounts the very control
+that was just used mid-gesture, dropping keyboard focus and making the dropdown
+vanish under the pointer. Split the state: `isLoading` for the first load only
+(spinner), `isRefreshing` for every later fetch (content stays mounted, dimmed,
+with its controls disabled and an `aria-live` "Updating…" note). Pages whose
+filters sit OUTSIDE the loading block — `CoordinatorWeeklyJournalsPage` — do not
+have this problem and need no split.
+
 ### SQLite silently accepts a column that does not exist; MySQL 1054s
 
 Found 2026-08-30 building the coordinator's Journal Review page. An eager load
@@ -3814,7 +3958,14 @@ which covers the mixed-company case that motivated the null-supervisor filter.
 `tests/Feature/Coordinator/CoordinatorJournalReviewTest` covers the queue, both
 verdicts, the notebook (drafts excluded, week numbers matching the PDF), the
 interns index, the route-ordering hazard, and the boundary that matters most:
-a coordinator is **403** on a supervisor-supported log.
+a coordinator is **403** on a supervisor-supported log. Four more cover the
+2026-09-01 filters and the nav item, each pinning a rule that is easy to break
+by touching only half of it: `test_the_queue_can_be_filtered_by_batch_and_by_company`,
+`test_the_status_pill_counts_respect_the_filters` (counts and rows share one
+query), `test_the_filter_options_do_not_shrink_to_the_current_selection`,
+`test_the_interns_index_honours_the_batch_and_company_filters` (one filter bar,
+both tabs), and
+`test_the_auth_payload_reports_whether_the_coordinator_reviews_anything`.
 
 DTR coverage lives in six files, and several of them exist to pin a bug that
 was real rather than hypothetical — do not delete them as redundant:

@@ -23,9 +23,20 @@ import TooltipWrap from '@/components/ui/TooltipWrap.vue'
  * carries the Approve / Return actions — there is deliberately no second review
  * modal here, because the notebook opens on the first week still awaiting review
  * and is therefore already the fast path.
+ *
+ * ONE FILTER BAR SERVES BOTH TABS. Batch and company narrow the queue and the
+ * intern index identically, so switching tabs never silently changes what is
+ * being looked at; status is the queue's own control and stays with it,
+ * defaulting to Pending because "what is waiting on me" is the reason to open
+ * this page.
  */
 
 type ReviewStatus = 'pending' | 'approved' | 'returned'
+
+type FilterOption = {
+  id: number
+  name: string
+}
 
 type QueueRow = {
   id: number
@@ -33,6 +44,7 @@ type QueueRow = {
   student_name: string
   student_id_number: string | null
   batch: string
+  company: string
   week_start: string
   week_end: string
   status: ReviewStatus
@@ -55,15 +67,32 @@ type InternRow = {
 const tab = ref<'queue' | 'interns'>('queue')
 const status = ref<ReviewStatus>('pending')
 
+// Empty string rather than null so the `<select>`'s "All …" option binds
+// cleanly; converted to a real absent param in `queryParams` below.
+const batchId = ref<number | ''>('')
+const companyId = ref<number | ''>('')
+
 const rows = ref<QueueRow[]>([])
 const interns = ref<InternRow[]>([])
 const counts = ref<Record<ReviewStatus, number>>({ pending: 0, approved: 0, returned: 0 })
+const batchOptions = ref<FilterOption[]>([])
+const companyOptions = ref<FilterOption[]>([])
 // How many coordinator-centered batches exist at all, which is a different
 // question from whether anyone is enrolled on them — the empty state below has
 // to tell those two apart or it tells the coordinator they never made one.
 const centeredBatches = ref(0)
 
+// TWO loading flags, and the split is load-bearing rather than tidiness. The
+// filter bar and the tab strip live INSIDE <LoadStatus>, because whether to
+// show them at all depends on data that has to arrive first. So if every
+// filter change flipped `isLoading`, changing a filter would replace the whole
+// section with a spinner, unmount the very `<select>` that was just used, and
+// drop keyboard focus — the control would vanish under the pointer mid-gesture.
+// `isLoading` is therefore the FIRST load only; every later fetch sets
+// `isRefreshing`, which keeps the content mounted, dims it and disables the
+// controls until the answer lands.
 const isLoading = ref(true)
+const isRefreshing = ref(false)
 const errorMessage = ref('')
 
 const statusTabs: { key: ReviewStatus; label: string }[] = [
@@ -103,8 +132,25 @@ const statusLabel = (value: ReviewStatus): string => {
 
 const notebookPath = (studentId: number): string => `/coordinator/journal-review/interns/${studentId}`
 
-const load = async () => {
-  isLoading.value = true
+const hasFilters = computed(() => batchId.value !== '' || companyId.value !== '')
+
+/** Only send a filter that is actually set — a blank one is not a filter. */
+const queryParams = computed(() => {
+  const params: Record<string, string | number> = {}
+  if (batchId.value !== '') params.batch_id = batchId.value
+  if (companyId.value !== '') params.company_id = companyId.value
+
+  return params
+})
+
+// Every fetch after the first is a refresh, so a slower earlier request cannot
+// paint over a newer one when two filters are changed in quick succession.
+let requestToken = 0
+
+const load = async (initial = false) => {
+  const token = ++requestToken
+  if (initial) isLoading.value = true
+  else isRefreshing.value = true
   errorMessage.value = ''
 
   try {
@@ -113,24 +159,42 @@ const load = async () => {
         status: ReviewStatus
         logs: QueueRow[]
         counts: Record<ReviewStatus, number>
+        filters: { batches: FilterOption[]; companies: FilterOption[] }
         centered_batches: number
       }>(
         '/api/coordinator/journal-review',
-        { params: { status: status.value } },
+        { params: { status: status.value, ...queryParams.value } },
       ),
-      api.get<{ interns: InternRow[] }>('/api/coordinator/journal-review/interns'),
+      api.get<{ interns: InternRow[] }>(
+        '/api/coordinator/journal-review/interns',
+        { params: queryParams.value },
+      ),
     ])
+
+    if (token !== requestToken) return
 
     rows.value = queue.data.logs
     counts.value = queue.data.counts
     centeredBatches.value = queue.data.centered_batches
+    // The options come from the UNFILTERED set server-side, so they stay put
+    // as filters are applied — a dropdown that narrows to its own selection
+    // cannot be changed without first clearing it.
+    batchOptions.value = queue.data.filters.batches
+    companyOptions.value = queue.data.filters.companies
     interns.value = internList.data.interns
   } catch (error) {
+    if (token !== requestToken) return
     errorMessage.value = categorizeError(error, 'The review queue could not be loaded.').message
   } finally {
-    isLoading.value = false
+    if (token === requestToken) {
+      isLoading.value = false
+      isRefreshing.value = false
+    }
   }
 }
+
+/** LoadStatus's Retry button hands this straight to `load`, so keep it unary. */
+const reload = () => load()
 
 const selectStatus = async (next: ReviewStatus) => {
   if (status.value === next) return
@@ -138,10 +202,17 @@ const selectStatus = async (next: ReviewStatus) => {
   await load()
 }
 
-const hasAnyWork = computed(() => interns.value.length > 0)
+const clearFilters = async () => {
+  if (!hasFilters.value) return
+  batchId.value = ''
+  companyId.value = ''
+  await load()
+}
+
+const hasAnyWork = computed(() => interns.value.length > 0 || hasFilters.value)
 const hasCenteredBatch = computed(() => centeredBatches.value > 0)
 
-onMounted(load)
+onMounted(() => load(true))
 </script>
 
 <template>
@@ -160,7 +231,12 @@ onMounted(load)
       </p>
     </div>
 
-    <LoadStatus :loading="isLoading" :error="errorMessage" :retry="load">
+    <!--
+      `isLoading` is the FIRST load only — see the two flags in the script. A
+      refresh dims the content in place instead of unmounting it, so the filter
+      that triggered it survives the round trip.
+    -->
+    <LoadStatus :loading="isLoading" :error="errorMessage" :retry="reload">
       <p
         v-if="!hasAnyWork"
         class="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600"
@@ -177,6 +253,11 @@ onMounted(load)
         </template>
       </p>
 
+      <!--
+        `space-y-5` is on the <section>, and this fragment's children are its
+        direct children, so the wrapper below would break the page rhythm — it
+        is deliberately a <template> with the dimming applied per block instead.
+      -->
       <template v-else>
         <!-- Queue vs Interns: one status across everyone, or one intern end to end. -->
         <div class="flex flex-wrap items-center gap-2">
@@ -199,17 +280,83 @@ onMounted(load)
           </button>
         </div>
 
+        <!--
+          Batch and company narrow BOTH tabs, so they sit above the tab-specific
+          status pills rather than inside the queue. Each reloads on change —
+          there is no Apply button anywhere else in the coordinator section.
+
+          `load()` is CALLED, not passed: `@change="load"` would hand the change
+          Event straight into its `initial` parameter, which is truthy, and every
+          filter change would blank the page into the first-load spinner.
+
+          A NATIVE `<select>` IS AS WIDE AS ITS WIDEST OPTION and `flex-wrap`
+          cannot shrink it below that, so a long company name (the real one here
+          is 46 characters) pushed this row 8px past a 390px phone. `w-full`
+          below `sm` makes each control the width of the column instead;
+          `max-w-full` keeps the intrinsic width capped at every larger size.
+        -->
+        <div class="flex flex-wrap items-end gap-4">
+          <label class="block w-full min-w-0 sm:w-auto">
+            <span class="text-xs font-bold text-slate-600">Batch</span>
+            <select
+              v-model="batchId"
+              :disabled="isRefreshing"
+              class="mt-1 block w-full max-w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-60 sm:w-auto"
+              @change="load()"
+            >
+              <option value="">All batches</option>
+              <option v-for="option in batchOptions" :key="option.id" :value="option.id">{{ option.name }}</option>
+            </select>
+          </label>
+
+          <label class="block w-full min-w-0 sm:w-auto">
+            <span class="text-xs font-bold text-slate-600">Company</span>
+            <select
+              v-model="companyId"
+              :disabled="isRefreshing"
+              class="mt-1 block w-full max-w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-60 sm:w-auto"
+              @change="load()"
+            >
+              <option value="">All companies</option>
+              <option v-for="option in companyOptions" :key="option.id" :value="option.id">{{ option.name }}</option>
+            </select>
+          </label>
+
+          <button
+            v-if="hasFilters"
+            type="button"
+            :disabled="isRefreshing"
+            class="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+            @click="clearFilters"
+          >
+            Clear filters
+          </button>
+
+          <!--
+            Politeness matters more than the spinner here: the content stays on
+            screen during a refresh, so a screen reader needs telling that the
+            numbers below are about to change.
+          -->
+          <p v-if="isRefreshing" class="text-sm text-slate-400" role="status" aria-live="polite">Updating&hellip;</p>
+        </div>
+
         <template v-if="tab === 'queue'">
           <div class="flex flex-wrap items-center gap-2">
             <button
               v-for="option in statusTabs"
               :key="option.key"
               type="button"
-              class="inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm font-semibold transition"
+              :disabled="isRefreshing"
+              class="inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm font-semibold transition disabled:opacity-60"
               :class="status === option.key ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'"
               @click="selectStatus(option.key)"
             >
               {{ option.label }}
+              <!--
+                The counts come from the SAME filtered query the table does, so
+                a pill never promises rows the current batch/company filter
+                would hide.
+              -->
               <span
                 class="rounded-full px-2 text-xs font-bold tabular-nums"
                 :class="status === option.key ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'"
@@ -220,19 +367,30 @@ onMounted(load)
           </div>
 
           <!-- md and up: aligned table. -->
-          <div class="hidden overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200 md:block">
+          <div class="hidden overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200 transition-opacity md:block" :class="{ 'opacity-60': isRefreshing }">
             <table class="w-full table-fixed divide-y divide-slate-200">
               <!--
                 Student is PINNED and Batch absorbs the slack, not the other way
                 round: names are short and predictable, batch names are not.
+                Company rides UNDER the batch name rather than taking a seventh
+                column, which would push this table into horizontal scroll.
+              -->
+              <!--
+                WEEK MUST BE >= 180px. It renders two full ISO dates and an
+                en dash under `whitespace-nowrap` with no `truncate`, so a
+                narrower column does not clip — it SPILLS the text over the
+                Entries cell, which is the one overflow mode this table has no
+                defence against. Measured: the content is 174px, and 165px was
+                a real regression introduced while making room for the company
+                line under Batch.
               -->
               <colgroup>
-                <col style="width: 230px" />
+                <col style="width: 185px" />
                 <col />
-                <col style="width: 190px" />
-                <col style="width: 90px" />
+                <col style="width: 180px" />
+                <col style="width: 70px" />
+                <col style="width: 120px" />
                 <col style="width: 140px" />
-                <col style="width: 150px" />
               </colgroup>
               <thead class="bg-slate-50">
                 <tr>
@@ -247,7 +405,8 @@ onMounted(load)
               <tbody class="divide-y divide-slate-100">
                 <tr v-if="rows.length === 0">
                   <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="6">
-                    Nothing {{ status === 'pending' ? 'waiting for review' : status }} right now.
+                    Nothing {{ status === 'pending' ? 'waiting for review' : status }}
+                    {{ hasFilters ? 'for this filter' : 'right now' }}.
                   </td>
                 </tr>
                 <tr v-for="row in rows" :key="row.id">
@@ -260,6 +419,9 @@ onMounted(load)
                   <td class="px-4 py-3">
                     <TooltipWrap :label="row.batch" class="max-w-full">
                       <span class="block max-w-full truncate text-sm text-slate-700">{{ row.batch }}</span>
+                    </TooltipWrap>
+                    <TooltipWrap :label="row.company || 'No company'" class="max-w-full">
+                      <span class="block max-w-full truncate text-xs text-slate-400">{{ row.company || '—' }}</span>
                     </TooltipWrap>
                   </td>
                   <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-700">
@@ -283,9 +445,10 @@ onMounted(load)
           </div>
 
           <!-- Below md: one stacked card per journal, so nothing scrolls sideways. -->
-          <ul class="divide-y divide-slate-100 rounded-lg bg-white px-4 shadow-sm ring-1 ring-slate-200 md:hidden">
+          <ul class="divide-y divide-slate-100 rounded-lg bg-white px-4 shadow-sm ring-1 ring-slate-200 transition-opacity md:hidden" :class="{ 'opacity-60': isRefreshing }">
             <li v-if="rows.length === 0" class="py-6 text-center text-sm text-slate-500">
-              Nothing {{ status === 'pending' ? 'waiting for review' : status }} right now.
+              Nothing {{ status === 'pending' ? 'waiting for review' : status }}
+              {{ hasFilters ? 'for this filter' : 'right now' }}.
             </li>
             <li v-for="row in rows" :key="row.id" class="space-y-2 py-4">
               <div class="flex items-start justify-between gap-3">
@@ -298,6 +461,7 @@ onMounted(load)
                 </span>
               </div>
               <p class="text-sm text-slate-700">{{ row.batch }}</p>
+              <p class="text-sm text-slate-500">{{ row.company || '—' }}</p>
               <p class="text-sm text-slate-500">
                 {{ dateOnly(row.week_start) }} &ndash; {{ dateOnly(row.week_end) }} &middot; {{ row.entries_count }} entries
               </p>
@@ -313,7 +477,7 @@ onMounted(load)
         </template>
 
         <template v-else>
-          <div class="hidden overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200 md:block">
+          <div class="hidden overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200 transition-opacity md:block" :class="{ 'opacity-60': isRefreshing }">
             <table class="w-full table-fixed divide-y divide-slate-200">
               <!--
                 Company is the FLEXIBLE column and the other four are trimmed to
@@ -339,7 +503,9 @@ onMounted(load)
               </thead>
               <tbody class="divide-y divide-slate-100">
                 <tr v-if="interns.length === 0">
-                  <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="5">No interns yet.</td>
+                  <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="5">
+                    {{ hasFilters ? 'No interns match this filter.' : 'No interns yet.' }}
+                  </td>
                 </tr>
                 <tr v-for="intern in interns" :key="intern.student_id">
                   <td class="px-4 py-3">
@@ -386,8 +552,10 @@ onMounted(load)
             </table>
           </div>
 
-          <ul class="divide-y divide-slate-100 rounded-lg bg-white px-4 shadow-sm ring-1 ring-slate-200 md:hidden">
-            <li v-if="interns.length === 0" class="py-6 text-center text-sm text-slate-500">No interns yet.</li>
+          <ul class="divide-y divide-slate-100 rounded-lg bg-white px-4 shadow-sm ring-1 ring-slate-200 transition-opacity md:hidden" :class="{ 'opacity-60': isRefreshing }">
+            <li v-if="interns.length === 0" class="py-6 text-center text-sm text-slate-500">
+              {{ hasFilters ? 'No interns match this filter.' : 'No interns yet.' }}
+            </li>
             <li v-for="intern in interns" :key="intern.student_id" class="space-y-2 py-4">
               <div>
                 <p class="truncate text-sm font-semibold text-slate-900">{{ intern.student_name }}</p>

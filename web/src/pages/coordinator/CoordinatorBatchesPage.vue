@@ -4,6 +4,7 @@ import axios from 'axios'
 import api from '@/lib/axios'
 import { categorizeError } from '@/lib/apiError'
 import { confirmAction, showToast, type ConfirmTone } from '@/lib/toast'
+import { useAuthStore } from '@/stores/auth'
 import ToastHost from '@/components/ToastHost.vue'
 import LoadStatus from '@/components/LoadStatus.vue'
 import ValidationErrorList from '@/components/ui/ValidationErrorList.vue'
@@ -40,6 +41,8 @@ type BatchForm = {
   ojt_type: OjtType
   is_active: boolean
 }
+
+const auth = useAuthStore()
 
 const batches = ref<Batch[]>([])
 const programs = ref<JournalTemplateProgramOption[]>([])
@@ -239,6 +242,14 @@ const save = async () => {
     }
 
     await load()
+    // This page is the ONLY place a batch of either OJT type comes into
+    // existence, and the two `coordinator_has_*_batch` flags on the auth
+    // payload are what put Journal Review and Daily Time Record in the sidebar.
+    // Without this refresh a coordinator creating their first batch would be
+    // told it worked and then have no way to reach the matching surface until
+    // they signed in again. Non-fatal: the batch is already saved, so a failed
+    // refresh must not report the save as failed.
+    await auth.fetchUser().catch(() => undefined)
     closeModal()
     showToast(editingBatchId.value ? 'Batch updated.' : 'Batch created.')
   } catch (error) {

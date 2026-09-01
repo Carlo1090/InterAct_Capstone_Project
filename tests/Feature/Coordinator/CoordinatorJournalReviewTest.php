@@ -82,14 +82,14 @@ class CoordinatorJournalReviewTest extends TestCase
         return $company;
     }
 
-    private function enroll(Batch $batch, string $name): User
+    private function enroll(Batch $batch, string $name, ?Company $company = null): User
     {
         $student = User::factory()->create(['role' => 'student', 'name' => $name, 'program_id' => $batch->program_id]);
 
         app(EnrollmentService::class)->enrollOrReactivate(
             $batch->id,
             $student->id,
-            $this->company($batch->isSupervisorSupported())->id,
+            ($company ?? $this->company($batch->isSupervisorSupported()))->id,
         );
 
         return $student;
@@ -132,6 +132,147 @@ class CoordinatorJournalReviewTest extends TestCase
         $this->assertCount(1, $response->json('logs'));
         $this->assertSame('Centered Intern', $response->json('logs.0.student_name'));
         $this->assertSame(1, $response->json('counts.pending'));
+        // Pending is the default view — "what is waiting on me" is the reason
+        // to open this page, so an unfiltered request must never land on
+        // Approved or Returned.
+        $this->assertSame('pending', $response->json('status'));
+    }
+
+    /**
+     * A department can run several coordinator-centered cohorts at several
+     * host companies at once, and a coordinator collecting one batch's journals
+     * should not have to read past the others.
+     */
+    public function test_the_queue_can_be_filtered_by_batch_and_by_company(): void
+    {
+        $program = $this->programFor();
+        $coordinator = $this->coordinatorFor($program);
+
+        $alpha = $this->batchFor($program, $coordinator, Batch::OJT_TYPE_COORDINATOR);
+        $beta = $this->batchFor($program, $coordinator, Batch::OJT_TYPE_COORDINATOR);
+
+        $north = $this->company(withSupervisor: false);
+        $south = $this->company(withSupervisor: false);
+
+        $alphaIntern = $this->enroll($alpha, 'Alpha North', $north);
+        $betaIntern = $this->enroll($beta, 'Beta South', $south);
+
+        $this->log($alphaIntern, $alpha, 1, 'pending');
+        $this->log($betaIntern, $beta, 1, 'pending');
+
+        Sanctum::actingAs($coordinator);
+
+        $this->getJson('/api/coordinator/journal-review')->assertOk()->assertJsonCount(2, 'logs');
+
+        $byBatch = $this->getJson('/api/coordinator/journal-review?batch_id='.$alpha->id)->assertOk();
+        $this->assertCount(1, $byBatch->json('logs'));
+        $this->assertSame('Alpha North', $byBatch->json('logs.0.student_name'));
+
+        $byCompany = $this->getJson('/api/coordinator/journal-review?company_id='.$south->id)->assertOk();
+        $this->assertCount(1, $byCompany->json('logs'));
+        $this->assertSame('Beta South', $byCompany->json('logs.0.student_name'));
+        // The company rides on the enrollment, not on the log — it is resolved
+        // per (student, batch) pair so the filter's effect is visible in its own
+        // results rather than being invisible.
+        $this->assertSame($south->name, $byCompany->json('logs.0.company'));
+
+        // Both filters together, naming a pair that does not exist.
+        $this->getJson("/api/coordinator/journal-review?batch_id={$alpha->id}&company_id={$south->id}")
+            ->assertOk()
+            ->assertJsonCount(0, 'logs');
+    }
+
+    /**
+     * The pill counts come from the same filtered query the table does, or
+     * "Approved 2" opens onto an empty table whenever a batch filter is set.
+     */
+    public function test_the_status_pill_counts_respect_the_filters(): void
+    {
+        $program = $this->programFor();
+        $coordinator = $this->coordinatorFor($program);
+
+        $alpha = $this->batchFor($program, $coordinator, Batch::OJT_TYPE_COORDINATOR);
+        $beta = $this->batchFor($program, $coordinator, Batch::OJT_TYPE_COORDINATOR);
+
+        $alphaIntern = $this->enroll($alpha, 'Alpha Intern');
+        $betaIntern = $this->enroll($beta, 'Beta Intern');
+
+        $this->log($alphaIntern, $alpha, 1, 'pending');
+        $this->log($alphaIntern, $alpha, 2, 'approved');
+        $this->log($betaIntern, $beta, 1, 'pending');
+
+        Sanctum::actingAs($coordinator);
+
+        $all = $this->getJson('/api/coordinator/journal-review')->assertOk();
+        $this->assertSame(2, $all->json('counts.pending'));
+        $this->assertSame(1, $all->json('counts.approved'));
+
+        $scoped = $this->getJson('/api/coordinator/journal-review?batch_id='.$alpha->id)->assertOk();
+        $this->assertSame(1, $scoped->json('counts.pending'));
+        $this->assertSame(1, $scoped->json('counts.approved'));
+        $this->assertSame(0, $scoped->json('counts.returned'));
+    }
+
+    /**
+     * The dropdowns are built from the UNFILTERED set. A filter list that
+     * narrows to its own selection cannot be changed without clearing it first.
+     */
+    public function test_the_filter_options_do_not_shrink_to_the_current_selection(): void
+    {
+        $program = $this->programFor();
+        $coordinator = $this->coordinatorFor($program);
+
+        $alpha = $this->batchFor($program, $coordinator, Batch::OJT_TYPE_COORDINATOR);
+        $beta = $this->batchFor($program, $coordinator, Batch::OJT_TYPE_COORDINATOR);
+        $supervised = $this->batchFor($program, $coordinator, Batch::OJT_TYPE_SUPERVISOR);
+
+        $this->enroll($alpha, 'Alpha Intern', $this->company(withSupervisor: false));
+        $this->enroll($beta, 'Beta Intern', $this->company(withSupervisor: false));
+        // A supervisor-supported cohort is somebody else's to review, so its
+        // batch and company must not be offered here at all.
+        $this->enroll($supervised, 'Supervised Intern');
+
+        Sanctum::actingAs($coordinator);
+
+        $response = $this->getJson('/api/coordinator/journal-review?batch_id='.$alpha->id)->assertOk();
+
+        $this->assertCount(2, $response->json('filters.batches'));
+        $this->assertCount(2, $response->json('filters.companies'));
+        $this->assertEqualsCanonicalizing(
+            [$alpha->id, $beta->id],
+            array_column($response->json('filters.batches'), 'id'),
+        );
+    }
+
+    /**
+     * One filter bar serves both tabs, so the intern index has to honour the
+     * same narrowing — otherwise switching tabs silently changes what is being
+     * looked at.
+     */
+    public function test_the_interns_index_honours_the_batch_and_company_filters(): void
+    {
+        $program = $this->programFor();
+        $coordinator = $this->coordinatorFor($program);
+
+        $alpha = $this->batchFor($program, $coordinator, Batch::OJT_TYPE_COORDINATOR);
+        $beta = $this->batchFor($program, $coordinator, Batch::OJT_TYPE_COORDINATOR);
+
+        $north = $this->company(withSupervisor: false);
+
+        $this->enroll($alpha, 'Alpha North', $north);
+        $this->enroll($beta, 'Beta Elsewhere');
+
+        Sanctum::actingAs($coordinator);
+
+        $this->getJson('/api/coordinator/journal-review/interns')->assertOk()->assertJsonCount(2, 'interns');
+
+        $byBatch = $this->getJson('/api/coordinator/journal-review/interns?batch_id='.$beta->id)->assertOk();
+        $this->assertCount(1, $byBatch->json('interns'));
+        $this->assertSame('Beta Elsewhere', $byBatch->json('interns.0.student_name'));
+
+        $byCompany = $this->getJson('/api/coordinator/journal-review/interns?company_id='.$north->id)->assertOk();
+        $this->assertCount(1, $byCompany->json('interns'));
+        $this->assertSame('Alpha North', $byCompany->json('interns.0.student_name'));
     }
 
     public function test_a_supervisor_supported_log_cannot_be_opened_or_approved_by_the_coordinator(): void
@@ -356,5 +497,68 @@ class CoordinatorJournalReviewTest extends TestCase
         $this->get("/api/coordinator/journal-review/{$log->id}/pdf")
             ->assertOk()
             ->assertHeader('content-type', 'application/pdf');
+    }
+
+    /**
+     * The Journal Review and Daily Time Record nav items are each hidden from a
+     * coordinator with no cohort of the matching kind, which the SPA can only do
+     * if the payload says so before any page loads. Same mechanism as the
+     * student's `student_dtr_enabled`.
+     *
+     * THE TWO FLAGS ARE OPPOSITES, and this test exists mostly to keep them
+     * that way: journals are reviewed by the coordinator on COORDINATOR-CENTERED
+     * cohorts, while the Daily Time Record runs only on SUPERVISOR-SUPPORTED
+     * ones (DtrService::runsForEnrollment() — the whole scheme rests on a
+     * company supervisor being on site to anchor a geofence and correct
+     * punches). Wiring both to one flag would hide the DTR from exactly the
+     * coordinators whose interns clock in.
+     */
+    public function test_the_auth_payload_reports_which_kinds_of_cohort_the_coordinator_runs(): void
+    {
+        $program = $this->programFor();
+        $coordinator = $this->coordinatorFor($program);
+
+        Sanctum::actingAs($coordinator);
+
+        // No batches at all: neither surface has anything to show.
+        $this->getJson('/api/user')
+            ->assertOk()
+            ->assertJsonPath('coordinator_has_centered_batch', false)
+            ->assertJsonPath('coordinator_has_supervised_batch', false);
+
+        $this->batchFor($program, $coordinator, Batch::OJT_TYPE_SUPERVISOR);
+
+        $this->getJson('/api/user')
+            ->assertOk()
+            ->assertJsonPath('coordinator_has_centered_batch', false)
+            ->assertJsonPath('coordinator_has_supervised_batch', true);
+
+        $this->batchFor($program, $coordinator, Batch::OJT_TYPE_COORDINATOR);
+
+        $this->getJson('/api/user')
+            ->assertOk()
+            ->assertJsonPath('coordinator_has_centered_batch', true)
+            ->assertJsonPath('coordinator_has_supervised_batch', true);
+    }
+
+    /**
+     * A coordinator running ONLY coordinator-centered cohorts has no intern who
+     * can clock in, so the Daily Time Record item goes — this is the project
+     * owner's own client, who confirmed the DTR does not apply to them. Pinned
+     * separately because it is the case the two flags would agree on if
+     * somebody ever "simplified" them into one.
+     */
+    public function test_a_coordinator_with_only_centered_cohorts_loses_the_daily_time_record(): void
+    {
+        $program = $this->programFor();
+        $coordinator = $this->coordinatorFor($program);
+        $this->batchFor($program, $coordinator, Batch::OJT_TYPE_COORDINATOR);
+
+        Sanctum::actingAs($coordinator);
+
+        $this->getJson('/api/user')
+            ->assertOk()
+            ->assertJsonPath('coordinator_has_centered_batch', true)
+            ->assertJsonPath('coordinator_has_supervised_batch', false);
     }
 }
