@@ -12,13 +12,50 @@ const INFO_SHEETS_ROUTE = '/coordinator/info-sheets'
 const INFO_SHEETS_SEEN_KEY = 'coordinator:infoSheetsSeenAt'
 const POLL_INTERVAL_MS = 60_000
 
-const navItems = [
+const JOURNAL_REVIEW_ROUTE = '/coordinator/journal-review'
+const DTR_ROUTE = '/coordinator/dtr'
+
+/**
+ * Nav items that exist only when the coordinator has a cohort of the matching
+ * OJT type, keyed by route. Both flags ride on the auth payload so an item
+ * never flashes in and then vanishes on first paint, and `router.beforeEach`
+ * carries the matching guards so a bookmark cannot reach a page the sidebar
+ * does not offer.
+ *
+ * THE TWO CONDITIONS ARE OPPOSITES, and that is the point rather than an
+ * oversight: a coordinator reviews journals on their COORDINATOR-CENTERED
+ * cohorts (nobody else can), and monitors the Daily Time Record on their
+ * SUPERVISOR-SUPPORTED ones — the DTR rests entirely on a company supervisor
+ * being on site to anchor a geofence and correct punches, so
+ * DtrService::runsForEnrollment() returns false for every intern on a
+ * coordinator-centered batch. Wiring both to the same flag would hide the DTR
+ * from exactly the coordinators whose interns clock in.
+ */
+const CONDITIONAL_NAV_ITEMS: Record<string, 'coordinator_has_centered_batch' | 'coordinator_has_supervised_batch'> = {
+  [JOURNAL_REVIEW_ROUTE]: 'coordinator_has_centered_batch',
+  [DTR_ROUTE]: 'coordinator_has_supervised_batch',
+}
+
+const allNavItems = [
   { label: 'Department Dashboard', to: '/coordinator/dashboard', badge: '', icon: 'dashboard' },
   { label: 'Users', to: '/coordinator/users', badge: '', icon: 'people' },
   { label: 'Daily Journal Activities', to: '/coordinator/journal-activities', badge: '', icon: 'calendar' },
   { label: 'Weekly Journals', to: '/coordinator/weekly-journals', badge: '', icon: 'stack' },
+  // HIDDEN unless this coordinator actually has a coordinator-centered batch —
+  // see navItems below. It used to be shown to everyone on the argument that
+  // hiding it made the feature undiscoverable; that was reversed 2026-09-01 at
+  // the project owner's request, because for the majority of coordinators (who
+  // run only supervisor-supported cohorts) the item was a permanent dead end
+  // whose only content was an explanation of why it was empty. The OJT Type
+  // control on the Batches page is where the mode is genuinely discovered.
+  { label: 'Journal Review', to: JOURNAL_REVIEW_ROUTE, badge: '', icon: 'stack' },
   { label: 'Weekly and Time Log Summary', to: '/coordinator/weekly-time-logs', badge: '', icon: 'clock' },
-  { label: 'Daily Time Record', to: '/coordinator/dtr', badge: '', icon: 'map-pin' },
+  // HIDDEN unless this coordinator has a SUPERVISOR-SUPPORTED batch — the only
+  // kind the Daily Time Record runs on, since it depends on a company
+  // supervisor being on site. Deliberately NOT gated on their own
+  // `dtr_enabled`: this page is the one and only place that switch is set, so
+  // hiding it when the DTR is off would make the decision irreversible.
+  { label: 'Daily Time Record', to: DTR_ROUTE, badge: '', icon: 'map-pin' },
   { label: 'Journal Templates', to: '/coordinator/journal-templates', badge: '', icon: 'journals' },
   { label: 'Batches', to: '/coordinator/batches', badge: '', icon: 'briefcase' },
   { label: 'Partner Companies', to: '/coordinator/companies', badge: '', icon: 'building' },
@@ -31,6 +68,15 @@ const navItems = [
 
 const auth = useAuthStore()
 const route = useRoute()
+
+/** Drop any conditional item whose flag is not set. See CONDITIONAL_NAV_ITEMS. */
+const navItems = computed(() =>
+  allNavItems.filter((item) => {
+    const flag = CONDITIONAL_NAV_ITEMS[item.to]
+
+    return flag === undefined || auth.user?.[flag] === true
+  }),
+)
 
 // Desktop-only rail collapse (the circular chevron). On phones the sidebar is
 // instead an off-canvas drawer driven by `mobileOpen`.

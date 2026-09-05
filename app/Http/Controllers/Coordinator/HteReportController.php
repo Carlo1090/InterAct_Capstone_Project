@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Coordinator;
 
+use App\Http\Controllers\Concerns\RegistersCarlitoFonts;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Coordinator\SaveHteReportRequest;
 use App\Models\Batch;
@@ -9,6 +10,7 @@ use App\Models\BatchStudent;
 use App\Models\HteReport;
 use App\Models\Program;
 use App\Models\User;
+use App\Support\SippAnnexLayout;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,6 +19,8 @@ use Illuminate\Support\Collection;
 
 class HteReportController extends Controller
 {
+    use RegistersCarlitoFonts;
+
     /**
      * Default signatories per the official HTE & Student Interns List document.
      */
@@ -120,7 +124,9 @@ class HteReportController extends Controller
             'academicYear' => $academicYear,
             'rows' => $this->withHostEstablishmentSpans($rows),
             'meta' => $this->reportMeta($report),
-        ])->setPaper('a4', 'landscape');
+        ])->setPaper([0, 0, SippAnnexLayout::PAGE_SHORT_EDGE, SippAnnexLayout::PAGE_LONG_EDGE], 'landscape');
+
+        $this->registerCarlitoFonts($pdf);
 
         return $pdf->download("hte-student-interns-list-{$academicYear}.pdf");
     }

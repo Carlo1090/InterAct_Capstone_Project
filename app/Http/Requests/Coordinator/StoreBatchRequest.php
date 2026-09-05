@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Coordinator;
 
+use App\Models\Batch;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -18,6 +19,11 @@ class StoreBatchRequest extends FormRequest
 
         return [
             'program_id' => ['required', 'integer', Rule::exists('programs', 'id'), Rule::in($programIds)],
+            // Which OJT mechanic this cohort runs under. Optional on the wire
+            // so an older client (or a seeder posting the old payload) still
+            // creates a working batch — the column default is 'supervisor',
+            // which is exactly what those callers meant.
+            'ojt_type' => ['sometimes', Rule::in(Batch::OJT_TYPES)],
             'name' => ['required', 'string', 'max:150'],
             'academic_year' => ['required', 'string', 'max:20'],
             'semester' => ['required', 'string', 'max:30'],

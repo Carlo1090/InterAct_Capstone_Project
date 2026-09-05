@@ -20,6 +20,7 @@ use App\Http\Controllers\Coordinator\CoordinatorInfoSheetController;
 use App\Http\Controllers\Coordinator\CoordinatorJournalActivityController;
 use App\Http\Controllers\Coordinator\CoordinatorExitInterviewController;
 use App\Http\Controllers\Coordinator\CoordinatorWeeklyActivityLogController;
+use App\Http\Controllers\Coordinator\CoordinatorJournalReviewController;
 use App\Http\Controllers\Coordinator\CoordinatorWeeklyJournalController;
 use App\Http\Controllers\Coordinator\DtrMonitorController;
 use App\Http\Controllers\Coordinator\DtrPreferenceController;
@@ -152,6 +153,23 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::get('weekly-journals', [CoordinatorWeeklyJournalController::class, 'index']);
         Route::get('weekly-journals/{weeklyLog}', [CoordinatorWeeklyJournalController::class, 'show']);
         Route::get('weekly-journals/{weeklyLog}/pdf', [CoordinatorWeeklyJournalController::class, 'pdf']);
+
+        /*
+         * The coordinator's OWN review queue and notebooks, for batches running
+         * under the `coordinator` OJT type. Distinct from weekly-journals above,
+         * which stays read-only monitoring across every batch in scope.
+         *
+         * ORDERING: the two literal `interns` segments MUST stay above
+         * `{weeklyLog}`, or the wildcard swallows them — the same hazard
+         * documented for info-sheets/pending-count.
+         */
+        Route::get('journal-review', [CoordinatorJournalReviewController::class, 'index']);
+        Route::get('journal-review/interns', [CoordinatorJournalReviewController::class, 'interns']);
+        Route::get('journal-review/interns/{student}', [CoordinatorJournalReviewController::class, 'notebook']);
+        Route::get('journal-review/{weeklyLog}', [CoordinatorJournalReviewController::class, 'show']);
+        Route::get('journal-review/{weeklyLog}/pdf', [CoordinatorJournalReviewController::class, 'pdf']);
+        Route::post('journal-review/{weeklyLog}/approve', [CoordinatorJournalReviewController::class, 'approve']);
+        Route::post('journal-review/{weeklyLog}/return', [CoordinatorJournalReviewController::class, 'returnLog']);
 
         Route::get('weekly-activity-logs', [CoordinatorWeeklyActivityLogController::class, 'index']);
         Route::get('weekly-activity-logs/{weeklyActivityLog}', [CoordinatorWeeklyActivityLogController::class, 'show']);

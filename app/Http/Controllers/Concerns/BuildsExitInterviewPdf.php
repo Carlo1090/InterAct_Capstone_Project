@@ -172,7 +172,9 @@ trait BuildsExitInterviewPdf
             return $typed;
         }
 
-        if (! $enrollment || ! $enrollment->batch?->coordinator?->dtr_enabled) {
+        // One rule for "does the DTR run here", shared with DtrService so the
+        // prefill cannot disagree with the feature it prefills from.
+        if (! app(DtrService::class)->runsForEnrollment($enrollment)) {
             return '';
         }
 

@@ -8,6 +8,27 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Batch extends Model
 {
+    /**
+     * The two OJT mechanics a cohort can run under.
+     *
+     * `supervisor` — the host company holds a login; its supervisor reviews the
+     * weekly journals and corrects the time records. This is how every batch
+     * behaved before the choice existed, and is the column default.
+     *
+     * `coordinator` — there is no company supervisor at all. The coordinator
+     * reviews the weekly journals themselves, and the supervisor fields that
+     * still print on the paper forms are informational text rather than a
+     * linked account.
+     */
+    public const OJT_TYPE_SUPERVISOR = 'supervisor';
+
+    public const OJT_TYPE_COORDINATOR = 'coordinator';
+
+    /**
+     * @var list<string>
+     */
+    public const OJT_TYPES = [self::OJT_TYPE_SUPERVISOR, self::OJT_TYPE_COORDINATOR];
+
     public $timestamps = false;
 
     /**
@@ -23,6 +44,7 @@ class Batch extends Model
         'working_days_per_week',
         'daily_reminder_time',
         'journal_template_id',
+        'ojt_type',
         'academic_year',
         'semester',
         'is_active',
@@ -35,6 +57,21 @@ class Batch extends Model
             'end_date' => 'date',
             'is_active' => 'boolean',
         ];
+    }
+
+    /**
+     * Reads the column defensively: a batch created before the column existed
+     * (or hydrated without it) is supervisor-supported, which is what every
+     * batch was.
+     */
+    public function isCoordinatorCentered(): bool
+    {
+        return $this->ojt_type === self::OJT_TYPE_COORDINATOR;
+    }
+
+    public function isSupervisorSupported(): bool
+    {
+        return ! $this->isCoordinatorCentered();
     }
 
     public function program(): BelongsTo

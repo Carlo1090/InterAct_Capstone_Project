@@ -22,6 +22,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 trait BuildsWeeklyActivityLogPdf
 {
+    use RegistersCarlitoFonts;
+
     /**
      * The paper form is the CABM/Business Department edition, and these two
      * lines are printed on it verbatim. Deliberately literal rather than
@@ -51,12 +53,6 @@ trait BuildsWeeklyActivityLogPdf
      * to Helvetica, so a missing or unreadable font file degrades the type
      * rather than failing the download.
      */
-    private const FORM_FONT_FAMILY = 'carlito';
-
-    private const FORM_FONT_FILES = [
-        'normal' => 'resources/fonts/Carlito-Regular.ttf',
-        'bold' => 'resources/fonts/Carlito-Bold.ttf',
-    ];
 
     protected function renderWeeklyActivityLogPdf(WeeklyActivityLog $log, ?string $filename = null): Response
     {
@@ -71,7 +67,7 @@ trait BuildsWeeklyActivityLogPdf
             // dompdf defaults to A4, which silently narrows every measured column.
         ])->setPaper('letter', 'portrait');
 
-        $this->registerWeeklyActivityLogFonts($pdf);
+        $this->registerCarlitoFonts($pdf);
 
         $slug = str($log->week_start?->toDateString() ?? (string) $log->id)->slug();
 
@@ -82,32 +78,6 @@ trait BuildsWeeklyActivityLogPdf
      * Make the two Carlito faces available to the blade's `carlito` family.
      * Registration is cached into dompdf's font dir on first use.
      */
-    protected function registerWeeklyActivityLogFonts(mixed $pdf): void
-    {
-        $dompdf = $pdf->getDomPDF();
-
-        // laravel-dompdf's shipped config turns subsetting OFF, which is
-        // harmless while every PDF uses a base-14 font but embeds the whole
-        // 682KB face the moment one does not. Switched on for THIS document
-        // only (the option lives on the instance, not the container binding);
-        // it takes the blank form from ~600KB to ~12KB.
-        $dompdf->getOptions()->setIsFontSubsettingEnabled(true);
-
-        $metrics = $dompdf->getFontMetrics();
-
-        foreach (self::FORM_FONT_FILES as $weight => $relativePath) {
-            $path = base_path($relativePath);
-
-            if (! is_file($path)) {
-                continue;
-            }
-
-            $metrics->registerFont(
-                ['family' => self::FORM_FONT_FAMILY, 'style' => 'normal', 'weight' => $weight],
-                $path
-            );
-        }
-    }
 
     /**
      * The read-only masthead: who wrote the sheet, under whom, where.

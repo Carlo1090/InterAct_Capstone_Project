@@ -1,52 +1,83 @@
+@php
+    use App\Support\SippAnnexLayout as L;
+
+    // Content-box widths: dompdf adds cell padding on top of a written width.
+    [$colHte, $colName, $colProgram, $colGender, $colDates] = L::contentWidths(L::ANNEX_D_COLUMNS);
+@endphp
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
     <title>HTE &amp; Student Interns List</title>
-    <style>
-        @page { margin: 1.6cm 1.4cm; }
-        body { font-family: "Times New Roman", Times, serif; font-size: 12px; color: #000; }
-        .center { text-align: center; }
-        .annex { text-align: right; font-weight: bold; font-size: 12px; margin-bottom: 4px; }
-        .header-lines p { margin: 0; line-height: 1.35; }
-        .header-lines .title { font-weight: bold; text-transform: uppercase; }
-        .header-lines .ay { margin-top: 6px; font-weight: bold; }
-        .meta { margin: 18px 0 12px; }
-        .meta p { margin: 0 0 3px; }
+    {{--
+        Annex "D", measured from docs/reference/ANNEX D - SIPP REPORT (1).docx.
+        Same sheet as Annex C — 8.5in x 13in LANDSCAPE, set on the Pdf instance
+        in HteReportController::pdf(), which previously asked for A4 landscape
+        (842 x 595pt against the reference's 935.55 x 612.1).
 
-        table.hte { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 4px; }
-        table.hte th, table.hte td {
-            border: 1px solid #000;
-            padding: 5px 6px;
-            font-size: 11px;
+        Every number lives in App\Support\SippAnnexLayout and is the reference's
+        own twip figure divided by 20. Do not round them.
+    --}}
+    <style>
+        @page { margin: {{ L::MARGIN }}pt; }
+
+        body {
+            font-family: carlito, "Carlito", Helvetica, Arial, sans-serif;
+            font-size: {{ L::BODY_PT }}pt;
+            color: #000;
+        }
+
+        .annex { text-align: right; font-weight: bold; margin-bottom: 6pt; }
+
+        .header-lines { text-align: center; }
+        .header-lines p { margin: 0; font-weight: bold; text-transform: uppercase; }
+        .header-lines .ay { margin-top: 8pt; }
+
+        .meta { margin: 16pt 0 10pt; }
+        .meta p { margin: 0 0 4pt; }
+
+        table.hte {
+            width: {{ L::tableWidth(L::ANNEX_D_COLUMNS) }}pt;
+            border-collapse: collapse;
+            margin-top: 4pt;
+        }
+
+        /* Horizontal padding is the reference's 108 twips; see the Annex C blade. */
+        table.hte th,
+        table.hte td {
+            border: {{ L::RULE }}pt solid #000;
+            padding: 3pt {{ L::CELL_PAD_X }}pt;
+            font-size: {{ L::BODY_PT }}pt;
             vertical-align: top;
             text-align: left;
             word-wrap: break-word;
             overflow-wrap: break-word;
-            word-break: break-word;
         }
+
         table.hte th { font-weight: bold; text-align: center; }
+
+        /*
+         * The merged Host Establishment cell centres against the run of interns
+         * it spans, which is what makes the merge read as a grouping rather than
+         * a gap.
+         */
         table.hte td.col-hte { vertical-align: middle; }
-        .col-hte { width: 28%; }
-        .col-name { width: 24%; }
-        .col-program { width: 12%; text-align: center; }
-        .col-gender { width: 10%; text-align: center; }
-        .col-dates { width: 26%; }
         td.col-program, td.col-gender { text-align: center; }
 
-        table.footer { width: 100%; margin-top: 40px; }
-        table.footer td { width: 50%; vertical-align: top; font-size: 12px; padding-right: 12px; }
-        .sig-label { padding-bottom: 42px; }
+        table.footer { width: 100%; margin-top: 30pt; }
+        table.footer td { width: 50%; vertical-align: top; padding-right: 12pt; }
+        .sig-label { padding-bottom: 40pt; font-weight: bold; }
         .sig-name { font-weight: bold; text-transform: uppercase; }
-        .sig-caption { font-size: 10px; font-style: italic; }
+        .sig-caption { font-size: 10pt; font-style: italic; }
     </style>
 </head>
 <body>
-    <div class="annex">Annex "D"</div>
-    <div class="center header-lines">
-        <p class="title">REPORT ON THE</p>
-        <p class="title">LIST HOST TRAINING ESTABLISHMENTS (HTEs) AND STUDENT INTERNS PARTICIPATING IN THE</p>
-        <p class="title">STUDENT INTERNSHIP PROGRAM IN THE PHILIPPINES (SIPP)</p>
+    <div class="annex">Annex &ldquo;D&rdquo;</div>
+
+    <div class="header-lines">
+        <p>REPORT ON THE</p>
+        <p>LIST HOST TRAINING ESTABLISHMENTS (HTEs) AND STUDENT INTERNS PARTICIPATING IN THE</p>
+        <p>STUDENT INTERNSHIP PROGRAM IN THE PHILIPPINES (SIPP)</p>
         <p class="ay">AY: {{ $academicYear }}</p>
     </div>
 
@@ -55,14 +86,19 @@
         <p><strong>ADDRESS:</strong> CABULIJAN, TUBIGON, BOHOL, PHILIPPINES</p>
     </div>
 
+    {{--
+        Widths ride on the header row — the only row guaranteed to carry no
+        rowspan. dompdf ignores a width written on a cell that spans, which is
+        exactly what the Host Establishment column does further down.
+    --}}
     <table class="hte">
         <thead>
             <tr>
-                <th class="col-hte">PARTNER HOST TRAINING ESTABLISHMENTS</th>
-                <th class="col-name">NAME OF STUDENT INTERNS</th>
-                <th class="col-program">PROGRAM</th>
-                <th class="col-gender">GENDER</th>
-                <th class="col-dates">DATES OF DURATION OF THE INTERNSHIP</th>
+                <th style="width: {{ $colHte }}pt;">PARTNER HOST TRAINING ESTABLISHMENTS</th>
+                <th style="width: {{ $colName }}pt;">NAME OF STUDENT INTERNS</th>
+                <th style="width: {{ $colProgram }}pt;">PROGRAM</th>
+                <th style="width: {{ $colGender }}pt;">GENDER</th>
+                <th style="width: {{ $colDates }}pt;">DATES OF DURATION OF THE INTERNSHIP</th>
             </tr>
         </thead>
         <tbody>

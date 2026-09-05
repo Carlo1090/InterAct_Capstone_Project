@@ -104,10 +104,20 @@ export type Batch = {
   daily_reminder_time: string
   is_active?: boolean
   journal_template_id?: number | null
+  /**
+   * Which OJT mechanic the cohort runs under. `supervisor` is how every batch
+   * behaved before the choice existed and is the column default, so an older
+   * payload without the field is read as supervisor-supported.
+   */
+  ojt_type?: OjtType
+  /** Roster size — non-zero freezes `ojt_type` on the edit form. */
+  interns_count?: number
   program: Program
   coordinator?: User
   journal_template?: JournalTemplateRecord | null
 }
+
+export type OjtType = 'supervisor' | 'coordinator'
 
 export type EnrollableStudent = {
   id: number

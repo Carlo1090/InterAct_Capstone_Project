@@ -4,6 +4,7 @@ import axios from 'axios'
 import api from '@/lib/axios'
 import { categorizeError } from '@/lib/apiError'
 import { confirmAction, showToast, type ConfirmTone } from '@/lib/toast'
+import { useAuthStore } from '@/stores/auth'
 import ToastHost from '@/components/ToastHost.vue'
 import LoadStatus from '@/components/LoadStatus.vue'
 import ValidationErrorList from '@/components/ui/ValidationErrorList.vue'
@@ -15,6 +16,7 @@ import type {
   EnrollmentOptions,
   JournalTemplateProgramOption,
   JournalTemplateRecord,
+  OjtType,
 } from '@/types/api'
 
 /** Format an ISO/Y-m-d date string to a human date, e.g. "May 9, 2026". */
@@ -36,8 +38,11 @@ type BatchForm = {
   working_days_per_week: number
   daily_reminder_time: string
   journal_template_id: number | null
+  ojt_type: OjtType
   is_active: boolean
 }
+
+const auth = useAuthStore()
 
 const batches = ref<Batch[]>([])
 const programs = ref<JournalTemplateProgramOption[]>([])
@@ -53,6 +58,11 @@ const modalMessage = ref('')
 // The batch's is_active value as loaded, so save() can tell a true->false
 // deactivation apart from a false->true reactivation (or no change at all).
 const originalIsActive = ref(true)
+// Roster size of the batch being edited. Non-zero freezes the OJT type, which
+// UpdateBatchRequest also enforces — this only keeps the form from offering a
+// change the server would refuse.
+const editingInternsCount = ref(0)
+const ojtTypeLocked = computed(() => editingBatchId.value !== null && editingInternsCount.value > 0)
 
 const emptyForm = (): BatchForm => ({
   program_id: programs.value[0]?.id ?? null,
@@ -64,11 +74,33 @@ const emptyForm = (): BatchForm => ({
   required_hours: 486,
   working_days_per_week: 5,
   daily_reminder_time: '21:00',
+  // Matches the column default: how every batch behaved before the choice
+  // existed, so the safe answer is the one already in force.
+  ojt_type: 'supervisor' as OjtType,
   journal_template_id: null,
   is_active: true,
 })
 
 const form = reactive<BatchForm>(emptyForm())
+
+/**
+ * What the selected OJT type turns on, stated plainly so the choice is not made
+ * blind. Kept in the script rather than duplicated across two template blocks,
+ * and worded to match the Journal Review page's own copy.
+ */
+const ojtTypeEffects = computed<{ on: boolean; text: string }[]>(() =>
+  form.ojt_type === 'supervisor'
+    ? [
+        { on: true, text: 'Weekly journals go to the company supervisor. They Approve, or Return with a comment.' },
+        { on: true, text: 'QR clock-in is available, if you have the Daily Time Record switched on.' },
+        { on: false, text: 'An intern cannot be enrolled until their company has a supervisor login.' },
+      ]
+    : [
+        { on: true, text: 'Weekly journals come to you, under Journal Review — the same Approve and Return.' },
+        { on: true, text: 'Interns can be placed at a company that has no account here at all.' },
+        { on: false, text: 'No QR clock-in for this batch. Hours come from the typed Weekly and Time Log Summary.' },
+      ],
+)
 
 // End date must be strictly after start date (mirrors StoreBatchRequest's
 // `after:start_date` rule) — checked client-side so the mistake is caught
@@ -125,6 +157,7 @@ const resetForm = () => {
 
 const openCreateModal = () => {
   editingBatchId.value = null
+  editingInternsCount.value = 0
   resetForm()
   isModalOpen.value = true
   // Refetch so a template just created (in another tab/moment) shows up now.
@@ -145,13 +178,26 @@ const openEditModal = (batch: Batch) => {
   form.daily_reminder_time = batch.daily_reminder_time.slice(0, 5)
   form.journal_template_id = batch.journal_template_id ?? null
   form.is_active = batch.is_active ?? true
+  form.ojt_type = batch.ojt_type ?? 'supervisor'
   originalIsActive.value = batch.is_active ?? true
+  editingInternsCount.value = batch.interns_count ?? 0
   modalErrors.value = {}
   modalMessage.value = ''
   isModalOpen.value = true
   // Refetch so a template just created (in another tab/moment) shows up now.
   loadTemplates()
 }
+
+/**
+ * The OJT type on the list. Coordinator-centered takes the blue accent purely
+ * because it is the exception in a list that is mostly the default — the colour
+ * marks 'not the usual arrangement', not 'better'.
+ */
+const ojtTypeLabel = (batch: Batch): string =>
+  (batch.ojt_type ?? 'supervisor') === 'coordinator' ? 'Coordinator-centered' : 'Supervisor-supported'
+
+const ojtTypePillClass = (batch: Batch): string =>
+  (batch.ojt_type ?? 'supervisor') === 'coordinator' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'
 
 const closeModal = () => {
   isModalOpen.value = false
@@ -196,6 +242,14 @@ const save = async () => {
     }
 
     await load()
+    // This page is the ONLY place a batch of either OJT type comes into
+    // existence, and the two `coordinator_has_*_batch` flags on the auth
+    // payload are what put Journal Review and Daily Time Record in the sidebar.
+    // Without this refresh a coordinator creating their first batch would be
+    // told it worked and then have no way to reach the matching surface until
+    // they signed in again. Non-fatal: the batch is already saved, so a failed
+    // refresh must not report the save as failed.
+    await auth.fetchUser().catch(() => undefined)
     closeModal()
     showToast(editingBatchId.value ? 'Batch updated.' : 'Batch created.')
   } catch (error) {
@@ -516,6 +570,7 @@ onMounted(load)
               <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Batch</th>
               <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
               <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">AY / Semester</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">OJT Type</th>
               <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Start</th>
               <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">End</th>
               <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
@@ -524,12 +579,17 @@ onMounted(load)
           </thead>
           <tbody class="divide-y divide-slate-100">
             <tr v-if="batches.length === 0">
-              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="7">No batches yet.</td>
+              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="8">No batches yet.</td>
             </tr>
             <tr v-for="batch in batches" :key="batch.id">
               <td class="px-4 py-3 text-sm font-semibold text-slate-900">{{ batch.name }}</td>
               <td class="px-4 py-3 text-sm text-slate-700">{{ batch.program?.name ?? '—' }}</td>
               <td class="px-4 py-3 text-sm text-slate-500">{{ batch.academic_year }} · {{ batch.semester }}</td>
+              <td class="px-4 py-3">
+                <span class="whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold" :class="ojtTypePillClass(batch)">
+                  {{ ojtTypeLabel(batch) }}
+                </span>
+              </td>
               <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-500">{{ formatDate(batch.start_date) }}</td>
               <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-500">{{ formatDate(batch.end_date) }}</td>
               <td class="px-4 py-3">
@@ -541,7 +601,7 @@ onMounted(load)
                 </span>
               </td>
               <td class="px-4 py-3">
-                <div class="flex gap-2">
+                <div class="flex gap-2 whitespace-nowrap">
                   <button type="button" class="rounded-md border border-blue-600 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-50" @click="openRoster(batch)">
                     View Interns
                   </button>
@@ -570,6 +630,9 @@ onMounted(load)
           </div>
           <p class="mt-1 truncate text-xs text-slate-500">{{ batch.program?.name ?? '—' }} · {{ batch.academic_year }} · {{ batch.semester }}</p>
           <p class="mt-1 text-xs text-slate-500">{{ formatDate(batch.start_date) }} – {{ formatDate(batch.end_date) }}</p>
+          <span class="mt-2 inline-block whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold" :class="ojtTypePillClass(batch)">
+            {{ ojtTypeLabel(batch) }}
+          </span>
           <div class="mt-3 flex flex-wrap gap-2">
             <button type="button" class="rounded-md border border-blue-600 px-3 py-1.5 text-sm font-semibold text-blue-700 hover:bg-blue-50" @click="openRoster(batch)">
               View Interns
@@ -628,6 +691,106 @@ onMounted(load)
                 <input id="batch-semester" v-model="form.semester" type="text" placeholder="Internship" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
               </div>
             </div>
+          </section>
+
+          <!--
+            OJT Type sits here, straight after Batch Details, because it is a
+            property of the cohort rather than of its schedule — and because it
+            decides which accounts the interns need BEFORE anyone is enrolled.
+          -->
+          <section class="mt-5 border-t border-slate-100 pt-5 space-y-4">
+            <div>
+              <h4 class="text-xs font-medium uppercase tracking-wide text-slate-400">OJT Type</h4>
+              <p class="mt-1.5 text-xs text-slate-500">
+                Who checks this batch's weekly journals. Pick it now &mdash; it decides which accounts the interns need
+                before you can enrol them.
+              </p>
+            </div>
+
+            <div class="space-y-3">
+              <label
+                class="block rounded-lg border-2 p-4 transition"
+                :class="[
+                  form.ojt_type === 'supervisor' ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white',
+                  ojtTypeLocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer',
+                ]"
+              >
+                <div class="flex items-start gap-3">
+                  <input
+                    v-model="form.ojt_type"
+                    type="radio"
+                    value="supervisor"
+                    name="batch-ojt-type"
+                    class="mt-1"
+                    :disabled="ojtTypeLocked"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="text-sm font-semibold text-slate-900">Supervisor-supported</span>
+                      <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                        Default
+                      </span>
+                    </div>
+                    <p class="mt-1 text-sm text-slate-500">
+                      The host company holds a login. Their supervisor reviews each week's journal and corrects the time
+                      records.
+                    </p>
+                  </div>
+                </div>
+              </label>
+
+              <label
+                class="block rounded-lg border-2 p-4 transition"
+                :class="[
+                  form.ojt_type === 'coordinator' ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white',
+                  ojtTypeLocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer',
+                ]"
+              >
+                <div class="flex items-start gap-3">
+                  <input
+                    v-model="form.ojt_type"
+                    type="radio"
+                    value="coordinator"
+                    name="batch-ojt-type"
+                    class="mt-1"
+                    :disabled="ojtTypeLocked"
+                  />
+                  <div class="min-w-0 flex-1">
+                    <span class="text-sm font-semibold text-slate-900">Coordinator-centered</span>
+                    <p class="mt-1 text-sm text-slate-500">
+                      The company hosts the intern but has no account here. You review the weekly journals yourself.
+                    </p>
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            <!-- What the choice actually turns on, so it is not made blind. -->
+            <div class="rounded-lg bg-slate-50 p-4 ring-1 ring-slate-200/70">
+              <p class="text-xs font-medium uppercase tracking-wide text-slate-400">What this sets up</p>
+              <ul class="mt-2.5 space-y-2 text-sm text-slate-600">
+                <li v-for="(effect, index) in ojtTypeEffects" :key="index" class="flex gap-2.5">
+                  <span
+                    class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full"
+                    :class="effect.on ? 'bg-emerald-500' : 'bg-slate-300'"
+                  />
+                  <span>{{ effect.text }}</span>
+                </li>
+              </ul>
+            </div>
+
+            <p
+              v-if="form.ojt_type === 'coordinator' && !ojtTypeLocked"
+              class="rounded-md border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs font-medium text-amber-800"
+            >
+              Every intern you enrol here adds one journal a week to your review queue.
+            </p>
+
+            <p v-if="ojtTypeLocked" class="rounded-md bg-slate-50 px-3.5 py-2.5 text-xs text-slate-500">
+              This batch already has {{ editingInternsCount }} intern{{ editingInternsCount === 1 ? '' : 's' }} enrolled,
+              so its OJT type is fixed. Changing it now would hand journals already waiting on one reviewer to another
+              &mdash; create a new batch instead.
+            </p>
           </section>
 
           <section class="mt-5 border-t border-slate-100 pt-5 space-y-4">

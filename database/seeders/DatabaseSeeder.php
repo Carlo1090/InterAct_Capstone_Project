@@ -62,6 +62,10 @@ class DatabaseSeeder extends Seeder
         // so the DTR figures sit alongside a roster that already has work.
         $this->call(CabmbSupervisorJournalDemoSeeder::class);
         $this->call(CabmbSupervisorDtrDemoSeeder::class);
+        // A coordinator-centered cohort, so BOTH OJT types exist in the demo
+        // set. Runs after the supervisor-supported ones and shares nothing with
+        // them — its own batch, company (no login supervisor) and roster.
+        $this->call(CabmbCoordinatorCenteredDemoSeeder::class);
         $this->call(CabmbWeeklyDemoSeeder::class);
         // Runs AFTER both CABM-B seeders above: it writes Weekly Activity Log
         // sheets for students they enrolled, and reads each sheet's period off

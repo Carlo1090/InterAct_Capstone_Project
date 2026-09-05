@@ -28,6 +28,14 @@ use App\Models\User;
  * (Company::loginSupervisor()) is resolved here, in one place, so the rule
  * can't drift between the manual Enroll form, the batch roster's Add-Intern
  * flow, and info-sheet Accept.
+ *
+ * Since batches carry an `ojt_type`, that resolution has two branches — and
+ * they are BOTH here, for the same reason. A coordinator-centered batch has no
+ * company supervisor to resolve, so the enrollment is written with a null
+ * supervisor_id and the "add a supervisor first" 422 never fires; a
+ * supervisor-supported batch behaves exactly as it always has. The branch is
+ * read off the batch, never off a parameter, so no caller can opt a placement
+ * out of the gate by forgetting to pass something.
  */
 class EnrollmentService
 {
@@ -39,15 +47,30 @@ class EnrollmentService
         ?int $companySupervisorId = null,
     ): BatchStudent {
         $company = Company::findOrFail($companyId);
-        $supervisorId = $company->loginSupervisor?->user_id;
-        abort_if($supervisorId === null, 422, 'This company has no supervisor account yet. Add one to the company before enrolling a student.');
 
-        // Callers that only know the company (not which specific
-        // company_supervisors row is the named individual) get it resolved
-        // for free here.
-        $companySupervisorId ??= CompanySupervisor::where('company_id', $companyId)
-            ->where('user_id', $supervisorId)
-            ->value('id');
+        // A coordinator-centered batch has no company supervisor at all, so
+        // there is nothing to resolve and nothing to refuse: the enrollment is
+        // placed with a null supervisor and the coordinator reviews the weekly
+        // journals themselves. Resolving the gate from the BATCH (not from a
+        // caller-supplied flag) is what keeps the manual Enroll form, the
+        // roster's Add-Intern flow and info-sheet Accept from drifting — the
+        // same reason the supervisor is derived here rather than passed in.
+        $batch = Batch::findOrFail($batchId);
+
+        if ($batch->isCoordinatorCentered()) {
+            $supervisorId = null;
+            $companySupervisorId = null;
+        } else {
+            $supervisorId = $company->loginSupervisor?->user_id;
+            abort_if($supervisorId === null, 422, 'This company has no supervisor account yet. Add one to the company before enrolling a student.');
+
+            // Callers that only know the company (not which specific
+            // company_supervisors row is the named individual) get it resolved
+            // for free here.
+            $companySupervisorId ??= CompanySupervisor::where('company_id', $companyId)
+                ->where('user_id', $supervisorId)
+                ->value('id');
+        }
 
         $attributes = [
             'company_id' => $companyId,

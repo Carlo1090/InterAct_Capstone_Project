@@ -71,7 +71,30 @@ class DtrService
      */
     public function appliesTo(User $student): bool
     {
-        return (bool) $this->readEnrollmentFor($student)?->batch?->coordinator?->dtr_enabled;
+        return $this->runsForEnrollment($this->readEnrollmentFor($student));
+    }
+
+    /**
+     * The single answer to "does the Daily Time Record run for this
+     * enrollment?", used by every gate below so they cannot drift.
+     *
+     * TWO conditions, and the second is not the coordinator's preference:
+     *
+     * 1. The batch's coordinator has the DTR switched on.
+     * 2. The batch is supervisor-supported.
+     *
+     * A coordinator-centered batch has no company supervisor at all, and a
+     * supervisor is the only person who can anchor a geofence at the workplace
+     * or vouch for a forgotten punch by adjusting it. Offering QR clock-in
+     * there would produce records nobody on site could correct, so hours come
+     * from the typed Weekly and Time Log Summary instead — and, as everywhere
+     * else in this service, an unclocked hour stays unclocked rather than
+     * being invented.
+     */
+    public function runsForEnrollment(?BatchStudent $enrollment): bool
+    {
+        return (bool) $enrollment?->batch?->coordinator?->dtr_enabled
+            && (bool) $enrollment?->batch?->isSupervisorSupported();
     }
 
     /**
@@ -123,7 +146,7 @@ class DtrService
 
         abort_if($enrollment === null, 422, 'You are not currently enrolled in an active OJT batch.');
         abort_unless(
-            (bool) $enrollment->batch?->coordinator?->dtr_enabled,
+            $this->runsForEnrollment($enrollment),
             403,
             'Daily Time Record is not enabled for your batch.'
         );
@@ -472,7 +495,7 @@ class DtrService
      */
     public function progressFor(BatchStudent $enrollment): ?array
     {
-        if (! $enrollment->batch?->coordinator?->dtr_enabled) {
+        if (! $this->runsForEnrollment($enrollment)) {
             return null;
         }
 

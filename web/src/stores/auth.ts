@@ -38,6 +38,17 @@ export type AuthUser = {
   // programmes place interns with no fixed workplace, where a location-anchored
   // DTR cannot apply.
   dtr_enabled?: boolean
+  // Coordinators only: whether any batch in their scope runs coordinator-centered,
+  // i.e. whether they personally review anybody's weekly journals. Carried on
+  // the payload rather than fetched per page because CoordinatorLayout filters
+  // the nav before any page loads. Creating a batch flips it, so
+  // CoordinatorBatchesPage re-fetches the user after a successful save.
+  coordinator_has_centered_batch?: boolean
+  // Coordinators only: whether any batch in their scope is supervisor-supported
+  // — the only kind the Daily Time Record runs on, since it depends on a company
+  // supervisor being on site. The OPPOSITE condition to the flag above, not the
+  // same one; see CONDITIONAL_NAV_ITEMS in CoordinatorLayout.vue.
+  coordinator_has_supervised_batch?: boolean
 }
 
 type AuthState = {
