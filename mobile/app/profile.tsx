@@ -6,6 +6,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { Button } from '../src/components/Button';
 import { OfflineNotice } from '../src/components/OfflineNotice';
 import { uploadAvatar, ApiError } from '../src/services/api';
+import { setUser } from '../src/services/userStore';
+import { showError, showSuccess } from '../src/services/toast';
 import { InfoSectionTitle, ProfileRow } from '../src/components/InfoField';
 import { ErrorState, LoadingState } from '../src/components/ErrorState';
 import { useCurrentUser } from '../src/hooks/useCurrentUser';
@@ -49,12 +51,15 @@ export default function Profile() {
     const asset = picked.assets[0];
     setUploadingPhoto(true);
     try {
-      await uploadAvatar(asset.uri, asset.mimeType);
-      await refetch();
-      Alert.alert('Profile photo updated');
+      // The endpoint returns the refreshed user, so push it straight into the
+      // shared store. Every screen holding a user — the header avatar above
+      // all — re-renders at once, which is what was broken before.
+      const updated = await uploadAvatar(asset.uri, asset.mimeType);
+      setUser(updated);
+      showSuccess('Profile photo updated');
     } catch (err) {
       const apiErr = err as ApiError;
-      Alert.alert(
+      showError(
         'Could not update your photo',
         apiErr.status === null
           ? 'You appear to be offline. Try again once you have a connection.'
@@ -173,6 +178,7 @@ export default function Profile() {
       <MenuRow icon="notifications-outline" label="Reminder Settings" onPress={() => router.push('/reminder-settings')} />
       <MenuRow icon="key-outline" label="Change Password" onPress={() => router.push('/change-password')} />
       <MenuRow icon="time-outline" label="Activity Log" onPress={() => router.push('/activity-log')} />
+      <MenuRow icon="cloud-offline-outline" label="Using InternTrack offline" onPress={() => router.push('/offline-guide')} />
       <MenuRow icon="book-outline" label="Guide & Submission Rules" onPress={() => router.push('/guide')} />
 
       <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 }}>

@@ -13,6 +13,7 @@ import { getCached, setCached } from '../src/services/offlineCache';
 import { queueEntry, getQueuedEntry, removeQueued } from '../src/services/journalOutbox';
 import { formatDate, todayISO, weekdayLong } from '../src/lib/datetime';
 import { JournalEntryDetail } from '../src/types/api';
+import { showError } from '../src/services/toast';
 
 function dateLabelFor(iso: string) {
   return formatDate(iso, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
@@ -236,7 +237,7 @@ export default function Write() {
     try {
       await downloadAndSharePdf(endpoints.journalEntryPdf(date), `daily-journal-${date}.pdf`);
     } catch (err) {
-      Alert.alert('Could not download PDF', (err as ApiError).message);
+      showError('Could not download PDF', (err as ApiError).message);
     } finally {
       setDownloading(false);
     }

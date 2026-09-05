@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useAutoSyncOutbox } from '../src/hooks/useAutoSyncOutbox';
 import { useLocalReminderSync } from '../src/hooks/useLocalReminderSync';
 import { SplashGate } from '../src/components/SplashGate';
+import { ToastHost } from '../src/components/ToastHost';
 
 export default function RootLayout() {
   // Mounted once for the whole app lifetime — flushes any offline-queued
@@ -26,6 +27,7 @@ export default function RootLayout() {
         <Stack.Screen name="guide" />
         <Stack.Screen name="infosheet" />
         <Stack.Screen name="exit-interview" />
+        <Stack.Screen name="offline-guide" />
         <Stack.Screen name="weekly-activity/index" />
         <Stack.Screen name="weekly-activity/[id]" />
         <Stack.Screen name="profile" />
@@ -35,6 +37,10 @@ export default function RootLayout() {
         <Stack.Screen name="change-password" options={{ gestureEnabled: false }} />
         <Stack.Screen name="paused" />
       </Stack>
+
+      {/* Above the navigator so an error is visible from every screen,
+          including modals like Write Journal. */}
+      <ToastHost />
 
       {/* Overlaid rather than wrapped: expo-router expects its navigator to
           be mounted, so the Stack always renders and the splash simply

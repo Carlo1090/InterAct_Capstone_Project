@@ -3,6 +3,7 @@ import { View, Text, FlatList, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { TopBar } from '../../src/components/TopBar';
 import { Banner } from '../../src/components/Banner';
+import { Button } from '../../src/components/Button';
 import { JournalListItem } from '../../src/components/JournalListItem';
 import { ErrorState, LoadingState } from '../../src/components/ErrorState';
 import { OfflineNotice } from '../../src/components/OfflineNotice';
@@ -30,9 +31,9 @@ export default function Journals() {
         }}
       >
         <Text style={{ fontSize: 20, fontWeight: '700', color: colors.black }}>My Journals</Text>
-        <Pressable onPress={() => router.push('/write')}>
-          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.blue500 }}>+ Write</Text>
-        </Pressable>
+        {/* Boxed like the dashboard's "Write Today": bare blue text did not
+            read as a control, so this was easy to miss entirely. */}
+        <Button label="Write" icon="add" size="sm" onPress={() => router.push('/write')} />
       </View>
 
       {isOffline && entries.length > 0 ? (

@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { TopBar } from '../../src/components/TopBar';
 import { Banner } from '../../src/components/Banner';
+import { Button } from '../../src/components/Button';
 import { WeekCard } from '../../src/components/WeekCard';
 import { ErrorState, LoadingState } from '../../src/components/ErrorState';
 import { OfflineNotice } from '../../src/components/OfflineNotice';
@@ -47,9 +48,15 @@ export default function Weekly() {
         }}
       >
         <Text style={{ fontSize: 20, fontWeight: '700', color: colors.black }}>Weekly Journals</Text>
-        <Pressable onPress={() => setFilterIndex((i) => (i + 1) % FILTERS.length)}>
-          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.blue500 }}>↓ {filter.label}</Text>
-        </Pressable>
+        {/* Boxed for the same reason as "Write" — and outlined rather than
+            filled, because cycling a filter is not the page's main action. */}
+        <Button
+          label={filter.label}
+          icon="funnel-outline"
+          variant="secondary"
+          size="sm"
+          onPress={() => setFilterIndex((i) => (i + 1) % FILTERS.length)}
+        />
       </View>
 
       <OfflineNotice feature="weeklyLogs" show={isOffline && logs.length > 0} />

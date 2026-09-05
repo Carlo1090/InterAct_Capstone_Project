@@ -8,6 +8,7 @@ import { colors } from '../src/constants/colors';
 import { apiPut, ApiError } from '../src/services/api';
 import { endpoints } from '../src/services/endpoints';
 import { useCurrentUser } from '../src/hooks/useCurrentUser';
+import { ErrorNotice } from '../src/components/ErrorNotice';
 
 /**
  * Reachable normally from Profile, and force-opened (no back button) when
@@ -68,21 +69,7 @@ export default function ChangePassword() {
 
       {success && !mustChangePassword ? <Banner variant="info">Password updated.</Banner> : null}
 
-      {error ? (
-        <View
-          style={{
-            marginHorizontal: 20,
-            marginTop: 16,
-            backgroundColor: colors.redBg,
-            borderWidth: 1,
-            borderColor: '#fecaca',
-            borderRadius: 10,
-            padding: 12,
-          }}
-        >
-          <Text style={{ color: colors.redTx, fontSize: 12.5 }}>{error}</Text>
-        </View>
-      ) : null}
+      {error ? <ErrorNotice message={error} /> : null}
 
       <View style={{ marginHorizontal: 20, marginTop: 16, gap: 14 }}>
         <Field label="Current Password" value={currentPassword} onChangeText={setCurrentPassword} />

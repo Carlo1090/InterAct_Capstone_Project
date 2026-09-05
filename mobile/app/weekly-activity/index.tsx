@@ -10,6 +10,7 @@ import { OfflineNotice } from '../../src/components/OfflineNotice';
 import { useWeeklyActivityLogs } from '../../src/hooks/useWeeklyActivityLogs';
 import { dateRangeLabel, todayISO } from '../../src/lib/datetime';
 import { colors } from '../../src/constants/colors';
+import { showError } from '../../src/services/toast';
 
 /**
  * Weekly Activity Log and Time Log Summary — the list of Period-Covered
@@ -48,7 +49,7 @@ export default function WeeklyActivityIndex() {
       setArea('');
       router.push(`/weekly-activity/${result.id}`);
     } else {
-      Alert.alert('Could not create the sheet', result.error);
+      showError('Could not create the sheet', result.error);
     }
   }
 

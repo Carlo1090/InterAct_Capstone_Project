@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ScrollView, View, Text, TextInput, Pressable, ActivityIndicator, Alert } from 'react-native';
+import { ScrollView, View, Text, TextInput, Pressable, ActivityIndicator } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Banner } from '../../src/components/Banner';
@@ -13,6 +13,7 @@ import { dateRangeLabel, formatDate } from '../../src/lib/datetime';
 import { downloadAndSharePdf, ApiError } from '../../src/services/api';
 import { endpoints } from '../../src/services/endpoints';
 import { colors } from '../../src/constants/colors';
+import { showError } from '../../src/services/toast';
 
 const NARRATIVE_LIMIT = 5000;
 
@@ -62,7 +63,7 @@ export default function WeeklyDetail() {
     setSaving(true);
     const result = await saveNarrative(narrative);
     setSaving(false);
-    if (!result.ok) Alert.alert('Could not save', result.error);
+    if (!result.ok) showError('Could not save', result.error);
   }
 
   async function onSubmit() {
@@ -70,7 +71,7 @@ export default function WeeklyDetail() {
     setSaving(true);
     const result = await submitNarrative(narrative);
     setSaving(false);
-    if (!result.ok) Alert.alert('Could not submit', result.error);
+    if (!result.ok) showError('Could not submit', result.error);
   }
 
   async function onDownloadPdf() {
@@ -78,7 +79,7 @@ export default function WeeklyDetail() {
     try {
       await downloadAndSharePdf(endpoints.weeklyLogPdf(weekStart!), `weekly-log-${weekStart}.pdf`);
     } catch (err) {
-      Alert.alert('Could not download PDF', (err as ApiError).message);
+      showError('Could not download PDF', (err as ApiError).message);
     } finally {
       setDownloading(false);
     }

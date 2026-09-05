@@ -12,6 +12,7 @@ import { downloadAndSharePdf, ApiError } from '../src/services/api';
 import { endpoints } from '../src/services/endpoints';
 import { todayISO } from '../src/lib/datetime';
 import { colors } from '../src/constants/colors';
+import { showError } from '../src/services/toast';
 
 /**
  * Question text copied verbatim from web's StudentExitInterviewPage so the
@@ -151,7 +152,7 @@ export default function ExitInterview() {
     if (res.ok) {
       Alert.alert(submit ? 'Exit interview submitted' : 'Draft saved');
     } else {
-      Alert.alert(submit ? 'Could not submit' : 'Could not save', res.error);
+      showError(submit ? 'Could not submit' : 'Could not save', res.error);
     }
   }
 
@@ -171,7 +172,7 @@ export default function ExitInterview() {
     try {
       await downloadAndSharePdf(endpoints.exitInterviewPdf, 'exit-interview.pdf');
     } catch (err) {
-      Alert.alert('Could not download PDF', (err as ApiError).message);
+      showError('Could not download PDF', (err as ApiError).message);
     } finally {
       setDownloading(false);
     }

@@ -12,6 +12,7 @@ import { endpoints } from '../src/services/endpoints';
 import { InfoSheet, InfoSheetPersonal, InfoSheetAcademic, InfoSheetOjt } from '../src/types/api';
 import { colors } from '../src/constants/colors';
 import { OfflineNotice } from '../src/components/OfflineNotice';
+import { showError } from '../src/services/toast';
 
 const YEAR_LEVELS: { value: string; label: string }[] = [
   { value: '1st-year', label: '1st Year' },
@@ -74,7 +75,7 @@ export default function InfoSheetScreen() {
     if (result.ok) {
       setEditing(false);
     } else {
-      Alert.alert('Could not save', result.error);
+      showError('Could not save', result.error);
     }
   }
 
@@ -110,7 +111,7 @@ export default function InfoSheetScreen() {
     try {
       await downloadAndSharePdf(endpoints.infoSheetPdf, 'student-information-sheet.pdf');
     } catch (err) {
-      Alert.alert('Could not download PDF', (err as ApiError).message);
+      showError('Could not download PDF', (err as ApiError).message);
     } finally {
       setDownloading(false);
     }

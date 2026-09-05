@@ -9,6 +9,7 @@ import { ErrorState, LoadingState } from '../src/components/ErrorState';
 import { colors } from '../src/constants/colors';
 import { useReminderPreferences } from '../src/hooks/useReminderPreferences';
 import { OfflineNotice } from '../src/components/OfflineNotice';
+import { ErrorNotice } from '../src/components/ErrorNotice';
 
 const DAYS: { iso: number; label: string }[] = [
   { iso: 1, label: 'Mon' },
@@ -83,21 +84,7 @@ export default function ReminderSettings() {
         on-phone reminder is a general nudge — it can't check which entries are missing without a connection.
       </Banner>
 
-      {saveError ? (
-        <View
-          style={{
-            marginHorizontal: 20,
-            marginTop: 16,
-            backgroundColor: colors.redBg,
-            borderWidth: 1,
-            borderColor: '#fecaca',
-            borderRadius: 10,
-            padding: 12,
-          }}
-        >
-          <Text style={{ color: colors.redTx, fontSize: 12.5 }}>{saveError}</Text>
-        </View>
-      ) : null}
+      {saveError ? <ErrorNotice message={saveError} /> : null}
 
       <Pressable
         onPress={() => setEnabled((e) => !e)}

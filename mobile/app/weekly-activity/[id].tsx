@@ -13,6 +13,7 @@ import { endpoints } from '../../src/services/endpoints';
 import { dateRangeLabel } from '../../src/lib/datetime';
 import { colors } from '../../src/constants/colors';
 import { WeeklyActivityEntry } from '../../src/types/api';
+import { showError } from '../../src/services/toast';
 
 type RowDraft = {
   inclusive_date_start: string;
@@ -84,7 +85,7 @@ export default function WeeklyActivityDetail() {
     setSavingSheet(true);
     const res = await updateSheet({ area_assigned: area.trim() || null, no_of_hours: hours.trim() || null });
     setSavingSheet(false);
-    if (!res.ok) Alert.alert('Could not save', res.error);
+    if (!res.ok) showError('Could not save', res.error);
   }
 
   async function onAddRow() {
@@ -92,7 +93,7 @@ export default function WeeklyActivityDetail() {
     const res = await addEntry(toPayload(newRow));
     setAddingRow(false);
     if (res.ok) setNewRow(EMPTY_ROW);
-    else Alert.alert('Could not add the row', res.error);
+    else showError('Could not add the row', res.error);
   }
 
   function confirmDelete(entryId: number) {
@@ -103,7 +104,7 @@ export default function WeeklyActivityDetail() {
         style: 'destructive',
         onPress: async () => {
           const res = await deleteEntry(entryId);
-          if (!res.ok) Alert.alert('Could not delete', res.error);
+          if (!res.ok) showError('Could not delete', res.error);
         },
       },
     ]);
@@ -114,7 +115,7 @@ export default function WeeklyActivityDetail() {
     try {
       await downloadAndSharePdf(endpoints.weeklyActivityLogPdf(id), `weekly-time-log-${id}.pdf`);
     } catch (err) {
-      Alert.alert('Could not download PDF', (err as ApiError).message);
+      showError('Could not download PDF', (err as ApiError).message);
     } finally {
       setDownloading(false);
     }
@@ -281,7 +282,7 @@ function EntryCard({
     setSaving(true);
     const res = await onSave(toPayload(draft));
     setSaving(false);
-    if (!res.ok) Alert.alert('Could not save the row', res.error);
+    if (!res.ok) showError('Could not save the row', res.error);
   }
 
   return (

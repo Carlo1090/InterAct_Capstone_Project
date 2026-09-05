@@ -4,6 +4,7 @@ import * as Sharing from 'expo-sharing';
 import * as SecureStore from 'expo-secure-store';
 // Safe: endpoints.ts imports nothing, so there is no cycle back into here.
 import { endpoints } from './endpoints';
+import type { CurrentUser } from '../types/api';
 
 // 10.0.2.2 = Android emulator alias for the host machine's localhost.
 // Swap for your machine's LAN IP (e.g. http://192.168.1.20:8000) when
@@ -152,7 +153,7 @@ export async function downloadAndSharePdf(path: string, filename: string): Promi
  * boundary, which makes the server parse zero fields and report the photo as
  * missing.
  */
-export async function uploadAvatar(uri: string, mimeType?: string | null): Promise<void> {
+export async function uploadAvatar(uri: string, mimeType?: string | null): Promise<CurrentUser> {
   const token = await SecureStore.getItemAsync(TOKEN_KEY);
 
   // Derive a filename with a real extension — Laravel's `mimes:` rule reads
@@ -188,4 +189,9 @@ export async function uploadAvatar(uri: string, mimeType?: string | null): Promi
     }
     throw new ApiError(message, response.status);
   }
+
+  // The endpoint returns the refreshed user row, so the caller can push it
+  // straight into the shared store — no extra /api/user round trip, and the
+  // header updates the moment the upload lands.
+  return (await response.json()) as CurrentUser;
 }
