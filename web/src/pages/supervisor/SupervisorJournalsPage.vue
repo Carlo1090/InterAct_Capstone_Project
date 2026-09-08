@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { journalContentFields } from '@/lib/journalContent'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { showToast, confirmAction } from '@/lib/toast'
@@ -82,16 +83,8 @@ const dateOnly = (value: string | null | undefined): string | null => {
  * the snake_case key. Derive the label from the key instead: a hardcoded map
  * would silently fall back to raw keys for any template it did not anticipate.
  */
-const fieldLabel = (key: string): string =>
-  key
-    .split('_')
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
 
-/** Skip blank fields rather than printing an empty label. */
-const filledContent = (content: Record<string, string> | null | undefined): [string, string][] =>
-  Object.entries(content ?? {}).filter(([, value]) => typeof value === 'string' && value.trim() !== '')
+
 
 const entriesOpen = ref(true)
 
@@ -415,10 +408,22 @@ onMounted(load)
                       program, so any hardcoded list would fall back to raw
                       snake_case for a template it did not anticipate.
                     -->
+                    <!--
+                      Ordered and labelled by the coordinator's own template —
+                      see lib/journalContent.ts. SIPP fields carry a marker so
+                      the Annex C trio reads as one block rather than as three
+                      unrelated paragraphs.
+                    -->
                     <dl class="mt-3 space-y-3">
-                      <div v-for="[key, value] in filledContent(entry.content)" :key="key">
-                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-400">{{ fieldLabel(key) }}</dt>
-                        <dd class="mt-1 text-sm text-slate-700">{{ value }}</dd>
+                      <div v-for="field in journalContentFields(entry.content, detail.template_sections)" :key="field.key">
+                        <dt
+                          class="text-xs font-medium uppercase tracking-wide"
+                          :class="field.sipp ? 'text-amber-700' : 'text-slate-400'"
+                        >
+                          {{ field.label }}
+                          <span v-if="field.sipp" class="ml-1 font-normal normal-case tracking-normal text-amber-600/80">(SIPP)</span>
+                        </dt>
+                        <dd class="mt-1 text-sm text-slate-700">{{ field.value }}</dd>
                       </div>
                     </dl>
                   </article>

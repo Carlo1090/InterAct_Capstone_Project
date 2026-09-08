@@ -22,6 +22,7 @@ use App\Http\Controllers\Coordinator\CoordinatorExitInterviewController;
 use App\Http\Controllers\Coordinator\CoordinatorWeeklyActivityLogController;
 use App\Http\Controllers\Coordinator\CoordinatorJournalReviewController;
 use App\Http\Controllers\Coordinator\CoordinatorWeeklyJournalController;
+use App\Http\Controllers\Coordinator\CredentialManagerController;
 use App\Http\Controllers\Coordinator\DtrMonitorController;
 use App\Http\Controllers\Coordinator\DtrPreferenceController;
 use App\Http\Controllers\Coordinator\EnrollmentController;
@@ -229,8 +230,13 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::get('users/interns', [EnrollmentController::class, 'interns']);
         Route::get('users/interns/{student}', [EnrollmentController::class, 'showIntern']);
         Route::delete('users/interns/{student}', [EnrollmentController::class, 'destroyAccount']);
-        Route::post('users/interns/{student}/resend-credentials', [EnrollmentController::class, 'resendCredentials']);
         Route::get('users/supervisors', [EnrollmentController::class, 'supervisors']);
+
+        // Credential Manager — reissuing a password moved OFF the Users page
+        // and into the profile popover, and now covers supervisors too. See
+        // CredentialManagerController for why it is not a row action.
+        Route::get('credentials', [CredentialManagerController::class, 'index']);
+        Route::post('credentials/{user}/issue', [CredentialManagerController::class, 'issue']);
 
         Route::get('students/enrollable', [EnrollmentController::class, 'enrollableStudents']);
         Route::get('enrollment-options', [EnrollmentController::class, 'options']);

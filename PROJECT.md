@@ -127,6 +127,45 @@ Username + password remains the primary, always-available path.
 
 - **3 departments, 7 programs:** CAST → BSIT · CABM-B → BSBA-FM, BSBA-MM,
   BSBA-OM, BSA · CABM-H → BSTM, BSHRM
+- **`departments.code` is the identifier; `departments.name` is display only.**
+  Every lookup in the project keys off the code
+  (`Department::where('code', 'CABM-B')`), it is what fits a narrow column and
+  what prints on the SIPP forms — **never rename one casually**. Nothing keys
+  off `name`; it appears in audit-log lines, the department dropdowns and the
+  Departments list, and `AdminDepartmentsPage` hides the Code field on edit for
+  exactly this reason.
+  **CORRECTED 2026-09-08 (project owner):** `DepartmentProgramSeeder` used to
+  set `name` to the *same string as the code* — `'CAST' => ['name' => 'CAST']`
+  — so the Admin → Departments tab showed "CABM-B / CABM-B" in two columns with
+  nothing saying what either was for. Not merely cosmetic: it is the reason
+  `BuildsWeeklyActivityLogPdf::DEFAULT_DEPARTMENT_LINE` and the GROUP info
+  sheet's header are **hardcoded literals** — PROJECT.md already said in as many
+  words that `departments.name` "is seeded to the short code (`CABM-B`) and
+  would print wrongly". The seeded names are now:
+
+  | code | name |
+  |---|---|
+  | `CAST` | College of Arts, Sciences and Technology |
+  | `CABM-B` | Business Department – College of Accountancy, Business and Management |
+  | `CABM-H` | Hospitality Department – College of Accountancy, Business and Management |
+
+  **THE DISTINGUISHING WORD LEADS, and that is load-bearing, not styling.**
+  Written college-first, CABM-B and CABM-H open with the same 48 characters and
+  both truncate to an identical `"College of Accountancy…"` in the list — the
+  two rows become indistinguishable at any normal column width, which is the
+  very confusion this change removed. Caught on screen, not in theory. It also
+  matches the model above: those two are **independent top-level departments**,
+  not sub-units of one CABM, and the SIPP forms print college and unit as two
+  separate lines.
+
+  **STILL OPEN, deliberately:** the two hardcoded PDF constants were NOT rewired
+  to read `departments.name` — those are measured facsimiles and changing what
+  they print needs a re-measure against the reference, which was not part of
+  this change. They are now *derivable*, which they were not before.
+  **`programs.name` has the identical defect** (`'BSIT' => 'BSIT'`), so the
+  individual info sheet prints `BSIT` where it should print the full program
+  name. Left alone at the project owner's sequencing ("starting off with
+  Departments").
 - **Roles** (`users.role` enum, exactly four): `admin`, `coordinator`,
   `supervisor`, `student`. `supervisor` means *company* supervisor (see
   `CompanySupervisor`, linking a `supervisor`-role user to a `Company`). There
@@ -474,6 +513,48 @@ reasoning as `WeeklyBundlingService::compileFor()` and `EnrollmentService`: a
 student's journal must not mean two different things depending on which of the
 two people opened it.
 
+#### A reviewed daily entry is ordered and labelled by its own template (2026-09-08)
+
+`weeklyLogPayload()` carries **`template_sections`** — `{key, label, sipp}` for
+each section of the journal template **the LOG'S OWN batch** ran under (not the
+student's current enrolment, so a finished cohort keeps the form it was written
+on). `web/src/lib/journalContent.ts`'s **`journalContentFields()`** is the one
+client-side writer, used by the supervisor's review modal and the shared
+per-intern notebook.
+
+**This fixed a real reporting gap, not a cosmetic one.** The review surfaces
+rendered `Object.entries(content)`, and `journal_entries.content` is a JSON
+column — so fields appeared in whatever order the student's payload happened to
+serialise in. In practice that put the fixed **`daily_accomplishment` LAST**,
+after the SIPP trio, with the trio itself unordered, and labelled everything by
+humanising the key (`Issues Concerns`) rather than using the coordinator's own
+wording (`Issues and Concerns Encountered`). Since the weekly document above the
+list is compiled from `daily_accomplishment` alone, the SIPP answers — the whole
+basis of Annex C — were the least legible part of the only surface that shows
+them. Verified on screen: both reviewers now read
+`Daily Accomplishment → Issues and Concerns Encountered (SIPP) → Solutions
+(SIPP) → Recommendations (SIPP) → Task Performed`.
+
+- **SIPP fields carry a visible `(SIPP)` marker** and an amber label, so the
+  Annex C trio reads as one block rather than three unrelated paragraphs.
+- **A key the template does not mention is still rendered**, after the known
+  ones, under its humanised key. Templates get edited, and an older entry can
+  hold a section since renamed or removed — silently dropping a student's
+  writing is the one outcome worth avoiding.
+- **With no template on the payload it degrades to exactly the old behaviour**,
+  so a legacy batch with `journal_template_id` null still renders every field.
+  **That fallback was firing on demo data**: `CabmbCoordinatorCenteredDemoSeeder`
+  created *BSBA-OM 2026 Field Placement* with **no template** while every other
+  seeded batch had one — so the coordinator's Journal Review, the one review
+  surface that cohort has, was the single place the fix did nothing. The seeder
+  now assigns the CABM-B template (BSBA-OM is a CABM-B program, and the entries
+  it seeds already use that template's keys).
+- **`WeeklyJournalReviewModal.vue` is DEAD CODE** — nothing imports it;
+  `SupervisorJournalsPage.vue` carries its own inline modal markup. It still
+  holds a stale copy of the old `filledContent`/`fieldLabel` pair and was
+  deliberately left untouched rather than half-updated. Delete it or revive it,
+  but do not treat it as live.
+
 **The per-intern notebook is shared at the FRONTEND too.**
 `SupervisorInternJournalsPage.vue` is mounted on **two routes** —
 `/supervisor/interns/:studentId/journals` and
@@ -511,8 +592,47 @@ enrollment.
      `GET student/companies`, storing both `ojt_info.company_id` (which drives
      Accept) and `host_company` (the name).
    - **Year Level** is a constrained dropdown, values `1st-year` to `4th-year`.
+     See the KNOWN ISSUE below — several seeders write `'4th Year'` into this
+     field, which the rule rejects.
+   - **`ojt_info.intern_duty_schedule` is FREE TEXT and nothing else**
+     (`nullable|string|max:150`, one string). **A day/time dropdown builder was
+     removed on 2026-09-08 at the project owner's request — do not reintroduce
+     it.** It offered six fixed day ranges and half-hourly times behind a
+     "Type it instead / Use dropdowns" toggle, and cost ~170 lines of
+     `StudentInfoSheetPage.vue`: a composer, a parser that had to round-trip
+     every partial the composer could emit, a suppression flag so prefilling
+     could not write back over the value it had just read, a mode chosen on
+     load, and a save button disabled whenever the picked range was impossible.
+     Real placements are not on that grid — split shifts, rotating rosters,
+     "Flexible, as arranged with supervisor" — so the honest answer often could
+     not be selected and the toggle merely stood between the student and the
+     text box they needed anyway. **The stored shape did not change**, so every
+     value already saved still loads and prints as before; the input keeps
+     `maxlength="150"` mirroring the Form Request, and the old format survives
+     only as the placeholder. Verified end to end: a free-text schedule the
+     builder could not express saves to the database and reloads intact, and an
+     approved sheet stays `approved` through the edit.
    - **`personal_info.parent_guardian_name` is required to SUBMIT** but not to
      draft. `parent_guardian_contact` stays optional by explicit choice.
+
+   **KNOWN ISSUE (found 2026-09-08, NOT yet fixed — pre-existing):** several
+   seeders write **`'4th Year'`** into `student_information_sheets.academic_info
+   .year_level`, but `StoreInfoSheetRequest` validates
+   `in:1st-year,...,4th-year` and the SPA's `<option value>`s use the hyphenated
+   form. The consequences are worse than cosmetic: the Year dropdown renders
+   **blank** for those students (no option matches), and **every save of their
+   sheet 422s** — `"The selected Year is invalid."` — on a field they never
+   touched and cannot see a value in. Confirmed on `mdcstudent`, `mdcstudent2`
+   and `mdcstudent3`; `mdcintake*`, `cabmb.*` and `mdcbalberostudent` hold the
+   correct `'4th-year'` and save fine. Offenders: `StudentDemoUserSeeder`,
+   `CabmbUsersDemoSeeder`, `CabmbWeeklyDemoSeeder`, `CoordinatorPagesDemoSeeder`,
+   `GroupInfoSheetDemoSeeder`, and `StudentDemoEnrollmentSeeder` (which copies
+   `student_profiles.year_level` straight into the sheet, propagating whatever
+   the profile holds). **Note the two columns may legitimately differ** —
+   `student_profiles.year_level` is not validated against that list — so the fix
+   is to normalise on the way INTO `academic_info`, not to blanket-rename every
+   occurrence. Fixing it requires a re-seed, so it was left for the project
+   owner to schedule.
 4. **The coordinator reviews** on Student Info Sheets — an Accept/Reject queue
    scoped by the sheet's **intended-batch program** (so not-yet-enrolled students
    appear). **Accept = enroll**: creates the active `batch_students` row for the
@@ -813,7 +933,8 @@ created" rather than naming the clash.
 sends 100 messages inline (`QUEUE_CONNECTION=sync`, no worker), which at Gmail's
 pace passes two minutes — and PHP then killed the request MID-LOOP, leaving the
 accounts created but returning no response, so **the one-time credentials table
-was lost for every student in the file** and each needed an individual Resend.
+was lost for every student in the file** and each needed reissuing one at a time
+(then the per-row Resend; today the Credential Manager).
 This governs PHP only; a reverse proxy keeps its own timeout.
 
 **"A student never got their welcome email" now has THREE answers, and the
@@ -822,29 +943,92 @@ student can reach the first one themselves.** In order of who has to act:
 1. **The student resets their own password** — "Forgot password?" on the login
    page. See Password Reset below. This is the only one that needs nobody else,
    and until it was built there was no such path at all.
-2. **The coordinator hits Resend** on the Interns tab (below).
-3. **The admin relays a password by hand** — `issueTemporaryPassword`, the only
-   action that ALWAYS surfaces the password on screen. This is the escape
-   hatch for the case the other two cannot cover: SMTP reports success but the
-   mail never lands (spam, a mistyped address, a silent drop), so the
-   coordinator sees "Credentials resent" and has nothing to read out. It is
-   **admin-only**, so a coordinator hitting that case has to escalate.
+2. **The coordinator issues a temporary password** from the **Credential
+   Manager** in their profile popover (below).
+3. **The admin relays a password by hand** — `issueTemporaryPassword`, on the
+   System Settings student-search panel. Still present and untouched, but **it
+   is no longer an escalation the coordinator depends on**: since 2026-09-08
+   answer 2 always surfaces the password too, so a coordinator meeting the
+   case that used to strand them (SMTP reports success, the mail never lands)
+   can now read the password out themselves.
 
 Worth knowing: a student created through the **manual** `createAccount` flow can
-have `email = null`, and then neither 1 nor 2 is possible — Resend 422s and
-there is no address to reset against. Bulk-imported students always have one,
-since Email is a required column.
+have `email = null`, and then answer 1 is impossible (there is no address to
+reset against) — but answer 2 works, since the Credential Manager shows the
+password on screen rather than only mailing it. Bulk-imported students always
+have an address, since Email is a required column.
 
-**"Resend Credentials"** is the fix for "a student says they never got their
-welcome email," without needing a whole spreadsheet re-upload for one
-person: `EnrollmentController::resendCredentials` (coordinator-scoped like
-`destroyAccount`, on the Interns tab) and
-`Admin\UserController::resendCredentials` (on the System Settings
-student-search panel) both generate a fresh temp password and re-send
-`NewAccountCredentials`. Distinct from the pre-existing
-`Admin\UserController::issueTemporaryPassword`, which only surfaces the
-password in the response for the admin to relay themselves and sends no
-email — that action is untouched.
+### Credential Manager — reissuing a password, moved off the Users page
+
+Built 2026-09-08 at the project owner's request. `Coordinator\CredentialManagerController`
+(`index`, `issue`; routes `coordinator/credentials*`), panel
+`components/profile/panels/CredentialManagerPanel.vue`, reached from the
+**profile popover** as **"Credential Manager"** — a coordinator-only entry,
+gated on `auth.user.role === 'coordinator'` exactly as Reminder Settings is
+gated on `student`.
+
+**It REPLACES the per-row "Resend" button on Users → Interns**, which is gone
+along with `EnrollmentController::resendCredentials` and its route. Two reasons,
+and the second is why the move was worth making rather than just relocating a
+button:
+
+- **Reissuing a password is critical and irreversible** — the account's current
+  password stops working the instant it fires — and it sat as the middle button
+  of a row whose other two actions were "View" and "Delete". It is also not
+  something done while browsing a roster; it is what a coordinator does for one
+  named person who has said they cannot sign in, so a searched-for destination
+  matches the moment it is used.
+- **It now covers SUPERVISORS as well as interns.** A button on the Interns tab
+  structurally could not, and a company supervisor login — shared by a whole
+  company — is locked out exactly as easily. Both populations the coordinator
+  provisions are now reachable from one surface.
+
+**THE PASSWORD IS ALWAYS RETURNED, and that is the substantive behaviour
+change.** Resend only mailed it, so the documented failure — SMTP reports
+success but the mail never lands — left the coordinator told "Credentials
+resent" with nothing to read out, and the one action that surfaced a password
+was admin-only. `issue()` therefore returns `temporary_password` unconditionally
+and reports `emailed` as **`true` / `false` / `null`**: sent, delivery failed,
+or **no address on file** — three different facts needing three different things
+said to the coordinator. An account with `email = null` is fully supported,
+where Resend simply 422'd it.
+
+- **Scope**: interns by PROGRAM (`coordinatorProgramIds()`), supervisors by
+  COMPANY. Those two rules already existed as **two byte-identical private
+  `scopedCompanyIds()` methods** in `EnrollmentController` and
+  `CoordinatorCompanyController`, one of whose docblocks said it mirrored the
+  other; a third copy is how they would finally drift, so they were extracted to
+  **`App\Http\Controllers\Concerns\ScopesCoordinatorAccounts`** and all three
+  controllers now use it. Same reasoning as `EnrollmentService` and
+  `ReviewsWeeklyJournals`.
+- **`authorizeManagedAccount()` 404s a coordinator or admin account** rather
+  than 403ing it: a coordinator provisions students and supervisors only, so a
+  peer's account is not merely out of scope, it is not a kind of account this
+  surface manages at all.
+- **`index` is capped at `MAX_ROWS = 40`** and reports `total` — this renders
+  inside the popover, not on a page, so it is a search box rather than a roster;
+  a department running to hundreds of accounts says how many are not shown
+  instead of truncating silently. Search matches name / username / email /
+  student ID, debounced 300ms; the role chips fire immediately.
+- **The issued password is held in a plain `ref` and NEVER persisted** — no
+  `useFormDraft`, no `sessionStorage` — matching the bulk import's one-time
+  credentials table and `lib/formDraft.ts`'s standing rule. It takes over the
+  panel until dismissed rather than appearing in a toast that scrolls away with
+  the one thing the coordinator came for, and the copy says plainly that it
+  cannot be retrieved afterwards.
+- The confirm is `tone: 'danger'` and names the consequence, per the app-wide
+  crucial-actions rule.
+
+`Admin\UserController::resendCredentials` and `issueTemporaryPassword` are
+**untouched** — the System Settings panel keeps both.
+
+Coverage: `tests/Feature/Coordinator/CredentialManagerTest.php`, which pins the
+two rules that were NOT true of Resend —
+`test_a_coordinator_issues_a_temporary_password_to_a_supervisor` and
+`test_an_account_with_no_email_still_gets_a_password_to_read_out` — plus both
+scope 403s, the 404 on a peer coordinator, and the role/search filters. The two
+old resend tests were removed from `BulkStudentImportTest` and their assertions
+carried over here.
 
 MOBILE NOTE (Phase 7): a bulk-imported or credentials-resent account has
 `must_change_password = true` on first login, exactly like every other
@@ -1102,10 +1286,15 @@ reviewing changed.
 - **The tally pills double as the index filter** (click "3 pending" to narrow,
   click again to clear) and are `disabled` at zero — a filter that can only
   produce an empty list is not worth offering.
-- **Daily entries are collapsed by default here, unlike the review modal.** A
-  modal shows one week and scrolls on its own; this page pages through a whole
-  placement, and five expanded entries per week buries the next week's document
-  under a screen and a half of scroll.
+- **Daily entries are EXPANDED by default, matching the review modal.**
+  **REVERSED 2026-09-08 (project owner) — they used to be collapsed here**, on
+  the argument that this page pages through a whole placement and five expanded
+  entries per week buries the next week's document under a screen and a half of
+  scroll. That cost is real, but the consequence was worse: the weekly document
+  above is compiled from `daily_accomplishment` ALONE, so with the section shut
+  a reviewer saw only that one field and had **no sign the student's SIPP
+  answers existed at all**. The toggle stays and the choice still persists
+  across weeks, so the compact view is one click away for anyone who wants it.
 - Below `lg` the week index becomes a horizontally scrolling chip row (its own
   container's scroll, so the page never scrolls sideways — verified at 390px,
   `documentElement.scrollWidth === clientWidth`).
@@ -2259,7 +2448,7 @@ notification row's `type` reports what actually happened (`'email'` vs
 normal case for a coordinator-created student.
 
 This gate is specific to `MissingJournalEntryReminder` — `NewAccountCredentials`
-(bulk import / Resend Credentials, see Intake & Enrollment above) is a
+(bulk import / the Credential Manager, see Intake & Enrollment above) is a
 deliberate, narrower exception that mails an unverified coordinator-supplied
 address directly, since account-creation time has no verified address to wait
 for. Do not read this section as a blanket rule for every notification.
@@ -2805,8 +2994,10 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
   attached to any company in the coordinator's company-scope. Header actions are
   tab-contextual. "Create Supervisor" **requires a company first** — a supervisor
   is always a Company Supervisor. The Interns tab also has **"Bulk Import
-  (Excel)"** (see Intake & Enrollment above) and a per-row **"Resend"** action
-  for reissuing/re-emailing a student's login credentials.
+  (Excel)"** (see Intake & Enrollment above). Its row actions are **View and
+  Delete only** — the old per-row **"Resend"** moved to the Credential Manager
+  in the profile popover on 2026-09-08 and must not come back here; see
+  Credential Manager under Intake & Enrollment for why.
 - **Batch roster management** is separate from the enroll flow, scoped by batch
   program. Adding a student who is already active in another batch **MOVES** them
   (old row dropped, new active row, behind a wrong-batch-guard confirm).
@@ -2868,10 +3059,19 @@ identical for all four roles — exposing `PUT /api/profile`,
 
 - **Log Out is confirm-first**, default (blue) tone, not `danger` — nothing is
   destroyed, but a mis-tap on the avatar menu should not sign someone out.
-- Students additionally get **Reminder Settings**. There is deliberately **no
-  DTR item any more** — the coordinator's on/off switch moved onto
-  `/coordinator/dtr` on 2026-08-20 and `DtrSettingsPanel.vue` was deleted. A
-  setting belongs beside the thing it governs; do not put it back here.
+- Students additionally get **Reminder Settings**; coordinators additionally get
+  **Credential Manager** (2026-09-08 — see Intake & Enrollment above). Both are
+  gated on `auth.user.role` in `ProfileMenuPopover.vue`, which is the whole
+  mechanism: there is no per-item permission system here.
+- **The Credential Manager is the ONE deliberate exception to the "a setting
+  belongs beside the thing it governs" rule below**, and it is not really a
+  setting — it is a critical, irreversible action deliberately kept OFF the list
+  page whose rows it acts on, precisely so it cannot be mis-tapped while
+  browsing. Do not read it as licence to move a *setting* back here.
+- There is deliberately **no DTR item any more** — the coordinator's on/off
+  switch moved onto `/coordinator/dtr` on 2026-08-20 and `DtrSettingsPanel.vue`
+  was deleted. A setting belongs beside the thing it governs; do not put it
+  back here.
 - **Forced password change is popover-owned, not router-owned**: the popover
   watches `must_change_password` and force-opens into the password view with no
   back arrow, no outside-click dismissal, and a dimming backdrop, auto-closing
@@ -3392,6 +3592,22 @@ against its heading. Found 2026-09-01 on the Journal Review queue, where the
 Week column (two full ISO dates and an en dash, 174px of content) had been
 trimmed to 165px to make room elsewhere.
 
+**The corollary: SHRINKING a label means shrinking its column too.** The same
+queue's row action was renamed **"Open Notebook" → "Open"** on 2026-09-08 at the
+project owner's request (the old label named the destination page rather than
+the act, and read as a different kind of thing from the Interns tab's
+"Journals" beside it). Its column had been pinned at 140px for the long label,
+so the rename alone would have parked **47px of dead space** in the widest-content
+table on the page. Measured and re-pinned at **95px** — 61px of button plus the
+cell's own 32px of `px-4` padding — and the slack goes to the unsized Batch
+column, which also renders the company name beneath it. Verified in a browser:
+Batch went 250px → 295px, the full "Bohol Provincial Cooperative Development
+Office" now fits untruncated, `scrollWidth === clientWidth` on every cell, and
+the table does not scroll sideways. The supervisor's own **"Open full
+notebook"** link (in its review modal, a different surface) is deliberately
+UNCHANGED — that one sits inside a modal where "Open" alone would not say what
+it opens.
+
 ### A native `<select>` is as wide as its widest OPTION, and flex-wrap cannot shrink it
 
 Found 2026-09-01 adding the batch/company filters to Journal Review. A
@@ -3407,9 +3623,17 @@ The rule for any filter `<select>` whose options are user-entered names
 (companies, batches, students — as opposed to a fixed vocabulary like
 program codes): **`w-full max-w-full` with `sm:w-auto`**, and `w-full min-w-0
 sm:w-auto` on the wrapping `<label>`. Below `sm` each control takes the column;
-above it the intrinsic width returns, still capped by `max-w-full`. Existing
-filter bars elsewhere in the coordinator section share the unguarded pattern and
-have simply not met a long enough option yet.
+above it the intrinsic width returns, still capped by `max-w-full`.
+
+**The admin's five department dropdowns were the next to meet it, on
+2026-09-08.** `departments.name` went from a 6-character code to a real ~70
+character name (see Domain Facts), so `AdminBatchesPage`, `AdminInfoSheetsPage`,
+`AdminProgramsPage` and `AdminUsersPage` (filter *and* create form) were all
+guarded in the same pass. Verified at 390px: none of those pages scrolls
+sideways, and the Programs filter measures 343px inside a 390px viewport.
+Remaining filter bars elsewhere still share the unguarded pattern and have
+simply not met a long enough option yet — a **fixed** vocabulary (program codes,
+statuses) genuinely does not need the guard.
 
 **Also: `@change="load"` passes the change EVENT into the handler's first
 parameter.** A handler with an optional flag (`load(initial = false)`) then
@@ -3743,6 +3967,51 @@ follow them rather than inventing a parallel style.
   all four use a `mobileOpen` ref, `-translate-x-full` / `translate-x-0` slide, a
   `bg-black/40 md:hidden` backdrop, an `md:hidden` hamburger, and close-on-nav-link
   / close-on-backdrop. **Copy the pattern, do not re-invent it.**
+
+### The sidebar is GROUPED, not flat (2026-09-08)
+
+Three of the four layouts render their nav as `NAV_SECTIONS` — an array of
+`{ heading: string | null, items: [...] }` — instead of one flat `navItems`
+list. Fifteen equally-weighted rows gave a coordinator no clue that "Batches"
+is set up once a term while "Student Info Sheets" is blocking a student right
+now, so the whole rail read as one undifferentiated list.
+
+| Layout | Sections | Sizes |
+|---|---|---|
+| Coordinator | *(none)* · Monitoring · SIPP Documents · Reports · Setup | 1 · 5 · 3 · 2 · 4 |
+| Student | *(none)* · Journals · Time & Attendance · My Forms | 1 · 4 · 2 · 2 |
+| Admin | *(none)* · Organization · People & Records · System | 1 · 3 · 2 · 2 |
+| **Supervisor** | **deliberately still FLAT** | 4 items |
+
+- **Supervisor is not an oversight.** At four items (Dashboard, Journals,
+  Interns, Time Record) headings would add more chrome than they remove — three
+  rules and three labels over four rows. Grouping is worth its cost somewhere
+  around eight items; below that, leave it flat.
+- **The first section is deliberately headless**, holding only the dashboard. A
+  lone landing item under its own heading reads as a category of one.
+- **Sections are by WHAT AN ITEM IS FOR, not by frequency of use.** The one
+  place that visibly costs something: the coordinator's Student Info Sheets is
+  arguably the most time-critical item on the rail (a student stays gated until
+  it is accepted) and now sits seventh. That is accepted on purpose, because it
+  carries the unread dot — the dot is what surfaces it when it actually needs
+  attention, so its resting position matters less than being grouped with the
+  documents it belongs with.
+- **COLLAPSED TO THE 76px RAIL, A HEADING BECOMES A RULE**
+  (`border-t border-white/15`), gated on the **same `!collapsed` switch the item
+  labels themselves use** — so a heading can never outlive the labels it sits
+  above. `role="group"` + `:aria-label` sits on the section wrapper, so the
+  structure is still announced when it is invisible. Verified in a browser at
+  80px: 0 headings visible, 4 rules, no horizontal overflow.
+- **An empty section is dropped rather than rendering an orphan heading.** Not
+  reachable for a coordinator (Monitoring keeps at least four items whichever
+  OJT type they run), but the Student layout genuinely needs it — and its
+  **gated/paused case returns a single UNHEADED section** holding only the info
+  sheet, rather than a filtered "My Forms" group, since a lone item under a
+  heading announces a category with nothing else in it.
+- **Heading padding is `pt-3`, not `pt-4`, and that is measured.** Four headings
+  cost 140px of nav height; at `pt-4` the coordinator's nav overflowed its
+  viewport by 5px, and `pt-3` reclaims 16px so it fits. `overflow-y-auto` is
+  still there as the backstop — re-measure if a section is added.
 
 ### The list-page shape — one pattern, all four roles
 

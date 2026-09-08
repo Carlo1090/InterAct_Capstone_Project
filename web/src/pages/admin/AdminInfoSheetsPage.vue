@@ -106,7 +106,7 @@ onMounted(() => {
 
     <div class="flex flex-wrap gap-3">
       <input v-model="search" class="w-full sm:w-auto sm:min-w-72 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Search student..." />
-      <select v-model="departmentFilter" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
+      <select v-model="departmentFilter" class="w-full min-w-0 max-w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm sm:w-auto">
         <option value="">All Departments</option>
         <option v-for="department in departments" :key="department.id" :value="department.id">
           {{ department.name }}

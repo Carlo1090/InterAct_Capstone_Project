@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 import api from '@/lib/axios'
+import { journalContentFields } from '@/lib/journalContent'
 import { showToast, confirmAction } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
 import LoadStatus from '@/components/LoadStatus.vue'
@@ -79,12 +80,23 @@ const detailError = ref('')
 
 const statusFilter = ref<SupervisorReviewStatus | null>(null)
 
-// Collapsed by default here, unlike the review modal. A modal shows one week
-// and scrolls on its own; this page pages through a whole placement, and five
-// fully-expanded daily entries per week buries the next week's document under
-// a screen and a half of scroll. The count is on the toggle, and the choice
-// deliberately persists as the supervisor moves between weeks.
-const entriesOpen = ref(false)
+// EXPANDED by default, matching the review modal.
+//
+// **This reverses the original decision (2026-09-08, project owner).** It was
+// collapsed on the argument that this page pages through a whole placement and
+// five expanded entries per week buries the next week's document under a screen
+// and a half of scroll. The scroll cost is real, but the consequence was worse:
+// the weekly document above it is compiled from `daily_accomplishment` ALONE
+// (WeeklyBundlingService), so with this section shut a reviewer saw only that
+// one field and had no sign that the student's SIPP answers — Issues/Concerns,
+// Solutions, Recommendations — existed at all. The SIPP trio is the whole
+// reason Annex C can be compiled, and it was reachable only by discovering a
+// collapsed bar. Visible-by-default costs scrolling; collapsed-by-default cost
+// a supervisor the content they are reviewing.
+//
+// The toggle stays, and the choice still persists as the supervisor moves
+// between weeks — so anyone who wants the compact view keeps it for the session.
+const entriesOpen = ref(true)
 
 const showReturnForm = ref(false)
 const returnComment = ref('')
@@ -142,22 +154,6 @@ const shortDate = (value: string | null | undefined): string => {
 
   return `${months[Number(month) - 1] ?? month} ${Number(day)}`
 }
-
-/**
- * Journal fields come from coordinator-authored templates and differ per
- * program, so the label is derived from the key rather than mapped — a
- * hardcoded list falls back to raw snake_case for any template it did not
- * anticipate.
- */
-const fieldLabel = (key: string): string =>
-  key
-    .split('_')
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-
-const filledContent = (content: Record<string, string> | null | undefined): [string, string][] =>
-  Object.entries(content ?? {}).filter(([, value]) => typeof value === 'string' && value.trim() !== '')
 
 const initials = computed(() => {
   const name = notebook.value?.student.name ?? ''
@@ -611,10 +607,22 @@ onMounted(load)
                           </span>
                         </div>
 
+                        <!--
+                          Ordered and labelled by the coordinator's own template
+                          — see lib/journalContent.ts. SIPP fields carry a marker
+                          so the Annex C trio reads as one block rather than as
+                          three unrelated paragraphs.
+                        -->
                         <dl class="mt-3 space-y-3">
-                          <div v-for="[key, value] in filledContent(entry.content)" :key="key">
-                            <dt class="text-xs font-medium uppercase tracking-wide text-slate-400">{{ fieldLabel(key) }}</dt>
-                            <dd class="mt-1 text-sm text-slate-700">{{ value }}</dd>
+                          <div v-for="field in journalContentFields(entry.content, detail.template_sections)" :key="field.key">
+                            <dt
+                              class="text-xs font-medium uppercase tracking-wide"
+                              :class="field.sipp ? 'text-amber-700' : 'text-slate-400'"
+                            >
+                              {{ field.label }}
+                              <span v-if="field.sipp" class="ml-1 font-normal normal-case tracking-normal text-amber-600/80">(SIPP)</span>
+                            </dt>
+                            <dd class="mt-1 text-sm text-slate-700">{{ field.value }}</dd>
                           </div>
                         </dl>
                       </article>

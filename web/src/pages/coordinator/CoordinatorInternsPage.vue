@@ -99,41 +99,11 @@ const confirmDeleteAccount = async () => {
   }
 }
 
-// --- Resend Credentials ("student never got their welcome email") -----------
-const resendingId = ref<number | null>(null)
-
-const resendCredentials = async (student: CoordinatorInternUser) => {
-  if (!student.email) {
-    showToast(`${student.name} has no email on file to resend credentials to.`, 'error')
-    return
-  }
-
-  const proceed = await confirmAction({
-    title: 'Resend login credentials?',
-    message: `This generates a new temporary password for ${student.name} and emails it to ${student.email}. Their current password will stop working.`,
-    confirmLabel: 'Resend',
-  })
-  if (!proceed) return
-
-  resendingId.value = student.id
-
-  try {
-    const { data } = await api.post<{ emailed: boolean; temporary_password: string }>(
-      `/api/coordinator/users/interns/${student.id}/resend-credentials`,
-    )
-    showToast(
-      data.emailed
-        ? `Credentials resent to ${student.email}.`
-        : `Email delivery failed. New temporary password: ${data.temporary_password}`,
-      data.emailed ? 'success' : 'error',
-    )
-  } catch (error) {
-    const { message } = categorizeError(error, 'Unable to resend credentials.')
-    showToast(message, 'error')
-  } finally {
-    resendingId.value = null
-  }
-}
+// Reissuing a password used to be a per-row "Resend" button here. It moved to
+// the Credential Manager in the profile popover (2026-09-08): it is a critical,
+// irreversible action — the account's current password stops working the
+// instant it fires — and it does not belong between "View" and "Delete" on a
+// row being casually browsed. See CredentialManagerPanel.vue.
 
 // --- Interns tab: program filter ---------------------------------------------
 const programOptions = ref<{ id: number; name: string; code?: string }[]>([])
@@ -903,14 +873,6 @@ onMounted(() => {
                   </button>
                   <button
                     type="button"
-                    class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    :disabled="resendingId === student.id"
-                    @click="resendCredentials(student)"
-                  >
-                    {{ resendingId === student.id ? 'Sending...' : 'Resend' }}
-                  </button>
-                  <button
-                    type="button"
                     class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:bg-red-50"
                     @click="askDeleteAccount(student)"
                   >
@@ -963,14 +925,6 @@ onMounted(() => {
           <div class="mt-3 flex flex-wrap items-center gap-2">
             <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="viewIntern(student.id)">
               View
-            </button>
-            <button
-              type="button"
-              class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="resendingId === student.id"
-              @click="resendCredentials(student)"
-            >
-              {{ resendingId === student.id ? 'Sending...' : 'Resend' }}
             </button>
             <button
               type="button"

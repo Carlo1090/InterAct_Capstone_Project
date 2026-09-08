@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Coordinator;
 
+use App\Http\Controllers\Concerns\ScopesCoordinatorAccounts;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Coordinator\CreateAccountRequest;
 use App\Http\Requests\Coordinator\StoreEnrollmentRequest;
@@ -17,16 +18,16 @@ use App\Models\SystemLog;
 use App\Models\User;
 use App\Models\WeeklyActivityLog;
 use App\Models\WeeklyLog;
-use App\Notifications\NewAccountCredentials;
 use App\Services\EnrollmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 
 class EnrollmentController extends Controller
 {
+    use ScopesCoordinatorAccounts;
+
     public function enrollableStudents(Request $request): JsonResponse
     {
         $programIds = $request->user()->coordinatorProgramIds();
@@ -348,48 +349,6 @@ class EnrollmentController extends Controller
     }
 
     /**
-     * "Student says they never got the welcome email" — generates a fresh
-     * temporary password (same generation as
-     * Admin\UserController::issueTemporaryPassword) and re-sends the
-     * credentials notification, rather than requiring a whole new bulk-import
-     * re-upload for one student. Coordinator-scoped like showIntern/
-     * destroyAccount; the admin equivalent lives in Admin\UserController.
-     */
-    public function resendCredentials(Request $request, User $student): JsonResponse
-    {
-        abort_unless($student->role === 'student', 404);
-        abort_unless(
-            $request->user()->coordinatorProgramIds()->contains($student->program_id),
-            403,
-            'That student is outside your assigned department(s).'
-        );
-        abort_if($student->email === null, 422, 'This student has no email on file to send credentials to.');
-
-        $temporaryPassword = Str::password(12);
-
-        $student->update([
-            'password' => $temporaryPassword,
-            'must_change_password' => true,
-        ]);
-
-        $emailed = true;
-
-        try {
-            $student->notify(new NewAccountCredentials($student->username, $temporaryPassword));
-        } catch (\Throwable $e) {
-            report($e);
-            $emailed = false;
-        }
-
-        SystemLog::record('Credentials Resent', "Resent login credentials to {$student->name}");
-
-        return response()->json([
-            'emailed' => $emailed,
-            'temporary_password' => $temporaryPassword,
-        ]);
-    }
-
-    /**
      * A previously-dropped row for this exact student+batch is REACTIVATED
      * (status flipped back to active, company/supervisor/division refreshed
      * from this submission) rather than duplicated with a new row — shared with
@@ -473,25 +432,5 @@ class EnrollmentController extends Controller
         $batchStudent->update($validated);
 
         return response()->json($batchStudent->fresh(['batch.program', 'company', 'supervisor', 'student']));
-    }
-
-    /**
-     * Company IDs a coordinator may see: those referenced by enrollments whose
-     * batch program is in their scope, unioned with companies not yet linked to
-     * any enrollment. Mirrors CoordinatorCompanyController::scopedCompanyIds so
-     * the Users → Supervisors list stays consistent with the Companies page.
-     */
-    private function scopedCompanyIds(User $coordinator): Collection
-    {
-        $programIds = $coordinator->coordinatorProgramIds();
-
-        $usedIds = BatchStudent::whereHas('batch', fn ($query) => $query->whereIn('program_id', $programIds))
-            ->pluck('company_id')
-            ->filter()
-            ->unique();
-
-        $unlinkedIds = Company::whereDoesntHave('batchStudents')->pluck('id');
-
-        return $usedIds->merge($unlinkedIds)->unique()->values();
     }
 }

@@ -36,46 +36,104 @@ const CONDITIONAL_NAV_ITEMS: Record<string, 'coordinator_has_centered_batch' | '
   [DTR_ROUTE]: 'coordinator_has_supervised_batch',
 }
 
-const allNavItems = [
-  { label: 'Department Dashboard', to: '/coordinator/dashboard', badge: '', icon: 'dashboard' },
-  { label: 'Users', to: '/coordinator/users', badge: '', icon: 'people' },
-  { label: 'Daily Journal Activities', to: '/coordinator/journal-activities', badge: '', icon: 'calendar' },
-  { label: 'Weekly Journals', to: '/coordinator/weekly-journals', badge: '', icon: 'stack' },
-  // HIDDEN unless this coordinator actually has a coordinator-centered batch —
-  // see navItems below. It used to be shown to everyone on the argument that
-  // hiding it made the feature undiscoverable; that was reversed 2026-09-01 at
-  // the project owner's request, because for the majority of coordinators (who
-  // run only supervisor-supported cohorts) the item was a permanent dead end
-  // whose only content was an explanation of why it was empty. The OJT Type
-  // control on the Batches page is where the mode is genuinely discovered.
-  { label: 'Journal Review', to: JOURNAL_REVIEW_ROUTE, badge: '', icon: 'stack' },
-  { label: 'Weekly and Time Log Summary', to: '/coordinator/weekly-time-logs', badge: '', icon: 'clock' },
-  // HIDDEN unless this coordinator has a SUPERVISOR-SUPPORTED batch — the only
-  // kind the Daily Time Record runs on, since it depends on a company
-  // supervisor being on site. Deliberately NOT gated on their own
-  // `dtr_enabled`: this page is the one and only place that switch is set, so
-  // hiding it when the DTR is off would make the decision irreversible.
-  { label: 'Daily Time Record', to: DTR_ROUTE, badge: '', icon: 'map-pin' },
-  { label: 'Journal Templates', to: '/coordinator/journal-templates', badge: '', icon: 'journals' },
-  { label: 'Batches', to: '/coordinator/batches', badge: '', icon: 'briefcase' },
-  { label: 'Partner Companies', to: '/coordinator/companies', badge: '', icon: 'building' },
-  { label: 'Student Info Sheets', to: '/coordinator/info-sheets', badge: '', icon: 'id-card' },
-  { label: 'Group Info Sheets', to: '/coordinator/group-info-sheets', badge: '', icon: 'id-card' },
-  { label: 'Student Exit Interviews', to: '/coordinator/exit-interviews', badge: '', icon: 'exit' },
-  { label: 'Annual SIPP Report', to: '/coordinator/annual-sipp', badge: '', icon: 'chart' },
-  { label: 'HTE & Student Interns List', to: '/coordinator/hte', badge: '', icon: 'clipboard' },
+/**
+ * THE SIDEBAR IS GROUPED, NOT FLAT (2026-09-08). Fifteen equally-weighted rows
+ * gave no clue that "Batches" is set up once a term while "Student Info Sheets"
+ * is blocking a student right now, so the whole rail read as one undifferentiated
+ * list. Sections are by WHAT AN ITEM IS FOR:
+ *
+ * - **Monitoring** — everything that answers "what have my interns produced?".
+ *   Both OJT-type-conditional items live here, and the group never drops below
+ *   four rows whichever kind of cohort the coordinator runs.
+ * - **SIPP Documents** — the per-student and per-company official forms. Same
+ *   kind of object: a measured paper facsimile that is read and printed.
+ * - **Reports** — Annexes C and D. Deliberately NOT folded in above: those are
+ *   curation editors over live data, not documents filed per student.
+ * - **Setup** — the structure everything else runs on, touched once a term, so
+ *   it sits at the bottom.
+ *
+ * The dashboard is deliberately left OUTSIDE any section: a lone landing item
+ * under its own heading reads as a category of one.
+ *
+ * Student Info Sheets is arguably the most time-critical item here (a student
+ * stays gated until it is accepted) and it still sits seventh. That is on
+ * purpose — it carries the unread dot below, and THAT is what surfaces it when
+ * it actually needs attention, so its resting position matters less than being
+ * grouped with the documents it belongs with.
+ */
+const NAV_SECTIONS = [
+  {
+    heading: null,
+    items: [{ label: 'Department Dashboard', to: '/coordinator/dashboard', badge: '', icon: 'dashboard' }],
+  },
+  {
+    heading: 'Monitoring',
+    items: [
+      { label: 'Daily Journal Activities', to: '/coordinator/journal-activities', badge: '', icon: 'calendar' },
+      { label: 'Weekly Journals', to: '/coordinator/weekly-journals', badge: '', icon: 'stack' },
+      // HIDDEN unless this coordinator actually has a coordinator-centered batch
+      // — see navSections below. It used to be shown to everyone on the argument
+      // that hiding it made the feature undiscoverable; that was reversed
+      // 2026-09-01 at the project owner's request, because for the majority of
+      // coordinators (who run only supervisor-supported cohorts) the item was a
+      // permanent dead end whose only content was an explanation of why it was
+      // empty. The OJT Type control on the Batches page is where the mode is
+      // genuinely discovered.
+      { label: 'Journal Review', to: JOURNAL_REVIEW_ROUTE, badge: '', icon: 'stack' },
+      { label: 'Weekly and Time Log Summary', to: '/coordinator/weekly-time-logs', badge: '', icon: 'clock' },
+      // HIDDEN unless this coordinator has a SUPERVISOR-SUPPORTED batch — the
+      // only kind the Daily Time Record runs on, since it depends on a company
+      // supervisor being on site. Deliberately NOT gated on their own
+      // `dtr_enabled`: this page is the one and only place that switch is set,
+      // so hiding it when the DTR is off would make the decision irreversible.
+      { label: 'Daily Time Record', to: DTR_ROUTE, badge: '', icon: 'map-pin' },
+    ],
+  },
+  {
+    heading: 'SIPP Documents',
+    items: [
+      { label: 'Student Info Sheets', to: '/coordinator/info-sheets', badge: '', icon: 'id-card' },
+      { label: 'Group Info Sheets', to: '/coordinator/group-info-sheets', badge: '', icon: 'id-card' },
+      { label: 'Student Exit Interviews', to: '/coordinator/exit-interviews', badge: '', icon: 'exit' },
+    ],
+  },
+  {
+    heading: 'Reports',
+    items: [
+      { label: 'Annual SIPP Report', to: '/coordinator/annual-sipp', badge: '', icon: 'chart' },
+      { label: 'HTE & Student Interns List', to: '/coordinator/hte', badge: '', icon: 'clipboard' },
+    ],
+  },
+  {
+    heading: 'Setup',
+    items: [
+      { label: 'Users', to: '/coordinator/users', badge: '', icon: 'people' },
+      { label: 'Batches', to: '/coordinator/batches', badge: '', icon: 'briefcase' },
+      { label: 'Partner Companies', to: '/coordinator/companies', badge: '', icon: 'building' },
+      { label: 'Journal Templates', to: '/coordinator/journal-templates', badge: '', icon: 'journals' },
+    ],
+  },
 ]
 
 const auth = useAuthStore()
 const route = useRoute()
 
-/** Drop any conditional item whose flag is not set. See CONDITIONAL_NAV_ITEMS. */
-const navItems = computed(() =>
-  allNavItems.filter((item) => {
-    const flag = CONDITIONAL_NAV_ITEMS[item.to]
+/**
+ * Drop any conditional item whose flag is not set (see CONDITIONAL_NAV_ITEMS),
+ * then drop any section left with nothing in it — an orphan heading over empty
+ * space is worse than the flat list this replaced. Not reachable for a
+ * coordinator today (Monitoring always keeps at least four items), but the
+ * shape is shared with the other three role layouts.
+ */
+const navSections = computed(() =>
+  NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => {
+      const flag = CONDITIONAL_NAV_ITEMS[item.to]
 
-    return flag === undefined || auth.user?.[flag] === true
-  }),
+      return flag === undefined || auth.user?.[flag] === true
+    }),
+  })).filter((section) => section.items.length > 0),
 )
 
 // Desktop-only rail collapse (the circular chevron). On phones the sidebar is
@@ -166,14 +224,42 @@ onBeforeUnmount(() => {
 
       <div class="mx-3 mb-2 border-t border-white/20" />
 
-      <nav class="flex-1 space-y-1 overflow-y-auto px-3 py-2">
-        <component
-          :is="collapsed ? TooltipWrap : 'div'"
-          v-for="item in navItems"
-          :key="item.to"
-          v-bind="collapsed ? { label: item.label, placement: 'right' } : {}"
-          class="w-full"
+      <nav class="flex-1 overflow-y-auto px-3 py-2">
+        <div
+          v-for="(section, sectionIndex) in navSections"
+          :key="section.heading ?? 'primary'"
+          role="group"
+          :aria-label="section.heading ?? undefined"
+          class="space-y-1"
         >
+          <!--
+            Collapsed to the 76px rail there is nowhere for a text heading to
+            go, so the grouping degrades to a rule — the same `!collapsed`
+            switch the item labels themselves use, so a heading can never
+            outlive the labels it sits above. `aria-label` on the group survives
+            either way, so the structure is still announced when it is invisible.
+
+            The first section is skipped entirely: it holds the single landing
+            item, and a heading (or a rule) above it would only push it down
+            for nothing.
+          -->
+          <template v-if="sectionIndex > 0">
+            <p
+              v-if="!collapsed"
+              class="px-3 pt-3 pb-1 text-[10px] font-bold tracking-wider text-blue-200/70 uppercase"
+            >
+              {{ section.heading }}
+            </p>
+            <div v-else class="mx-1 my-3 border-t border-white/15" />
+          </template>
+
+          <component
+            :is="collapsed ? TooltipWrap : 'div'"
+            v-for="item in section.items"
+            :key="item.to"
+            v-bind="collapsed ? { label: item.label, placement: 'right' } : {}"
+            class="w-full"
+          >
         <RouterLink
           :to="item.to"
           class="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-blue-100 transition hover:bg-white/10 hover:text-white"
@@ -255,7 +341,8 @@ onBeforeUnmount(() => {
             title="New submissions"
           />
         </RouterLink>
-        </component>
+          </component>
+        </div>
       </nav>
 
       <SidebarCollapseToggle :collapsed="collapsed" @toggle="collapsed = !collapsed" />

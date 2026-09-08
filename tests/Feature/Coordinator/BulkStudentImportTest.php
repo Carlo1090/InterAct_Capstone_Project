@@ -281,45 +281,7 @@ class BulkStudentImportTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors('batch_id');
     }
 
-    public function test_coordinator_resends_credentials_to_a_student(): void
-    {
-        Notification::fake();
-
-        $bsit = $this->programFor('BSIT');
-        $coordinator = $this->coordinatorFor($bsit);
-        $student = User::factory()->create([
-            'role' => 'student',
-            'program_id' => $bsit->id,
-            'email' => 'student@example.com',
-            'username' => '2026-099',
-        ]);
-        $originalHash = $student->password;
-
-        Sanctum::actingAs($coordinator, ['*']);
-
-        $response = $this->postJson("/api/coordinator/users/interns/{$student->id}/resend-credentials");
-
-        $response->assertOk();
-        $this->assertTrue($response->json('emailed'));
-        $this->assertNotEmpty($response->json('temporary_password'));
-
-        $student->refresh();
-        $this->assertNotSame($originalHash, $student->password);
-        $this->assertTrue($student->must_change_password);
-
-        Notification::assertSentTo($student, NewAccountCredentials::class);
-    }
-
-    public function test_coordinator_cannot_resend_credentials_for_an_out_of_scope_student(): void
-    {
-        $bsit = $this->programFor('BSIT');
-        $coordinator = $this->coordinatorFor($bsit);
-
-        $otherProgram = $this->programFor('BSBA-FM', 'CABM-B');
-        $outStudent = User::factory()->create(['role' => 'student', 'program_id' => $otherProgram->id, 'email' => 'out@example.com']);
-
-        Sanctum::actingAs($coordinator, ['*']);
-
-        $this->postJson("/api/coordinator/users/interns/{$outStudent->id}/resend-credentials")->assertStatus(403);
-    }
+    // Reissuing a bulk-imported student's credentials moved off this page and
+    // into the Credential Manager (profile popover) on 2026-09-08; its coverage
+    // lives in CredentialManagerTest.
 }

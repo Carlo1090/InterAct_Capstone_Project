@@ -7,6 +7,7 @@ use App\Models\BatchStudent;
 use App\Models\Company;
 use App\Models\CompanySupervisor;
 use App\Models\JournalEntry;
+use App\Models\JournalTemplate;
 use App\Models\Program;
 use App\Models\StudentProfile;
 use App\Models\User;
@@ -157,11 +158,22 @@ class CabmbCoordinatorCenteredDemoSeeder extends Seeder
             return;
         }
 
+        // Every other seeded batch carries a journal template, and this one
+        // silently did not — so its daily entries had no section list to be
+        // ordered or labelled by, and the coordinator's own Journal Review (the
+        // ONE review surface this cohort has) fell back to raw JSON key order
+        // with humanised labels. That is exactly the surface this batch exists
+        // to demonstrate. BSBA-OM is a CABM-B program, so it takes the CABM-B
+        // template like its supervisor-supported siblings; the entries seeded
+        // below already use that template's keys.
+        $template = JournalTemplate::where('name', 'CABM-B Daily Journal Template')->first();
+
         $batch = Batch::updateOrCreate(
             ['name' => self::BATCH],
             [
                 'program_id' => $program->id,
                 'coordinator_id' => $coordinator->id,
+                'journal_template_id' => $template?->id,
                 'ojt_type' => Batch::OJT_TYPE_COORDINATOR,
                 'academic_year' => '2026',
                 'semester' => 'Internship',
