@@ -98,6 +98,29 @@ export default function Profile() {
           gap: 10,
         }}
       >
+        {/* Profile is pushed from the header avatar and had no way back —
+            the only exits were Log Out or the hardware button. Absolutely
+            positioned so the avatar stays centred in the banner. */}
+        <Pressable
+          onPress={() => router.back()}
+          accessibilityLabel="Go back"
+          hitSlop={10}
+          style={{
+            position: 'absolute',
+            top: 44,
+            left: 16,
+            width: 34,
+            height: 34,
+            borderRadius: 8,
+            borderWidth: 1.5,
+            borderColor: colors.blue700,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name="chevron-back" size={18} color="white" />
+        </Pressable>
+
         <Pressable
           onPress={onChangePhoto}
           disabled={uploadingPhoto}

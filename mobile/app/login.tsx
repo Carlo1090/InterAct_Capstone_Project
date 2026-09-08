@@ -181,21 +181,6 @@ export default function Login() {
                 onPress={onSubmit}
               />
 
-              <View
-                style={{
-                  marginTop: 18,
-                  backgroundColor: colors.blue50,
-                  borderRadius: 10,
-                  padding: 12,
-                  borderWidth: 1,
-                  borderColor: colors.blue100,
-                }}
-              >
-                <Text style={{ fontSize: 11.5, color: colors.blue700, lineHeight: 17, textAlign: 'center' }}>
-                  Accounts are created by your coordinator. If you do not know your account credentials, or if you
-                  have forgotten your password, please contact the Systems Development & Administration Office.
-                </Text>
-              </View>
             </View>
           </View>
 
