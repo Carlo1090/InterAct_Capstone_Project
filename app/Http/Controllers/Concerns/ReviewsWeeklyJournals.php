@@ -98,7 +98,7 @@ trait ReviewsWeeklyJournals
             ->orderBy('entry_date')
             ->get(['entry_date', 'status', 'content']);
 
-        $weeklyLog->load('student:id,name,student_id_number');
+        $weeklyLog->load(['student:id,name,student_id_number', 'batch.journalTemplate']);
 
         return [
             'id' => $weeklyLog->id,
@@ -107,6 +107,24 @@ trait ReviewsWeeklyJournals
                 'name' => $weeklyLog->student?->name ?? '',
                 'student_id_number' => $weeklyLog->student?->student_id_number,
             ],
+            // The coordinator-authored section list for THIS log's batch, so a
+            // reviewer reads a daily entry in the order and under the wording
+            // the form was written in. Without it the review surfaces fell back
+            // to `Object.entries(content)` — i.e. whatever order the student's
+            // payload happened to serialise in — which put the fixed
+            // "Daily Accomplishment" section LAST, after the SIPP trio, and
+            // labelled every field by humanising its key rather than using the
+            // coordinator's own wording. Resolved from the LOG's own batch, not
+            // from the student's current enrolment, so a finished cohort keeps
+            // the template it actually ran under.
+            'template_sections' => collect($weeklyLog->batch?->journalTemplate?->sections ?? [])
+                ->map(fn ($section) => [
+                    'key' => $section['key'] ?? null,
+                    'label' => $section['label'] ?? null,
+                    'sipp' => (bool) ($section['sipp'] ?? false),
+                ])
+                ->filter(fn ($section) => $section['key'] !== null)
+                ->values(),
             'week_start' => $weeklyLog->week_start->toDateString(),
             'week_end' => $weeklyLog->week_end->toDateString(),
             'status' => $weeklyLog->status,

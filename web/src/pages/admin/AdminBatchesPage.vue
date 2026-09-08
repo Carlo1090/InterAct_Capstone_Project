@@ -124,9 +124,9 @@ onMounted(() => {
 <template>
   <section class="space-y-5">
     <div class="flex flex-wrap gap-3">
-      <label class="block">
+      <label class="block w-full min-w-0 sm:w-auto">
         <span class="mb-1.5 block text-xs font-bold text-slate-600">Department</span>
-        <select v-model="departmentFilter" class="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm sm:w-auto sm:min-w-56">
+        <select v-model="departmentFilter" class="h-10 w-full max-w-full rounded-md border border-slate-300 bg-white px-3 text-sm sm:w-auto sm:min-w-56">
           <option value="">All Departments</option>
           <option v-for="department in departments" :key="department.id" :value="department.id">
             {{ department.name }}

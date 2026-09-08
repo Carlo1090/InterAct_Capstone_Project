@@ -212,6 +212,34 @@ export type CoordinatorSupervisorUser = {
   batches: { id: number; name: string }[]
 }
 
+/**
+ * Credential Manager (coordinator profile popover). One shape for both
+ * populations a coordinator provisions — `context` carries the program code for
+ * an intern and the company name(s) for a supervisor, since neither has a
+ * counterpart on the other.
+ */
+export type CredentialAccount = {
+  id: number
+  name: string
+  username: string
+  email: string | null
+  role: 'student' | 'supervisor'
+  is_active: boolean
+  identifier: string | null
+  context: string | null
+}
+
+export type CredentialIssueResult = {
+  id: number
+  name: string
+  username: string
+  email: string | null
+  role: 'student' | 'supervisor'
+  /** true = sent, false = delivery failed, null = no address on file. */
+  emailed: boolean | null
+  temporary_password: string
+}
+
 export type BatchStudentStatus = 'active' | 'completed' | 'dropped'
 
 export type BatchStudentRecord = {
@@ -782,6 +810,7 @@ export type CoordinatorWeeklyJournalDetail = {
   submitted_at: string | null
   reviewed_at: string | null
   daily_entries: { entry_date: string; status: JournalEntryStatus; content: Record<string, string> }[]
+  template_sections: ReviewTemplateSection[]
 }
 
 export type CompanySupervisorRecord = {
@@ -908,6 +937,20 @@ export type SupervisorJournalRow = {
   entries_count: number
 }
 
+/**
+ * The slice of a journal template that rides on a REVIEW payload: enough to
+ * order a daily entry's fields and label them the way the coordinator wrote
+ * them. Deliberately a subset of the authoring type `JournalTemplateSection`
+ * above — a reviewer never needs `prompt` or `required`, and `label` is
+ * nullable here because a legacy section may carry none, in which case the
+ * humanised key stands in (see lib/journalContent.ts).
+ */
+export type ReviewTemplateSection = {
+  key: string
+  label: string | null
+  sipp: boolean
+}
+
 export type SupervisorJournalDetail = {
   id: number
   student: { id: number; name: string; student_id_number: string | null }
@@ -920,6 +963,7 @@ export type SupervisorJournalDetail = {
   reviewed_at: string | null
   reviewable: boolean
   daily_entries: { entry_date: string; status: JournalEntryStatus; content: Record<string, string> }[]
+  template_sections: ReviewTemplateSection[]
 }
 
 

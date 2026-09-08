@@ -149,6 +149,15 @@ Screenshots land in `.claude/skills/run-interntrack/screenshots/<session>/`
 see PROJECT.md's "Seeded demo accounts" table (`mdcstudent` / `mdcsupervisor`
 / `mdccore` / `mdcbalbero` / `mdcadmin`, all password `password`).
 
+**`--width` / `--height` set the viewport** (default 1280x900). PROJECT.md's
+responsive rules — the dual table/card list layouts, the `<select>`-width
+guard, the mobile-overflow audit — can only be checked below the `sm`/`md`
+breakpoints, and at the default width the phone layout never renders at all.
+Use `--width 390 --height 844` for a phone. The overflow check that goes with
+it is `document.documentElement.scrollWidth > clientWidth` (page-level) and
+`[...document.querySelectorAll('td,th')].filter(e => e.scrollWidth > e.clientWidth + 1)`
+(cell-level).
+
 Driver commands (one per line over stdin, blank lines and `#` comments
 ignored):
 
@@ -183,7 +192,7 @@ tailer, Vite) in one foregrounded terminal.
 ## Test
 
 ```bash
-php artisan test    # verified this session: 503 passed, 1755 assertions, ~100s
+php artisan test    # verified 2026-09-08: 631 passed, 2413 assertions, ~40s
 cd web && npm run build   # verified: no separate test/lint script in web/, build is the check
 ```
 

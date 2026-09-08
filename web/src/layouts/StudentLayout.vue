@@ -7,21 +7,55 @@ import TooltipWrap from '@/components/ui/TooltipWrap.vue'
 import NotificationBell from '@/components/notifications/NotificationBell.vue'
 import ProfileMenuPopover from '@/components/profile/ProfileMenuPopover.vue'
 
-const allNavItems = [
-  { label: 'Dashboard', to: '/student/dashboard', badge: '', icon: 'dashboard' },
-  { label: 'My Journal Calendar', to: '/student/calendar', badge: '', icon: 'calendar' },
-  { label: 'My Journals', to: '/student/journals', badge: '', icon: 'journals' },
-  { label: 'Write Daily Journal', to: '/student/write-journal', badge: '', icon: 'pencil' },
-  { label: 'Weekly Journals', to: '/student/weekly-journals', badge: '', icon: 'stack' },
-  { label: 'Weekly and Time Log Summary', to: '/student/weekly-time-log', badge: '', icon: 'clock' },
-  // Shown only where the batch coordinator enabled the QR/geofence DTR — see
-  // the navItems filter below. 'clock' is already taken by the weekly summary
-  // above, so this uses its own pin glyph.
-  { label: 'Daily Time Record', to: '/student/dtr', badge: '', icon: 'map-pin' },
-  { label: 'Student Info Sheet', to: '/student/info-sheet', badge: '', icon: 'id-card' },
-  // The last form of the placement. Sits after the info sheet because that
-  // is the order a student meets them: intake first, exit last.
-  { label: 'Exit Interview', to: '/student/exit-interview', badge: '', icon: 'exit' },
+const INFO_SHEET_ITEM = { label: 'Student Info Sheet', to: '/student/info-sheet', badge: '', icon: 'id-card' }
+
+/**
+ * THE SIDEBAR IS GROUPED, NOT FLAT (2026-09-08) — the same treatment, headings
+ * and rail behaviour as CoordinatorLayout; see its NAV_SECTIONS block for the
+ * reasoning and the collapsed-rail rule.
+ *
+ * The split follows what a student is actually doing at the time: Journals is
+ * the writing they do most days, Time & Attendance is where their HOURS come
+ * from (the typed summary and, where it runs, the clocked record), and My Forms
+ * is the two documents that bookend the placement. Dashboard stays outside any
+ * section.
+ *
+ * Order WITHIN each group is unchanged from the flat list it replaced — only
+ * the grouping is new.
+ */
+const NAV_SECTIONS = [
+  {
+    heading: null,
+    items: [{ label: 'Dashboard', to: '/student/dashboard', badge: '', icon: 'dashboard' }],
+  },
+  {
+    heading: 'Journals',
+    items: [
+      { label: 'My Journal Calendar', to: '/student/calendar', badge: '', icon: 'calendar' },
+      { label: 'My Journals', to: '/student/journals', badge: '', icon: 'journals' },
+      { label: 'Write Daily Journal', to: '/student/write-journal', badge: '', icon: 'pencil' },
+      { label: 'Weekly Journals', to: '/student/weekly-journals', badge: '', icon: 'stack' },
+    ],
+  },
+  {
+    heading: 'Time & Attendance',
+    items: [
+      { label: 'Weekly and Time Log Summary', to: '/student/weekly-time-log', badge: '', icon: 'clock' },
+      // Shown only where the batch coordinator enabled the QR/geofence DTR —
+      // see the navSections filter below. 'clock' is already taken by the
+      // weekly summary above, so this uses its own pin glyph.
+      { label: 'Daily Time Record', to: '/student/dtr', badge: '', icon: 'map-pin' },
+    ],
+  },
+  {
+    heading: 'My Forms',
+    items: [
+      INFO_SHEET_ITEM,
+      // The last form of the placement. Sits after the info sheet because that
+      // is the order a student meets them: intake first, exit last.
+      { label: 'Exit Interview', to: '/student/exit-interview', badge: '', icon: 'exit' },
+    ],
+  },
 ]
 
 const auth = useAuthStore()
@@ -50,12 +84,20 @@ const isPaused = computed(
 // endpoint — hiding the link keeps the nav honest rather than offering a page
 // that would only refuse them.
 const hasDtr = computed(() => auth.user?.student_dtr_enabled === true)
-const navItems = computed(() => {
+const navSections = computed(() => {
+  // Gated or paused, the whole nav collapses to the one page they may reach.
+  // Deliberately returned as a SINGLE UNHEADED section rather than as the
+  // filtered "My Forms" group: a lone item under a heading announces a
+  // category that has nothing else in it, which is exactly the impression a
+  // gated student should not be given about a nav they cannot use yet.
   if (isGated.value || isPaused.value) {
-    return allNavItems.filter((item) => item.to === '/student/info-sheet')
+    return [{ heading: null, items: [INFO_SHEET_ITEM] }]
   }
 
-  return allNavItems.filter((item) => item.to !== '/student/dtr' || hasDtr.value)
+  return NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => item.to !== '/student/dtr' || hasDtr.value),
+  })).filter((section) => section.items.length > 0)
 })
 
 const pageTitle = computed(() => (typeof route.meta.title === 'string' ? route.meta.title : 'Dashboard'))
@@ -90,14 +132,43 @@ const department = computed(() => auth.user?.program?.department?.name ?? 'CAST'
 
       <div class="mx-3 mb-2 border-t border-white/20" />
 
-      <nav class="flex-1 space-y-1 overflow-y-auto px-3 py-2">
-        <component
-          :is="collapsed ? TooltipWrap : 'div'"
-          v-for="item in navItems"
-          :key="item.to"
-          v-bind="collapsed ? { label: item.label, placement: 'right' } : {}"
-          class="w-full"
+      <nav class="flex-1 overflow-y-auto px-3 py-2">
+        <div
+          v-for="(section, sectionIndex) in navSections"
+          :key="section.heading ?? 'primary'"
+          role="group"
+          :aria-label="section.heading ?? undefined"
+          class="space-y-1"
         >
+          <!--
+            Collapsed to the 76px rail there is nowhere for a text heading to
+            go, so the grouping degrades to a rule — the same `!collapsed`
+            switch the item labels themselves use, so a heading can never
+            outlive the labels it sits above. `aria-label` on the group
+            survives either way, so the structure is still announced when it is
+            invisible.
+
+            The first section is skipped entirely: it holds the single landing
+            item, and a heading (or a rule) above it would only push it down
+            for nothing.
+          -->
+          <template v-if="sectionIndex > 0">
+            <p
+              v-if="!collapsed"
+              class="px-3 pt-3 pb-1 text-[10px] font-bold tracking-wider text-blue-200/70 uppercase"
+            >
+              {{ section.heading }}
+            </p>
+            <div v-else class="mx-1 my-3 border-t border-white/15" />
+          </template>
+
+          <component
+            :is="collapsed ? TooltipWrap : 'div'"
+            v-for="item in section.items"
+            :key="item.to"
+            v-bind="collapsed ? { label: item.label, placement: 'right' } : {}"
+            class="w-full"
+          >
         <RouterLink
           :to="item.to"
           class="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-blue-100 transition hover:bg-white/10 hover:text-white"
@@ -162,7 +233,8 @@ const department = computed(() => auth.user?.program?.department?.name ?? 'CAST'
             class="rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white"
           >{{ item.badge }}</span>
         </RouterLink>
-        </component>
+          </component>
+        </div>
       </nav>
 
       <SidebarCollapseToggle :collapsed="collapsed" @toggle="collapsed = !collapsed" />

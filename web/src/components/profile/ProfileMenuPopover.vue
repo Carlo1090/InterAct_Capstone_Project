@@ -7,15 +7,21 @@ import EditProfilePanel from '@/components/profile/panels/EditProfilePanel.vue'
 import ChangePasswordPanel from '@/components/profile/panels/ChangePasswordPanel.vue'
 import ActivityLogPanel from '@/components/profile/panels/ActivityLogPanel.vue'
 import ReminderSettingsPanel from '@/components/profile/panels/ReminderSettingsPanel.vue'
+import CredentialManagerPanel from '@/components/profile/panels/CredentialManagerPanel.vue'
 import TooltipWrap from '@/components/ui/TooltipWrap.vue'
 
-type View = 'menu' | 'edit' | 'password' | 'activity' | 'reminders'
+type View = 'menu' | 'edit' | 'password' | 'activity' | 'reminders' | 'credentials'
 
 const auth = useAuthStore()
 const router = useRouter()
 
 // Journal reminders only exist for students, so the menu item does too.
 const isStudent = computed(() => auth.user?.role === 'student')
+
+// The Credential Manager reissues an intern's or supervisor's password — a
+// coordinator-only power, and the reason the old "Resend" row action on
+// Users → Interns was retired (see CredentialManagerPanel.vue).
+const isCoordinator = computed(() => auth.user?.role === 'coordinator')
 
 const rootRef = ref<HTMLElement | null>(null)
 const isOpen = ref(false)
@@ -41,6 +47,7 @@ const viewTitle = computed(() => ({
   password: 'Change Password',
   activity: 'Activity Log',
   reminders: 'Reminder Settings',
+  credentials: 'Credential Manager',
 }[view.value]))
 
 const openMenu = () => {
@@ -213,6 +220,18 @@ onBeforeUnmount(() => {
             Reminder Settings
           </button>
           <button
+            v-if="isCoordinator"
+            type="button"
+            class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            @click="selectView('credentials')"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5 shrink-0 text-slate-400">
+              <circle cx="8" cy="12" r="3.5" stroke="currentColor" stroke-width="1.6" />
+              <path d="M11.5 12H20M17.5 12v3M14.5 12v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+            </svg>
+            Credential Manager
+          </button>
+          <button
             type="button"
             class="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:grayscale disabled:cursor-not-allowed"
             :disabled="isLoggingOut"
@@ -229,6 +248,7 @@ onBeforeUnmount(() => {
         <ChangePasswordPanel v-else-if="view === 'password'" :forced="forced" @success="onPasswordChanged" />
         <ActivityLogPanel v-else-if="view === 'activity'" />
         <ReminderSettingsPanel v-else-if="view === 'reminders'" />
+        <CredentialManagerPanel v-else-if="view === 'credentials'" />
       </div>
     </div>
   </div>

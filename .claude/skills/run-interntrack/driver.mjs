@@ -35,6 +35,12 @@ const flag = (name, fallback) => {
 const BASE = flag('--base', 'http://localhost:5173');
 const OUT = flag('--out', './screenshots');
 const SESSION = flag('--session', 'default');
+// Viewport is overridable because PROJECT.md's responsive rules (the dual
+// table/card list layouts, the `<select>`-width guard, the mobile-overflow
+// audit) can only be checked below the `sm`/`md` breakpoints — at the default
+// 1280 the phone layout never renders at all. e.g. `--width 390 --height 844`.
+const WIDTH = Number(flag('--width', 1280));
+const HEIGHT = Number(flag('--height', 900));
 const outDir = path.join(OUT, SESSION);
 
 const consoleLog = [];
@@ -44,7 +50,7 @@ async function main() {
   await mkdir(outDir, { recursive: true });
 
   const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const context = await browser.newContext({ viewport: { width: WIDTH, height: HEIGHT } });
   const page = await context.newPage();
 
   page.on('console', (msg) => {

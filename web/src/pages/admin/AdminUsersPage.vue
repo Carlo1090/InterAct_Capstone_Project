@@ -242,9 +242,9 @@ onMounted(() => {
           <option value="supervisor">Supervisor</option>
         </select>
       </label>
-      <label class="block">
+      <label class="block w-full min-w-0 sm:w-auto">
         <span class="mb-1.5 block text-xs font-bold text-slate-600">Department</span>
-        <select v-model="departmentFilter" class="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm">
+        <select v-model="departmentFilter" class="h-10 w-full max-w-full rounded-md border border-slate-300 bg-white px-3 text-sm">
           <option value="">All Departments</option>
           <option v-for="department in departments" :key="department.id" :value="department.id">
             {{ department.name }}
@@ -516,7 +516,7 @@ onMounted(() => {
             <h4 class="text-xs font-medium uppercase tracking-wide text-slate-400">Assignment</h4>
             <div>
               <label class="mb-1.5 block text-xs font-bold text-slate-600" for="user-department">Department</label>
-              <select id="user-department" v-model="userForm.department_id" class="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm">
+              <select id="user-department" v-model="userForm.department_id" class="h-10 w-full max-w-full rounded-md border border-slate-300 bg-white px-3 text-sm">
                 <option :value="null">Select Department</option>
                 <option v-for="department in departments" :key="department.id" :value="department.id">
                   {{ department.name }}

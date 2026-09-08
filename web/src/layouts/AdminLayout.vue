@@ -7,16 +7,54 @@ import TooltipWrap from '@/components/ui/TooltipWrap.vue'
 import NotificationBell from '@/components/notifications/NotificationBell.vue'
 import ProfileMenuPopover from '@/components/profile/ProfileMenuPopover.vue'
 
-const navItems = [
-  { label: 'Dashboard', to: '/admin/dashboard', badge: '', icon: 'dashboard' },
-  { label: 'Users', to: '/admin/users', badge: '', icon: 'people' },
-  { label: 'Departments', to: '/admin/departments', badge: '', icon: 'building' },
-  { label: 'Programs', to: '/admin/programs', badge: '', icon: 'book' },
-  { label: 'Batches', to: '/admin/batches', badge: '', icon: 'briefcase' },
-  { label: 'Student Info Sheet', to: '/admin/info-sheets', badge: '', icon: 'id-card' },
-  { label: 'Audit Logs', to: '/admin/audit-logs', badge: '', icon: 'clipboard' },
-  { label: 'System Settings', to: '/admin/settings', badge: '', icon: 'gear' },
+/**
+ * THE SIDEBAR IS GROUPED, NOT FLAT (2026-09-08) — the same treatment, headings
+ * and rail behaviour as CoordinatorLayout; see its NAV_SECTIONS block for the
+ * reasoning and the collapsed-rail rule.
+ *
+ * The admin's two jobs are global STRUCTURE and identity, so the split follows
+ * that: Organization is the academic hierarchy this college actually has
+ * (departments own programs, programs own batches, in that order), People &
+ * Records is the account list plus the all-departments info-sheet queue, and
+ * System is the two surfaces that are about the app rather than about the
+ * college. Dashboard stays outside any section — a lone landing item under its
+ * own heading reads as a category of one.
+ */
+const NAV_SECTIONS = [
+  {
+    heading: null,
+    items: [{ label: 'Dashboard', to: '/admin/dashboard', badge: '', icon: 'dashboard' }],
+  },
+  {
+    heading: 'Organization',
+    items: [
+      { label: 'Departments', to: '/admin/departments', badge: '', icon: 'building' },
+      { label: 'Programs', to: '/admin/programs', badge: '', icon: 'book' },
+      { label: 'Batches', to: '/admin/batches', badge: '', icon: 'briefcase' },
+    ],
+  },
+  {
+    heading: 'People & Records',
+    items: [
+      { label: 'Users', to: '/admin/users', badge: '', icon: 'people' },
+      { label: 'Student Info Sheet', to: '/admin/info-sheets', badge: '', icon: 'id-card' },
+    ],
+  },
+  {
+    heading: 'System',
+    items: [
+      { label: 'Audit Logs', to: '/admin/audit-logs', badge: '', icon: 'clipboard' },
+      { label: 'System Settings', to: '/admin/settings', badge: '', icon: 'gear' },
+    ],
+  },
 ]
+
+/**
+ * Nothing filters an admin's nav today, so this is a pass-through — but it
+ * keeps the template identical to the other layouts, and an empty section is
+ * dropped rather than rendering an orphan heading over blank space.
+ */
+const navSections = computed(() => NAV_SECTIONS.filter((section) => section.items.length > 0))
 
 const auth = useAuthStore()
 const route = useRoute()
@@ -57,14 +95,43 @@ const userName = computed(() => auth.user?.name ?? 'Test Admin')
 
       <div class="mx-3 mb-2 border-t border-white/20" />
 
-      <nav class="flex-1 space-y-1 overflow-y-auto px-3 py-2">
-        <component
-          :is="collapsed ? TooltipWrap : 'div'"
-          v-for="item in navItems"
-          :key="item.to"
-          v-bind="collapsed ? { label: item.label, placement: 'right' } : {}"
-          class="w-full"
+      <nav class="flex-1 overflow-y-auto px-3 py-2">
+        <div
+          v-for="(section, sectionIndex) in navSections"
+          :key="section.heading ?? 'primary'"
+          role="group"
+          :aria-label="section.heading ?? undefined"
+          class="space-y-1"
         >
+          <!--
+            Collapsed to the 76px rail there is nowhere for a text heading to
+            go, so the grouping degrades to a rule — the same `!collapsed`
+            switch the item labels themselves use, so a heading can never
+            outlive the labels it sits above. `aria-label` on the group
+            survives either way, so the structure is still announced when it is
+            invisible.
+
+            The first section is skipped entirely: it holds the single landing
+            item, and a heading (or a rule) above it would only push it down
+            for nothing.
+          -->
+          <template v-if="sectionIndex > 0">
+            <p
+              v-if="!collapsed"
+              class="px-3 pt-3 pb-1 text-[10px] font-bold tracking-wider text-blue-200/70 uppercase"
+            >
+              {{ section.heading }}
+            </p>
+            <div v-else class="mx-1 my-3 border-t border-white/15" />
+          </template>
+
+          <component
+            :is="collapsed ? TooltipWrap : 'div'"
+            v-for="item in section.items"
+            :key="item.to"
+            v-bind="collapsed ? { label: item.label, placement: 'right' } : {}"
+            class="w-full"
+          >
         <RouterLink
           :to="item.to"
           class="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-blue-100 transition hover:bg-white/10 hover:text-white"
@@ -120,7 +187,8 @@ const userName = computed(() => auth.user?.name ?? 'Test Admin')
             class="rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white"
           >{{ item.badge }}</span>
         </RouterLink>
-        </component>
+          </component>
+        </div>
       </nav>
 
       <SidebarCollapseToggle :collapsed="collapsed" @toggle="collapsed = !collapsed" />

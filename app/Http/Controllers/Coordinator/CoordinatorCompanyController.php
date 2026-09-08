@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Coordinator;
 
+use App\Http\Controllers\Concerns\ScopesCoordinatorAccounts;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Coordinator\AddCompanyRepresentativeRequest;
 use App\Http\Requests\Coordinator\AttachSupervisorRequest;
@@ -19,6 +20,8 @@ use Illuminate\Support\Facades\Hash;
 
 class CoordinatorCompanyController extends Controller
 {
+    use ScopesCoordinatorAccounts;
+
     /**
      * Scoped list: companies used by the coordinator's department students,
      * plus companies not yet linked to any enrollment (which includes any the
@@ -202,25 +205,6 @@ class CoordinatorCompanyController extends Controller
             422,
             "This company already has a supervisor login (\"{$existingLogin?->user?->name}\"). Detach it before attaching or creating a different one."
         );
-    }
-
-    /**
-     * Company IDs a coordinator may see/manage: those referenced by
-     * enrollments whose batch program is in their scope, unioned with
-     * companies not yet linked to any enrollment.
-     */
-    private function scopedCompanyIds(User $coordinator): Collection
-    {
-        $programIds = $coordinator->coordinatorProgramIds();
-
-        $usedIds = BatchStudent::whereHas('batch', fn ($query) => $query->whereIn('program_id', $programIds))
-            ->pluck('company_id')
-            ->filter()
-            ->unique();
-
-        $unlinkedIds = Company::whereDoesntHave('batchStudents')->pluck('id');
-
-        return $usedIds->merge($unlinkedIds)->unique()->values();
     }
 
     private function authorizeCompany(User $coordinator, Company $company): void

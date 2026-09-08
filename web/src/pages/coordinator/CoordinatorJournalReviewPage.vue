@@ -384,13 +384,23 @@ onMounted(() => load(true))
                 a real regression introduced while making room for the company
                 line under Batch.
               -->
+              <!--
+                Action is 95px because that is what its ONE button actually
+                measures: 61px for "Open" plus the cell's own 32px of px-4
+                padding. It was 140px while the label read "Open Notebook";
+                shrinking the label without shrinking the column would have left
+                47px of dead space in the widest-content table on this page.
+                The slack goes to the unsized Batch column, which also renders
+                the company name beneath it and is the longest text here — the
+                same rule the Gotchas section records for this table.
+              -->
               <colgroup>
                 <col style="width: 185px" />
                 <col />
                 <col style="width: 180px" />
                 <col style="width: 70px" />
                 <col style="width: 120px" />
-                <col style="width: 140px" />
+                <col style="width: 95px" />
               </colgroup>
               <thead class="bg-slate-50">
                 <tr>
@@ -435,7 +445,7 @@ onMounted(() => load(true))
                         :to="notebookPath(row.student_id)"
                         class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                       >
-                        Open Notebook
+                        Open
                       </RouterLink>
                     </div>
                   </td>
@@ -470,7 +480,7 @@ onMounted(() => load(true))
                 :to="notebookPath(row.student_id)"
                 class="inline-block rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700"
               >
-                Open Notebook
+                Open
               </RouterLink>
             </li>
           </ul>

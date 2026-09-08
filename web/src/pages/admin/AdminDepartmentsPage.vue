@@ -4,6 +4,7 @@ import axios from 'axios'
 import api from '@/lib/axios'
 import { confirmAction, showToast } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
+import TooltipWrap from '@/components/ui/TooltipWrap.vue'
 import type { Department, DepartmentDetail, PaginatedResponse, User } from '@/types/api'
 
 type DepartmentForm = {
@@ -239,7 +240,20 @@ onMounted(() => {
                   {{ department.code }}
                 </span>
               </td>
-              <td class="truncate px-4 py-3 text-sm font-semibold text-slate-900">{{ department.name }}</td>
+              <!--
+                Department names are full sentences ("College of Accountancy,
+                Business and Management – Business Department"), so this column
+                genuinely truncates at common widths. Both `max-w-full`s are
+                load-bearing: TooltipWrap's root is an inline-flex, which sizes
+                to its CONTENT, so without them `truncate` has no constrained
+                width to measure against and the text paints over the next
+                column instead of ellipsing. See the Gotchas section.
+              -->
+              <td class="px-4 py-3 text-sm font-semibold text-slate-900">
+                <TooltipWrap :label="department.name" placement="top" class="max-w-full">
+                  <span class="block max-w-full truncate">{{ department.name }}</span>
+                </TooltipWrap>
+              </td>
               <td class="truncate px-4 py-3 text-sm text-slate-500">{{ department.dean_name || '—' }}</td>
               <td class="px-4 py-3 text-sm tabular-nums text-slate-700">{{ department.programs_count ?? 0 }}</td>
               <td class="px-4 py-3">
@@ -265,8 +279,18 @@ onMounted(() => {
       <ul class="divide-y divide-slate-100 rounded-lg bg-white px-4 shadow-sm ring-1 ring-slate-200 md:hidden">
         <li v-if="departments.length === 0" class="py-6 text-center text-sm text-slate-500">No departments found.</li>
         <li v-for="department in departments" :key="department.id" class="py-4">
+          <!--
+            Code as its own chip with the name on the line below, NOT the old
+            single truncated "CODE · Name" line. Real department names run to
+            ~70 characters, so on a phone that line truncated inside the code
+            and the name — the thing being identified — was never visible at
+            all. It also read as duplication back when both fields held the
+            same string.
+          -->
           <div class="flex items-start justify-between gap-3">
-            <p class="min-w-0 truncate text-sm font-semibold text-slate-900">{{ department.code }} · {{ department.name }}</p>
+            <span class="inline-flex shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-blue-700">
+              {{ department.code }}
+            </span>
             <span
               class="shrink-0 rounded-full px-3 py-1 text-xs font-bold"
               :class="department.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'"
@@ -274,6 +298,7 @@ onMounted(() => {
               {{ department.is_active ? 'Active' : 'Inactive' }}
             </span>
           </div>
+          <p class="mt-1.5 text-sm font-semibold wrap-break-word text-slate-900">{{ department.name }}</p>
           <p class="mt-1 truncate text-xs text-slate-500">
             Dean: {{ department.dean_name || '—' }} · {{ department.programs_count ?? 0 }} program{{ (department.programs_count ?? 0) === 1 ? '' : 's' }}
           </p>
@@ -295,16 +320,35 @@ onMounted(() => {
 
         <div class="flex-1 space-y-4 overflow-y-auto px-6 py-5">
           <!--
-            No helper under Code: the server rule is `required|string|max:20|unique`
-            with no format constraint, so there is no format to state.
+            The helpers below say what each field is FOR, not what format it
+            takes (the server rule on Code is `required|string|max:20|unique`,
+            with no format constraint). They exist because the two fields were
+            genuinely indistinguishable until 2026-09-08: every seeded
+            department had `name` set to the same string as `code`, so the list
+            showed "CABM-B / CABM-B" and nothing on this form said why you would
+            ever type two different things. Code is also the identifier every
+            lookup in the project keys off, which is why it cannot be edited
+            after creation — hence the `v-if` on it.
           -->
           <div v-if="!editingDepartmentId">
             <label class="mb-1.5 block text-xs font-bold text-slate-600" for="department-code">Code</label>
-            <input id="department-code" v-model="departmentForm.code" type="text" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm" />
+            <input id="department-code" v-model="departmentForm.code" type="text" placeholder="CABM-B" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm" />
+            <p class="mt-1.5 text-xs text-slate-500">
+              Short identifier used across the system and on printed forms. Cannot be changed later.
+            </p>
           </div>
           <div>
             <label class="mb-1.5 block text-xs font-bold text-slate-600" for="department-name">Name</label>
-            <input id="department-name" v-model="departmentForm.name" type="text" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm" />
+            <input
+              id="department-name"
+              v-model="departmentForm.name"
+              type="text"
+              placeholder="College of Accountancy, Business and Management – Business Department"
+              class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm"
+            />
+            <p class="mt-1.5 text-xs text-slate-500">
+              The full department name, written out as it should read to a person. Do not repeat the code here.
+            </p>
           </div>
           <div>
             <label class="mb-1.5 block text-xs font-bold text-slate-600" for="department-dean-name">Dean's Name (optional)</label>
