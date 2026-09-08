@@ -55,7 +55,22 @@ This is a **monorepo** with three parts:
   reset: the next student on the same handset was painted with the previous
   student's name, photo, dashboard and journals, and — worst — a journal queued
   offline by the previous student was flushed under the NEW student's bearer
-  token, filing one student's writing against another's account. It has its own
+  token, filing one student's writing against another's account.
+  **The dashboard's Recent Activity and the full Activity Log are ONE
+  renderer** (2026-09-08) — `mobile/src/lib/activityLog.ts` holds the
+  action→plain-language map, the category icons/colours and `trimOwnName`, and
+  `mobile/src/components/ActivityRow.tsx` draws the row for both. They read the
+  same five `SystemLog` rows and used to describe them differently: the
+  dashboard printed the raw audit `description`, own-name prefix and all
+  ("Juan Dela Cruz logged in (mobile)"), against a bare coloured dot, while the
+  Activity Log showed "Signed in" with an icon, a category colour and the name
+  trimmed. `StudentDashboardController` now returns the raw `id`/`action`/
+  `description`/`logged_at` alongside the existing `text`/`time`/`tone` —
+  **additive, because `StudentDashboardPage.vue` reads those three** and the
+  web dashboard is deliberately not part of that change. `ActivityRow`'s
+  `variant` prop changes the container only (a standing card on its own screen,
+  a divided list inside the dashboard card), never the information.
+  It has its own
   `mobile/CLAUDE.md` (importing `mobile/AGENTS.md`) requiring the versioned docs
   at `docs.expo.dev/versions/v54.0.0/` be checked before any mobile code.
 

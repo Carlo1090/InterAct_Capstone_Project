@@ -7,13 +7,17 @@ import { OfflineNotice } from '../../src/components/OfflineNotice';
 import { StatCard } from '../../src/components/StatCard';
 import { Card } from '../../src/components/Card';
 import { ProgressRow } from '../../src/components/ProgressRow';
-import { ActivityItem } from '../../src/components/ActivityItem';
+import { ActivityRow } from '../../src/components/ActivityRow';
 import { ErrorState, LoadingState } from '../../src/components/ErrorState';
 import { useDashboard } from '../../src/hooks/useDashboard';
+import { useCurrentUser } from '../../src/hooks/useCurrentUser';
 import { colors } from '../../src/constants/colors';
 
 export default function Dashboard() {
   const { data, loading, error, isOffline, reload } = useDashboard();
+  // Only to strip the student's own name off each row's detail line, exactly
+  // as the Activity Log does. Free — the user store is already in memory.
+  const { user } = useCurrentUser();
 
   if (loading && !data) {
     return (
@@ -87,7 +91,24 @@ export default function Dashboard() {
         {data.recent_activity.length === 0 ? (
           <Text style={{ fontSize: 12, color: colors.gray400 }}>No recent activity yet.</Text>
         ) : (
-          data.recent_activity.map((a, i) => <ActivityItem key={i} tone={a.tone} text={a.text} time={a.time} />)
+          <>
+            {/* The SAME rows the Activity Log renders, through the same
+                component — plain-language title, category icon and colour,
+                the detail line with the student's own name trimmed, relative
+                time and exact clock time. This card used to print the raw
+                audit description against a bare coloured dot, so the two
+                screens described one event two different ways. */}
+            {data.recent_activity.map((a) => (
+              <ActivityRow key={a.id} item={a} userName={user?.name} variant="plain" />
+            ))}
+            <Button
+              label="View full activity log"
+              variant="secondary"
+              icon="time-outline"
+              onPress={() => router.push('/activity-log')}
+              style={{ marginTop: 12 }}
+            />
+          </>
         )}
       </Card>
       {/* "Internship Details" was removed from here — Profile's own
