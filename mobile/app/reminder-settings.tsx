@@ -10,6 +10,7 @@ import { colors } from '../src/constants/colors';
 import { useReminderPreferences } from '../src/hooks/useReminderPreferences';
 import { OfflineNotice } from '../src/components/OfflineNotice';
 import { ErrorNotice } from '../src/components/ErrorNotice';
+import { formatWallClock } from '../src/lib/datetime';
 
 const DAYS: { iso: number; label: string }[] = [
   { iso: 1, label: 'Mon' },
@@ -138,7 +139,7 @@ export default function ReminderSettings() {
 
       <View style={{ marginHorizontal: 20, marginTop: 16 }}>
         <Text style={{ fontSize: 10, fontWeight: '600', color: colors.gray600, marginBottom: 8, textTransform: 'uppercase' }}>
-          Time {time === null ? `(batch default ${data.defaults.time})` : ''}
+          Time {time === null ? `(batch default ${formatWallClock(data.defaults.time)})` : ''}
         </Text>
         <Pressable
           onPress={() => setShowPicker(true)}
@@ -152,16 +153,23 @@ export default function ReminderSettings() {
             opacity: enabled ? 1 : 0.5,
           }}
         >
-          <Text style={{ fontSize: 13.5, color: colors.black }}>{effectiveTime}</Text>
+          {/* Shown as standard time. What gets STORED is still 24-hour
+              "HH:mm" — the backend's reminder_time is a time column and the
+              reminder command reads the hour off it, so only the display
+              changes here. */}
+          <Text style={{ fontSize: 13.5, color: colors.black }}>{formatWallClock(effectiveTime)}</Text>
         </Pressable>
         {showPicker ? (
           <DateTimePicker
             value={new Date(`1970-01-01T${effectiveTime}:00`)}
             mode="time"
-            is24Hour
+            // The picker itself now offers AM/PM rather than a 24-hour dial.
+            is24Hour={false}
             onChange={(_, selected) => {
               setShowPicker(Platform.OS === 'ios');
               if (selected) {
+                // getHours() is 24-hour regardless of how the picker was
+                // displayed, so the stored value is unchanged in shape.
                 const hh = String(selected.getHours()).padStart(2, '0');
                 const mm = String(selected.getMinutes()).padStart(2, '0');
                 setTime(`${hh}:${mm}`);

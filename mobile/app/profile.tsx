@@ -201,7 +201,6 @@ export default function Profile() {
       <MenuRow icon="notifications-outline" label="Reminder Settings" onPress={() => router.push('/reminder-settings')} />
       <MenuRow icon="key-outline" label="Change Password" onPress={() => router.push('/change-password')} />
       <MenuRow icon="time-outline" label="Activity Log" onPress={() => router.push('/activity-log')} />
-      <MenuRow icon="cloud-offline-outline" label="Using InternTrack offline" onPress={() => router.push('/offline-guide')} />
       <MenuRow icon="book-outline" label="Guide & Submission Rules" onPress={() => router.push('/guide')} />
 
       <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 }}>

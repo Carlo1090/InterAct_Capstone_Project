@@ -27,7 +27,6 @@ export default function RootLayout() {
         <Stack.Screen name="guide" />
         <Stack.Screen name="infosheet" />
         <Stack.Screen name="exit-interview" />
-        <Stack.Screen name="offline-guide" />
         <Stack.Screen name="weekly-activity/index" />
         <Stack.Screen name="weekly-activity/[id]" />
         <Stack.Screen name="profile" />
