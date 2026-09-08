@@ -46,7 +46,16 @@ This is a **monorepo** with three parts:
   punch deliberately is not). All dates and times go through
   `mobile/src/lib/datetime.ts` — never `toISOString()` for "today", which is
   UTC and was silently a day behind for the first eight hours of every Manila
-  day. It has its own
+  day. **Signing out wipes what the device is holding for that student** —
+  `clearDeviceSession()` in `mobile/src/hooks/useAuth.ts` clears the read caches
+  (`clearAllCached`), the queued journal writes (`clearOutbox`), the on-device
+  alarms and the shared user store, and `login()` re-runs it whenever the account
+  that just signed in is not the one the cache describes (the session can also
+  end by a token simply expiring). Before that, only the in-memory store was
+  reset: the next student on the same handset was painted with the previous
+  student's name, photo, dashboard and journals, and — worst — a journal queued
+  offline by the previous student was flushed under the NEW student's bearer
+  token, filing one student's writing against another's account. It has its own
   `mobile/CLAUDE.md` (importing `mobile/AGENTS.md`) requiring the versioned docs
   at `docs.expo.dev/versions/v54.0.0/` be checked before any mobile code.
 

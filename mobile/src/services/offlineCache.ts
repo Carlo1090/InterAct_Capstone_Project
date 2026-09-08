@@ -28,3 +28,28 @@ export async function setCached<T>(key: string, value: T): Promise<void> {
     // already has the real, fresh data in memory.
   }
 }
+
+/**
+ * Removes every cached read screen. Called on sign-out, and again on a login
+ * that turns out to be a different account.
+ *
+ * THE BUG THIS FIXES: nothing used to clear this on logout — clearUser() only
+ * reset the in-memory store. So the next student to sign in on the same handset
+ * was painted with the previous student's name, photo, dashboard, journals and
+ * activity log until each screen's own fetch landed, and saw all of it
+ * indefinitely if they happened to be offline. On a shared or borrowed phone
+ * that is one student reading another's record.
+ *
+ * Only keys under our own PREFIX are removed — the session token lives in
+ * SecureStore and the outbox has its own keys, so this can never take out
+ * something it does not own.
+ */
+export async function clearAllCached(): Promise<void> {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const ours = keys.filter((k) => k.startsWith(PREFIX));
+    if (ours.length > 0) await AsyncStorage.multiRemove(ours);
+  } catch {
+    // Best-effort, like every other access here.
+  }
+}

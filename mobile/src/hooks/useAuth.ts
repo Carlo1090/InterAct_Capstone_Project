@@ -3,10 +3,24 @@ import * as SecureStore from 'expo-secure-store';
 import { api, TOKEN_KEY, toApiError } from '../services/api';
 import { endpoints } from '../services/endpoints';
 import { clearLocalReminders } from '../services/localReminders';
-import { clearUser } from '../services/userStore';
+import { clearUser, setUser } from '../services/userStore';
+import { getCached, clearAllCached } from '../services/offlineCache';
+import { clearOutbox } from '../services/journalOutbox';
 import { CurrentUser } from '../types/api';
 
 type LoginResult = { ok: true; user: CurrentUser } | { ok: false; error: string };
+
+/**
+ * Everything this device is holding on behalf of the signed-in student: the
+ * read caches, the queued journal writes, and the on-device alarms. Kept in one
+ * function so sign-out and account-switch cannot clear different halves of it.
+ */
+async function clearDeviceSession(): Promise<void> {
+  await clearAllCached();
+  await clearOutbox();
+  await clearLocalReminders();
+  clearUser();
+}
 
 export function useAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -21,7 +35,21 @@ export function useAuth() {
         login: identifier,
         password,
       });
+
+      // Sign-out is where the wipe belongs, but it is not the only way a
+      // session ends — a revoked or expired token drops the student back at
+      // this form with every cache still on disk. So the account that just
+      // signed in is compared against the one the cache describes, and anything
+      // belonging to somebody else goes before their first screen paints.
+      const previous = await getCached<CurrentUser>('current_user');
+      if (previous !== null && previous.id !== res.data.user.id) {
+        await clearDeviceSession();
+      }
+
       await SecureStore.setItemAsync(TOKEN_KEY, res.data.token);
+      // Seed the shared store from the login response so the first screen has
+      // the right name and photo without waiting on /api/user.
+      setUser(res.data.user);
       setIsAuthenticated(true);
       return { ok: true, user: res.data.user };
     } catch (err) {
@@ -40,11 +68,10 @@ export function useAuth() {
     }
     await SecureStore.deleteItemAsync(TOKEN_KEY);
     // Local alarms outlive the session otherwise — a shared or handed-on
-    // handset would keep nudging whoever signed in last.
-    await clearLocalReminders();
-    // The shared user store is module-level, so without this the next account
-    // to sign in briefly sees the previous student's name and photo.
-    clearUser();
+    // handset would keep nudging whoever signed in last. The read caches and
+    // the journal outbox go with them: see clearAllCached() and clearOutbox()
+    // for what leaving either behind actually did.
+    await clearDeviceSession();
     setIsAuthenticated(false);
   }, []);
 
