@@ -105,6 +105,26 @@ This is a **monorepo** with three parts:
   `data` when `cacheKey` changes: a different key is different content, not a
   refresh, and without it October's grid sat under the word November until
   the network answered.
+  **The tab bar icons answer a tap** (`mobile/src/components/TabBarIcon.tsx`,
+  2026-09-09) — an overshoot to 1.42 then a spring to a resting 1.12 with a
+  2px lift. It keys off **`focused`, never an `onPress`**: the tab bar owns
+  the press, so a second handler would fire on taps the navigator rejects (the
+  already-active tab) and miss every focus change that did not come from a tap
+  (a deep link, `router.replace`, hardware back). `useNativeDriver` throughout,
+  and it honours `AccessibilityInfo.isReduceMotionEnabled()` — this fires on
+  every navigation, which is exactly the repeated movement that setting exists
+  to stop.
+  **The login screen matches the project owner's mockup** (2026-09-09): a DARK
+  navy ground (`#2a3f60 → blue900 → #16213a`, diagonal) instead of the old pale
+  `blue300 → blue100` wash, which had left a white card floating on an
+  almost-white page with no edge; two hairline rings in the card header echoing
+  the logo; an elevated card (**both** `elevation` and `shadow*`, since iOS
+  ignores the first and Android the second); and neutral `blue50` icon chips on
+  tinted fields. **That last one fixed a real signal bug** — the password field
+  carried a RED icon slab, and red is the app's error colour everywhere else,
+  so a resting password field read as a field in an error state. The footer
+  moved to `blue300`, the light-on-dark token, since `blue700` is invisible on
+  the new ground.
   It has its own
   `mobile/CLAUDE.md` (importing `mobile/AGENTS.md`) requiring the versioned docs
   at `docs.expo.dev/versions/v54.0.0/` be checked before any mobile code.

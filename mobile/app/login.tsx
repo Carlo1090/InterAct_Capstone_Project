@@ -71,16 +71,74 @@ export default function Login() {
   const cardMaxWidth = Math.min(width - 48, 420);
 
   return (
-    <LinearGradient colors={[colors.blue300, colors.blue100]} style={{ flex: 1 }}>
+    // THE GROUND IS DARK NOW. It used to be a pale blue300 -> blue100 wash,
+    // which left a white card floating on an almost-white page: the card had
+    // no edge and the screen had no anchor. On the deep ground the card reads
+    // as an object, and the one dark surface in the app is the first thing
+    // seen. Three stops rather than two so the light does not sit flatly in
+    // the corner.
+    <LinearGradient
+      colors={['#2a3f60', colors.blue900, '#16213a']}
+      start={{ x: 1, y: 0 }}
+      end={{ x: 0, y: 1 }}
+      style={{ flex: 1 }}
+    >
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <View style={{ width: '100%', maxWidth: cardMaxWidth, backgroundColor: colors.white, borderRadius: 18, overflow: 'hidden' }}>
+          <View
+            style={{
+              width: '100%',
+              maxWidth: cardMaxWidth,
+              backgroundColor: colors.white,
+              borderRadius: 20,
+              overflow: 'hidden',
+              // Lifts the card off the dark ground. Both platforms are set
+              // because iOS ignores `elevation` and Android ignores the
+              // shadow* props — setting only one leaves the card flat on half
+              // the devices that run this.
+              elevation: 10,
+              shadowColor: '#000',
+              shadowOpacity: 0.3,
+              shadowRadius: 22,
+              shadowOffset: { width: 0, height: 12 },
+            }}
+          >
             <LinearGradient
               colors={[colors.blue700, colors.blue500]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={{ paddingVertical: 36, alignItems: 'center' }}
+              style={{ paddingVertical: 36, alignItems: 'center', overflow: 'hidden' }}
             >
+              {/* Two faint rings echoing the logo's circle. Hairline borders at
+                  low opacity rather than filled shapes, so they read as an
+                  embossed watermark and never compete with the mark itself.
+                  pointerEvents none: they sit over the header, not in the way. */}
+              <View
+                pointerEvents="none"
+                style={{
+                  position: 'absolute',
+                  width: 210,
+                  height: 210,
+                  borderRadius: 105,
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.13)',
+                  top: -74,
+                  right: -52,
+                }}
+              />
+              <View
+                pointerEvents="none"
+                style={{
+                  position: 'absolute',
+                  width: 140,
+                  height: 140,
+                  borderRadius: 70,
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.10)',
+                  bottom: -58,
+                  left: -34,
+                }}
+              />
               <View
                 style={{
                   width: 84,
@@ -125,9 +183,14 @@ export default function Login() {
                 </View>
               ) : null}
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: colors.gray200, borderRadius: 10, marginBottom: 14, overflow: 'hidden' }}>
-                <View style={{ backgroundColor: colors.blue500, padding: 12 }}>
-                  <Ionicons name="person-outline" size={16} color="white" />
+              {/* THE ICON IS A NEUTRAL CHIP INSIDE A FILLED FIELD, not a
+                  coloured slab bolted to its left edge. The old treatment put a
+                  saturated blue block on Username and a RED one on Password —
+                  red is the app's error colour everywhere else, so a resting
+                  password field looked like a field in an error state. */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.gray50, borderWidth: 1.5, borderColor: colors.gray200, borderRadius: 11, marginBottom: 12, paddingLeft: 8, overflow: 'hidden' }}>
+                <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.blue50, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="person-outline" size={15} color={colors.blue600} />
                 </View>
                 <TextInput
                   value={identifier}
@@ -137,13 +200,13 @@ export default function Login() {
                   autoCapitalize="none"
                   autoComplete="username"
                   textContentType="username"
-                  style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 13.5, color: colors.black }}
+                  style={{ flex: 1, paddingHorizontal: 12, paddingVertical: 13, fontSize: 13.5, color: colors.black }}
                 />
               </View>
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: colors.gray200, borderRadius: 10, marginBottom: 20, overflow: 'hidden' }}>
-                <View style={{ backgroundColor: colors.red, padding: 12 }}>
-                  <Ionicons name="lock-closed-outline" size={16} color="white" />
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.gray50, borderWidth: 1.5, borderColor: colors.gray200, borderRadius: 11, marginBottom: 20, paddingLeft: 8, overflow: 'hidden' }}>
+                <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: colors.blue50, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="lock-closed-outline" size={15} color={colors.blue600} />
                 </View>
                 <TextInput
                   // Android has a long-standing bug where toggling `secureTextEntry`
@@ -161,7 +224,7 @@ export default function Login() {
                   autoCorrect={false}
                   autoComplete="password"
                   textContentType="password"
-                  style={{ flex: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 13.5, color: colors.black }}
+                  style={{ flex: 1, paddingHorizontal: 12, paddingVertical: 13, fontSize: 13.5, color: colors.black }}
                 />
                 <Pressable
                   onPress={() => setShowPassword((prev) => !prev)}
@@ -184,7 +247,9 @@ export default function Login() {
             </View>
           </View>
 
-          <Text style={{ color: colors.blue700, fontSize: 11, textAlign: 'center', marginTop: 20 }}>
+          {/* blue700 was invisible against the new dark ground — the accent
+              is the token meant for light-on-dark, at 7.08:1. */}
+          <Text style={{ color: colors.blue300, fontSize: 11, textAlign: 'center', marginTop: 24 }}>
             Mater Dei College · InternTrack App v1.0.0
           </Text>
         </ScrollView>
