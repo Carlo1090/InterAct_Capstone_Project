@@ -70,6 +70,41 @@ This is a **monorepo** with three parts:
   web dashboard is deliberately not part of that change. `ActivityRow`'s
   `variant` prop changes the container only (a standing card on its own screen,
   a divided list inside the dashboard card), never the information.
+  **The palette is NAVY, GENTLED** (2026-09-09, project owner) — same family,
+  lower intensity, every value in `mobile/src/constants/colors.ts` measured
+  rather than picked: ground `#20304C` on white is **13.22:1** (was `#0A1628`
+  at 18.13:1, a contrast wall), primary `#3A5A8F` is **6.91:1** at saturation
+  0.42 (was `#1E4D9B` at 0.83, close to electric), canvas `#F4F7FB` carries a
+  faint blue cast, and the muted label colour went `#94A3B8` → `#7C8AA3`,
+  which was a real accessibility fix (2.39:1 → 3.25:1, since the old value
+  sat under even the 3:1 large-text floor). **`blue300` `#A3C0E6` is
+  light-on-dark ONLY** — 7.08:1 on the ground, 1.87:1 on white, so it must
+  never become text on a pale surface. **Status colours are deliberately
+  unchanged**: green/red/amber carry meaning (submitted, missing, needs
+  action) rather than brand, and re-tinting them toward navy would weaken
+  exactly the signals that must stay loud.
+  **`Banner` has an `offline` variant and it is the loudest thing on its
+  page.** Offline used to render as `neutral` — grey text on a grey wash in a
+  grey border, the app's quietest treatment — so the one notice saying "this
+  may be out of date" looked less important than the blue tips beside it. It
+  now carries its meaning FOUR ways (left stripe, filled icon chip, bold
+  title, colour), because colour alone fails a red-green colour-blind reader
+  and a phone screen in daylight. `OfflineNotice` uses it for BOTH levels and
+  differentiates by title — "Offline — your work is safe" where writes
+  genuinely queue, "Offline — showing saved data" everywhere else.
+  **The journal calendar is cache-first and pre-warms its neighbours.**
+  `useJournalCalendar` hand-rolled its own fetch and read the cache **only
+  inside the catch block**, so a saved month was used only when a request
+  actually FAILED — on a working-but-slow connection (a sleeping free-tier
+  API costs 30-60s to wake) every month change was a blocking round trip with
+  nothing on screen. It now goes through `useCachedResource` (the sixth hook
+  to hand-roll that pattern and the second to drift from it, which is the
+  whole reason that helper exists) and background-warms the two ADJACENT
+  months after each load — silently, and skipped entirely while offline
+  rather than firing two doomed requests. `useCachedResource` also now CLEARS
+  `data` when `cacheKey` changes: a different key is different content, not a
+  refresh, and without it October's grid sat under the word November until
+  the network answered.
   It has its own
   `mobile/CLAUDE.md` (importing `mobile/AGENTS.md`) requiring the versioned docs
   at `docs.expo.dev/versions/v54.0.0/` be checked before any mobile code.
