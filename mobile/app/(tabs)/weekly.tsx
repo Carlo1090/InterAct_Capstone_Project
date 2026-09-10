@@ -77,8 +77,8 @@ export default function Weekly() {
       <OfflineNotice feature="weeklyLogs" show={isOffline && logs.length > 0} />
 
       <Banner variant="info">
-        Weekly compilations are auto-generated every Monday at 12:00 AM. Approved journals are forwarded to your
-        coordinator.
+        Weekly compilations are generated every Monday at 12:00 AM. Approved journals are sent to the coordinator
+        for review.
       </Banner>
 
       {/* The Time Log Summary is the other weekly artifact, so it is reachable

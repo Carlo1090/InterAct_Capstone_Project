@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { ScrollView, View, Text, TextInput, Pressable, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Banner } from '../../src/components/Banner';
 import { Button } from '../../src/components/Button';
 import { Card } from '../../src/components/Card';
 import { ErrorState, LoadingState } from '../../src/components/ErrorState';
@@ -92,10 +91,6 @@ export default function WeeklyActivityIndex() {
 
       <OfflineNotice feature="weeklyActivityLog" show={isOffline} />
 
-      <Banner variant="info">
-        One sheet per Period Covered, each holding the activity rows from the official MDC form. The supervisor signs
-        the printed copy by hand — the app never stores a signature.
-      </Banner>
 
       <View style={{ paddingHorizontal: 20, marginTop: 16 }}>
         {showForm ? null : (

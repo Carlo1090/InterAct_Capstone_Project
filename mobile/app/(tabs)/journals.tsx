@@ -40,7 +40,7 @@ export default function Journals() {
         <OfflineNotice feature="journalList" />
       ) : (
         <Banner variant="info">
-          Daily entries track submission status. Review happens after entries compile into your weekly journal.
+          Entries are reviewed after compiling into the weekly journal.
         </Banner>
       )}
 

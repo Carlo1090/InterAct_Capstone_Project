@@ -237,14 +237,14 @@ function StatusBanner({
   rejectionReason: string | null;
   editing: boolean;
 }) {
-  if (editing) {
-    return <Banner variant="info">You are editing your information sheet. Save your changes, or go back to discard them.</Banner>;
-  }
+  // No banner while editing: the student just pressed Edit, so saying so tells
+  // them nothing they did not do themselves.
+  if (editing) return null;
   if (status === 'rejected') {
     return <Banner variant="warn">Returned for changes: {rejectionReason || 'Please review and resubmit.'}</Banner>;
   }
   if (status === 'submitted') {
-    return <Banner variant="info">Submitted — awaiting your coordinator's review.</Banner>;
+    return <Banner variant="info">Submitted — awaiting coordinator review.</Banner>;
   }
   if (status === 'approved') {
     return (

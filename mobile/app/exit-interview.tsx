@@ -238,7 +238,7 @@ export default function ExitInterview() {
         // Warned, not blocked: a coordinator may well ask for this during
         // the final week rather than after the placement formally closes.
         <Banner variant="warn">
-          Your OJT is not marked completed yet. You can still fill this in if your coordinator has asked for it.
+          OJT is not yet marked as completed. This can still be filled out if requested by the coordinator.
         </Banner>
       ) : null}
 

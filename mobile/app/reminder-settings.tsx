@@ -73,16 +73,12 @@ export default function ReminderSettings() {
 
       <OfflineNotice feature="reminderSettings" show={isOffline} />
 
-      <Banner variant="info">
-        We'll nudge you if a working day's journal entry is still missing. Turn this off entirely, or customize
-        which days and what time.
-      </Banner>
 
       {/* Two different mechanisms sit behind one setting, and they behave
           differently — saying so is more useful than implying one system. */}
       <Banner variant="neutral">
-        These days and times also set an alarm on this phone, so you still get reminded with no internet. The
-        on-phone reminder is a general nudge — it can't check which entries are missing without a connection.
+        Selected days and times trigger offline phone reminders. These reminders are general and cannot detect
+        missing entries without internet access.
       </Banner>
 
       {saveError ? <ErrorNotice message={saveError} /> : null}

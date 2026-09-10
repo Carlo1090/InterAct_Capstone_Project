@@ -250,7 +250,7 @@ export default function Login() {
           {/* blue700 was invisible against the new dark ground — the accent
               is the token meant for light-on-dark, at 7.08:1. */}
           <Text style={{ color: colors.blue300, fontSize: 11, textAlign: 'center', marginTop: 24 }}>
-            Mater Dei College · InternTrack App v1.0.0
+            Mater Dei College
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>

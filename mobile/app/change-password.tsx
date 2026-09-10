@@ -15,6 +15,18 @@ import { ErrorNotice } from '../src/components/ErrorNotice';
  * must_change_password is true — mirrors the web SPA's blocking
  * ProfileMenuPopover behavior for a temporary password issued by an admin.
  */
+/**
+ * The rule and the hint below it read from ONE constant — the two had to be
+ * edited together before, which is exactly how a form ends up promising one
+ * length and enforcing another.
+ *
+ * NOTE this is STRICTER than the server, which uses Laravel's
+ * `Password::defaults()` (8). A stricter client is safe — every value it
+ * accepts the server accepts too — but the web SPA's own reset form still
+ * allows 8, so the two surfaces do not ask for the same thing.
+ */
+const MIN_PASSWORD_LENGTH = 15;
+
 export default function ChangePassword() {
   const { mustChangePassword, refetch } = useCurrentUser();
   const [currentPassword, setCurrentPassword] = useState('');
@@ -24,7 +36,7 @@ export default function ChangePassword() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const canSubmit = currentPassword.length > 0 && password.length >= 8 && password === confirmPassword;
+  const canSubmit = currentPassword.length > 0 && password.length >= MIN_PASSWORD_LENGTH && password === confirmPassword;
 
   async function onSave() {
     setError(null);
@@ -75,7 +87,7 @@ export default function ChangePassword() {
         <Field label="Current Password" value={currentPassword} onChangeText={setCurrentPassword} />
         <Field label="New Password" value={password} onChangeText={setPassword} />
         <Field label="Confirm New Password" value={confirmPassword} onChangeText={setConfirmPassword} />
-        <Text style={{ fontSize: 11, color: colors.gray400 }}>At least 8 characters.</Text>
+        <Text style={{ fontSize: 11, color: colors.gray400 }}>At least {MIN_PASSWORD_LENGTH} characters for better security.</Text>
       </View>
 
       <Button label="Save Password" icon="key-outline" loading={saving} disabled={saving || !canSubmit} onPress={onSave} style={{ marginHorizontal: 20, marginTop: 20 }} />

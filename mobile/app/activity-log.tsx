@@ -71,9 +71,6 @@ export default function ActivityLog() {
         </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 20, fontWeight: '700', color: colors.black }}>Activity Log</Text>
-          <Text style={{ fontSize: 11, color: colors.gray500, marginTop: 1 }}>
-            Everything done on your account, newest first.
-          </Text>
         </View>
       </View>
 

@@ -374,7 +374,9 @@ export default function Write() {
         ) : (
           <Banner variant={editable ? 'info' : 'warn'}>
             {editable
-              ? `${entry.status === 'submitted' ? "You've submitted this entry — it" : 'This entry'} stays editable until your week is compiled (every Monday at 12:00 AM).`
+              ? entry.status === 'submitted'
+                ? 'Submitted entries remain editable until the week is compiled every Monday at 12:00 AM.'
+                : 'This entry stays editable until the week is compiled every Monday at 12:00 AM.'
               : LOCKED_REASON_COPY[entry.locked_reason ?? ''] ?? 'This entry is read-only.'}
           </Banner>
         )}

@@ -121,9 +121,10 @@ export default function CalendarScreen() {
         </View>
       )}
 
+      {/* The "compiled every Monday" half was dropped as redundant, not lost:
+          the Weekly Journals tab states it where it applies. */}
       <Banner variant="info">
-        You'll be reminded on your chosen days if a journal entry is missing (see Reminder Settings in Profile).
-        Journals compile into your weekly report every Monday at 12:00 AM.
+        Reminders appear on selected days when a journal entry is missing (see Reminder Settings in Profile).
       </Banner>
     </ScrollView>
   );
