@@ -79,7 +79,7 @@ const drawn = ref(false)
  * and the "today is not over yet" rule server-side, so `missing` is only ever
  * returned for a past DUTY day. Deriving red days here from dates alone would
  * mean re-implementing `BatchWorkingDays` on the client without the
- * `working_days_per_week` field, which is not exposed.
+ * `working_days_start`/`working_days_end` fields, which are not exposed.
  *
  * Its own loading/error state, so a failure degrades the strip to the
  * count-based bar rather than blanking the panel.

@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Observers\BatchObserver;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+#[ObservedBy([BatchObserver::class])]
 class Batch extends Model
 {
     /**
@@ -42,6 +45,8 @@ class Batch extends Model
         'end_date',
         'required_hours',
         'working_days_per_week',
+        'working_days_start',
+        'working_days_end',
         'daily_reminder_time',
         'journal_template_id',
         'ojt_type',

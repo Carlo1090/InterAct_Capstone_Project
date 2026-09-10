@@ -36,7 +36,11 @@ const errorMessage = ref('')
 const infoSheets = ref<CoordinatorInfoSheetRow[]>([])
 const infoSheetError = ref('')
 
-const department = computed(() => auth.user?.program?.department?.name ?? 'your department')
+// A coordinator's own program_id is always null, so program.department is
+// never the source here — their department comes through
+// departments_coordinated instead (see CoordinatorLayout.vue's header, which
+// had the identical bug: this always fell through to the fallback before).
+const department = computed(() => auth.user?.departments_coordinated?.[0]?.code ?? 'your department')
 
 // The sidebar's own "Daily Journal Activities" target, kept identical to the nav.
 const JOURNAL_ACTIVITIES_ROUTE = '/coordinator/journal-activities'

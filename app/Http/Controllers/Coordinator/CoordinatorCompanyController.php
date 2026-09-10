@@ -43,7 +43,7 @@ class CoordinatorCompanyController extends Controller
                     ->where('status', 'active')
                     ->whereHas('batch', fn ($q) => $q->whereIn('program_id', $programIds)),
             ])
-            ->with('supervisors.user:id,name,email')
+            ->with('supervisors.user:id,name,username,email')
             ->orderBy('name')
             ->get()
             ->map(fn (Company $company) => [
@@ -91,6 +91,18 @@ class CoordinatorCompanyController extends Controller
         $this->authorizeCompany($request->user(), $company);
 
         $userId = $request->integer('user_id');
+
+        // AttachSupervisorRequest only proves user_id names SOME existing
+        // supervisor-role account — it says nothing about scope. Without this,
+        // a coordinator could attach a supervisor exclusively tied to another
+        // department's company, regardless of what the attach dropdown itself
+        // shows (which is scoped — see EnrollmentController::options()).
+        abort_unless(
+            $this->attachableSupervisorIds($request->user())->contains($userId),
+            403,
+            'That supervisor is not attached to any of your companies.'
+        );
+
         $this->guardSingleLogin($company, $userId);
 
         CompanySupervisor::firstOrCreate(
@@ -115,6 +127,7 @@ class CoordinatorCompanyController extends Controller
 
         $supervisor = User::create([
             'name' => $request->input('name'),
+            'username' => $request->input('username'),
             'email' => $request->input('email'),
             'password' => Hash::make($request->input('password')),
             'role' => 'supervisor',
@@ -228,7 +241,7 @@ class CoordinatorCompanyController extends Controller
                 ->where('status', 'active')
                 ->whereHas('batch', fn ($q) => $q->whereIn('program_id', $programIds)),
         ]);
-        $company->load('supervisors.user:id,name,email');
+        $company->load('supervisors.user:id,name,username,email');
 
         $payload = $company->toArray();
         $payload['supervisors'] = $this->mapSupervisors($company->supervisors)->toArray();
@@ -253,7 +266,7 @@ class CoordinatorCompanyController extends Controller
             'position' => $s->position,
             'display_name' => $s->name ?? $s->user?->name,
             'is_login' => $s->user_id !== null,
-            'user' => $s->user ? $s->user->only(['id', 'name', 'email']) : null,
+            'user' => $s->user ? $s->user->only(['id', 'name', 'username', 'email']) : null,
         ])->values();
     }
 }

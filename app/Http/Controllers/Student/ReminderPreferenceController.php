@@ -93,12 +93,14 @@ class ReminderPreferenceController extends Controller
         $enrollment = $this->currentEnrollment($userId);
         $batch = $enrollment?->batch;
 
-        $workingDaysPerWeek = $batch->working_days_per_week ?? 5;
+        $workingDaysStart = $batch->working_days_start ?? 1;
+        $workingDaysEnd = $batch->working_days_end ?? 5;
 
         $defaultDays = collect(range(1, 7))
-            ->filter(fn (int $iso) => BatchWorkingDays::isWorkingDay(
+            ->filter(fn (int $iso) => BatchWorkingDays::isWorkingDayInRange(
                 Carbon::now()->startOfWeek(Carbon::MONDAY)->addDays($iso - 1),
-                $workingDaysPerWeek
+                $workingDaysStart,
+                $workingDaysEnd,
             ))
             ->values()
             ->all();

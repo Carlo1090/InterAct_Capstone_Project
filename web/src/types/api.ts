@@ -100,7 +100,9 @@ export type Batch = {
   start_date: string
   end_date: string
   required_hours: number
-  working_days_per_week: number
+  /** ISO weekday (1=Mon..7=Sun) of the working-week range, picked via WeekdayRangePicker. */
+  working_days_start: number
+  working_days_end: number
   daily_reminder_time: string
   is_active?: boolean
   journal_template_id?: number | null
@@ -130,13 +132,14 @@ export type EnrollableStudent = {
 export type EnrollmentOptionCompany = {
   id: number
   name: string
+  login_supervisor: { id: number; name: string; username?: string; email: string } | null
 }
 
 export type EnrollmentOptionSupervisor = {
   id: number
   name: string
+  username?: string
   email: string
-  company_ids: number[]
 }
 
 export type EnrollmentOptionProgram = {
@@ -206,10 +209,35 @@ export type BulkImportConfirmResponse = {
 export type CoordinatorSupervisorUser = {
   id: number
   name: string
+  username?: string
   email: string
   is_active: boolean
   companies: { id: number; name: string; position: string | null }[]
   batches: { id: number; name: string }[]
+}
+
+/**
+ * Full detail for one supervisor — backs the Supervisors tab's "View" action,
+ * the same role InternDetail plays for a student. Adds the per-company
+ * position and the actual roster of interns assigned to them (the list row
+ * only shows batch names, not who), which is why View is worth having beyond
+ * the row itself.
+ */
+export type SupervisorDetail = {
+  id: number
+  name: string
+  email: string | null
+  username?: string | null
+  avatar_url: string | null
+  is_active: boolean
+  companies: { id: number; name: string; position: string | null }[]
+  interns: {
+    id: number
+    name: string
+    status: BatchStudentStatus
+    batch: { id: number; name: string } | null
+    company: { id: number; name: string } | null
+  }[]
 }
 
 /**
@@ -820,7 +848,7 @@ export type CompanySupervisorRecord = {
   position: string | null
   display_name: string
   is_login: boolean
-  user: { id: number; name: string; email: string } | null
+  user: { id: number; name: string; username?: string; email: string } | null
 }
 
 export type CoordinatorCompany = {

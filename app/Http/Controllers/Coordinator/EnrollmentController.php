@@ -49,30 +49,35 @@ class EnrollmentController extends Controller
 
     public function options(Request $request): JsonResponse
     {
-        $companies = Company::where('is_active', true)->orderBy('name')->get(['id', 'name']);
-        // NOT filtered by is_active: the enrollment forms only use this to show
-        // the company's resolved login supervisor read-only, and the backend
-        // (Company::loginSupervisor()) resolves that login regardless of active
-        // status. Filtering here would make the display show "no supervisor
-        // account yet" for a company whose login is merely deactivated, while
-        // the backend would still enroll against it — a frontend/backend split.
-        $supervisors = User::where('role', 'supervisor')
+        $companies = Company::where('is_active', true)
+            // Not scoped to this coordinator: a company can be shared across
+            // departments (scopedCompanyIds() narrows the Partner Companies
+            // list, but the Enroll/Add-Intern forms let a coordinator place a
+            // student at any active company). Each row carries its own
+            // resolved login_supervisor below so the read-only preview never
+            // needs the (now-scoped) supervisors list to find it.
+            ->with('loginSupervisor.user:id,name,username,email')
             ->orderBy('name')
-            ->get(['id', 'name', 'email']);
+            ->get(['id', 'name'])
+            ->map(function (Company $company) {
+                $login = $company->loginSupervisor?->user;
 
-        // Each supervisor's company_ids let the frontend resolve the login
-        // supervisor for whichever company was picked (a supervisor is always
-        // a Company Supervisor via company_supervisors).
-        $companyIdsBySupervisor = CompanySupervisor::whereIn('user_id', $supervisors->pluck('id'))
-            ->get(['user_id', 'company_id'])
-            ->groupBy('user_id')
-            ->map(fn (Collection $links) => $links->pluck('company_id')->unique()->values());
+                return [
+                    'id' => $company->id,
+                    'name' => $company->name,
+                    'login_supervisor' => $login ? $login->only(['id', 'name', 'username', 'email']) : null,
+                ];
+            });
 
-        $supervisors = $supervisors->map(function (User $supervisor) use ($companyIdsBySupervisor) {
-            $supervisor->setAttribute('company_ids', $companyIdsBySupervisor->get($supervisor->id, collect())->values());
-
-            return $supervisor;
-        })->values();
+        // Attachable, NOT every supervisor system-wide: a supervisor already on
+        // one of this coordinator's own companies, or attached to no company at
+        // all yet (a fresh or just-detached account nobody has claimed). This is
+        // what the "Attach Existing Supervisor" dropdown on Partner Companies
+        // draws from — see ScopesCoordinatorAccounts::attachableSupervisorIds().
+        $supervisors = User::where('role', 'supervisor')
+            ->whereIn('id', $this->attachableSupervisorIds($request->user()))
+            ->orderBy('name')
+            ->get(['id', 'name', 'username', 'email']);
 
         $programs = Program::whereIn('id', $request->user()->coordinatorProgramIds())
             ->orderBy('name')
@@ -238,7 +243,7 @@ class EnrollmentController extends Controller
         $scopedCompanyIds = $this->scopedCompanyIds($user);
 
         $links = CompanySupervisor::whereIn('company_id', $scopedCompanyIds)
-            ->with(['user:id,name,email,is_active,role', 'company:id,name'])
+            ->with(['user:id,name,username,email,is_active,role', 'company:id,name'])
             ->get()
             ->filter(fn (CompanySupervisor $link) => $link->user && $link->user->role === 'supervisor');
 
@@ -264,6 +269,7 @@ class EnrollmentController extends Controller
             return [
                 'id' => $supervisor->id,
                 'name' => $supervisor->name,
+                'username' => $supervisor->username,
                 'email' => $supervisor->email,
                 'is_active' => (bool) $supervisor->is_active,
                 'companies' => $group->map(fn (CompanySupervisor $link) => [
@@ -276,6 +282,118 @@ class EnrollmentController extends Controller
         })->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)->values();
 
         return response()->json($supervisors);
+    }
+
+    /**
+     * One in-scope supervisor's full detail — every company they're attached
+     * to (with position) and every in-scope intern currently or previously
+     * assigned to them. Backs the Supervisors tab's "View" action, the same
+     * role showIntern() plays for a student.
+     */
+    public function showSupervisor(Request $request, User $supervisor): JsonResponse
+    {
+        $this->authorizeSupervisorAccount($request->user(), $supervisor);
+
+        $programIds = $request->user()->coordinatorProgramIds();
+
+        $companies = CompanySupervisor::where('user_id', $supervisor->id)
+            ->whereIn('company_id', $this->scopedCompanyIds($request->user()))
+            ->with('company:id,name')
+            ->get()
+            ->map(fn (CompanySupervisor $link) => [
+                'id' => $link->company->id,
+                'name' => $link->company->name,
+                'position' => $link->position,
+            ])
+            ->values();
+
+        $interns = BatchStudent::where('supervisor_id', $supervisor->id)
+            ->whereHas('batch', fn ($query) => $query->whereIn('program_id', $programIds))
+            ->with(['student:id,name', 'batch:id,name', 'company:id,name'])
+            ->orderByDesc('enrolled_at')
+            ->get()
+            ->map(fn (BatchStudent $enrollment) => [
+                'id' => $enrollment->student->id,
+                'name' => $enrollment->student->name,
+                'status' => $enrollment->status,
+                'batch' => $enrollment->batch ? ['id' => $enrollment->batch->id, 'name' => $enrollment->batch->name] : null,
+                'company' => $enrollment->company ? ['id' => $enrollment->company->id, 'name' => $enrollment->company->name] : null,
+            ])
+            ->values();
+
+        return response()->json([
+            'id' => $supervisor->id,
+            'name' => $supervisor->name,
+            'email' => $supervisor->email,
+            'username' => $supervisor->username,
+            'avatar_url' => $supervisor->avatar_url,
+            'is_active' => (bool) $supervisor->is_active,
+            'companies' => $companies,
+            'interns' => $interns,
+        ]);
+    }
+
+    /**
+     * PERMANENTLY delete an in-scope supervisor account. Mirrors
+     * destroyAccount() below in spirit, but what counts as "history" is
+     * different and the stakes are higher than they look:
+     * batch_students.supervisor_id is a cascadeOnDelete foreign key — it is
+     * the authoritative student-to-company linkage (see PROJECT.md) — so
+     * deleting a supervisor who was EVER pinned to an enrollment, active or
+     * historical, would silently erase those batch_students rows along with
+     * them, not merely the supervisor's own login. weekly_logs.supervisor_id
+     * is only nullOnDelete, so a review would survive, but it would lose WHO
+     * gave the verdict, so that is refused too.
+     *
+     * Deliberately NOT gated on whether the supervisor is still attached to a
+     * company: company_supervisors.user_id is cascadeOnDelete with no history
+     * behind it (just "who is currently logged in as this company"), so
+     * losing that pointer on delete is exactly what a manual detach already
+     * does on purpose — requiring it as a separate first step would add
+     * friction with nothing to show for it.
+     */
+    public function destroySupervisorAccount(Request $request, User $supervisor): JsonResponse
+    {
+        $this->authorizeSupervisorAccount($request->user(), $supervisor);
+
+        abort_if(
+            BatchStudent::where('supervisor_id', $supervisor->id)->exists(),
+            422,
+            'This supervisor has been assigned to enrolled interns, so their account cannot be permanently deleted.'
+        );
+
+        abort_if(
+            WeeklyLog::where('supervisor_id', $supervisor->id)->exists(),
+            422,
+            'This supervisor has reviewed weekly journal logs, so their account cannot be permanently deleted.'
+        );
+
+        $name = $supervisor->name;
+        // The cascade clears the empty scaffolding (any company_supervisors
+        // attachment) with no OJT history behind it to lose.
+        $supervisor->delete();
+
+        SystemLog::record('Account Deleted', "Permanently deleted supervisor account {$name}");
+
+        return response()->json(['deleted' => true]);
+    }
+
+    /**
+     * Scope for the supervisor View/Delete actions: attachableSupervisorIds()
+     * rather than scopedSupervisorIds(), because detaching a supervisor from
+     * every company — a normal, unforced state, not a prerequisite this
+     * action requires — makes them "floating", and scopedSupervisorIds()
+     * would then 403 the very account a coordinator is trying to view or
+     * delete.
+     */
+    private function authorizeSupervisorAccount(User $coordinator, User $supervisor): void
+    {
+        abort_unless($supervisor->role === 'supervisor', 404);
+        abort_unless(
+            $this->attachableSupervisorIds($coordinator)->contains($supervisor->id),
+            403,
+            'That supervisor is not attached to any of your companies.'
+        );
     }
 
     /**

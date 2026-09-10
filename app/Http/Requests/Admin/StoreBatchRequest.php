@@ -24,7 +24,12 @@ class StoreBatchRequest extends FormRequest
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after:start_date'],
             'required_hours' => ['required', 'integer', 'min:1'],
-            'working_days_per_week' => ['required', 'integer', 'min:1', 'max:7'],
+            // See Coordinator\StoreBatchRequest — working_days_per_week is
+            // derived from the range automatically (BatchObserver); a caller
+            // still posting only the legacy count is accepted too.
+            'working_days_start' => ['required_with:working_days_end', 'nullable', 'integer', 'between:1,7'],
+            'working_days_end' => ['required_with:working_days_start', 'nullable', 'integer', 'between:1,7'],
+            'working_days_per_week' => ['required_without_all:working_days_start,working_days_end', 'nullable', 'integer', 'between:1,7'],
             'daily_reminder_time' => ['nullable', 'date_format:H:i:s'],
             'is_active' => ['boolean'],
         ];

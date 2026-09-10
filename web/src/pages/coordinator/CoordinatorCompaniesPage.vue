@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import { confirmAction, showToast } from '@/lib/toast'
@@ -59,109 +59,12 @@ watch(statusChoice, (choice) => {
   if (choice !== null) form.is_active = choice === 'active'
 })
 
-/**
- * Department is a plain string column with no enum, constants file, or options
- * endpoint behind it, so the dropdown is built from the distinct values already
- * in use across the loaded company list. Nothing is invented, and a value the
- * list does not cover is still reachable through "Other…".
- *
- * Sentinel rather than a real value, so a company genuinely named "Other" could
- * never collide with it.
- */
-const OTHER_DEPARTMENT = '__other__'
-
-/**
- * Built-in departments, so the control is a real dropdown from the very first
- * company onward. Previously the option list was derived ONLY from companies
- * that already existed, which meant an empty scope offered nothing but
- * "Other…" — the select fell straight through to the free-text box and behaved
- * exactly like the plain text input it was meant to replace.
- *
- * The value is informational (it prints on reports, it gates nothing), so this
- * is a convenience list and NOT a constraint — "Other…" stays, and any value
- * already stored keeps working whether or not it appears here.
- */
-const BUILT_IN_DEPARTMENTS = [
-  'Accounting & Finance',
-  'Administration',
-  'Banking',
-  'Customer Service',
-  'Education & Training',
-  'Engineering',
-  'Government Service',
-  'Healthcare',
-  'Hospitality & Tourism',
-  'Human Resources',
-  'Information Technology',
-  'Legal',
-  'Logistics & Supply Chain',
-  'Manufacturing',
-  'Marketing & Sales',
-  'Operations',
-  'Retail',
-]
-
-/** The department exactly as loaded, so it survives even when no other company shares it. */
-const loadedIndustry = ref('')
-
-const departmentChoice = ref('')
-const departmentOther = ref('')
-const departmentOtherInput = ref<HTMLInputElement | null>(null)
-
-const departmentOptions = computed(() => {
-  // Keyed case-insensitively, first-seen casing wins. The loaded value is
-  // seeded FIRST and stored raw, so re-saving an untouched record sends back a
-  // byte-identical string rather than a re-cased or re-trimmed near-match.
-  const seen = new Map<string, string>()
-
-  const remember = (raw: string) => {
-    const trimmed = raw.trim()
-    if (trimmed === '') return
-    const key = trimmed.toLocaleLowerCase()
-    if (!seen.has(key)) seen.set(key, raw)
-  }
-
-  remember(loadedIndustry.value)
-  for (const company of companies.value) remember(company.industry ?? '')
-  // Merged, not replaced: a department already in use stays on the list with
-  // its original casing (it was remembered first), and the built-ins fill the
-  // gap that made an empty scope offer nothing to pick.
-  for (const department of BUILT_IN_DEPARTMENTS) remember(department)
-
-  return [...seen.values()].sort((a, b) => a.trim().localeCompare(b.trim()))
-})
-
-/**
- * The select and its "Other…" input write through to `form.industry` — the same
- * plain string under the same payload key the text input used. An empty
- * "Other…" input means an empty department, never the literal "Other…".
- */
-watch([departmentChoice, departmentOther], () => {
-  form.industry = departmentChoice.value === OTHER_DEPARTMENT ? departmentOther.value : departmentChoice.value
-})
-
-watch(departmentChoice, async (choice, previous) => {
-  if (choice === OTHER_DEPARTMENT) {
-    await nextTick()
-    departmentOtherInput.value?.focus()
-  } else if (previous === OTHER_DEPARTMENT) {
-    departmentOther.value = ''
-  }
-})
-
-/** Mirrors a loaded/blank department onto the control without going through the watcher's inverse. */
-const syncDepartmentChoice = (value: string) => {
-  loadedIndustry.value = value
-  departmentChoice.value = value.trim() === '' ? '' : value
-  departmentOther.value = ''
-}
-
 const canSaveCompany = computed(() => !isSaving.value && statusChoice.value !== null)
 
 // Supervisors panel (edit mode only).
 const activeCompany = ref<CoordinatorCompany | null>(null)
 const attachForm = reactive({ user_id: null as number | null, position: '' })
-const createSupForm = reactive({ name: '', email: '', password: '', position: '' })
+const createSupForm = reactive({ name: '', username: '', email: '', password: '', position: '' })
 const supErrors = ref<Record<string, string[]>>({})
 
 // Representatives are purely informational (no login) — a separate concept
@@ -200,7 +103,6 @@ const openCreate = () => {
   editingId.value = null
   activeCompany.value = null
   Object.assign(form, blankForm())
-  syncDepartmentChoice('')
   originalIsActive.value = true
   statusChoice.value = null
   loadedContactNumber.value = null
@@ -231,7 +133,6 @@ const applyCompanyToForm = (company: CoordinatorCompany) => {
   form.address = company.address
   form.location = company.location ?? ''
   form.industry = company.industry ?? ''
-  syncDepartmentChoice(form.industry)
   form.head_name = company.head_name ?? ''
   form.head_contact_number = company.head_contact_number ?? ''
   form.head_email = company.head_email ?? ''
@@ -246,7 +147,7 @@ const applyCompanyToForm = (company: CoordinatorCompany) => {
 const closeModal = () => {
   isModalOpen.value = false
   Object.assign(attachForm, { user_id: null, position: '' })
-  Object.assign(createSupForm, { name: '', email: '', password: '', position: '' })
+  Object.assign(createSupForm, { name: '', username: '', email: '', password: '', position: '' })
   supErrors.value = {}
   Object.assign(repForm, { name: '', position: '' })
   repErrors.value = {}
@@ -276,12 +177,9 @@ const saveCompany = async () => {
   // contact_number is no longer an input, so send back exactly what was loaded
   // rather than form's ''-coerced copy — writing '' would overwrite a real
   // number, or turn a null into an empty string.
-  // A hand-typed department is trimmed; a value picked from the list is sent
-  // back exactly as it was loaded, whitespace and casing included.
   const payload = {
     ...form,
     contact_number: loadedContactNumber.value,
-    industry: departmentChoice.value === OTHER_DEPARTMENT ? form.industry.trim() : form.industry,
   }
 
   try {
@@ -341,9 +239,13 @@ const attachSupervisor = async () => {
     const { data } = await api.post<CoordinatorCompany>(`/api/coordinator/companies/${editingId.value}/supervisors`, attachForm)
     applyCompanyToForm(data)
     Object.assign(attachForm, { user_id: null, position: '' })
+    const attached = data.supervisors?.find((s) => s.is_login)
+    showToast(attached ? `${attached.display_name} attached as this company's supervisor login.` : 'Supervisor attached.')
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 422) {
       supErrors.value = error.response.data.errors ?? {}
+    } else if (axios.isAxiosError(error) && error.response?.status === 403) {
+      modalMessage.value = error.response.data.message ?? 'You do not have access to that supervisor.'
     } else {
       modalMessage.value = 'Unable to attach the supervisor.'
     }
@@ -357,8 +259,12 @@ const createSupervisor = async () => {
   try {
     const { data } = await api.post<CoordinatorCompany>(`/api/coordinator/companies/${editingId.value}/supervisors/new`, createSupForm)
     applyCompanyToForm(data)
-    Object.assign(createSupForm, { name: '', email: '', password: '', position: '' })
+    const created = data.supervisors?.find((s) => s.is_login)
+    const username = created?.user?.username
+    const name = createSupForm.name
+    Object.assign(createSupForm, { name: '', username: '', email: '', password: '', position: '' })
     await loadSupervisorPool()
+    showToast(username ? `Supervisor account created for ${name}. Username: ${username}` : `Supervisor account created for ${name}.`)
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 422) {
       supErrors.value = error.response.data.errors ?? {}
@@ -581,20 +487,11 @@ onMounted(async () => {
               <input v-model="form.location" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
             </label>
             <label class="block">
-              <span class="text-xs font-bold text-slate-600">Department</span>
-              <select v-model="departmentChoice" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
-                <option v-if="departmentChoice === ''" value="" disabled>Select department</option>
-                <option v-for="option in departmentOptions" :key="option" :value="option">{{ option }}</option>
-                <option :value="OTHER_DEPARTMENT">Other…</option>
-              </select>
-              <span v-if="departmentChoice === OTHER_DEPARTMENT" class="mt-2 block">
-                <span class="text-xs font-bold text-slate-600">Department name</span>
-                <input
-                  ref="departmentOtherInput"
-                  v-model="departmentOther"
-                  type="text"
-                  class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                />
+              <span class="text-xs font-bold text-slate-600">Department (optional)</span>
+              <input v-model="form.industry" type="text" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+              <span class="mt-1 block text-xs text-slate-400">
+                Descriptive / reporting text only (e.g. "Retail", "Banking") — not related to the college's own
+                academic Departments.
               </span>
             </label>
             <label class="block md:col-span-2">
@@ -716,7 +613,7 @@ onMounted(async () => {
               <div v-if="loginSupervisor" class="flex items-center justify-between gap-3 px-3 py-2">
                 <div>
                   <p class="text-sm font-semibold text-slate-800">{{ loginSupervisor.display_name }}</p>
-                  <p class="text-xs text-slate-500">{{ loginSupervisor.user?.email }} · {{ loginSupervisor.position || 'No position' }}</p>
+                  <p class="text-xs text-slate-500">{{ loginSupervisor.user?.email || (loginSupervisor.user?.username ? `@${loginSupervisor.user.username}` : 'No email') }} · {{ loginSupervisor.position || 'No position' }}</p>
                 </div>
                 <button
                   v-if="pendingRemovalId !== loginSupervisor.id"
@@ -749,7 +646,7 @@ onMounted(async () => {
                 <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Attach Existing Supervisor</p>
                 <select v-model.number="attachForm.user_id" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100">
                   <option :value="null">Select supervisor</option>
-                  <option v-for="sup in supervisorPool" :key="sup.id" :value="sup.id">{{ sup.name }} ({{ sup.email }})</option>
+                  <option v-for="sup in supervisorPool" :key="sup.id" :value="sup.id">{{ sup.name }} ({{ sup.email || `@${sup.username}` }})</option>
                 </select>
                 <input
                   v-model="attachForm.position"
@@ -772,7 +669,8 @@ onMounted(async () => {
               <div class="rounded-md border border-slate-200 p-3">
                 <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Create New Supervisor</p>
                 <input v-model="createSupForm.name" type="text" placeholder="Name" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
-                <input v-model="createSupForm.email" type="email" placeholder="Email" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
+                <input v-model="createSupForm.username" type="text" placeholder="Username (optional — auto-generated if blank)" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
+                <input v-model="createSupForm.email" type="email" placeholder="Email (optional)" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
                 <input v-model="createSupForm.password" type="password" placeholder="Password (min 8)" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
                 <input v-model="createSupForm.position" type="text" placeholder="Position (optional)" :disabled="hasLoginSupervisor" class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100" />
                 <button

@@ -542,6 +542,27 @@ class CoordinatorJournalReviewTest extends TestCase
     }
 
     /**
+     * A coordinator's own program_id is always null (see coordinatorProgramIds()
+     * / the "Coordinator scope" note in PROJECT.md), so program.department is
+     * never the source of their department on the auth payload — it comes
+     * through the coordinator_departments pivot instead. Before this,
+     * CoordinatorLayout.vue's header silently fell back to a hardcoded
+     * placeholder ("Business Administration") for every coordinator, because
+     * the field it was reading was always null.
+     */
+    public function test_the_auth_payload_reports_the_coordinators_own_department(): void
+    {
+        $program = $this->programFor('BSED', 'COED');
+        $coordinator = $this->coordinatorFor($program);
+
+        Sanctum::actingAs($coordinator);
+
+        $this->getJson('/api/user')
+            ->assertOk()
+            ->assertJsonPath('departments_coordinated.0.code', 'COED');
+    }
+
+    /**
      * A coordinator running ONLY coordinator-centered cohorts has no intern who
      * can clock in, so the Daily Time Record item goes — this is the project
      * owner's own client, who confirmed the DTR does not apply to them. Pinned

@@ -219,6 +219,51 @@ class UserControllerTest extends TestCase
         $response->assertCreated();
     }
 
+    /**
+     * Email is optional everywhere account creation happens — username +
+     * password is the primary, always-available sign-in path. A coordinator
+     * created with no email at all still gets a working, auto-generated
+     * username, and can add/verify a Google email later.
+     */
+    public function test_creating_a_coordinator_without_an_email_auto_generates_a_username(): void
+    {
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        $department = Department::create(['code' => 'CAST', 'name' => 'College of Arts, Sciences and Technology', 'is_active' => true]);
+
+        $response = $this->postJson('/api/admin/users', [
+            'first_name' => 'No',
+            'last_name' => 'Email',
+            'password' => 'a-strong-password',
+            'role' => 'coordinator',
+            'department_id' => $department->id,
+        ]);
+
+        $response->assertCreated();
+        $coordinator = User::where('name', 'No Email')->firstOrFail();
+        $this->assertNull($coordinator->email);
+        $this->assertNotEmpty($coordinator->username);
+    }
+
+    public function test_creating_a_coordinator_with_a_chosen_username_uses_it(): void
+    {
+        Sanctum::actingAs($this->admin(), ['*']);
+
+        $department = Department::create(['code' => 'CAST', 'name' => 'College of Arts, Sciences and Technology', 'is_active' => true]);
+
+        $response = $this->postJson('/api/admin/users', [
+            'first_name' => 'Picked',
+            'last_name' => 'Username',
+            'username' => 'picked.username',
+            'password' => 'a-strong-password',
+            'role' => 'coordinator',
+            'department_id' => $department->id,
+        ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('users', ['username' => 'picked.username', 'email' => null]);
+    }
+
     public function test_creating_a_second_admin_is_rejected(): void
     {
         Sanctum::actingAs($this->admin(), ['*']);

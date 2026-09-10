@@ -212,35 +212,148 @@ class EnrollmentTest extends TestCase
         ]);
     }
 
-    public function test_options_supervisors_carry_their_company_ids(): void
+    /**
+     * The companies list stays unscoped (a company can be shared across
+     * departments — the Enroll/Add-Intern forms may place a student at any
+     * active company), so a company used exclusively by ANOTHER coordinator's
+     * program still resolves its login_supervisor correctly here. This is the
+     * regression guard for splitting that preview off the (now scoped)
+     * supervisors list: before the split, scoping supervisors alone would have
+     * silently broken this exact preview for a shared company.
+     */
+    public function test_a_shared_companys_login_supervisor_resolves_even_when_out_of_scope(): void
     {
-        $program = $this->programFor('BSIT');
-        $coordinator = User::factory()->create(['role' => 'coordinator', 'program_id' => $program->id]);
+        $ownProgram = $this->programFor('BSIT');
+        $coordinator = User::factory()->create(['role' => 'coordinator', 'program_id' => $ownProgram->id]);
+        $ownBatch = $this->batchFor($ownProgram, $coordinator);
 
-        $companyA = Company::create(['name' => 'Alpha Co', 'address' => 'Addr A', 'is_active' => true]);
-        $companyB = Company::create(['name' => 'Beta Co', 'address' => 'Addr B', 'is_active' => true]);
+        $otherDepartment = Department::create(['code' => 'CABM-B', 'name' => 'Business Department', 'is_active' => true]);
+        $otherProgram = Program::create(['department_id' => $otherDepartment->id, 'code' => 'BSA', 'name' => 'BSA', 'is_active' => true]);
+        $otherCoordinator = User::factory()->create(['role' => 'coordinator', 'program_id' => $otherProgram->id]);
+        $otherBatch = $this->batchFor($otherProgram, $otherCoordinator);
 
-        $supervisorInBoth = User::factory()->create(['role' => 'supervisor', 'name' => 'Multi Supervisor']);
-        CompanySupervisor::create(['company_id' => $companyA->id, 'user_id' => $supervisorInBoth->id, 'position' => 'Lead']);
-        CompanySupervisor::create(['company_id' => $companyB->id, 'user_id' => $supervisorInBoth->id, 'position' => 'Lead']);
+        $sharedCompany = Company::create(['name' => 'Shared Co', 'address' => 'Addr S', 'is_active' => true]);
+        $sharedSupervisor = User::factory()->create(['role' => 'supervisor', 'name' => 'Shared Co Supervisor']);
+        CompanySupervisor::create(['company_id' => $sharedCompany->id, 'user_id' => $sharedSupervisor->id]);
 
-        $supervisorInA = User::factory()->create(['role' => 'supervisor', 'name' => 'Alpha-Only Supervisor']);
-        CompanySupervisor::create(['company_id' => $companyA->id, 'user_id' => $supervisorInA->id, 'position' => 'Staff']);
-
-        $unassignedSupervisor = User::factory()->create(['role' => 'supervisor', 'name' => 'Unassigned Supervisor']);
+        // Ties sharedCompany to the OTHER coordinator's program only, so it is
+        // genuinely out of scope for $coordinator (not merely "unlinked").
+        $otherStudent = User::factory()->create(['role' => 'student', 'program_id' => $otherProgram->id]);
+        BatchStudent::create([
+            'batch_id' => $otherBatch->id,
+            'student_id' => $otherStudent->id,
+            'company_id' => $sharedCompany->id,
+            'supervisor_id' => $sharedSupervisor->id,
+            'status' => 'active',
+        ]);
 
         Sanctum::actingAs($coordinator, ['*']);
 
         $response = $this->getJson('/api/coordinator/enrollment-options');
 
         $response->assertOk();
-        $supervisors = collect($response->json('supervisors'))->keyBy('id');
+        $companies = collect($response->json('companies'))->keyBy('id');
 
-        $this->assertEqualsCanonicalizing(
-            [$companyA->id, $companyB->id],
-            $supervisors[$supervisorInBoth->id]['company_ids']
-        );
-        $this->assertEqualsCanonicalizing([$companyA->id], $supervisors[$supervisorInA->id]['company_ids']);
-        $this->assertSame([], $supervisors[$unassignedSupervisor->id]['company_ids']);
+        $this->assertSame($sharedSupervisor->id, $companies[$sharedCompany->id]['login_supervisor']['id']);
+    }
+
+    /**
+     * "Attach Existing Supervisor" must not leak accounts belonging to another
+     * department's company — the actual privacy fix. It DOES still include a
+     * supervisor already on one of the coordinator's own companies, and a
+     * "floating" one attached to nothing at all (a fresh or just-detached
+     * account), since scopedSupervisorIds() alone would wrongly hide those too.
+     */
+    public function test_the_attach_dropdown_excludes_a_supervisor_exclusive_to_another_department(): void
+    {
+        $ownProgram = $this->programFor('BSIT');
+        $coordinator = User::factory()->create(['role' => 'coordinator', 'program_id' => $ownProgram->id]);
+        $ownBatch = $this->batchFor($ownProgram, $coordinator);
+
+        $ownCompany = Company::create(['name' => 'Own Co', 'address' => 'Addr O', 'is_active' => true]);
+        $ownSupervisor = User::factory()->create(['role' => 'supervisor', 'name' => 'Own Co Supervisor']);
+        CompanySupervisor::create(['company_id' => $ownCompany->id, 'user_id' => $ownSupervisor->id]);
+        $ownStudent = User::factory()->create(['role' => 'student', 'program_id' => $ownProgram->id]);
+        BatchStudent::create([
+            'batch_id' => $ownBatch->id,
+            'student_id' => $ownStudent->id,
+            'company_id' => $ownCompany->id,
+            'supervisor_id' => $ownSupervisor->id,
+            'status' => 'active',
+        ]);
+
+        $otherDepartment = Department::create(['code' => 'CABM-B', 'name' => 'Business Department', 'is_active' => true]);
+        $otherProgram = Program::create(['department_id' => $otherDepartment->id, 'code' => 'BSA', 'name' => 'BSA', 'is_active' => true]);
+        $otherCoordinator = User::factory()->create(['role' => 'coordinator', 'program_id' => $otherProgram->id]);
+        $otherBatch = $this->batchFor($otherProgram, $otherCoordinator);
+
+        $otherCompany = Company::create(['name' => 'Other Co', 'address' => 'Addr X', 'is_active' => true]);
+        $otherSupervisor = User::factory()->create(['role' => 'supervisor', 'name' => 'Other Co Supervisor']);
+        CompanySupervisor::create(['company_id' => $otherCompany->id, 'user_id' => $otherSupervisor->id]);
+        $otherStudent = User::factory()->create(['role' => 'student', 'program_id' => $otherProgram->id]);
+        BatchStudent::create([
+            'batch_id' => $otherBatch->id,
+            'student_id' => $otherStudent->id,
+            'company_id' => $otherCompany->id,
+            'supervisor_id' => $otherSupervisor->id,
+            'status' => 'active',
+        ]);
+
+        $floatingSupervisor = User::factory()->create(['role' => 'supervisor', 'name' => 'Floating Supervisor']);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->getJson('/api/coordinator/enrollment-options');
+
+        $response->assertOk();
+        $supervisorIds = collect($response->json('supervisors'))->pluck('id');
+
+        $this->assertTrue($supervisorIds->contains($ownSupervisor->id));
+        $this->assertTrue($supervisorIds->contains($floatingSupervisor->id));
+        $this->assertFalse($supervisorIds->contains($otherSupervisor->id));
+    }
+
+    /**
+     * The dropdown narrows what is SHOWN; attachSupervisor() must independently
+     * refuse an out-of-scope supervisor even if a client posts its id directly —
+     * AttachSupervisorRequest alone only proves "this is some supervisor", not
+     * that this coordinator may attach it.
+     */
+    public function test_attaching_a_supervisor_exclusive_to_another_department_is_refused(): void
+    {
+        $ownProgram = $this->programFor('BSIT');
+        $coordinator = User::factory()->create(['role' => 'coordinator', 'program_id' => $ownProgram->id]);
+        $ownBatch = $this->batchFor($ownProgram, $coordinator);
+        $targetCompany = Company::create(['name' => 'Target Co', 'address' => 'Addr T', 'is_active' => true]);
+
+        $otherDepartment = Department::create(['code' => 'CABM-B', 'name' => 'Business Department', 'is_active' => true]);
+        $otherProgram = Program::create(['department_id' => $otherDepartment->id, 'code' => 'BSA', 'name' => 'BSA', 'is_active' => true]);
+        $otherCoordinator = User::factory()->create(['role' => 'coordinator', 'program_id' => $otherProgram->id]);
+        $otherBatch = $this->batchFor($otherProgram, $otherCoordinator);
+
+        $otherCompany = Company::create(['name' => 'Other Co', 'address' => 'Addr X', 'is_active' => true]);
+        $otherSupervisor = User::factory()->create(['role' => 'supervisor', 'name' => 'Other Co Supervisor']);
+        CompanySupervisor::create(['company_id' => $otherCompany->id, 'user_id' => $otherSupervisor->id]);
+        $otherStudent = User::factory()->create(['role' => 'student', 'program_id' => $otherProgram->id]);
+        BatchStudent::create([
+            'batch_id' => $otherBatch->id,
+            'student_id' => $otherStudent->id,
+            'company_id' => $otherCompany->id,
+            'supervisor_id' => $otherSupervisor->id,
+            'status' => 'active',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->postJson("/api/coordinator/companies/{$targetCompany->id}/supervisors", [
+            'user_id' => $otherSupervisor->id,
+            'position' => 'Lead',
+        ]);
+
+        $response->assertStatus(403);
+        $this->assertDatabaseMissing('company_supervisors', [
+            'company_id' => $targetCompany->id,
+            'user_id' => $otherSupervisor->id,
+        ]);
     }
 }

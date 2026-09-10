@@ -234,6 +234,8 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::get('users/interns/{student}', [EnrollmentController::class, 'showIntern']);
         Route::delete('users/interns/{student}', [EnrollmentController::class, 'destroyAccount']);
         Route::get('users/supervisors', [EnrollmentController::class, 'supervisors']);
+        Route::get('users/supervisors/{supervisor}', [EnrollmentController::class, 'showSupervisor']);
+        Route::delete('users/supervisors/{supervisor}', [EnrollmentController::class, 'destroySupervisorAccount']);
 
         // Credential Manager — reissuing a password moved OFF the Users page
         // and into the profile popover, and now covers supervisors too. See

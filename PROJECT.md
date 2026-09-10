@@ -72,6 +72,33 @@ mutes that hook.
 Google sign-in is wired but strictly **link-only** — it never creates accounts.
 Username + password remains the primary, always-available path.
 
+**Every account-creation surface treats email as optional (2026-09-10).**
+`Admin\UserController::store()` (Create Coordinator) and
+`Coordinator\CreateSupervisorRequest`/`CoordinatorCompanyController::createSupervisor()`
+(Create Supervisor, both the standalone modal on Users → Supervisors and the
+inline form on Partner Companies) now validate `email` as `nullable` rather
+than `required`, and both accept an optional `username` field alongside it
+(same `nullable|string|min:3|max:50|regex` shape as the student-creation
+`CreateAccountRequest` already used). Leaving both blank still yields a
+working account: `User::booted()`'s `creating` hook auto-generates a username
+from the name when there is no email to derive one from. This closes the last
+two account-creation paths that still forced an email — every other creation
+flow (student accounts, bulk import aside, which needs an address to auto-mail
+credentials to) already worked this way. Google verification remains the only
+way `email_verified_at` gets set, so username+password stays how these
+accounts sign in until someone chooses to link Google.
+
+Consequences threaded through so a blank-email account stays identifiable to
+the person who created it: the success toast on both creation forms echoes the
+assigned username back (reading it from the create response — `User::store()`
+returns the full model, `createSupervisor()`'s response's `supervisors[]`
+carries a `user.username`); `EnrollmentController::supervisors()`,
+`CoordinatorCompanyController::index()`/`companyPayload()`/`mapSupervisors()`
+all select `username` alongside `email` now; and every list/panel that used to
+print only `supervisor.email` falls back to `@username` when there is no
+email (`CoordinatorInternsPage.vue`'s Supervisors tab, both table and mobile
+card view; `CoordinatorCompaniesPage.vue`'s OJT Supervisor Login panel).
+
 ## Hard Rules
 
 1. **Do not create a duplicate migration.** Check `database/migrations/` first.
@@ -252,10 +279,25 @@ already coordinate (`batchesCoordinated()`, kept only as a backward-safety net).
 **`users.program_id` is retained but is NOT the coordinator scoping source.**
 Every coordinator page is scoped by this; out-of-scope access 403s.
 
-NOTE: a coordinator's **department name does not reach the frontend at all** —
-`/api/user` loads only `program.department`, and a coordinator's
-`users.program_id` is null. This is why scope notices render a `'your
-department'` fallback rather than a real name.
+**CORRECTED 2026-09-10 (project owner, found live):** this note used to say a
+coordinator's department never reaches the frontend at all, because
+`/api/user` only loaded `program.department` and a coordinator's
+`users.program_id` is null — true as far as it went, but it meant
+`AuthUserPayload::build()` never loaded `departmentsCoordinated` either, so
+`CoordinatorLayout.vue`'s header (`"Coordinator · {{ department }}"`) fell
+through to a **hardcoded placeholder** (`'Business Administration'`) for
+*every* coordinator, unconditionally — it only went unnoticed because that
+string happens to sound plausible for a CABM-type department. `build()` now
+loads `departmentsCoordinated:id,code,name` for coordinators (at most one row,
+per the unique constraint above), and the header reads
+`departments_coordinated[0].code` — the **code**, matching how the rest of the
+app treats `departments.code` as the identifier, not `departments.name`.
+**`CoordinatorDashboardPage.vue`'s scope notice ("This workspace is scoped
+to…") had the IDENTICAL bug**, reading the same always-null
+`program?.department?.name` — it read as a deliberate design choice ("a
+'your department' fallback rather than a real name") only because its
+fallback text was generic enough to pass as intentional copy rather than a
+wrong name. Fixed the same way, same field.
 
 ### Company Supervisor: login-bearing vs named-only
 
@@ -311,12 +353,51 @@ Consequences, all deliberate:
   **completed/dropped** rows (historical — they keep whoever supervised them).
 - Remaining edge: detaching a login **without** re-attaching leaves active rows
   pointing at the former login, since `supervisor_id` is NOT NULL.
-- `EnrollmentController::options()` deliberately does **not** filter
-  `supervisors[]` by `is_active`, matching `Company::loginSupervisor()`, so the
-  read-only display and the backend agree even for a deactivated login.
 - **Seeders bypass this gate** (expected) — they write `batch_students` directly
   via Eloquent, so `migrate:fresh --seed` is unaffected. But every demo company
   referenced by an enrollment still needs a login supervisor for later UI edits.
+
+**CORRECTED 2026-09-11 (project owner, found live): `EnrollmentController::options()`'s
+`supervisors[]` used to be every supervisor-role user in the ENTIRE system,
+unfiltered by scope or company.** A brand-new coordinator with zero companies
+of their own saw every other department's supervisors in the "Attach Existing
+Supervisor" dropdown on Partner Companies — the old doc line above ("does not
+filter by is_active") was true but incomplete: it filtered by nothing at all.
+Fixed by splitting what had been one overloaded list into two:
+
+- **The read-only "which supervisor does this company resolve to" preview**
+  (the Enroll form and the Add-Intern roster form) now reads
+  `companies[].login_supervisor` — a field resolved per-company via
+  `Company::loginSupervisor()`, added directly onto the (still deliberately
+  unscoped) `companies[]` array. `enrollResolvedSupervisor`
+  (`CoordinatorInternsPage.vue`) and `addResolvedSupervisor`
+  (`CoordinatorBatchesPage.vue`) both read it this way now, instead of
+  scanning a `supervisors[]` list by a `company_ids` field (removed — see
+  below). This preserves the existing behavior that a company can be shared
+  across departments and its resolved supervisor still shown/required to
+  enroll there, which is why `companies[]` itself stays unscoped.
+- **The "Attach Existing Supervisor" dropdown's `supervisors[]`** is now scoped
+  by a new **`ScopesCoordinatorAccounts::attachableSupervisorIds()`**: a
+  supervisor already on one of the coordinator's own in-scope companies, OR
+  attached to **no** company at all yet (a freshly-created or just-detached
+  "floating" account nobody has claimed). **Deliberately NOT just
+  `scopedSupervisorIds()`** — that method is built entirely from existing
+  `CompanySupervisor` rows, so it can never contain a floating supervisor,
+  and using it alone would have made every freshly-created or freshly-detached
+  supervisor permanently unattachable by anyone. Pinned by
+  `test_the_attach_dropdown_excludes_a_supervisor_exclusive_to_another_department`
+  (`tests/Feature/Coordinator/EnrollmentTest.php`), which is also the
+  regression guard for the `company_ids` removal — the sibling test
+  `test_a_shared_companys_login_supervisor_resolves_even_when_out_of_scope`
+  pins that a shared company's preview still works after the split.
+- **`CoordinatorCompanyController::attachSupervisor()` now independently
+  enforces the same `attachableSupervisorIds()` check server-side (403)** —
+  the dropdown only narrows what is *shown*; `AttachSupervisorRequest`'s own
+  rule (`Rule::exists('users','id')->where('role','supervisor')`) only proves
+  the id names *some* supervisor, not one this coordinator may touch, so a
+  crafted request could otherwise attach an out-of-scope supervisor regardless
+  of what the UI offered. Pinned by
+  `test_attaching_a_supervisor_exclusive_to_another_department_is_refused`.
 
 ## OJT Type — supervisor-supported vs coordinator-centered
 
@@ -389,6 +470,77 @@ is always allowed**, because the batches page PUTs the whole form back including
 fields the coordinator never touched. `BatchController` returns
 `interns_count` so the form can disable the control rather than offer a change
 the server would refuse.
+
+## Working Days — a real day-of-week range, not just a count (2026-09-11)
+
+Built at the project owner's request, after live testing surfaced that the old
+"Working Days / Week" field was just a plain number (1-7) with no notion of
+*which* days — `App\Support\BatchWorkingDays::isWorkingDay()` only ever checked
+1-5 → Mon-Fri, 6 → Mon-Sat, 7 → every day, always anchored to Monday. A batch
+whose real week ran, say, Tuesday-Saturday had no way to say so, and values 1-4
+were indistinguishable from 5 (a pre-existing ambiguity, deliberately preserved
+rather than "fixed" as part of this change — see below).
+
+- **`batches.working_days_start` / `working_days_end`** (tinyInteger, ISO
+  weekday 1=Mon..7=Sun, both NOT NULL) hold the real range now, picked on the
+  coordinator's Create/Edit Batch form via **`WeekdayRangePicker.vue`**
+  (`components/coordinator/`) — seven circles (M T W T F S S), click one to
+  start a selection, click another to complete the range. **The range WRAPS
+  across the week when the end precedes the start** (e.g. clicking Sat then Tue
+  sets Sat/Sun/Mon/Tue) — deliberately not normalized to "whichever direction is
+  shorter", since an ordered two-click range is unambiguous and silently
+  flipping it would sometimes produce a different set of days than the
+  coordinator actually clicked.
+- **`working_days_per_week` STAYS** — every existing consumer (the reminder
+  command, the student dashboard's missing-count, the journal calendar, the
+  reminder-preference defaults) still reads it — but it is now **derived
+  automatically**, never typed directly. `App\Observers\BatchObserver`
+  (`#[ObservedBy]` on `Batch`, the same mechanism `UserObserver` uses) keeps the
+  two in step on every save: picking a range derives the count
+  (`BatchWorkingDays::countFromRange()`, wrap-aware); posting only the legacy
+  count (an older client, or a seeder) derives a Monday-anchored range
+  (`BatchWorkingDays::rangeFromLegacyCount()`) using the **exact** mapping the
+  old count-only logic assumed, so nothing that already existed changes
+  behavior.
+  **Seeders bypass this**, same as `UserObserver`'s username generation —
+  `DatabaseSeeder` uses `WithoutModelEvents`, which mutes `BatchObserver` too,
+  so the three seeders that create a `Batch` directly
+  (`CabmbCoordinatorCenteredDemoSeeder`, `CabmbUsersDemoSeeder`,
+  `StudentDemoEnrollmentSeeder`) now write `working_days_start`/`_end`
+  explicitly alongside `working_days_per_week`.
+- **`BatchWorkingDays::isWorkingDayInRange($date, $start, $end)`** is the real
+  predicate now (wraparound-aware); the old `isWorkingDay($date, $count)` is
+  kept byte-for-byte as-is for any caller that only ever has a count (none
+  exist in `app/` today). The 5 real consumers —
+  `SendMissingJournalEntryReminders`, `StudentDashboardController`,
+  `JournalCalendarController`, `ReminderPreferenceController`,
+  `ReminderSchedule::remindsOn()` — were switched to pass the range instead of
+  the count; this is what makes an arbitrary start+end day *mean* something
+  app-wide, not just look different on the form.
+- **Migration backfill freezes the exact old mapping** for every batch that
+  already existed (7→[1,7], 6→[1,6], else→[1,5]), so nothing already seeded or
+  live changed behavior the moment the migration ran — verified via
+  `php artisan migrate:fresh --seed` and a direct query of the seeded batches
+  afterward.
+- Both `StoreBatchRequest`/`UpdateBatchRequest` (coordinator) accept either
+  shape — `working_days_start`+`working_days_end` (paired via
+  `required_with` both ways) or the bare legacy `working_days_per_week` — so an
+  older caller still works. `Admin\StoreBatchRequest` got the same treatment for
+  parity, though it remains **dead code**: no route or test wires it, and the
+  admin's own Batches page is read-only (view-only modal, no create/edit form).
+- `AdminBatchesPage`'s read-only batch view now shows the range as
+  `"Mon – Fri"` (or the wrapped equivalent, e.g. `"Sat – Tue"`) via the shared
+  `web/src/lib/weekdays.ts` helpers (`formatDayRange`, `isDayInRange`,
+  `WEEKDAY_NAMES`/`WEEKDAY_LETTERS`) — the same helpers the picker itself uses,
+  so the two can never describe a range differently.
+
+Coverage: `tests/Unit/Support/BatchWorkingDaysTest.php` pins the
+behavior-preserving mapping, the wraparound math (`isWorkingDayInRange`, both
+directions of `countFromRange`), and the legacy-count round trip. No existing
+test needed a behavior change — the 25+ tests touching
+`working_days_per_week` were re-run and stayed green as-is, since
+`BatchObserver` derives it transparently from whichever field a test/request
+already sends.
 
 ### The coordinator's review surface
 
@@ -1056,6 +1208,66 @@ routine edits cannot re-gate an enrolled student.
 the one exception to soft-deactivation: it 422s any account carrying OJT history
 (`journal_entries`/`weekly_logs`/`weekly_activity_logs`) and only erases truly
 empty accounts. It can never destroy SIPP records.
+
+### Permanently deleting a supervisor account (2026-09-11)
+
+Built at the project owner's request — the Users → Supervisors tab had no row
+actions at all (no View, no Delete) until now; only `detachSupervisor` existed
+(Partner Companies), and that only removes a company's login attachment, not
+the account. `EnrollmentController::showSupervisor`/`destroySupervisorAccount`
+(routes `coordinator/users/supervisors/{supervisor}`, GET and DELETE) fill both
+gaps, mirroring `showIntern`/`destroyAccount`'s shape but not their guard.
+
+**Why a supervisor delete needed its own guard, not the student one reused:**
+`batch_students.supervisor_id` is a **`cascadeOnDelete`** foreign key — it is
+the authoritative student-to-company/supervisor linkage (see Enrollment above).
+Deleting a supervisor who was ever pinned to an enrollment, active or
+historical, would silently **delete those `batch_students` rows along with
+them** — not merely the supervisor's own login. This is a much larger blast
+radius than the student case (where `journal_entries`/`weekly_logs` are keyed
+by `student_id`+`batch_id`, not by the row being deleted) and is the actual
+reason this feature did not already exist: building it safely meant tracing
+every FK a `users` row carries first.
+
+`destroySupervisorAccount()` therefore blocks (422) on either:
+
+- **Any `batch_students` row, of any status, ever pinned to them** — the
+  cascade-risk case above.
+- **Any `weekly_logs` row they reviewed** (`weekly_logs.supervisor_id` is only
+  `nullOnDelete`, so the review itself survives, but deleting them would strip
+  off WHO gave the verdict).
+
+**Deliberately NOT gated on still being attached to a company.**
+`company_supervisors.user_id` is `cascadeOnDelete` too, but carries no history
+behind it — just "who is currently logged in as this company" — so losing that
+pointer on delete is exactly what a manual detach already does on purpose.
+Requiring a detach-first step would add friction with nothing to show for it,
+and would have made the account briefly **unreachable**: the Supervisors list
+(`supervisors()`) is built entirely from `company_supervisors` rows in scope,
+so a supervisor detached from every company vanishes from it. Both
+`showSupervisor` and `destroySupervisorAccount` are scoped by
+**`attachableSupervisorIds()`** (already defined on `ScopesCoordinatorAccounts`
+for the "Attach Existing Supervisor" dropdown), not `scopedSupervisorIds()`,
+specifically so a detached "floating" supervisor stays viewable and deletable
+rather than 403ing the very account the action exists to reach.
+
+**Frontend**: the Supervisors tab table (and its mobile card list) gained an
+Actions column identical in shape to the Interns tab's — a bordered outline
+**View** button and a red outline **Delete** button. View opens
+`SupervisorDetailModal.vue` (mirrors `InternDetailModal.vue`), showing the
+supervisor's companies (with position) and, new information the row itself
+doesn't show, the actual roster of interns currently or previously assigned to
+them (`SupervisorDetail`'s `interns[]`). Delete reuses the exact same
+`DangerCountdownModal` the intern delete already used — a 7-second hold before
+"Delete permanently" unlocks, `tone: danger`, Cancel always active — rather
+than a second confirmation pattern; a blocked (422) delete surfaces the guard's
+reason as a normal error toast, same as every other guarded action in the app.
+
+Coverage: `tests/Feature/Coordinator/CoordinatorUsersTest.php` — the two 422
+guards (assigned-to-an-enrollment, reviewed-a-weekly-log), a clean delete that
+also cascades the `company_supervisors` attachment away, both 403/404 scope
+checks, and the floating-supervisor case (detached, no history) staying
+reachable through both endpoints.
 
 **Graceful "enrollment inactive" state**: `User::isEnrollmentPaused()` (a student
 past intake with no `active`/`completed` row) surfaces as `student_paused` on
@@ -3109,6 +3321,18 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
   coordinator's students **plus companies not yet linked to any enrollment** (no
   creator column exists, so unlinked implies visible, keeping freshly-created
   companies in view). Includes the representatives and supervisor-login panels.
+  **"Department" is a plain informational text field** (2026-09-11, corrected
+  at the project owner's request) bound directly to `companies.industry` — it
+  used to render as a dropdown of business-sector suggestions (with an
+  "Other…" escape hatch) that could read as a constrained choice tied to the
+  college's own Departments, when it is actually free text that gates nothing.
+  Now a plain input mirroring the adjacent "Department Head" field exactly,
+  with a caption stating it is descriptive-only. **Create/Attach Supervisor
+  now toast on success** (they used to succeed silently) — wording matches the
+  Users page's own supervisor-creation flow exactly (echoing the assigned
+  username when one was auto-generated). See "The supervisor is tied to the
+  company" above for the "Attach Existing Supervisor" scoping fix from the
+  same pass.
 - **Student Info Sheets** — the Accept/Reject queue; defaults to **All** statuses.
 - **Journal Review** (`/coordinator/journal-review`) — the coordinator's OWN
   approve/return queue plus each intern's full notebook, for
@@ -3146,10 +3370,12 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
   attached to any company in the coordinator's company-scope. Header actions are
   tab-contextual. "Create Supervisor" **requires a company first** — a supervisor
   is always a Company Supervisor. The Interns tab also has **"Bulk Import
-  (Excel)"** (see Intake & Enrollment above). Its row actions are **View and
-  Delete only** — the old per-row **"Resend"** moved to the Credential Manager
-  in the profile popover on 2026-09-08 and must not come back here; see
-  Credential Manager under Intake & Enrollment for why.
+  (Excel)"** (see Intake & Enrollment above). Both tabs' row actions are **View
+  and Delete only** — the old per-row **"Resend"** moved to the Credential
+  Manager in the profile popover on 2026-09-08 and must not come back here; see
+  Credential Manager under Intake & Enrollment for why. The Supervisors tab
+  gained its own View/Delete on 2026-09-11 — see Permanently deleting a
+  supervisor account, below.
 - **Batch roster management** is separate from the enroll flow, scoped by batch
   program. Adding a student who is already active in another batch **MOVES** them
   (old row dropped, new active row, behind a wrong-batch-guard confirm).

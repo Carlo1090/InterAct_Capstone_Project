@@ -32,7 +32,7 @@ class ReminderSchedule
      * are sometimes genuinely rostered on a Saturday. Otherwise we fall back to
      * the batch's working-day pattern, which is exactly today's behaviour.
      */
-    public static function remindsOn(CarbonInterface $date, ?StudentProfile $profile, int $workingDaysPerWeek): bool
+    public static function remindsOn(CarbonInterface $date, ?StudentProfile $profile, int $workingDaysStart, int $workingDaysEnd): bool
     {
         if ($profile && $profile->reminder_enabled === false) {
             return false;
@@ -44,7 +44,7 @@ class ReminderSchedule
             return in_array($date->dayOfWeekIso, $chosenDays, true);
         }
 
-        return BatchWorkingDays::isWorkingDay($date, $workingDaysPerWeek);
+        return BatchWorkingDays::isWorkingDayInRange($date, $workingDaysStart, $workingDaysEnd);
     }
 
     /**

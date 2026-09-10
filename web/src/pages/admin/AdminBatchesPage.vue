@@ -2,6 +2,7 @@
 import { onMounted, ref, watch } from 'vue'
 import api from '@/lib/axios'
 import TooltipWrap from '@/components/ui/TooltipWrap.vue'
+import { formatDayRange } from '@/lib/weekdays'
 import type { Batch, BatchDetail, Department, PaginatedResponse } from '@/types/api'
 
 /**
@@ -319,8 +320,8 @@ onMounted(() => {
                 <p class="mt-1 text-sm font-medium text-slate-900 tabular-nums">{{ viewedBatch.required_hours }}</p>
               </div>
               <div>
-                <p class="text-xs font-medium uppercase tracking-wide text-slate-400">Working Days / Week</p>
-                <p class="mt-1 text-sm font-medium text-slate-900 tabular-nums">{{ viewedBatch.working_days_per_week }}</p>
+                <p class="text-xs font-medium uppercase tracking-wide text-slate-400">Working Days</p>
+                <p class="mt-1 text-sm font-medium text-slate-900">{{ formatDayRange(viewedBatch.working_days_start, viewedBatch.working_days_end) }}</p>
               </div>
               <!-- Its own row, per spec. -->
               <div class="sm:col-span-2">

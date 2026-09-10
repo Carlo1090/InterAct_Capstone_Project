@@ -7,6 +7,7 @@ import { useFormDraft } from '@/lib/formDraft'
 import { categorizeError } from '@/lib/apiError'
 import ToastHost from '@/components/ToastHost.vue'
 import InternDetailModal from '@/components/interns/InternDetailModal.vue'
+import SupervisorDetailModal from '@/components/interns/SupervisorDetailModal.vue'
 import DangerCountdownModal from '@/components/ui/DangerCountdownModal.vue'
 import type {
   BulkImportConfirmResponse,
@@ -19,6 +20,7 @@ import type {
   EnrollableStudent,
   EnrollmentOptions,
   InternDetail,
+  SupervisorDetail,
 } from '@/types/api'
 
 type UsersTab = 'interns' | 'supervisors'
@@ -100,6 +102,76 @@ const confirmDeleteAccount = async () => {
 // irreversible action — the account's current password stops working the
 // instant it fires — and it does not belong between "View" and "Delete" on a
 // row being casually browsed. See CredentialManagerPanel.vue.
+
+// --- Supervisor detail modal (View action) ------------------------------------
+// Named *Detail* throughout to avoid colliding with the pre-existing
+// isSupervisorModalOpen/closeSupervisorModal pair that already backs the
+// "Create Supervisor" modal further down this file.
+const isSupervisorDetailOpen = ref(false)
+const isLoadingSupervisorDetail = ref(false)
+const supervisorDetail = ref<SupervisorDetail | null>(null)
+const supervisorDetailError = ref('')
+
+const viewSupervisor = async (supervisorId: number) => {
+  isSupervisorDetailOpen.value = true
+  isLoadingSupervisorDetail.value = true
+  supervisorDetail.value = null
+  supervisorDetailError.value = ''
+
+  try {
+    const { data } = await api.get<SupervisorDetail>(`/api/coordinator/users/supervisors/${supervisorId}`)
+    supervisorDetail.value = data
+  } catch {
+    supervisorDetailError.value = 'Unable to load this supervisor\'s details.'
+  } finally {
+    isLoadingSupervisorDetail.value = false
+  }
+}
+
+const closeSupervisorDetail = () => {
+  isSupervisorDetailOpen.value = false
+}
+
+// --- Permanent supervisor account delete (guarded hard-delete + countdown) ---
+// Same shape as the intern delete above, reusing the identical
+// DangerCountdownModal component. The guard differs server-side (see
+// EnrollmentController::destroySupervisorAccount): a supervisor is blocked
+// from deletion once they've ever been assigned to an enrollment or reviewed
+// a weekly log, rather than once journal/weekly-log records exist for them.
+const deleteSupervisorTarget = ref<CoordinatorSupervisorUser | null>(null)
+const isDeletingSupervisor = ref(false)
+
+const deleteSupervisorMessage = computed(() =>
+  deleteSupervisorTarget.value
+    ? `You are about to PERMANENTLY delete the account of ${deleteSupervisorTarget.value.name}. This erases their login and cannot be undone.\n\nOnly supervisors who have never been assigned to an enrolled intern or reviewed a weekly log can be deleted — if they have that history, the account must stay.`
+    : '',
+)
+
+const askDeleteSupervisorAccount = (supervisor: CoordinatorSupervisorUser) => {
+  deleteSupervisorTarget.value = supervisor
+}
+
+const cancelDeleteSupervisorAccount = () => {
+  if (isDeletingSupervisor.value) return
+  deleteSupervisorTarget.value = null
+}
+
+const confirmDeleteSupervisorAccount = async () => {
+  const supervisor = deleteSupervisorTarget.value
+  if (!supervisor) return
+  isDeletingSupervisor.value = true
+  try {
+    await api.delete(`/api/coordinator/users/supervisors/${supervisor.id}`)
+    deleteSupervisorTarget.value = null
+    await loadSupervisors()
+    showToast(`${supervisor.name}'s account was permanently deleted.`)
+  } catch (error) {
+    const { message } = categorizeError(error, 'Unable to delete this account.')
+    showToast(message, 'error')
+  } finally {
+    isDeletingSupervisor.value = false
+  }
+}
 
 // --- Interns tab: program filter ---------------------------------------------
 const programOptions = ref<{ id: number; name: string; code?: string }[]>([])
@@ -184,10 +256,13 @@ const enrollForm = reactive({
 
 // The supervisor is tied to the company, not a separate choice — this is
 // read-only display of whichever supervisor the selected company resolves
-// to (its one login account), matching what the backend will assign.
+// to (its one login account), matching what the backend will assign. Resolved
+// from the company's own login_supervisor field (not the — now scoped —
+// supervisors list), since the company picker itself is intentionally not
+// scoped to this coordinator (companies can be shared across departments).
 const enrollResolvedSupervisor = computed(() =>
   enrollForm.company_id
-    ? enrollmentOptions.value.supervisors.find((supervisor) => supervisor.company_ids.includes(enrollForm.company_id as number))
+    ? (enrollmentOptions.value.companies.find((company) => company.id === enrollForm.company_id)?.login_supervisor ?? undefined)
     : undefined,
 )
 
@@ -405,6 +480,7 @@ const supervisorForm = reactive({
   company_id: null as number | null,
   position: '',
   name: '',
+  username: '',
   email: '',
   password: '',
 })
@@ -421,7 +497,6 @@ const canSubmitSupervisor = computed(
     !!supervisorForm.company_id &&
     !selectedCompanyHasLogin.value &&
     supervisorForm.name.trim() !== '' &&
-    supervisorForm.email.trim() !== '' &&
     supervisorForm.password.length >= 8,
 )
 
@@ -700,6 +775,7 @@ const openSupervisorModal = async () => {
   supervisorForm.company_id = null
   supervisorForm.position = ''
   supervisorForm.name = ''
+  supervisorForm.username = ''
   supervisorForm.email = ''
   supervisorForm.password = ''
   supervisorErrors.value = {}
@@ -718,15 +794,22 @@ const submitSupervisor = async () => {
   supervisorMessage.value = ''
 
   try {
-    await api.post(`/api/coordinator/companies/${supervisorForm.company_id}/supervisors/new`, {
+    const { data } = await api.post<CoordinatorCompany>(`/api/coordinator/companies/${supervisorForm.company_id}/supervisors/new`, {
       name: supervisorForm.name,
-      email: supervisorForm.email,
+      username: supervisorForm.username || null,
+      email: supervisorForm.email || null,
       password: supervisorForm.password,
       position: supervisorForm.position || null,
     })
     closeSupervisorModal()
     await loadSupervisors()
-    showToast(`Supervisor account created for ${supervisorForm.name}.`)
+    const created = data.supervisors?.find((s) => s.is_login)
+    const username = created?.user?.username
+    showToast(
+      username
+        ? `Supervisor account created for ${supervisorForm.name}. Username: ${username}`
+        : `Supervisor account created for ${supervisorForm.name}.`,
+    )
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 422) {
       supervisorErrors.value = error.response.data.errors ?? {}
@@ -936,12 +1019,26 @@ onMounted(() => {
     <template v-else>
       <div class="flex flex-wrap items-center justify-between gap-3">
         <p class="text-xs text-slate-500">Showing {{ filteredSupervisors.length }} of {{ supervisors.length }} supervisors</p>
-        <div class="flex items-center gap-2">
-          <select v-model.number="supervisorCompanyFilter" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm">
+        <!--
+          A native <select> is as wide as its widest OPTION and flex-wrap
+          cannot shrink it below that — a long company/batch name pushes this
+          row past a phone viewport with no scroll guard (see PROJECT.md's
+          "A native <select> is as wide as its widest OPTION" gotcha). w-full
+          below sm makes each control the width of the column instead;
+          max-w-full caps the intrinsic width at every larger size.
+        -->
+        <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <select
+            v-model.number="supervisorCompanyFilter"
+            class="w-full max-w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm sm:w-auto"
+          >
             <option :value="null">All Companies</option>
             <option v-for="company in companyFilterOptions" :key="company.id" :value="company.id">{{ company.name }}</option>
           </select>
-          <select v-model.number="supervisorBatchFilter" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm">
+          <select
+            v-model.number="supervisorBatchFilter"
+            class="w-full max-w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm sm:w-auto"
+          >
             <option :value="null">All Batches</option>
             <option v-for="batch in batchFilterOptions" :key="batch.id" :value="batch.id">{{ batch.name }}</option>
           </select>
@@ -957,11 +1054,12 @@ onMounted(() => {
               <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
               <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Companies</th>
               <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Batches</th>
+              <th class="whitespace-nowrap px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-slate-500">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
             <tr v-if="filteredSupervisors.length === 0">
-              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="5">
+              <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="6">
                 {{
                   hasSupervisorFilters
                     ? 'No supervisors match these filters.'
@@ -979,7 +1077,7 @@ onMounted(() => {
             </tr>
             <tr v-for="supervisor in filteredSupervisors" :key="supervisor.id">
               <td class="px-4 py-3 text-sm font-semibold text-slate-900">{{ supervisor.name }}</td>
-              <td class="px-4 py-3 text-sm text-slate-500">{{ supervisor.email }}</td>
+              <td class="px-4 py-3 text-sm text-slate-500">{{ supervisor.email || (supervisor.username ? `@${supervisor.username}` : '—') }}</td>
               <td class="px-4 py-3">
                 <span
                   class="rounded-full px-3 py-1 text-xs font-bold"
@@ -1008,6 +1106,20 @@ onMounted(() => {
                   </span>
                 </div>
                 <span v-else class="text-sm text-slate-400">—</span>
+              </td>
+              <td class="px-4 py-3">
+                <div class="flex items-center justify-end gap-2 whitespace-nowrap">
+                  <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="viewSupervisor(supervisor.id)">
+                    View
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:bg-red-50"
+                    @click="askDeleteSupervisorAccount(supervisor)"
+                  >
+                    Delete
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -1041,7 +1153,7 @@ onMounted(() => {
               {{ supervisor.is_active ? 'Active' : 'Inactive' }}
             </span>
           </div>
-          <p class="mt-1 truncate text-xs text-slate-500">{{ supervisor.email }}</p>
+          <p class="mt-1 truncate text-xs text-slate-500">{{ supervisor.email || (supervisor.username ? `@${supervisor.username}` : '—') }}</p>
           <div v-if="supervisor.companies.length" class="mt-2 flex flex-wrap gap-1.5">
             <span
               v-for="company in supervisor.companies"
@@ -1055,6 +1167,18 @@ onMounted(() => {
             <span v-for="batch in supervisor.batches" :key="batch.id" class="rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-500">
               {{ batch.name }}
             </span>
+          </div>
+          <div class="mt-3 flex flex-wrap items-center gap-2">
+            <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="viewSupervisor(supervisor.id)">
+              View
+            </button>
+            <button
+              type="button"
+              class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:bg-red-50"
+              @click="askDeleteSupervisorAccount(supervisor)"
+            >
+              Delete
+            </button>
           </div>
         </li>
       </ul>
@@ -1096,7 +1220,9 @@ onMounted(() => {
             <label class="mb-2 block text-sm font-medium text-slate-700">Supervisor</label>
             <p class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
               <template v-if="!enrollForm.company_id">Select a company first.</template>
-              <template v-else-if="enrollResolvedSupervisor">{{ enrollResolvedSupervisor.name }} ({{ enrollResolvedSupervisor.email }})</template>
+              <template v-else-if="enrollResolvedSupervisor"
+                >{{ enrollResolvedSupervisor.name }} ({{ enrollResolvedSupervisor.email || `@${enrollResolvedSupervisor.username}` }})</template
+              >
               <template v-else
                 ><span class="text-amber-600"
                   >This company has no supervisor account yet. Attach one on Partner Companies before enrolling interns
@@ -1561,8 +1687,13 @@ onMounted(() => {
             <input id="sup-name" v-model="supervisorForm.name" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
           </div>
           <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="sup-email">Email</label>
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="sup-username">Username (optional)</label>
+            <input id="sup-username" v-model="supervisorForm.username" type="text" placeholder="Leave blank to auto-generate" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="sup-email">Email (optional)</label>
             <input id="sup-email" v-model="supervisorForm.email" type="email" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <p class="mt-1 text-xs text-slate-500">Not required to sign in — only needed to enable Google sign-in later.</p>
           </div>
           <div>
             <label class="mb-2 block text-sm font-medium text-slate-700" for="sup-password">Password (min 8)</label>
@@ -1606,6 +1737,25 @@ onMounted(() => {
       :busy="isDeleting"
       @confirm="confirmDeleteAccount"
       @cancel="cancelDeleteAccount"
+    />
+
+    <SupervisorDetailModal
+      v-if="isSupervisorDetailOpen"
+      :detail="supervisorDetail"
+      :is-loading="isLoadingSupervisorDetail"
+      :error-message="supervisorDetailError"
+      @close="closeSupervisorDetail"
+    />
+
+    <DangerCountdownModal
+      :open="deleteSupervisorTarget !== null"
+      title="Permanently delete account"
+      :message="deleteSupervisorMessage"
+      confirm-label="Delete permanently"
+      :hold-seconds="7"
+      :busy="isDeletingSupervisor"
+      @confirm="confirmDeleteSupervisorAccount"
+      @cancel="cancelDeleteSupervisorAccount"
     />
   </section>
 </template>

@@ -48,7 +48,12 @@ class UserController extends Controller
             'first_name' => ['required', 'string', 'max:100'],
             'middle_name' => ['nullable', 'string', 'max:100'],
             'last_name' => ['required', 'string', 'max:100'],
-            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            // Email is optional — username + password is the primary,
+            // always-available sign-in path. A blank username auto-generates
+            // (see User::booted()); an email, if given, only unlocks Google
+            // sign-in once the user verifies it themselves.
+            'username' => ['nullable', 'string', 'min:3', 'max:50', 'regex:/^[A-Za-z0-9._-]+$/', 'unique:users,username'],
+            'email' => ['nullable', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8'],
             'role' => [
                 'required',

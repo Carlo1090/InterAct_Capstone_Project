@@ -9,6 +9,7 @@ use App\Models\CompanySupervisor;
 use App\Models\Department;
 use App\Models\Program;
 use App\Models\User;
+use App\Models\WeeklyLog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -277,5 +278,204 @@ class CoordinatorUsersTest extends TestCase
 
         $this->getJson('/api/coordinator/users/interns')->assertStatus(403);
         $this->getJson('/api/coordinator/users/supervisors')->assertStatus(403);
+    }
+
+    public function test_show_supervisor_returns_companies_and_the_interns_they_supervise(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program);
+        $company = Company::create(['name' => 'BQ Corp', 'address' => 'Bohol', 'is_active' => true]);
+        $supervisor = User::factory()->create(['role' => 'supervisor', 'name' => 'Elena Cruz']);
+        CompanySupervisor::create(['company_id' => $company->id, 'user_id' => $supervisor->id, 'position' => 'HR Lead']);
+
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id, 'name' => 'Miguel Reyes']);
+        BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'active',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->getJson("/api/coordinator/users/supervisors/{$supervisor->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('name', 'Elena Cruz');
+        $response->assertJsonPath('companies.0.name', 'BQ Corp');
+        $response->assertJsonPath('companies.0.position', 'HR Lead');
+        $response->assertJsonPath('interns.0.name', 'Miguel Reyes');
+        $response->assertJsonPath('interns.0.status', 'active');
+    }
+
+    public function test_show_supervisor_is_forbidden_for_an_out_of_scope_supervisor(): void
+    {
+        $inScope = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($inScope);
+        $outCompany = Company::create(['name' => 'Out Of Scope Co', 'address' => 'Bohol', 'is_active' => true]);
+        $outsideSupervisor = User::factory()->create(['role' => 'supervisor']);
+        CompanySupervisor::create(['company_id' => $outCompany->id, 'user_id' => $outsideSupervisor->id]);
+
+        // Anchor $outCompany out of scope via an out-of-scope enrollment, same
+        // as test_supervisors_list_unions_and_dedupes_within_scope above.
+        $outScope = $this->program('CABM-H', 'BSTM');
+        $otherCoordinator = User::factory()->create(['role' => 'coordinator', 'program_id' => $outScope->id]);
+        $outBatch = $this->batchFor($outScope, $otherCoordinator);
+        $outStudent = User::factory()->create(['role' => 'student', 'program_id' => $outScope->id]);
+        BatchStudent::create([
+            'batch_id' => $outBatch->id,
+            'student_id' => $outStudent->id,
+            'company_id' => $outCompany->id,
+            'supervisor_id' => $outsideSupervisor->id,
+            'status' => 'active',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->getJson("/api/coordinator/users/supervisors/{$outsideSupervisor->id}")->assertStatus(403);
+    }
+
+    public function test_show_supervisor_404s_for_a_student_id(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->getJson("/api/coordinator/users/supervisors/{$student->id}")->assertStatus(404);
+    }
+
+    public function test_a_supervisor_with_no_history_can_be_permanently_deleted(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program);
+        $company = Company::create(['name' => 'Mistake Co', 'address' => 'Bohol', 'is_active' => true]);
+        $supervisor = User::factory()->create(['role' => 'supervisor', 'name' => 'Typo Supervisor']);
+        CompanySupervisor::create(['company_id' => $company->id, 'user_id' => $supervisor->id]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->deleteJson("/api/coordinator/users/supervisors/{$supervisor->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('deleted', true);
+        $this->assertDatabaseMissing('users', ['id' => $supervisor->id]);
+        // The company_supervisors attachment carries no history of its own —
+        // cascadeOnDelete clearing it alongside the account is expected.
+        $this->assertDatabaseMissing('company_supervisors', ['user_id' => $supervisor->id]);
+    }
+
+    public function test_a_supervisor_assigned_to_an_enrollment_cannot_be_permanently_deleted(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program);
+        $company = Company::create(['name' => 'BQ Corp', 'address' => 'Bohol', 'is_active' => true]);
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+        CompanySupervisor::create(['company_id' => $company->id, 'user_id' => $supervisor->id]);
+
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        BatchStudent::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'company_id' => $company->id,
+            'supervisor_id' => $supervisor->id,
+            'status' => 'completed',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->deleteJson("/api/coordinator/users/supervisors/{$supervisor->id}");
+
+        $response->assertStatus(422);
+        $this->assertDatabaseHas('users', ['id' => $supervisor->id]);
+    }
+
+    public function test_a_supervisor_who_has_reviewed_a_weekly_log_cannot_be_permanently_deleted(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program);
+        $company = Company::create(['name' => 'BQ Corp', 'address' => 'Bohol', 'is_active' => true]);
+        $supervisor = User::factory()->create(['role' => 'supervisor']);
+        CompanySupervisor::create(['company_id' => $company->id, 'user_id' => $supervisor->id]);
+
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        WeeklyLog::create([
+            'batch_id' => $batch->id,
+            'student_id' => $student->id,
+            'supervisor_id' => $supervisor->id,
+            'week_start' => now()->subWeek()->startOfWeek(),
+            'week_end' => now()->subWeek()->endOfWeek(),
+            'status' => 'approved',
+            'submitted_at' => now()->subWeek(),
+            'reviewed_at' => now(),
+            'narrative' => 'MONDAY\nDid the thing.',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->deleteJson("/api/coordinator/users/supervisors/{$supervisor->id}");
+
+        $response->assertStatus(422);
+        $this->assertDatabaseHas('users', ['id' => $supervisor->id]);
+    }
+
+    public function test_delete_supervisor_is_forbidden_for_an_out_of_scope_supervisor(): void
+    {
+        $inScope = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($inScope);
+        $outCompany = Company::create(['name' => 'Out Of Scope Co', 'address' => 'Bohol', 'is_active' => true]);
+        $outsideSupervisor = User::factory()->create(['role' => 'supervisor']);
+        CompanySupervisor::create(['company_id' => $outCompany->id, 'user_id' => $outsideSupervisor->id]);
+
+        $outScope = $this->program('CABM-H', 'BSTM');
+        $otherCoordinator = User::factory()->create(['role' => 'coordinator', 'program_id' => $outScope->id]);
+        $outBatch = $this->batchFor($outScope, $otherCoordinator);
+        $outStudent = User::factory()->create(['role' => 'student', 'program_id' => $outScope->id]);
+        BatchStudent::create([
+            'batch_id' => $outBatch->id,
+            'student_id' => $outStudent->id,
+            'company_id' => $outCompany->id,
+            'supervisor_id' => $outsideSupervisor->id,
+            'status' => 'active',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->deleteJson("/api/coordinator/users/supervisors/{$outsideSupervisor->id}")->assertStatus(403);
+        $this->assertDatabaseHas('users', ['id' => $outsideSupervisor->id]);
+    }
+
+    /**
+     * Pins the attachableSupervisorIds() scoping choice on showSupervisor()/
+     * destroySupervisorAccount(): a supervisor detached from every company
+     * (a normal state, and the very state a coordinator would leave one in
+     * while cleaning up a mistake) must not become invisible to the actions
+     * that exist to manage them.
+     */
+    public function test_a_detached_supervisor_with_no_history_can_still_be_viewed_and_deleted(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program);
+        $company = Company::create(['name' => 'Mistake Co', 'address' => 'Bohol', 'is_active' => true]);
+        $supervisor = User::factory()->create(['role' => 'supervisor', 'name' => 'Floating Supervisor']);
+        $link = CompanySupervisor::create(['company_id' => $company->id, 'user_id' => $supervisor->id]);
+        $link->delete();
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->getJson("/api/coordinator/users/supervisors/{$supervisor->id}")
+            ->assertOk()
+            ->assertJsonPath('name', 'Floating Supervisor')
+            ->assertJsonCount(0, 'companies');
+
+        $this->deleteJson("/api/coordinator/users/supervisors/{$supervisor->id}")
+            ->assertOk()
+            ->assertJsonPath('deleted', true);
+        $this->assertDatabaseMissing('users', ['id' => $supervisor->id]);
     }
 }

@@ -59,6 +59,25 @@ trait ScopesCoordinatorAccounts
     }
 
     /**
+     * Supervisor IDs a coordinator may ATTACH to one of their own companies:
+     * already on a company in scope, OR attached to no company at all yet (a
+     * "floating" account — freshly created, or just detached — that belongs to
+     * nobody and is fair game for anyone to claim). Excludes only a supervisor
+     * exclusively tied to an out-of-scope company, which is the actual leak
+     * this method exists to close — scopedSupervisorIds() alone can't be used
+     * for this, since it would also wrongly exclude every floating supervisor.
+     */
+    protected function attachableSupervisorIds(User $coordinator): Collection
+    {
+        $scoped = $this->scopedSupervisorIds($coordinator);
+
+        $attachedIds = CompanySupervisor::whereNotNull('user_id')->pluck('user_id')->unique();
+        $floatingIds = User::where('role', 'supervisor')->whereNotIn('id', $attachedIds)->pluck('id');
+
+        return $scoped->merge($floatingIds)->unique()->values();
+    }
+
+    /**
      * Guard for any per-account action a coordinator takes. 404 for a role they
      * never manage (they may create students and supervisors only — never a
      * coordinator or admin), 403 for one outside their scope.
