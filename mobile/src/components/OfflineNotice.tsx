@@ -1,5 +1,24 @@
 import { Banner } from './Banner';
-import { OfflineFeature, offlineLevelFor, offlineNoteFor } from '../lib/offlineCapability';
+import { OfflineFeature, OfflineLevel, offlineLevelFor, offlineNoteFor } from '../lib/offlineCapability';
+
+/**
+ * One title per level, and the three are genuinely different facts rather than
+ * three phrasings of one — which is why the title carries the distinction and
+ * the loud styling stays constant.
+ *
+ *   read_write  — nothing is lost; keep working.
+ *   read        — what is on screen may be stale.
+ *   online_only — the feature does not work at all right now. Saying "showing
+ *                 saved data" here would be a lie: on the Scan tab there is no
+ *                 saved punch to show, and a student who reads it as merely
+ *                 stale will stand at the door pressing a button that cannot
+ *                 work.
+ */
+const OFFLINE_TITLE: Record<OfflineLevel, string> = {
+  read_write: "Offline — your work is safe",
+  read: 'Offline — showing saved data',
+  online_only: "Offline — this needs a connection",
+};
 
 /**
  * The one offline notice. Every screen renders this rather than writing its
@@ -21,10 +40,8 @@ import { OfflineFeature, offlineLevelFor, offlineNoteFor } from '../lib/offlineC
 export function OfflineNotice({ feature, show = true }: { feature: OfflineFeature; show?: boolean }) {
   if (!show) return null;
 
-  const writable = offlineLevelFor(feature) === 'read_write';
-
   return (
-    <Banner variant="offline" title={writable ? "Offline — your work is safe" : 'Offline — showing saved data'}>
+    <Banner variant="offline" title={OFFLINE_TITLE[offlineLevelFor(feature)]}>
       {offlineNoteFor(feature)}
     </Banner>
   );

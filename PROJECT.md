@@ -125,6 +125,21 @@ This is a **monorepo** with three parts:
   so a resting password field read as a field in an error state. The footer
   moved to `blue300`, the light-on-dark token, since `blue700` is invisible on
   the new ground.
+  **JS-only changes now ship OVER THE AIR** (`expo-updates` ~29, 2026-09-10) —
+  `eas update --branch preview` pushes a new bundle to installed apps, no
+  reinstall. `runtimeVersion` uses the **`fingerprint` policy**, which is the
+  safety interlock: it hashes the native project, so an update built against
+  different native code is simply never offered to an older APK rather than
+  being delivered and crashing. `eas.json` pins `channel` per profile
+  (`preview`/`production`/`development`) — without it a build subscribes to no
+  channel and can never receive an update at all.
+  **A NATIVE change still needs a real build**: a new library with native
+  modules, the icon, the splash, permissions, the package name, or the SDK.
+  Build 16 is the first APK carrying the update client — **every APK before it
+  can never be updated over the air**, which is why it was cut immediately
+  after wiring this up. The splash and adaptive-icon backgrounds were corrected
+  from the pre-redesign `#0a1628` to the palette's own `#20304C` in that same
+  build, since native config is exactly what OTA cannot reach afterwards.
   It has its own
   `mobile/CLAUDE.md` (importing `mobile/AGENTS.md`) requiring the versioned docs
   at `docs.expo.dev/versions/v54.0.0/` be checked before any mobile code.

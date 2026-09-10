@@ -4,6 +4,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { Banner } from '../../src/components/Banner';
+import { OfflineNotice } from '../../src/components/OfflineNotice';
 import { Button } from '../../src/components/Button';
 import { Card } from '../../src/components/Card';
 import { ErrorState, LoadingState } from '../../src/components/ErrorState';
@@ -190,11 +191,13 @@ export default function Scan() {
       <TopBar />
 
       <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
-        {isOffline ? (
-          <Banner variant="neutral">
-            Offline — showing your saved record. Scanning to clock in or out needs a connection.
-          </Banner>
-        ) : null}
+        {/* Was a hardcoded `neutral` banner — grey on grey, and it bypassed
+            OfflineNotice entirely, so this screen kept the quiet treatment
+            after every other screen got the loud one. It matters MOST here:
+            the DTR is the app's one online_only feature, so offline the
+            button genuinely cannot work, and a student standing at the door
+            needs to see that rather than tap a dead control. */}
+        <OfflineNotice feature="dtr" show={isOffline} />
 
         {open ? (
           <Banner variant="info">
@@ -277,9 +280,29 @@ export default function Scan() {
                   {/* Surfaced so a student can see WHY a session isn't
                       counting rather than silently wondering. */}
                   {session.adjustment_reason ? (
-                    <Text style={{ fontSize: 11, color: colors.warnTx, marginTop: 2 }}>
-                      {session.adjustment_reason}
-                    </Text>
+                    /* Amber text alone read as a caption. This says a
+                       supervisor changed the row, which is the one line on a
+                       session a student may need to query. */
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 5,
+                        alignSelf: 'flex-start',
+                        backgroundColor: colors.warnBg,
+                        borderWidth: 1,
+                        borderColor: colors.warnBorder,
+                        borderRadius: 7,
+                        paddingHorizontal: 7,
+                        paddingVertical: 4,
+                        marginTop: 5,
+                      }}
+                    >
+                      <Ionicons name="warning" size={11} color={colors.warnTx} />
+                      <Text style={{ flex: 1, fontSize: 10.5, color: colors.warnTx, lineHeight: 14 }}>
+                        {session.adjustment_reason}
+                      </Text>
+                    </View>
                   ) : null}
                 </View>
                 <Text style={{ fontSize: 12.5, fontWeight: '600', color: colors.gray600 }}>
@@ -350,10 +373,46 @@ export default function Scan() {
                 </View>
 
                 {preview.next_action === 'blocked_other_site' ? (
-                  <Text style={{ fontSize: 12.5, color: colors.redTx, marginBottom: 14, lineHeight: 18 }}>
-                    You still have an open session at a different site. Clock out there first, or ask your supervisor
-                    to close it.
-                  </Text>
+                  /* This is the one thing on the card that STOPS the punch, and
+                     it used to be a plain red paragraph sitting where the
+                     neutral explainer otherwise sits — the same size, the same
+                     position, no icon. Given the Clock In button below is also
+                     disabled, a student had nothing telling them why. */
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      gap: 9,
+                      backgroundColor: colors.redBg,
+                      borderWidth: 1,
+                      borderColor: '#fecaca',
+                      borderLeftWidth: 5,
+                      borderLeftColor: colors.redDark,
+                      borderRadius: 10,
+                      padding: 11,
+                      marginBottom: 14,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 11,
+                        backgroundColor: colors.redDark,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons name="alert" size={14} color={colors.white} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.redTx, marginBottom: 2 }}>
+                        Open session at another site
+                      </Text>
+                      <Text style={{ fontSize: 11.5, color: colors.redTx, lineHeight: 16 }}>
+                        Clock out there first, or ask your supervisor to close it.
+                      </Text>
+                    </View>
+                  </View>
                 ) : (
                   <Text style={{ fontSize: 12, color: colors.gray500, marginBottom: 14, lineHeight: 17 }}>
                     Your location is checked against this site (within {preview.site.radius_meters}m) and recorded with
