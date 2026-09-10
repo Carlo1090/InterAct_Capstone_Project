@@ -62,7 +62,7 @@ export default function CalendarScreen() {
         </View>
       </View>
 
-      <OfflineNotice feature="calendar" show={isOffline && days.length > 0} />
+      <OfflineNotice feature="calendar" show={isOffline && days.length > 0} error={error} />
 
       <View style={{ flexDirection: 'row', gap: 14, marginHorizontal: 20, marginTop: 16, flexWrap: 'wrap' }}>
         <Legend color={colors.green} label="Submitted" />

@@ -55,7 +55,7 @@ export default function Dashboard() {
         <Button label="Write Today" icon="add" size="sm" onPress={() => router.push('/write')} />
       </View>
 
-      <OfflineNotice feature="dashboard" show={isOffline} />
+      <OfflineNotice feature="dashboard" show={isOffline} error={error} />
 
       {data.stats.missing_this_week > 0 ? (
         <Banner variant="warn">

@@ -174,7 +174,7 @@ export default function WeeklyActivityDetail() {
         </Pressable>
       </View>
 
-      <OfflineNotice feature="weeklyActivityLog" show={isOffline} />
+      <OfflineNotice feature="weeklyActivityLog" show={isOffline} error={error} />
 
       <Card title="Form Details">
         {/* Read-only: resolved from the active enrollment, never typed. */}

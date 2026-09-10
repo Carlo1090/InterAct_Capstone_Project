@@ -37,7 +37,7 @@ export default function Journals() {
       </View>
 
       {isOffline && entries.length > 0 ? (
-        <OfflineNotice feature="journalList" />
+        <OfflineNotice feature="journalList" error={error} />
       ) : (
         <Banner variant="info">
           Entries are reviewed after compiling into the weekly journal.

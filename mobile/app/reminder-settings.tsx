@@ -71,7 +71,7 @@ export default function ReminderSettings() {
         <Text style={{ fontSize: 20, fontWeight: '700', color: colors.black }}>Reminder Settings</Text>
       </View>
 
-      <OfflineNotice feature="reminderSettings" show={isOffline} />
+      <OfflineNotice feature="reminderSettings" show={isOffline} error={error} />
 
 
       {/* Two different mechanisms sit behind one setting, and they behave

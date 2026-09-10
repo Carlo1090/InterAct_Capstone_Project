@@ -161,7 +161,7 @@ export default function Profile() {
         ) : null}
       </View>
 
-      <OfflineNotice feature="profile" show={isOffline} />
+      <OfflineNotice feature="profile" show={isOffline} error={userError} />
 
       <InfoSectionTitle>Account</InfoSectionTitle>
       <ProfileRow label="Username" value={user.username} />

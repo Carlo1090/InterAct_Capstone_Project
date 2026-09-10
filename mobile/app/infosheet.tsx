@@ -160,7 +160,7 @@ export default function InfoSheetScreen() {
         )}
       </View>
 
-      <OfflineNotice feature="infoSheet" show={isOffline} />
+      <OfflineNotice feature="infoSheet" show={isOffline} error={error} />
 
       <StatusBanner status={data.submission_status} rejectionReason={data.rejection_reason} editing={editing} />
 

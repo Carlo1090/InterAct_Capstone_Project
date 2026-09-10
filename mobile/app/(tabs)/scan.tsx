@@ -197,7 +197,7 @@ export default function Scan() {
             the DTR is the app's one online_only feature, so offline the
             button genuinely cannot work, and a student standing at the door
             needs to see that rather than tap a dead control. */}
-        <OfflineNotice feature="dtr" show={isOffline} />
+        <OfflineNotice feature="dtr" show={isOffline} error={error} />
 
         {open ? (
           <Banner variant="info">

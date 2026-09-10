@@ -74,7 +74,7 @@ export default function ActivityLog() {
         </View>
       </View>
 
-      <OfflineNotice feature="activityLog" show={isOffline && entries.length > 0} />
+      <OfflineNotice feature="activityLog" show={isOffline && entries.length > 0} error={error} />
 
       {loading && entries.length === 0 ? (
         <LoadingState />

@@ -140,6 +140,24 @@ This is a **monorepo** with three parts:
   after wiring this up. The splash and adaptive-icon backgrounds were corrected
   from the pre-redesign `#0a1628` to the palette's own `#20304C` in that same
   build, since native config is exactly what OTA cannot reach afterwards.
+  **`checkAutomatically` defaults to `ALWAYS`, and `fallbackToCacheTimeout: 0`
+  means a published update needs TWO app launches to actually appear** — the
+  first checks and downloads in the background while still showing the old
+  bundle (it never waits), the second applies what was downloaded. Fully
+  closing and reopening once is not enough; there is no in-app "update ready"
+  affordance, so this has to be explained to whoever is testing a fresh push.
+  **`OfflineNotice` distinguishes a dead connection from a slow server**
+  (`ApiError.isTimeout`, 2026-09-10 — found from a real report: "im currently
+  on offline even thu i have internet connections"). Every screen's `isOffline`
+  flag fires on ANY failed request, and the API sleeps on a free Render
+  instance and can take up to the full 60s timeout to wake — so a student
+  opening the app right as it woke up was told "Offline — check your internet
+  connection" for a problem that was never theirs. `isOffline` itself is
+  unchanged (still gates writes, still falls back to cache); `OfflineNotice`
+  now takes an optional `error` prop and, when `error.isTimeout` is true,
+  overrides the title to **"Reconnecting — this may take a moment"** and shows
+  the error's own honest message instead of the per-feature offline note.
+  Threaded through all 13 `<OfflineNotice>` call sites.
   It has its own
   `mobile/CLAUDE.md` (importing `mobile/AGENTS.md`) requiring the versioned docs
   at `docs.expo.dev/versions/v54.0.0/` be checked before any mobile code.

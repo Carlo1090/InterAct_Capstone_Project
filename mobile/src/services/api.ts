@@ -42,11 +42,26 @@ api.interceptors.request.use(async (config) => {
 export class ApiError extends Error {
   status: number | null;
   fieldErrors?: Record<string, string[]>;
+  /**
+   * True only when the request itself timed out (Axios `ECONNABORTED`/
+   * `ETIMEDOUT`) — never for a genuine "no route to host" failure.
+   *
+   * THE BUG THIS FIXES: every screen's "Offline" banner was firing on ANY
+   * failed request, timeouts included. The API sleeps on a free Render
+   * instance and can take up to the full 60s timeout to wake — so a student
+   * with a perfectly good connection, opening the app right as it woke up,
+   * was told "Offline — check your internet connection" for a problem that
+   * was never theirs. This flag is what lets a caller tell "your device has
+   * no signal" apart from "the server is slow to answer" and say the honest
+   * thing instead of guessing wrong.
+   */
+  isTimeout: boolean;
 
-  constructor(message: string, status: number | null, fieldErrors?: Record<string, string[]>) {
+  constructor(message: string, status: number | null, fieldErrors?: Record<string, string[]>, isTimeout = false) {
     super(message);
     this.status = status;
     this.fieldErrors = fieldErrors;
+    this.isTimeout = isTimeout;
   }
 }
 
@@ -60,7 +75,12 @@ export function toApiError(err: unknown): ApiError {
       // expected and the connection is usually fine. Telling the student to
       // check their Wi-Fi here sends them chasing a problem they don't have.
       if (axiosErr.code === 'ECONNABORTED' || axiosErr.code === 'ETIMEDOUT') {
-        return new ApiError('InternTrack is taking longer than usual to respond. Please try again in a moment.', null);
+        return new ApiError(
+          'InternTrack is taking longer than usual to respond. Please try again in a moment.',
+          null,
+          undefined,
+          true
+        );
       }
       // No response at all — device offline or DNS failure. Deliberately avoids
       // the word "server": that reads as a scary/technical system fault to a

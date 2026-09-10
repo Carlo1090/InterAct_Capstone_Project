@@ -74,7 +74,7 @@ export default function Weekly() {
         </Pressable>
       </View>
 
-      <OfflineNotice feature="weeklyLogs" show={isOffline && logs.length > 0} />
+      <OfflineNotice feature="weeklyLogs" show={isOffline && logs.length > 0} error={error} />
 
       <Banner variant="info">
         Weekly compilations are generated every Monday at 12:00 AM. Approved journals are sent to the coordinator

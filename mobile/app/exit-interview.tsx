@@ -227,7 +227,7 @@ export default function ExitInterview() {
         ) : null}
       </View>
 
-      <OfflineNotice feature="exitInterview" show={isOffline} />
+      <OfflineNotice feature="exitInterview" show={isOffline} error={error} />
 
       {submitted ? (
         <Banner variant="info">

@@ -89,7 +89,7 @@ export default function WeeklyActivityIndex() {
         </Text>
       </View>
 
-      <OfflineNotice feature="weeklyActivityLog" show={isOffline} />
+      <OfflineNotice feature="weeklyActivityLog" show={isOffline} error={error} />
 
 
       <View style={{ paddingHorizontal: 20, marginTop: 16 }}>

@@ -59,7 +59,7 @@ export default function Notifications() {
         ) : null}
       </View>
 
-      <OfflineNotice feature="notifications" show={isOffline && notifications.length > 0} />
+      <OfflineNotice feature="notifications" show={isOffline && notifications.length > 0} error={error} />
 
       {loading && notifications.length === 0 ? (
         <LoadingState />
