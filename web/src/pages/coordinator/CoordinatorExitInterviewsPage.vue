@@ -8,6 +8,7 @@ import type {
   CoordinatorExitInterviewDetail,
   CoordinatorExitInterviewRow,
   CoordinatorExitInterviewsResponse,
+  CoordinatorExitInterviewSummaryResponse,
   ExitInterviewStatus,
 } from '@/types/api'
 
@@ -185,6 +186,60 @@ const choiceOf = (key: string | undefined): string => {
   return value === 'yes' ? 'Yes' : value === 'no' ? 'No' : '—'
 }
 
+// --- Summary tab: every intern's answer to Q1 gathered together, then Q2,
+// and so on. Reached as a tab on this same page rather than a separate nav
+// item — see PROJECT.md, Exit Interview → Summary Report. -------------------
+const activeTab = ref<'by_student' | 'summary'>('by_student')
+const summaryData = ref<CoordinatorExitInterviewSummaryResponse | null>(null)
+const isSummaryLoading = ref(false)
+const summaryProgramId = ref<number | null>(null)
+const summaryAcademicYear = ref('')
+const openQuestions = reactive(new Set<string>())
+
+const loadSummary = async () => {
+  isSummaryLoading.value = true
+
+  try {
+    const params: Record<string, string | number> = {}
+    if (summaryProgramId.value) params.program_id = summaryProgramId.value
+    if (summaryAcademicYear.value) params.academic_year = summaryAcademicYear.value
+
+    const { data } = await api.get<CoordinatorExitInterviewSummaryResponse>(
+      '/api/coordinator/exit-interviews/summary',
+      { params },
+    )
+    summaryData.value = data
+    summaryAcademicYear.value = data.academic_year ?? ''
+  } catch {
+    showToast('Unable to load the exit interview summary.', 'error')
+  } finally {
+    isSummaryLoading.value = false
+  }
+}
+
+const selectTab = (tab: 'by_student' | 'summary') => {
+  activeTab.value = tab
+  if (tab === 'summary' && !summaryData.value) loadSummary()
+}
+
+const toggleQuestion = (key: string) => {
+  if (openQuestions.has(key)) openQuestions.delete(key)
+  else openQuestions.add(key)
+}
+
+const expandAllQuestions = () => {
+  summaryData.value?.questions.forEach((q) => openQuestions.add(q.key))
+}
+
+const collapseAllQuestions = () => {
+  openQuestions.clear()
+}
+
+const isNewSection = (index: number): boolean => {
+  const questions = summaryData.value?.questions ?? []
+  return index === 0 || questions[index - 1]?.section !== questions[index]?.section
+}
+
 onMounted(load)
 </script>
 
@@ -199,6 +254,36 @@ onMounted(load)
       application.
     </div>
 
+    <!-- Tabs: the roster view, and the Summary Report (every intern's answer
+         to each question gathered together) added 2026-09-10. -->
+    <div class="flex gap-2 border-b border-slate-200">
+      <button
+        type="button"
+        class="border-b-2 px-3 py-2 text-sm font-semibold transition"
+        :class="
+          activeTab === 'by_student'
+            ? 'border-blue-600 text-blue-600'
+            : 'border-transparent text-slate-500 hover:text-slate-700'
+        "
+        @click="selectTab('by_student')"
+      >
+        By Student
+      </button>
+      <button
+        type="button"
+        class="border-b-2 px-3 py-2 text-sm font-semibold transition"
+        :class="
+          activeTab === 'summary'
+            ? 'border-blue-600 text-blue-600'
+            : 'border-transparent text-slate-500 hover:text-slate-700'
+        "
+        @click="selectTab('summary')"
+      >
+        Summary Report
+      </button>
+    </div>
+
+    <template v-if="activeTab === 'by_student'">
     <!-- Filters -->
     <div class="flex flex-wrap items-end gap-3">
       <label class="block">
@@ -562,5 +647,132 @@ onMounted(load)
         </div>
       </section>
     </div>
+    </template>
+
+    <!-- Summary Report: every in-scope intern's answer to Q1 gathered
+         together, then Q2, and so on — read one question at a time rather
+         than one student at a time. Live read, nothing persisted; drafts are
+         excluded since only a submitted form is guaranteed to carry all
+         fourteen answers. See PROJECT.md, Exit Interview → Summary Report. -->
+    <template v-else>
+      <div class="flex flex-wrap items-end gap-3">
+        <label class="block">
+          <span class="text-xs font-bold text-slate-600">Program</span>
+          <select
+            v-model="summaryProgramId"
+            class="mt-1 block w-full max-w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm sm:w-auto"
+            @change="loadSummary()"
+          >
+            <option :value="null">All Programs</option>
+            <option v-for="program in summaryData?.programs ?? []" :key="program.id" :value="program.id">
+              {{ program.code ?? program.name }}
+            </option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="text-xs font-bold text-slate-600">Academic Year</span>
+          <select
+            v-model="summaryAcademicYear"
+            class="mt-1 block w-full max-w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm sm:w-auto"
+            @change="loadSummary()"
+          >
+            <option v-if="!(summaryData?.academic_years?.length)" value="">No data yet</option>
+            <option v-for="year in summaryData?.academic_years ?? []" :key="year" :value="year">{{ year }}</option>
+          </select>
+        </label>
+
+        <div class="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            @click="expandAllQuestions"
+          >
+            Expand all
+          </button>
+          <button
+            type="button"
+            class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            @click="collapseAllQuestions"
+          >
+            Collapse all
+          </button>
+        </div>
+      </div>
+
+      <p v-if="isSummaryLoading" class="text-sm text-slate-500">Loading...</p>
+
+      <template v-else-if="summaryData">
+        <p class="text-sm text-slate-500">
+          Gathered from <strong>{{ summaryData.total_respondents }}</strong>
+          {{ summaryData.total_respondents === 1 ? 'submitted exit interview' : 'submitted exit interviews' }}
+          <span v-if="summaryAcademicYear">for {{ summaryAcademicYear }}</span>.
+        </p>
+
+        <p v-if="summaryData.total_respondents === 0" class="rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-500">
+          None of your interns has submitted an exit interview for this academic year yet.
+        </p>
+
+        <div v-else class="space-y-3">
+          <div v-for="(question, index) in summaryData.questions" :key="question.key">
+            <h4
+              v-if="isNewSection(index)"
+              class="mb-1 mt-4 text-xs font-medium uppercase tracking-wide text-slate-400"
+            >
+              {{ question.section }}
+            </h4>
+
+            <div class="rounded-lg bg-white shadow-sm ring-1 ring-slate-200/70">
+              <button
+                type="button"
+                class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                @click="toggleQuestion(question.key)"
+              >
+                <span class="text-sm font-semibold text-slate-800">
+                  {{ question.number }}. {{ question.text }}
+                </span>
+                <span class="flex shrink-0 items-center gap-3">
+                  <span v-if="question.tally" class="hidden text-xs text-slate-500 sm:inline">
+                    {{ question.tally.yes }} Yes · {{ question.tally.no }} No
+                    <template v-if="question.tally.unanswered">· {{ question.tally.unanswered }} unanswered</template>
+                  </span>
+                  <span class="text-xs text-slate-400">{{ question.answers.length }} answers</span>
+                  <span class="text-slate-400">{{ openQuestions.has(question.key) ? '−' : '+' }}</span>
+                </span>
+              </button>
+
+              <div v-if="openQuestions.has(question.key)" class="border-t border-slate-100 px-4 py-3">
+                <p v-if="question.tally" class="mb-3 text-xs font-medium text-slate-500 sm:hidden">
+                  {{ question.tally.yes }} Yes · {{ question.tally.no }} No
+                  <template v-if="question.tally.unanswered">· {{ question.tally.unanswered }} unanswered</template>
+                </p>
+
+                <p v-if="question.answers.length === 0" class="text-sm text-slate-500">
+                  No answers to this question yet.
+                </p>
+
+                <ul v-else class="divide-y divide-slate-100">
+                  <li v-for="answer in question.answers" :key="answer.student_id" class="py-3">
+                    <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <p class="text-sm font-semibold text-slate-800">
+                        {{ answer.student_name }}
+                        <span class="font-normal text-slate-400">({{ answer.program || '—' }})</span>
+                      </p>
+                      <span
+                        v-if="answer.choice"
+                        class="rounded-full px-2 py-0.5 text-xs font-semibold"
+                        :class="answer.choice === 'yes' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'"
+                      >
+                        {{ answer.choice === 'yes' ? 'Yes' : 'No' }}
+                      </span>
+                    </div>
+                    <p v-if="answer.text" class="mt-1 whitespace-pre-line text-sm text-slate-600">{{ answer.text }}</p>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </template>
   </section>
 </template>

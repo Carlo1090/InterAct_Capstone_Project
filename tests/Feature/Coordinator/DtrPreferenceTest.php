@@ -81,6 +81,49 @@ class DtrPreferenceTest extends TestCase
         return $student;
     }
 
+    /**
+     * The switch governs SUPERVISOR-SUPPORTED cohorts only, so the count it
+     * reports must too. `DtrService::runsForEnrollment()` needs both this
+     * preference and a supervisor-supported batch, so a coordinator-centered
+     * intern can never clock in whatever the switch says — counting them made
+     * the turn-off confirmation claim that interns would "stop seeing it" when
+     * they never had it. Real, not hypothetical: the seeded mdcbalbero
+     * department reported 16 against 13 who can actually clock in.
+     */
+    public function test_the_affected_count_ignores_coordinator_centered_interns(): void
+    {
+        $this->enrolIntern();
+
+        $centered = Batch::create([
+            'program_id' => $this->program->id,
+            'coordinator_id' => $this->coordinator->id,
+            'name' => 'Field Placement 2026',
+            'start_date' => now()->subMonth(),
+            'end_date' => now()->addMonths(3),
+            'required_hours' => 500,
+            'working_days_per_week' => 5,
+            'daily_reminder_time' => '21:00:00',
+            'academic_year' => '2026-2027',
+            'semester' => 'Internship',
+            'ojt_type' => 'coordinator',
+            'is_active' => true,
+        ]);
+
+        BatchStudent::create([
+            'batch_id' => $centered->id,
+            'student_id' => User::factory()->create(['role' => 'student', 'program_id' => $this->program->id])->id,
+            'company_id' => $this->company->id,
+            'supervisor_id' => null,
+            'status' => 'active',
+        ]);
+
+        Sanctum::actingAs($this->coordinator);
+
+        $this->getJson('/api/coordinator/dtr-preference')
+            ->assertOk()
+            ->assertJsonPath('affected_students', 1);
+    }
+
     public function test_show_returns_the_preference_with_its_reason_vocabulary(): void
     {
         $this->enrolIntern();

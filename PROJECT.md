@@ -99,15 +99,17 @@ Username + password remains the primary, always-available path.
      JSON payload columns, `UNIQUE(student_id, batch_id)`. It is the only
      table outside the v2 schema; the JSON columns exist so adding or
      rewording a question on the paper form never means a migration.
-4. **Out of scope — do not build:** photo capture on clock-in, and the
-   **Summary Report on Student Exit Interview** — the aggregate report, which
-   is a different document from the per-student form.
-   **NARROWED 2026-08-30 (project owner):** this entry used to read "exit
-   interview report generation" and was read as covering the whole subject.
-   The per-student **Internship Program Student Exit Interview Form** is now
-   **IN scope and BUILT** (students fill it in, coordinators read and print
-   it) — see Exit Interview below. Only the aggregate SUMMARY report is still
-   out.
+4. **Out of scope — do not build:** photo capture on clock-in.
+   **NARROWED 2026-08-30 (project owner):** this entry used to also list the
+   **Summary Report on Student Exit Interview** as out of scope; the
+   per-student **Internship Program Student Exit Interview Form** was carved
+   in first — see Exit Interview below.
+   **NARROWED 2026-09-10 (project owner):** the aggregate **Summary Report on
+   Student Exit Interview** is now also **IN scope and BUILT** — every
+   in-scope intern's answer to each question gathered together, reached as a
+   tab on the coordinator's Student Exit Interviews page. See Exit Interview →
+   Summary Report below. Photo capture on clock-in remains the only item left
+   here.
    **RESCINDED 2026-08-20 (project owner):** geofence clock-in, QR clock-in and
    the in-app camera scanner were all previously listed here as out of scope.
    They are now **IN scope and BUILT** — see Daily Time Record below. Do not
@@ -126,7 +128,11 @@ Username + password remains the primary, always-available path.
 ## Domain Facts
 
 - **3 departments, 7 programs:** CAST → BSIT · CABM-B → BSBA-FM, BSBA-MM,
-  BSBA-OM, BSA · CABM-H → BSTM, BSHRM
+  BSBA-OM, BSA · CABM-H → BSTM, BSHRM.
+  **These are the SEEDED STARTING POINT, not a fixed set** (corrected
+  2026-09-08). The admin creates departments, and since 2026-09-08 creates
+  **programs** under them as well — see Admin → Programs below. Treat the seven
+  as what a fresh install ships with; a running install may hold any number.
 - **`departments.code` is the identifier; `departments.name` is display only.**
   Every lookup in the project keys off the code
   (`Department::where('code', 'CABM-B')`), it is what fits a narrow column and
@@ -189,7 +195,8 @@ Username + password remains the primary, always-available path.
   **Internship Program Student Exit Interview Form**, built 2026-08-30
   (reference: `docs/reference/INTERNSHIP PROGRAM STUDENT EXIT INTERVIEW -
   BUSINESS.pdf`). The aggregate **Summary Report on Student Exit Interview**
-  is a separate document and remains out of scope.
+  — every intern's answer to each question gathered together — was added
+  2026-09-10; see Exit Interview → Summary Report below.
 
 ## Core Data Model & Invariants
 
@@ -1557,8 +1564,9 @@ application reports.
 ## Exit Interview
 
 Built 2026-08-30 at the project owner's request. Narrows Hard Rule #4: the
-per-student **form** is in scope and built; the aggregate **Summary Report on
-Student Exit Interview** is a different document and is still out.
+per-student **form** is in scope and built. The aggregate **Summary Report on
+Student Exit Interview** followed on 2026-09-10, narrowing Hard Rule #4 a
+second time — see Summary Report below.
 
 The student fills in the official CABM "Internship Program Student Exit
 Interview Form" at the close of their placement; their coordinator reads every
@@ -1573,9 +1581,11 @@ downloads a measured facsimile to file. Reference:
   after Student Info Sheet, because that is the order a student meets them:
   intake first, exit last.
 - **Coordinator**: `CoordinatorExitInterviewController`
-  (`index`/`show`/`update`/`pdf`, routes `coordinator/exit-interviews*`), page
-  `CoordinatorExitInterviewsPage.vue` at `/coordinator/exit-interviews`, nav
-  label **"Student Exit Interviews"**.
+  (`index`/`show`/`update`/`pdf`/`summary`, routes `coordinator/exit-interviews*`),
+  page `CoordinatorExitInterviewsPage.vue` at `/coordinator/exit-interviews`, nav
+  label **"Student Exit Interviews"**. The page carries two tabs — **By
+  Student** (the queue below) and **Summary Report** (see below) — rather than
+  a second nav item; see Summary Report for why.
 
 ### Schema — one additive table
 
@@ -1790,6 +1800,65 @@ lock, the completed/dropped split, the page size) and
 `tests/Feature/Coordinator/CoordinatorExitInterviewTest.php` (program scoping,
 the 403s, the coordinator block never touching `responses`, and the draft that
 cannot be signed off) cover the endpoints.
+
+### Summary Report — every intern's answer gathered per question
+
+Built 2026-09-10 at the project owner's request, narrowing Hard Rule #4 a
+second time. This is the aggregate **Summary Report on Student Exit
+Interview** that Hard Rule #4 used to keep out of scope: instead of one row
+per student, every in-scope intern's answer to question 1 is gathered
+together, then question 2, and so on — `GET coordinator/exit-interviews/summary`
+via `CoordinatorExitInterviewController::summary()`.
+
+**Reached as a "Summary Report" tab on the same `CoordinatorExitInterviewsPage.vue`,
+not a second nav item or route.** The project owner asked for it inside the
+existing Student Exit Interviews page rather than as its own sidebar entry.
+
+- **Scope is `coordinatorProgramIds()`**, exactly like the by-student queue,
+  with the identical optional `program_id` narrowing (403 out of scope). The
+  view is **combined across every in-scope program by default** — not
+  per-program tabs like the Annual SIPP report editor — since the client's ask
+  was framed as "one page gathering all the answers," with the program filter
+  available to narrow it.
+- **Filtered by `academic_year`** (via `batches.academic_year`, the same
+  column the Annual SIPP/HTE reports key on), defaulting to the most recent
+  year that has any batch in scope.
+- **DRAFTS ARE EXCLUDED — only `submitted` and `reviewed` interviews feed
+  it.** A draft can be blank or half-typed, and only a submitted interview is
+  guaranteed to carry all fourteen answers (`StoreExitInterviewRequest`
+  enforces that on submit); including drafts would let an in-progress form
+  skew a tally into looking like a completed one. This is the opposite of the
+  by-student queue, which deliberately DOES include drafts (see above) — the
+  two answer different questions ("who has started?" vs. "what did people who
+  finished actually say?").
+- **Deliberately NOT curated, unlike the Annual SIPP / HTE / Group Info Sheet
+  report editors.** Those exist so a coordinator can correct messy real-world
+  source data (a mistyped company name, a missing hire date) before filing an
+  official annex. There is nothing to correct here — every answer is text the
+  student already submitted themselves — so this is a **live read, recomputed
+  on every request, with nothing persisted.** No `manual_rows`, no
+  `deleted_ids`, no override JSON column.
+- **No PDF export.** Unlike the per-student form, there is no reference
+  document for this aggregate — `docs/reference/` has no facsimile to measure
+  it against — so a PDF here would be an unmatched, made-up layout rather than
+  a measured one. Easy to add later against the same query if ever needed.
+- The 14-question catalog (number, section heading, text, and which four carry
+  a ☐ Yes ☐ No pair) is read straight off **`ExitInterviewFormLayout::SECTIONS`**
+  rather than re-declared a third time — it already backs the PDF and cannot
+  drift from the actual form wording.
+- **Choice questions (q2/q7/q10/q11) carry a `{yes, no, unanswered}` tally**
+  alongside the same per-student answer list; a student who picked Yes/No but
+  left the explanation blank still appears (with `text: ''`), since the choice
+  itself is an answer.
+- **A blank text answer is skipped from that question's list entirely**,
+  matching the app-wide "skip fields whose value is blank" convention — it is
+  not rendered as an empty row.
+
+Coverage: `tests/Feature/Coordinator/ExitInterviewSummaryTest.php` — gathering
+answers under their own question, draft exclusion (and that a `reviewed`
+interview still counts), blank-answer skipping, choice tallies including
+`unanswered`, program scope (403 + filtering), academic-year default/filter,
+and the empty-but-valid shape when nobody has submitted yet.
 
 ### Demo data
 
@@ -2945,6 +3014,86 @@ events); it does record batch and roster transitions, info-sheet accept/reject,
 enrollment, weekly-journal approve/return, and journal submission via
 `SystemLog::record()`.
 
+#### Programs are admin-managed, not hardcoded (2026-09-08)
+
+`Admin/ProgramController` gained **`store`** and **`update`**
+(`POST admin/programs`, `PUT admin/programs/{program}`) with
+`StoreProgramRequest` / `UpdateProgramRequest`. Until this, the controller was
+read-only and its own docblock said "the 7 programs are fixed at seed time" —
+so a department the admin created had no way to be given a single program, and
+the only route to one was editing `DepartmentProgramSeeder` and re-seeding.
+
+**This RESTORES something that was deliberately removed.** Program CRUD existed
+until commit `23da1f9` (2026-07-12), which stripped it along with the admin's
+batch CRUD. That was a scope decision, not a technical blocker, and it is
+reversed at the project owner's request. `ProgramControllerTest`'s
+`test_store_and_update_routes_no_longer_exist` (which asserted 405 on both) is
+gone with it — it pinned the absence of the feature.
+
+**Two surfaces, and the department one is the primary:**
+
+- **Admin → Departments → View → Programs** carries **"+ Add Program"**. A
+  program is created inside the department it belongs to, so the department is
+  *context* rather than another field to get wrong. Its modal is **`z-60`**, not
+  the app's usual `z-50`, because it opens over the department detail modal.
+  On success it **re-fetches the department detail** rather than pushing the row
+  in by hand — that table carries per-program intern tallies the create response
+  cannot know — and reloads the list behind it, whose rows carry `programs_count`.
+- **Admin → Programs** carries the same action with a department picker, plus a
+  per-row **Edit**. Creating while a department filter is applied seeds the
+  picker with it (a default, not a lock). The Actions column is pinned at
+  **165px**, measured against the two real buttons (View ~59px + 8px gap + Edit
+  ~54px + the cell's own 32px of `px-4`), not against its heading.
+
+**The rules, each deliberate:**
+
+- **`code` is unique WITHIN a department, never globally** — mirroring the
+  table's own `UNIQUE(department_id, code)`. Departments are independent
+  top-level units, so two of them may legitimately run the same code; validating
+  globally would refuse a legal program, and not validating at all would surface
+  the index violation as a 500 instead of a 422.
+- **`code` IS editable, unlike a department's** — a deliberate difference.
+  Nothing in `app/` resolves a program by code (batches, users and templates all
+  key off `program_id`); only the demo seeders do, and they run against a fresh
+  database. A mistyped code must stay fixable, because the alternative is
+  deactivate-and-recreate, which strands every batch pointing at the original row.
+- **`department_id` is NOT accepted by `update`** and is disabled in the form.
+  Re-parenting a program would hand every batch and intern under it to another
+  department's coordinators in one silent write — a migration of live records,
+  not an edit to a reference row.
+- **There is no delete, matching the app's soft-deactivation posture.**
+  `batches.program_id` and `journal_templates.program_id` are `cascadeOnDelete`
+  and `batch_students` cascades from `batches`, so deleting a used program would
+  take its batches, enrollments and journals with it. `is_active` is the control
+  — though note it is **display-only today**: nothing in the app filters on it.
+
+**CACHE INVALIDATION IS THE LOAD-BEARING PART, and the pre-2026-07-12 version
+did not have it** (the caching layer landed after that code was removed).
+`ProgramController::forgetCachesFor()` drops three things on every write:
+`reference:programs`, `reference:departments` (its rows carry `programs_count`),
+and — the one that matters — **`coordinator-program-ids:{id}` for every
+coordinator of that department**. `User::coordinatorProgramIds()` resolves to
+every program in the coordinator's department and caches it for a **DAY**, so
+without this a newly-added program is invisible to the very coordinator who has
+to build a batch for it, with the database perfectly correct the whole time.
+Verified both ways: with the clause removed
+`test_a_new_program_is_immediately_in_its_coordinators_scope` fails reporting
+**0 programs in scope**, and in a browser `mdccore`'s Create Batch picker showed
+a program added seconds earlier.
+
+**`DepartmentProgramSeeder` IS NOW ADDITIVE, and that had to change first.** It
+pruned — deleting every department outside its hardcoded list and, inside each,
+every program outside its list. That was safe only while nothing could create an
+eighth program. With admin-created programs it is unrecoverable data loss on a
+live install, via the cascade above, and the trigger is the *documented* way to
+correct reference data: `db:seed --class=DepartmentProgramSeeder`, exactly what
+was run on 2026-09-08 to fix the department names. Both prunes are gone.
+**`migrate:fresh --seed` was never affected** — it starts from an empty database,
+so the prunes were always no-ops there, which is precisely why the hazard was
+invisible. Pinned by
+`test_an_admin_created_program_survives_a_reference_re_seed`, verified to fail
+against the old seeder.
+
 ### Coordinator
 
 All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scope
@@ -2972,7 +3121,10 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
   in-scope intern's exit interview, filterable by program / status / name,
   with a per-row and in-modal **Download PDF**. Read the fourteen answers and
   fill the coordinator's own compliance block; there is **no accept/reject**,
-  because an exit interview gates nothing. See Exit Interview above.
+  because an exit interview gates nothing. A second tab, **Summary Report**,
+  gathers every intern's answer to each question together instead of one row
+  per student — no PDF, no curation, drafts excluded. See Exit Interview
+  above.
 - **Weekly and Time Log Summary** (`/coordinator/weekly-time-logs`) — read-only
   list of every in-scope intern's MDC Weekly Activity Log sheet, with a per-row
   and in-modal **Download PDF**. See Weekly Activity Log above; there is no
@@ -3276,6 +3428,12 @@ zero-cost deploy stack. Cached with explicit invalidation at the known write
 points (the TTL is a backstop, not the mechanism):
 `User::coordinatorProgramIds()`, `Admin/ProgramController::index()`,
 `Admin/DepartmentController::index()`, and `SystemSetting::cached()`.
+
+`reference:programs` genuinely had **no** write point to invalidate at until
+2026-09-08 — programs were uncreatable, so the day-long TTL *was* the mechanism.
+Now that the admin creates them, `ProgramController::forgetCachesFor()` is that
+hook, and it drops the per-coordinator scope cache as well as the two reference
+lists. See Admin → Programs above for why that third one is the one that bites.
 
 Dashboard aggregates are deliberately **not** cached — they are per-user, change
 frequently, and were not found to be expensive.

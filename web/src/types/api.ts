@@ -1123,3 +1123,33 @@ export type CoordinatorExitInterviewDetail = {
     remarks?: string | null
   }
 }
+
+/** One in-scope intern's answer to a single question, in the Summary Report. */
+export type ExitInterviewSummaryAnswer = {
+  student_id: number
+  student_name: string
+  student_id_number: string | null
+  program: string
+  choice: 'yes' | 'no' | null
+  text: string
+}
+
+/** One question's worth of gathered answers — the whole point of the report is
+ *  reading this list per question rather than per student. */
+export type ExitInterviewSummaryQuestion = {
+  key: string
+  number: number
+  section: string
+  text: string
+  choice_key: string | null
+  tally: { yes: number; no: number; unanswered: number } | null
+  answers: ExitInterviewSummaryAnswer[]
+}
+
+export type CoordinatorExitInterviewSummaryResponse = {
+  programs: { id: number; name: string; code?: string }[]
+  academic_years: string[]
+  academic_year: string | null
+  total_respondents: number
+  questions: ExitInterviewSummaryQuestion[]
+}

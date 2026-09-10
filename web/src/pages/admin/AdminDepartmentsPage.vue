@@ -14,6 +14,12 @@ type DepartmentForm = {
   is_active: boolean
 }
 
+type ProgramForm = {
+  code: string
+  name: string
+  is_active: boolean
+}
+
 const departments = ref<Department[]>([])
 const isLoading = ref(true)
 const errorMessage = ref('')
@@ -34,6 +40,15 @@ const editingDepartmentId = ref<number | null>(null)
 const isSaving = ref(false)
 const modalError = ref('')
 const departmentForm = ref<DepartmentForm>({ code: '', name: '', dean_name: '', is_active: true })
+
+// Adding a program is done from inside the department it belongs to, so the
+// department is context rather than another field to pick. The Programs page
+// carries the same action with a department picker, for the times an admin is
+// already there.
+const isProgramModalOpen = ref(false)
+const isSavingProgram = ref(false)
+const programModalError = ref('')
+const programForm = ref<ProgramForm>({ code: '', name: '', is_active: true })
 
 const loadDepartments = async () => {
   isLoading.value = true
@@ -128,6 +143,67 @@ const removeCoordinator = async (coordinatorId: number, coordinatorName: string)
     coordinatorError.value = data?.message ?? 'Unable to remove coordinator.'
   } finally {
     removingCoordinatorId.value = null
+  }
+}
+
+const openProgramModal = () => {
+  programForm.value = { code: '', name: '', is_active: true }
+  programModalError.value = ''
+  isProgramModalOpen.value = true
+}
+
+const closeProgramModal = () => {
+  isProgramModalOpen.value = false
+}
+
+const saveProgram = async () => {
+  if (!viewedDepartment.value) return
+
+  isSavingProgram.value = true
+  programModalError.value = ''
+
+  const departmentId = viewedDepartment.value.id
+  const code = programForm.value.code
+
+  try {
+    await api.post('/api/admin/programs', {
+      department_id: departmentId,
+      code,
+      name: programForm.value.name,
+      is_active: programForm.value.is_active,
+    })
+  } catch (error) {
+    const data = axios.isAxiosError(error) ? error.response?.data : null
+    const firstFieldError = data?.errors ? Object.values(data.errors as Record<string, string[]>)[0]?.[0] : null
+    programModalError.value = firstFieldError ?? data?.message ?? 'Unable to add program. Please check the fields and try again.'
+    isSavingProgram.value = false
+
+    return
+  }
+
+  // THE CREATE IS COMMITTED FROM HERE ON, so nothing below may report a failure
+  // to create. Refreshing used to sit in the same `try` as the POST, and a blip
+  // on the re-fetch then told the admin "Unable to add program — check the
+  // fields and try again" for a program that HAD been created; the retry answered
+  // "this department already has a program with that code", which is advice that
+  // cannot be followed. Same shape as the bulk import's stranded-row bug.
+  isProgramModalOpen.value = false
+  showToast(`Program ${code} added.`)
+  isSavingProgram.value = false
+
+  try {
+    // Re-fetch the detail rather than pushing the new row in by hand: the
+    // Programs table here carries per-program intern tallies the create response
+    // has no way to know, and the header's Programs count moves with it.
+    const response = await api.get<DepartmentDetail>(`/api/admin/departments/${departmentId}`)
+    viewedDepartment.value = response.data
+
+    // The list behind the modal shows `programs_count`, which just changed.
+    await loadDepartments()
+  } catch {
+    // The program exists; only this view is stale. Say so plainly rather than
+    // implying the save failed.
+    showToast('Program added, but the list could not be refreshed. Reopen the department to see it.', 'error')
   }
 }
 
@@ -412,7 +488,16 @@ onMounted(() => {
             </div>
 
             <div>
-              <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Programs</h5>
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Programs</h5>
+                <button
+                  type="button"
+                  class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  @click="openProgramModal"
+                >
+                  + Add Program
+                </button>
+              </div>
               <template v-if="viewedDepartment.programs.length > 0">
                 <!-- md and up: aligned table. -->
                 <div class="mt-2 hidden overflow-x-auto rounded-lg ring-1 ring-slate-200 md:block">
@@ -562,6 +647,79 @@ onMounted(() => {
             </div>
           </div>
         </div>
+      </section>
+    </div>
+
+    <!--
+      Add Program, opened from inside the department detail above — hence `z-60`
+      rather than the app's usual `z-50`, so it layers over the modal that opened
+      it instead of rendering behind it.
+    -->
+    <div v-if="isProgramModalOpen" class="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/50 p-4">
+      <!-- Three-part flex shell: the body is the only scrolling element. -->
+      <section class="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+        <div class="flex shrink-0 items-center justify-between border-b border-slate-200 px-6 py-4">
+          <div class="min-w-0">
+            <h3 class="text-lg font-semibold text-slate-950">Add Program</h3>
+            <p class="truncate text-xs text-slate-500">{{ viewedDepartment?.name }}</p>
+          </div>
+          <button type="button" class="shrink-0 text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeProgramModal">Close</button>
+        </div>
+
+        <form class="flex min-h-0 flex-1 flex-col" @submit.prevent="saveProgram">
+          <div class="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+            <p v-if="programModalError" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ programModalError }}</p>
+
+            <div>
+              <label for="dept-program-code" class="mb-1 block text-xs font-bold text-slate-600">Code</label>
+              <input
+                id="dept-program-code"
+                v-model="programForm.code"
+                type="text"
+                required
+                maxlength="20"
+                placeholder="BSIT"
+                class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              />
+              <p class="mt-1 text-xs text-slate-500">Short identifier printed on the SIPP forms. Unique within this department.</p>
+            </div>
+
+            <div>
+              <label for="dept-program-name" class="mb-1 block text-xs font-bold text-slate-600">Name</label>
+              <input
+                id="dept-program-name"
+                v-model="programForm.name"
+                type="text"
+                required
+                maxlength="200"
+                placeholder="BS Information Technology"
+                class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
+
+            <label class="flex items-center gap-2 text-sm text-slate-700">
+              <input v-model="programForm.is_active" type="checkbox" class="h-4 w-4 rounded border-slate-300" />
+              Active
+            </label>
+          </div>
+
+          <div class="flex shrink-0 items-center justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
+            <button
+              type="button"
+              class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              @click="closeProgramModal"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              :disabled="isSavingProgram"
+              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {{ isSavingProgram ? 'Saving...' : 'Add Program' }}
+            </button>
+          </div>
+        </form>
       </section>
     </div>
   </section>

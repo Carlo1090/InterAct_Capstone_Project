@@ -60,7 +60,25 @@ class DepartmentProgramSeeder extends Seeder
             ],
         ];
 
-        Department::whereNotIn('code', array_keys($departments))->delete();
+        // THIS SEEDER IS ADDITIVE. It seeds the reference data MDC starts with;
+        // it does not own the set. It used to prune — deleting every department
+        // outside this list, and inside each one every program outside its list —
+        // which was safe only while the seven programs were hardcoded and nothing
+        // in the app could create an eighth.
+        //
+        // Both prunes were removed when the admin gained Program create/edit
+        // (2026-09-08). On a live install they are unrecoverable data loss:
+        // `batches.program_id` and `journal_templates.program_id` are
+        // cascadeOnDelete, and `batch_students` cascades from `batches` in turn,
+        // so pruning one admin-created program silently takes its batches, its
+        // enrollments and every journal hanging off them. Re-running this seeder
+        // to correct reference data — the documented way to do it, and exactly
+        // what was done on 2026-09-08 to fix the department names — would have
+        // been enough to trigger it.
+        //
+        // `migrate:fresh --seed` is unaffected either way: it starts from an
+        // empty database, so the prunes were always no-ops there. That is
+        // precisely why the hazard was invisible.
 
         foreach ($departments as $code => $departmentData) {
             $department = Department::firstOrCreate(
@@ -69,12 +87,6 @@ class DepartmentProgramSeeder extends Seeder
             );
 
             $department->update(['name' => $departmentData['name']]);
-
-            $programCodes = array_column($departmentData['programs'], 'code');
-
-            Program::where('department_id', $department->id)
-                ->whereNotIn('code', $programCodes)
-                ->delete();
 
             foreach ($departmentData['programs'] as $programData) {
                 $program = Program::firstOrCreate(
