@@ -9,19 +9,37 @@ import { RouterLink } from 'vue-router'
  */
 import campus from '@/assets/images/mdc-campus.jpg'
 
+/*
+ * The college seal. It is referenced by its PUBLIC path rather than imported as
+ * a module because that is where the file actually lives — `public/images/` —
+ * and it is already read from there by `LoginPage.vue` AND by the PDF blades,
+ * which load it off disk as a base64 data URI. Copying it into `src/assets/`
+ * to gain a fingerprinted import would put a second copy of the same mark in
+ * the repo for the two to drift apart, which costs more than the cache-busting
+ * is worth for a file that changes roughly never.
+ */
+const LOGO_SRC = '/images/mdc-logo.png'
+
 const menuOpen = ref(false)
 
 /*
- * The header has NO background band. It floats on the page, which means its own
- * colours have to answer to whatever is currently underneath it — white type
- * over the hero photograph and the dark bands, ink over the light ones.
+ * The header floats with no band OVER THE HERO — that is the design intent and
+ * it stays. Everywhere else it now takes a translucent surface, because past the
+ * hero it scrolls over real headings ("Four people look at the same OJT",
+ * "Annual SIPP report") and unsurfaced type-on-type is simply unreadable.
  *
- * `navOnLight` is that switch. There is no scroll listener any more: the old one
- * existed solely to drive the removed `is-solid` band, and this is a question
- * about which BAND is under the header, not about how far the page has moved.
+ * Two switches, both answered by the SAME observer, because both are the same
+ * question — which band is under the header right now:
+ *   `navOnLight`  → invert the header's colours for a light band.
+ *   `navOverHero` → suppress the surface, since only the hero earns no band.
+ *
+ * Still no scroll listener: this is about which band is up there, not about how
+ * far the page has travelled, so a per-frame handler would be the wrong tool
+ * as well as a more expensive one.
  */
 const HEADER_ZONE = 90
 const navOnLight = ref(false)
+const navOverHero = ref(true)
 let bandObserver: IntersectionObserver | null = null
 
 const navLinks = [
@@ -66,8 +84,39 @@ const scrollToAnchor = (event: MouseEvent, href: string): void => {
 }
 
 onMounted(() => {
-  handleScroll()
-  window.addEventListener('scroll', handleScroll, { passive: true })
+  /*
+   * Which band is under the floating header. Every top-level band carries a
+   * `data-tone`, and the observer crops the root's TOP by the header's own
+   * height — so a band stops intersecting exactly when it passes up behind the
+   * header. The callback then takes the LAST band in document order whose top
+   * has already crossed that line, which is by definition the one occupying the
+   * strip.
+   *
+   * Chosen over a `rootMargin` computed from `innerHeight`: this offset is an
+   * absolute distance from the top of the viewport, so it needs no
+   * recomputation on resize and there is no window in which a stale margin is
+   * live. Chosen over `elementFromPoint` on scroll because the fixed header is
+   * itself the topmost element at that coordinate.
+   */
+  const bands = Array.from(document.querySelectorAll<HTMLElement>('[data-tone]'))
+
+  const syncNavTone = (): void => {
+    let current: HTMLElement | null = null
+    for (const band of bands) {
+      if (band.getBoundingClientRect().top <= HEADER_ZONE) current = band
+    }
+    navOnLight.value = current?.dataset.tone === 'light'
+    /* Defaults to true with no band resolved, so the very first paint — before
+     * the observer has said anything — is the transparent hero state rather
+     * than a surface flashing in over the photograph. */
+    navOverHero.value = current === null || current.classList.contains('hero')
+  }
+
+  bandObserver = new IntersectionObserver(syncNavTone, {
+    rootMargin: `-${HEADER_ZONE}px 0px 0px 0px`,
+  })
+  for (const band of bands) bandObserver.observe(band)
+  syncNavTone()
 
   /*
    * A Set plus a document-order lookup rather than "last entry wins": the
@@ -94,9 +143,10 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  window.removeEventListener('scroll', handleScroll)
   sectionObserver?.disconnect()
   sectionObserver = null
+  bandObserver?.disconnect()
+  bandObserver = null
 })
 
 const facts = [
@@ -177,8 +227,12 @@ const toggleDay = (index: number): void => {
   weekDays.value[index] = !weekDays.value[index]
 }
 
-/* ---------- C. Roles, one at a time ---------- */
-
+/*
+ * All four roles, side by side. They were a tablist until it became clear that
+ * a horizontal row of four labels directly under a fixed header simply reads as
+ * a SECOND navigation bar — the reader treats it as site chrome and never
+ * discovers it is content. Four cards say the same thing without a control.
+ */
 const roles = [
   {
     id: 'students',
@@ -221,35 +275,6 @@ const roles = [
     points: ['User and program setup', 'Audit logs', 'System settings'],
   },
 ]
-
-const activeRole = ref(0)
-
-/*
- * Plain array, not a `ref` — these hold DOM nodes only so a keyboard move can
- * put focus on the tab it just activated, and nothing renders from them.
- */
-const tabRefs: HTMLButtonElement[] = []
-
-const setTabRef = (el: unknown, index: number): void => {
-  if (el instanceof HTMLButtonElement) tabRefs[index] = el
-}
-
-/* Roving tabindex: arrows move AND activate, Home/End jump to the ends. */
-const onTabKeydown = (event: KeyboardEvent, index: number): void => {
-  const last = roles.length - 1
-  let next: number | null = null
-
-  if (event.key === 'ArrowRight') next = index === last ? 0 : index + 1
-  else if (event.key === 'ArrowLeft') next = index === 0 ? last : index - 1
-  else if (event.key === 'Home') next = 0
-  else if (event.key === 'End') next = last
-
-  if (next === null) return
-
-  event.preventDefault()
-  activeRole.value = next
-  tabRefs[next]?.focus()
-}
 
 const steps = [
   {
@@ -295,30 +320,21 @@ const extras = [
   <div class="page">
     <a class="skip" href="#main">Skip to content</a>
 
-    <header class="nav" :class="{ 'is-solid': scrolled || menuOpen }">
+    <header
+      class="nav"
+      :class="{
+        'nav--on-light': navOnLight,
+        'nav--surfaced': !navOverHero || menuOpen,
+        'is-open': menuOpen,
+      }"
+    >
       <div class="nav-inner">
         <RouterLink to="/" class="brand">
           <!--
-            The campus chapel's twin-pitch roofline: a peaked centre flanked by
-            two lower wings, traced from the building in the hero photograph.
-            Deliberately NOT the college seal — that is a formal mark with three
-            concentric text rings and is illegible below about 80px.
+            `alt=""` on purpose: the wordmark beside it already names the
+            institution, so announcing the seal as well would say it twice.
           -->
-          <svg
-            class="mark"
-            width="30"
-            height="30"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.6"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M1.5 14 7 9l5-5.5L17 9l5.5 5" />
-            <path d="M5 18.5 9.2 14.6 12 11.7l2.8 2.9 4.2 3.9" />
-          </svg>
+          <img :src="LOGO_SRC" alt="" class="mark" width="34" height="34" />
           <span class="brand-text">
             <span class="brand-name">InternTrack</span>
             <span class="brand-sub">Mater Dei College</span>
@@ -357,25 +373,11 @@ const extras = [
         >{{ link.label }}</a>
         <RouterLink to="/login" class="btn btn-gold" @click="menuOpen = false">Sign in</RouterLink>
       </div>
-
-      <!--
-        Decoration, so `aria-hidden` — the nav's own active-link state already
-        carries "where am I in this page" accessibly, and a screen reader has no
-        use for a second, wordless copy of it.
-      -->
-      <div class="rail" aria-hidden="true">
-        <span
-          v-for="segment in RAIL_SEGMENTS"
-          :key="segment"
-          class="rail-seg"
-          :class="{ 'is-filled': segment <= filledSegments }"
-        />
-      </div>
     </header>
 
     <main id="main">
       <!-- 2 — Hero -->
-      <section class="hero">
+      <section class="hero" data-tone="dark">
         <div
           class="hero-photo"
           role="img"
@@ -423,7 +425,7 @@ const extras = [
       </section>
 
       <!-- 3 — The argument -->
-      <section class="band band-paper">
+      <section class="band band-paper" data-tone="light">
         <div class="shell">
           <div class="split">
             <h2 class="display h2">
@@ -589,49 +591,26 @@ const extras = [
       </section>
 
       <!-- 4 — Roles -->
-      <section id="roles" class="band band-ink">
+      <section id="roles" class="band band-ink" data-tone="dark">
         <div class="shell">
           <h2 class="display h2 h2-wide">
             Four people look at the same OJT. They should not need four systems.
           </h2>
 
-          <div class="tablist" role="tablist" aria-label="Choose a role">
-            <button
-              v-for="(role, index) in roles"
-              :key="role.id"
-              :ref="(el) => setTabRef(el, index)"
-              type="button"
-              class="tab"
-              role="tab"
-              :id="`role-tab-${role.id}`"
-              :aria-controls="`role-panel-${role.id}`"
-              :aria-selected="activeRole === index"
-              :tabindex="activeRole === index ? 0 : -1"
-              @click="activeRole = index"
-              @keydown="onTabKeydown($event, index)"
-            >
-              {{ role.name }}
-            </button>
-          </div>
-
-          <div
-            v-for="(role, index) in roles"
-            v-show="activeRole === index"
-            :key="role.id"
-            class="role-panel"
-            role="tabpanel"
-            :id="`role-panel-${role.id}`"
-            :aria-labelledby="`role-tab-${role.id}`"
-            :tabindex="0"
-          >
-            <div>
+          <!--
+            Four cards, no selection state and no controls — every role is
+            readable at once, so nobody has to operate anything to find the one
+            sentence that describes them.
+          -->
+          <div class="role-cards">
+            <article v-for="role in roles" :key="role.id" class="role-card">
               <h3 class="display role-name">{{ role.name }}</h3>
               <p class="role-lead">{{ role.lead }}</p>
               <p class="role-body">{{ role.body }}</p>
-            </div>
-            <ul class="ticks">
-              <li v-for="point in role.points" :key="point">{{ point }}</li>
-            </ul>
+              <ul class="ticks">
+                <li v-for="point in role.points" :key="point">{{ point }}</li>
+              </ul>
+            </article>
           </div>
         </div>
       </section>
@@ -642,7 +621,7 @@ const extras = [
         break in it. No heading, no button, no card: anything else added here
         would take the rest away.
       -->
-      <section class="statement">
+      <section class="statement" data-tone="dark">
         <div class="shell">
           <p class="display statement-line">
             One day, one entry, one <span class="statement-accent">signature</span>.
@@ -654,7 +633,7 @@ const extras = [
       </section>
 
       <!-- 5 — How it works -->
-      <section id="how" class="band band-paper">
+      <section id="how" class="band band-paper" data-tone="light">
         <div class="shell">
           <h2 class="display h2">From information sheet to signed week</h2>
           <ol class="steps">
@@ -670,7 +649,7 @@ const extras = [
       </section>
 
       <!-- 6 — The record -->
-      <section id="record" class="band band-navy">
+      <section id="record" class="band band-navy" data-tone="dark">
         <div class="shell">
           <div class="split split-record">
             <div>
@@ -692,7 +671,7 @@ const extras = [
       </section>
 
       <!-- 7 — Everything else -->
-      <section id="more" class="band band-paper">
+      <section id="more" class="band band-paper" data-tone="light">
         <div class="shell">
           <h2 class="display h2">And the rest of the paperwork</h2>
           <dl class="extras">
@@ -705,7 +684,7 @@ const extras = [
       </section>
 
       <!-- 8 — Closing -->
-      <section class="closing">
+      <section class="closing" data-tone="dark">
         <div
           class="closing-photo"
           role="img"
@@ -726,24 +705,68 @@ const extras = [
     </main>
 
     <!-- 9 — Footer -->
-    <footer class="footer">
-      <div class="shell footer-grid">
-        <div class="footer-brand">
-          <span class="display footer-name">InternTrack</span>
-          <p>Internship journal and progress monitoring for Mater Dei College.</p>
+    <footer class="footer" data-tone="dark">
+      <!--
+        There is deliberately NO site-nav column here any more. It repeated the
+        header's four links verbatim, and the header is fixed — those links are
+        already on screen at every scroll position, so a second copy was purely
+        a duplicate.
+      -->
+      <div class="shell">
+        <div class="footer-top">
+          <div class="footer-brand">
+            <span class="footer-lockup">
+              <img :src="LOGO_SRC" alt="" class="footer-mark" width="28" height="28" />
+              <span class="display footer-name">InternTrack</span>
+            </span>
+            <p>Internship journal and progress monitoring for Mater Dei College.</p>
+
+            <div class="footer-contact">
+              <!-- TODO: real mailto: address for the OJT coordinator's office. -->
+              <a href="#" class="footer-contact-link">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="2.5" y="4.5" width="19" height="15" rx="2" />
+                  <path d="m3 6 9 6.5L21 6" />
+                </svg>
+                Email the OJT coordinator
+              </a>
+              <!-- TODO: the college's public website URL. -->
+              <a href="#" class="footer-contact-link">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18" />
+                </svg>
+                College website
+              </a>
+            </div>
+          </div>
+
+          <div class="footer-access">
+            <h2 class="footer-heading">Getting in</h2>
+            <ul class="footer-access-list">
+              <li>
+                <RouterLink to="/login" class="footer-signin">Sign in</RouterLink>
+              </li>
+              <li>
+                Accounts are issued by your OJT coordinator — there is no public
+                sign-up.
+              </li>
+              <li>
+                Cannot get in? Contact the coordinator for your program.
+              </li>
+            </ul>
+          </div>
         </div>
-        <nav class="footer-links" aria-label="Footer">
-          <a
-            v-for="link in navLinks"
-            :key="link.href"
-            :href="link.href"
-            @click="scrollToAnchor($event, link.href)"
-          >{{ link.label }}</a>
-        </nav>
-        <p class="footer-note">
-          Accounts are issued by your OJT coordinator. Trouble signing in? Contact the
-          coordinator for your program.
-        </p>
+
+        <div class="footer-base">
+          <p class="footer-copy">&copy; 2026 InternTrack &middot; Mater Dei College</p>
+          <!-- TODO: all three point at `#` until the pages themselves exist. -->
+          <nav class="footer-legal" aria-label="Legal">
+            <a href="#">Privacy Notice</a>
+            <a href="#">Terms of Use</a>
+            <a href="#">Accessibility</a>
+          </nav>
+        </div>
       </div>
     </footer>
   </div>
@@ -863,6 +886,19 @@ const extras = [
  * could become a scroll container (see `.page`), and fixed is what "always
  * reachable, including from the footer" actually asks for.
  */
+/*
+ * NO band over the hero — the logo, wordmark, links and gold pill float
+ * directly on the photograph, which is the whole reason the header stopped
+ * looking bolted on. That much is unchanged and stays.
+ *
+ * REVISED: it is no longer bandless EVERYWHERE. Past the hero the header
+ * scrolls over real body headings, and a transparent bar there put the seal and
+ * wordmark straight on top of type like "Four people look at the same OJT".
+ * Colour inversion alone cannot fix that — inverted or not, two sets of glyphs
+ * were occupying the same pixels. So `.nav--surfaced` adds a translucent,
+ * blurred band tinted to match the band beneath it, and it is applied to every
+ * band EXCEPT the hero.
+ */
 .nav {
   position: fixed;
   top: 0;
@@ -870,35 +906,92 @@ const extras = [
   right: 0;
   z-index: 50;
   background: transparent;
-  transition: background-color 0.25s ease, backdrop-filter 0.25s ease,
-    border-color 0.25s ease;
   border-bottom: 1px solid transparent;
+  transition: background-color 0.25s ease, border-color 0.25s ease,
+    backdrop-filter 0.25s ease;
 }
 
-/* .96, not .92 — the links must never sit on a legible piece of photograph. */
-.nav.is-solid {
-  background: rgba(6, 23, 46, 0.96);
-  backdrop-filter: blur(10px);
+/*
+ * Tinted from `--ink`'s own channels, so this introduces no new colour — it is
+ * the same navy the dark bands are painted in, at alpha. The blur is what keeps
+ * a heading legible as it passes underneath rather than merely dimmed.
+ */
+.nav--surfaced {
+  background: rgba(6, 23, 46, 0.82);
+  backdrop-filter: blur(12px);
   border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 
-/* ---------- The week rail ---------- */
-
-.rail {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  width: 100%;
-  height: 3px;
+/* …and from `--paper`'s channels over the light bands, for the same reason. */
+.nav--surfaced.nav--on-light {
+  background: rgba(243, 245, 249, 0.86);
+  border-bottom-color: rgba(6, 23, 46, 0.1);
 }
 
-.rail-seg {
-  background: rgba(255, 255, 255, 0.12);
-  transition: background-color 0.25s ease;
+.nav .brand,
+.nav .brand-sub,
+.nav-links a,
+.nav-toggle {
+  transition: color 0.2s ease, border-color 0.2s ease;
 }
 
-.rail-seg.is-filled {
-  background: var(--gold);
+.nav .brand-text,
+.nav-links a,
+.nav-toggle {
+  text-shadow: 0 1px 12px rgba(6, 23, 46, 0.45);
 }
+
+.nav--on-light .brand {
+  color: var(--ink);
+}
+
+.nav--on-light .brand-sub {
+  color: var(--muted);
+}
+
+/*
+ * `--muted` for inactive, `--ink` for active: the same deliberate two-step the
+ * dark ground gets, so "which section am I in" reads identically on both.
+ * Inactive was `--text` before, which is near enough to ink that the active
+ * link had nothing to stand out from.
+ */
+.nav--on-light .nav-links a {
+  color: var(--muted);
+}
+
+.nav--on-light .nav-links a:hover {
+  color: var(--ink);
+}
+
+/*
+ * THE FIX THIS SELECTOR EXISTS FOR: `.nav-links a.is-active` and
+ * `.nav--on-light .nav-links a` have IDENTICAL specificity (0-2-1), so the
+ * later of the two won — and that was the `#fff` active rule, which rendered
+ * the current section's link white on a near-white band. This selector is
+ * 0-3-1 and settles it. The gold underline is inherited from the base active
+ * rule and deliberately kept: it is the one part of the indicator that needs no
+ * inversion.
+ */
+.nav--on-light .nav-links a.is-active {
+  color: var(--ink);
+}
+
+.nav--on-light .nav-toggle {
+  color: var(--ink);
+  border-color: rgba(6, 23, 46, 0.3);
+}
+
+/* The shadow is a light-on-dark device; over paper it would read as a smudge. */
+.nav--on-light .brand-text,
+.nav--on-light .nav-links a,
+.nav--on-light .nav-toggle {
+  text-shadow: none;
+}
+
+/*
+ * The gold pill is deliberately NOT inverted — gold on `--ink` text clears
+ * contrast on both grounds, so it is the one element that never has to change.
+ */
 
 .nav-inner {
   width: 100%;
@@ -919,9 +1012,23 @@ const extras = [
   color: #fff;
 }
 
+/*
+ * 34px is the FLOOR, not a preference. The seal carries three concentric rings
+ * of type; below this it stops being a mark and becomes a smudge. It is never
+ * recoloured, cropped or filtered — it is the institution's own artwork.
+ */
 .mark {
-  color: var(--gold);
   flex: none;
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.footer-mark {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
 }
 
 .brand-text {
@@ -946,11 +1053,17 @@ const extras = [
   gap: 1.75rem;
 }
 
+/*
+ * Inactive links sit at 0.68 rather than 0.86 so the jump to a full-white
+ * active link is a real step rather than a shade. The gold rule alone was
+ * carrying the whole indication before.
+ */
 .nav-links a {
-  color: rgba(255, 255, 255, 0.86);
+  color: rgba(255, 255, 255, 0.68);
   text-decoration: none;
   font-size: 0.9rem;
   border-bottom: 2px solid transparent;
+  padding-bottom: 3px;
   transition: color 0.18s ease, border-color 0.18s ease;
 }
 
@@ -958,12 +1071,19 @@ const extras = [
   color: #fff;
 }
 
-/* D. Where the reader currently is. A state change, not motion — so it is
- * deliberately left working under `prefers-reduced-motion`. */
+/*
+ * Where the reader currently is. A state change, not motion — so it is
+ * deliberately left working under `prefers-reduced-motion`.
+ *
+ * `padding-bottom` is on the BASE rule, not here: adding it only to the active
+ * link moved every link 3px as the indicator travelled between sections while
+ * scrolling. For the same reason the state is carried by colour and the rule
+ * rather than by `font-weight` — bolding one item in a flex row re-measures it
+ * and nudges its neighbours each time the active section changes.
+ */
 .nav-links a.is-active {
   color: #fff;
   border-bottom-color: var(--gold);
-  padding-bottom: 3px;
 }
 
 .nav-links .btn:hover {
@@ -997,12 +1117,17 @@ const extras = [
  * itself clear of it. 84svh/720px rather than 92svh/820px — the taller box is
  * what forced the photograph to crop the building top and bottom.
  */
+/*
+ * Exactly ONE screen: `height` as well as `min-height`, so it neither falls
+ * short — which let the next band peek in and made the opening look truncated —
+ * nor grows past a screen at a tall viewport.
+ */
 .hero {
   position: relative;
-  min-height: min(84svh, 720px);
+  min-height: 100svh;
+  height: 100svh;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
   padding: 8rem 0 0;
   overflow: hidden;
 }
@@ -1016,13 +1141,20 @@ const extras = [
 }
 
 /*
- * 72% / 46% is measured, not guessed: it is the pair that keeps the chapel peak
- * AND both wings inside the frame from 1280px through 1920px. Lower the second
- * number and the wings clip at the bottom; raise the first and the left wing
- * slides under the copy panel.
+ * 62% horizontally. Tuned on screen at 1440x900 and 1280x800: it lifts the
+ * chapel's peak and cross clear ABOVE the headline while keeping the entrance
+ * and the long right wing in the open half. At 50% the peak lands behind the
+ * type; at 70% the chapel disappears under the copy panel and only a wing is
+ * left.
+ *
+ * THE SECOND VALUE IS INERT AT EVERY REALISTIC VIEWPORT, and that is measured,
+ * not assumed: the photo is 2.99:1 against a viewport nearer 1.6:1, so `cover`
+ * scales to fill the HEIGHT and the rendered height equals the frame exactly —
+ * `excessY: 0` at both sizes. Changing `50%` to any other number moves nothing.
+ * It is kept only so the declaration stays readable as a pair.
  */
 .hero-photo {
-  background-position: 72% 46%;
+  background-position: 62% 50%;
 }
 
 /*
@@ -1037,8 +1169,8 @@ const extras = [
   background:
     linear-gradient(
       to bottom,
-      rgba(6, 23, 46, 0) 78%,
-      rgba(6, 23, 46, 0.55) 100%
+      rgba(6, 23, 46, 0) 62%,
+      rgba(6, 23, 46, 0.78) 100%
     ),
     linear-gradient(
       105deg,
@@ -1049,8 +1181,16 @@ const extras = [
     );
 }
 
+/*
+ * `flex: 1` is what centres the copy in the space BETWEEN the header and the
+ * stat strip, rather than pinning it to the bottom of the hero as before. The
+ * strip then falls to the foot on its own.
+ */
 .hero-inner {
   position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
   color: #fff;
 }
 
@@ -1106,14 +1246,20 @@ const extras = [
  * is what lets each cell's left rule run the FULL height of the strip rather
  * than stopping short at the container's own padding box.
  */
+/*
+ * NO fill and no blur. The strip used to be a filled slab that cut the
+ * photograph off at the bottom and read as a separate component parked there;
+ * transparent, the picture runs unbroken to the foot of the screen and this
+ * becomes a caption ON it. Legibility comes from the hero's bottom scrim
+ * instead — if the numerals ever get lost over grass, deepen THAT, not this.
+ */
 .hero-plinth {
   position: relative;
-  margin-top: clamp(2.75rem, 6vw, 4.5rem);
+  margin-top: auto;
   padding: 0;
   color: #fff;
-  background: rgba(6, 23, 46, 0.72);
-  backdrop-filter: blur(6px);
-  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
 }
 
 /* `margin: 0 auto`, never a bare `margin: 0` — this element also carries
@@ -1127,7 +1273,7 @@ const extras = [
 }
 
 .fact {
-  padding: 1.5rem;
+  padding: 1.1rem 1.5rem;
 }
 
 .fact + .fact {
@@ -1153,18 +1299,18 @@ const extras = [
  * setting to its own glyph width. */
 .fact dd {
   margin: 0.3rem 0 0;
-  font-size: 2rem;
+  font-size: 1.75rem;
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 
 /* ---------- Bands ---------- */
 
-/* 5.5rem clears the fixed header plus the week rail, so a jumped-to section
- * never lands underneath it. */
+/* 7rem, raised from 5.5: the header now carries a surface, so a jumped-to
+ * heading has to clear the whole band and not merely the text inside it. */
 .band {
   padding: clamp(4rem, 9vw, 7rem) 0;
-  scroll-margin-top: 5.5rem;
+  scroll-margin-top: 7rem;
 }
 
 /*
@@ -1465,53 +1611,25 @@ const extras = [
 
 /* ---------- 4. Roles ---------- */
 
-.tablist {
-  display: flex;
-  gap: 2rem;
+.role-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1.25rem;
   margin-top: clamp(2.5rem, 5vw, 3.75rem);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 /*
- * `margin-bottom: -1px` is what sets the active tab's 2px gold rule ON the
- * tablist's own hairline rather than 1px above it.
+ * A surface built from white at 4% rather than a fill: the band is already
+ * `--ink`, so a lifted translucent panel separates the cards without
+ * introducing a colour the page does not have.
  */
-.tab {
-  font: inherit;
-  font-size: 1rem;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.6);
-  background: transparent;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  padding: 0 0 0.85rem;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: color 0.18s ease, border-color 0.18s ease;
-}
-
-.tab:hover {
-  color: #fff;
-}
-
-.tab[aria-selected='true'] {
-  color: #fff;
-  border-bottom-color: var(--gold);
-}
-
-/* `min-height` so switching tabs never jumps the page under the reader. */
-.role-panel {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: clamp(2rem, 5vw, 4rem);
-  align-items: start;
-  min-height: 15rem;
-  padding-top: clamp(2rem, 4vw, 2.75rem);
-}
-
-.role-panel:focus-visible {
-  outline-offset: 6px;
+.role-card {
+  display: flex;
+  flex-direction: column;
+  padding: 1.75rem 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .role-name {
@@ -1526,18 +1644,21 @@ const extras = [
   font-weight: 600;
 }
 
-/* Capped so the four bodies break at similar points and the panel does not
- * change shape as the reader moves between tabs. */
+/* No `max-width` any more — the card is the measure, and a 44ch cap set for
+ * the old full-width panel would never bind inside one. */
 .role-body {
   margin: 1rem 0 0;
-  max-width: 44ch;
   font-size: 0.95rem;
   line-height: 1.65;
   color: rgba(255, 255, 255, 0.72);
 }
 
+/* A fixed gap under the body rather than `margin-top: auto`: the list belongs
+ * to the paragraph above it, so it should sit with that paragraph wherever it
+ * ends, not float down to the floor of a card whose neighbour happens to run
+ * longer. */
 .ticks {
-  margin: 0;
+  margin: 1.35rem 0 0;
   padding: 0;
   list-style: none;
   display: flex;
@@ -1809,15 +1930,21 @@ const extras = [
 }
 
 /*
- * Three columns, so the coordinator note is a peer of the wordmark and the
- * links rather than a full-width strip pinned under both. Below 960px it stacks
- * in the same order.
+ * Two tiers, not three columns. The upper one separates WHO this is (left) from
+ * HOW you actually get into it (right) — the only two things a visitor who has
+ * read the whole page still needs. The lower tier is the legal strip.
  */
-.footer-grid {
+.footer-top {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
   gap: clamp(2rem, 5vw, 4rem);
   align-items: start;
+}
+
+.footer-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
 }
 
 .footer-name {
@@ -1832,31 +1959,100 @@ const extras = [
   color: rgba(255, 255, 255, 0.66);
 }
 
-.footer-links {
+.footer-contact {
   display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin-top: 1.25rem;
 }
 
-.footer-links a {
+.footer-contact-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   color: rgba(255, 255, 255, 0.82);
   text-decoration: none;
   font-size: 0.9rem;
+  transition: color 0.18s ease;
 }
 
-.footer-links a:hover {
+.footer-contact-link:hover {
   color: var(--gold);
 }
 
-/* No top rule any more — as a column it sits beside its peers rather than
- * under them, so a divider would cut across the row. */
-.footer-note {
+/* The glyphs are inline SVG rather than a font or a package — two icons do not
+ * justify a dependency, and `currentColor` keeps them on the hover with the
+ * label instead of needing their own rule. */
+.footer-contact-link svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.footer-heading {
   margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.footer-access-list {
+  margin: 0.9rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
   max-width: 34ch;
-  font-size: 0.85rem;
-  line-height: 1.6;
-  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.66);
+}
+
+/* The one real destination in the footer, so it is the one thing here that is
+ * given the gold. */
+.footer-signin {
+  color: var(--gold);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.footer-signin:hover {
+  text-decoration: underline;
+}
+
+.footer-base {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-top: clamp(2.5rem, 5vw, 3.5rem);
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.footer-copy {
+  margin: 0;
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.footer-legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+}
+
+.footer-legal a {
+  color: rgba(255, 255, 255, 0.5);
+  text-decoration: none;
+  font-size: 0.82rem;
+  transition: color 0.18s ease;
+}
+
+.footer-legal a:hover {
+  color: rgba(255, 255, 255, 0.82);
 }
 
 /* ---------- Responsive ---------- */
@@ -1901,8 +2097,17 @@ const extras = [
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  /* Stacks wordmark → links → note, the same order as the desktop row. */
-  .footer-grid {
+  /*
+   * Two across rather than four. Four cards of body copy below this width give
+   * each one a measure of about twenty characters, which stops being a
+   * paragraph and starts being a column of single words.
+   */
+  .role-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Stacks identity → getting in, the same reading order as the desktop row. */
+  .footer-top {
     grid-template-columns: minmax(0, 1fr);
     gap: 2rem;
   }
@@ -1978,28 +2183,9 @@ const extras = [
   }
 
   .cards,
-  .extras {
+  .extras,
+  .role-cards {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  /*
-   * The tab row scrolls sideways in its OWN container rather than collapsing to
-   * an accordion — four short labels stay scannable that way, and the page
-   * itself never scrolls horizontally.
-   */
-  .tablist {
-    gap: 1.5rem;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .tablist::-webkit-scrollbar {
-    display: none;
-  }
-
-  .role-panel {
-    grid-template-columns: minmax(0, 1fr);
-    min-height: 0;
   }
 
   .row {

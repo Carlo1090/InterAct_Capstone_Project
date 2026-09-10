@@ -3261,6 +3261,102 @@ in the clear half, at the cost of the left wing sitting behind the opaque panel
 At 1920px the full building does fit. Lowering the hero height is the only
 lever that would satisfy it at 1440; that is a call for the project owner.
 
+#### Chrome-removal pass, 2026-09-10 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
+
+Five changes, all subtractive in spirit: the page lost its progress rail, its
+header band and its stat slab, and gained the college's own seal.
+
+- **The week rail is gone entirely** — markup, both CSS rules, the constant, the
+  ref and the progress arithmetic. It read as a stray gold line cutting across
+  the page and reported something nobody had asked for. **Do not replace it with
+  a bar, a dot row, or any other progress indicator.**
+- **The header uses the real college seal**, at 34px in the nav and 28px in the
+  footer, `object-fit: contain`, `alt=""` (the wordmark beside it already names
+  the institution). The inline chevron is gone. **34px is the floor** — the seal
+  carries three concentric rings of type and stops being a mark below it. It is
+  never recoloured, cropped or filtered.
+- **The header has no background band at any scroll position.** `is-solid`, the
+  `backdrop-filter`, the `border-bottom` and the `scrolled` ref are all deleted,
+  and with them **the scroll listener** — it existed solely to drive that band,
+  so the page now registers no scroll handler at all.
+- **The hero is exactly one screen** (`height` AND `min-height: 100svh`), with
+  the copy centred between the header and the stat strip via `flex: 1` on
+  `.hero-inner`. Measured 900px in a 900px viewport with the next band not
+  visible.
+- **The stat strip has no fill and no blur.** The photograph runs unbroken to
+  the foot of the screen and the strip is a caption on it, not a slab in front
+  of it. Legibility comes from the hero's bottom scrim, now `62% → .78`. **If
+  the numerals are ever lost over grass, deepen that scrim — not the strip.**
+
+**THE HEADER'S COLOURS INVERT INSTEAD OF A BAND COMING BACK.** White type on a
+transparent header is unreadable the moment `--paper` scrolls under it, so the
+header carries `.nav--on-light`: wordmark to `--ink`, sub-line to `--muted`,
+links to `--text`, `color` transitioned at 0.2s. The gold pill is deliberately
+NOT inverted — gold with `--ink` text clears contrast on both grounds. A
+`text-shadow: 0 1px 12px rgba(6,23,46,.45)` belongs to the default
+light-on-dark state ONLY and is removed under `--on-light`, where it would read
+as a smudge. **The mobile dropdown panel keeps its opaque background** — a panel
+that overlays content is a different problem from a bar that sits behind it.
+
+**How the band behind the header is detected**, and why this way: every
+top-level band carries `data-tone="light|dark"`, and a second
+`IntersectionObserver` crops the root's top by the header's own height
+(`rootMargin: '-90px 0px 0px 0px'`). A band stops intersecting exactly as it
+passes up behind the header; the callback then takes the **last band in
+document order whose top has already crossed that line**, which is by definition
+the one occupying the strip.
+
+- Chosen over a `rootMargin` derived from `innerHeight`: 90px is an absolute
+  offset from the top of the viewport, so it needs **no recomputation on
+  resize** and there is no window in which a stale margin is live.
+- Chosen over `elementFromPoint` on scroll: the fixed header is itself the
+  topmost element at that coordinate, so the probe would always return the nav.
+- **This is a SECOND observer, and it has to be.** The section spy needs
+  `-30% 0px -60% 0px`; this needs `-90px 0px 0px 0px`. One
+  `IntersectionObserver` instance carries exactly one `rootMargin`, so a single
+  instance cannot answer both questions. Both are disconnected in `onUnmounted`.
+
+**Verified over every ground the header can cross** — hero photograph, the
+`--paper` bands, the `--ink` roles band, the statement band, the `--navy`
+record band, the closing band and the footer position — with the computed link
+colour matching the band's declared tone in all seven cases.
+
+Worth knowing: **at 1440x900 neither the closing band nor the footer can ever
+sit behind the header** — there is not enough document below them to scroll
+them up that far, and the band actually occupying the strip at maximum scroll
+is `#more`. The footer case was therefore verified at a short viewport
+(1440x500) where those bands do reach it. A first attempt to test it by
+scrolling to `footer.top + 40` silently clamped to maximum scroll and "passed"
+without the page moving at all.
+
+**The hero photo is `background-position: 62% 50%`**, tuned on screen at
+1440x900 and 1280x800: it lifts the chapel's peak and cross clear ABOVE the
+headline while keeping the entrance and the long right wing in the open half.
+At 50% the peak lands behind the type; at 70% the chapel vanishes under the
+copy panel and only a wing is left.
+
+**THE SECOND VALUE IS INERT, and that is measured rather than assumed.** The
+photo is 2.99:1 against a viewport nearer 1.6:1, so `cover` scales to fill the
+HEIGHT and the rendered height equals the frame exactly — **`excessY: 0` at both
+1440x900 and 1280x800**. Changing `50%` to any other number moves nothing.
+
+**The full-building limitation got WORSE, not better, and the arithmetic says
+why.** Going to 100svh raises the scale factor, and a taller frame on a very
+wide photo means MORE horizontal crop: excessX went from 711px at the old
+84svh/720px to **1248px at 1440x900** (scale 1.05, rendered 2688x900). The
+building renders **2363px wide against a 1440px frame** — 64% wider than the
+viewport — and 2100px against 1280px. No `background-position` can fix that;
+position pans, it does not zoom. Fitting the whole building needs the photo area
+about **548px tall**, which is what `min-height: 100svh` rules out. The two
+requirements — a full-bleed one-screen hero and the entire building in frame —
+are mutually exclusive on this photograph; only a shorter hero or a
+differently-framed source resolves it.
+
+Nothing clips at **375x667**: the hero is 667px, and the lede and CTA both sit
+above the stat strip, so the `92svh` phone fallback was not needed. No
+horizontal scroll at **375 / 768 / 1440 / 1920**; the only element whose content
+exceeds its box is the tab row's intentional internal scroll.
+
 ## Role Surfaces
 
 ### Admin
