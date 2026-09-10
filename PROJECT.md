@@ -2882,52 +2882,384 @@ It is the only **marketing** surface in the app; every other public route
   would put an API round trip in front of every public visitor's first paint.
   **This is not a regression**: `/` already landed a signed-in user on the login
   form, because `LoginPage.vue` has never redirected an authenticated user.
-- **The preview cards are illustrations, not dashboards.** The hero's stat grid
-  and the Daily Time Record panel are static markup. The rule that dashboards
-  render only fields the API returns governs the four REAL dashboards — this
-  page has no session to read from. Both carry `aria-hidden`, so a screen reader
-  is never told these are the visitor's own numbers. **Do not wire either to an
-  endpoint.** The one figure that is real is **486**, the SIPP requirement the
-  seeders write into `batches.required_hours`.
-- **Animation is shared with `LoginPage.vue`, not reimplemented.** `.reveal`,
-  `bg-drift` and `.blob-a/.blob-b` are the same mechanism, including the inline
-  `--d` custom property that lets the sub-`lg` media query halve the stagger (a
-  stylesheet cannot override an inline `transition-delay`, but it can re-derive
-  from a custom property). `.on-scroll` extends the same grammar below the fold
-  via ONE shared `IntersectionObserver` that unobserves on entry, so a section
-  never re-animates on a second pass.
-- **Reduced motion is a single switch**: one `prefers-reduced-motion` block
-  stills every animation, and the observer is skipped entirely rather than being
-  neutralized in CSS after the fact.
-- **Colour follows the existing rules.** Exactly one filled blue button per
-  viewport — the nav CTA and the hero CTA never share one, since the hero's
-  scrolls away before the roles section arrives. Only the four sanctioned
-  accents appear, in the established order (blue neutral, emerald good, amber
-  waiting, rose needs attention).
-- **The three role links in the nav target INDIVIDUAL role cards**
-  (`#role-student`, `#role-supervisor`, `#role-coordinator`), not the `#roles`
-  section. The source design lists four nav links against only three content
-  sections, so pointing them all at `#roles` would ship three controls doing the
-  identical thing. Each card carries its own id plus `scroll-mt-24` (6rem, which
-  clears the `h-19`/76px sticky header).
+- **The three mock-UI cards are DEMONSTRATIONS, not dashboards.** The journal,
+  Daily Time Record and week-bundling panels each perform the rule their heading
+  states when the visitor operates them (see the 2026-09-10 interaction pass
+  below), but every state is a local `ref` — **there is no session, no fetch and
+  no endpoint behind any of them, and none may ever be wired to one.** The rule
+  that dashboards render only fields the API returns governs the four REAL
+  dashboards; this page has nothing to read from.
+  **They are deliberately NOT `aria-hidden` any more** — that was correct while
+  they were inert markup and became wrong the moment they held real `<button>`s,
+  since hiding them would have put working controls out of reach of a screen
+  reader. Each control carries its own `aria-label` naming it as the *sample*
+  it is.
+  The one figure that is real is **486**, the SIPP requirement the seeders write
+  into `batches.required_hours`. The DTR mock opens at `146 / 486 hrs` and
+  reaches `154 / 486 hrs` once the sample day is closed; 146 and the 8h 33m
+  session are illustrative, 486 is not.
+- **The hero's three facts are NOT part of that rule** — Departments 3, Programs
+  7, Roles 4 are true statements about the institution (see Domain Facts), not a
+  simulated dashboard, so they are read normally rather than hidden. They are
+  hardcoded and will need editing if a department or program is ever added.
+  (A fourth, "Entries per day / 1", was dropped on 2026-09-10 — it is a rule of
+  the system, not a statistic about it.)
+### Redesign, 2026-09-09 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
 
-Source design: Figma file `IcDGFFr5XSdfR96m1GRKj7`, frame `Landing — Desktop 1440`;
-the translation table from Figma variables to Tailwind tokens is
-`docs/LANDING_PAGE_HANDOFF_1.md`. Gradient stops cannot bind to Figma variables,
-so the hero and closing band carry raw hex in Figma matching `blue-900` /
-`blue-800` / `teal-500` — in code they are the `bg-linear-to-br from-blue-900
-via-blue-800 to-teal-500` class `LoginPage.vue` already ships.
+The page was rewritten end to end against a written specification: a campus
+photograph, a serif display face, and a single gold accent, in place of the
+previous Figma-derived blue/teal gradient treatment. **The entry below records
+what was built and why; it is not a sign-off.** The superseded Figma notes
+(file `IcDGFFr5XSdfR96m1GRKj7`, `docs/LANDING_PAGE_HANDOFF_1.md`) are archived
+in `docs/PROJECT_HISTORY.md` rather than kept here.
 
-**KNOWN DEVIATION from the design: the footer's `Privacy` and `Support` links
-are NOT built**, because neither page exists and a landing page linking to
-nowhere is worse than one that does not offer the link. The footer ships the
-brand block plus a `Sign in` link instead. Add them when there are real
-destinations.
+- **This is the ONE page in the SPA styled entirely by a scoped `<style>`
+  block, with ZERO Tailwind utilities**, and that is deliberate rather than
+  drift. Every other surface follows the Tailwind conventions above; this one
+  is a marketing page with its own type scale, its own colour system and no
+  shared components, so mixing the two methods would have meant maintaining a
+  parallel token set in the config for a single route. One file, one method.
+  **Do not "bring it in line" by converting it to utilities** — the tokens
+  below have no Tailwind equivalents.
+- **Design tokens are CSS custom properties on the page root**: `--ink
+  #06172e`, `--navy #0e2c53`, `--blue #1c56b8`, `--gold #d4a017`, `--paper
+  #f3f5f9`, `--line #d9e0ea`, `--text #16273d`, `--muted #5a6c85`. The dark
+  navy and the gold are sampled from the campus building's own trim and
+  glazing. **Gold is the only accent** — buttons, step numerals, bullets, the
+  eyebrow. `--blue` and a mock-only `--ok` green appear *exclusively* inside
+  the three illustrative mock-UI cards, where a status pill has to read as a
+  status rather than as a call to action.
+- **The serif (`--display`) is a system stack — Iowan Old Style → Palatino →
+  Georgia — and no webfont is loaded.** It is used for headings, the hero and
+  stat numerals, and the step numbers only; body text inherits the app's
+  existing sans. The serif is what keeps this page visually distinct from the
+  slate-and-blue dashboards behind the login.
+- **The campus photo is imported as an ES module**
+  (`@/assets/images/mdc-campus.jpg`) and bound with `:style="{ backgroundImage
+  }"`, NOT written as a `url()` inside the stylesheet — that is what makes Vite
+  fingerprint and emit it (`mdc-campus-<hash>.jpg`). It lands in the entry
+  chunk rather than a page chunk, which is correct and follows from the eager
+  import above.
 
-Two other gaps carried over from the handoff, neither blocking: there is **no
-mobile Figma frame** (responsive behaviour below `lg` follows `LoginPage.vue`'s
-breakpoint as a code-side judgement call), and **`teal-50` is used once** (the
-Geofence chip) without being in the Figma token collection.
+#### The photo was cropped, and that is load-bearing
+
+**The supplied asset had the college's wordmark and seal baked into it** — a
+title graphic reading "Mater Dei College / Tubigon, Bohol" occupying the top
+~29% of the frame. Rendered as-is it produced two real defects, both caught on
+screen and not in theory:
+
+- in the hero, the photo's wordmark sat directly beside the nav's own
+  "InternTrack / Mater Dei College" lockup — two competing wordmarks in one
+  band, with the seal half-hidden behind the nav;
+- in the closing band it was worse: the photo's "Tubigon, Bohol" printed
+  roughly 280px above the section's own "Tubigon, Bohol" subline, so the same
+  three words appeared twice in one viewport.
+
+**The fix was applied to the ASSET, not the CSS** — the top 345px were trimmed,
+taking the source from 2560x1202 to **2560x857**. The alternative considered
+and rejected was a `background-size` zoom (`auto 135%` + `center bottom`),
+which works but is viewport-dependent and would have meant deviating from the
+specified `background-position: center 62%` / `center 55%`. Cropping the
+source keeps both of those values exactly as specified, behaves identically at
+every width, and yields a better hero aspect (2.99:1 against the original
+2.13:1). **The original uncropped file is untouched at its source location** —
+this is reversible.
+
+Worth knowing for anyone replacing the photo: `background-size: cover` on a
+container taller than the image's own aspect has **no vertical excess to
+position against**, so `center 62%` silently does nothing at desktop widths.
+That is why a crop, not a position, was the answer. A replacement photo must
+therefore arrive already free of any baked-in titling.
+
+#### Structure and behaviour
+
+- Nine sections in order: sticky nav · hero · the argument (three mock-UI
+  cards) · roles (2x2, `v-for`) · how it works (a five-step `<ol>`) · the
+  record · everything else · closing band · footer.
+- **Numbering appears in exactly one place — the five how-it-works steps —
+  because that is the only genuine sequence on the page.** Nothing else is
+  numbered.
+- **There are no icons anywhere**, by design. The one piece of vector art is
+  the nav's stroked roof glyph.
+- **The nav swaps at `scrollY > 24`**: transparent over the hero, then `--ink`
+  at 92% with a backdrop blur. Under 960px the links collapse into a
+  toggle-driven panel carrying `aria-expanded`. The scroll listener is
+  `{ passive: true }` and is **removed in `onUnmounted`**.
+- **ALL scroll-triggered entrance animation was removed**, including the shared
+  `IntersectionObserver` the previous version borrowed from `LoginPage.vue`.
+  The only motion left is the nav background transition and button hover/active
+  states, and a `prefers-reduced-motion: reduce` block stills even those. The
+  page therefore schedules no observer work at all.
+- Accessibility: a skip-to-content link, `:focus-visible` outlines in `--gold`,
+  and `role="img"` + `aria-label` on both photo layers (they are background
+  images, so they carry no intrinsic alt text).
+- Verified in a real browser at **375 / 768 / 1440**:
+  `documentElement.scrollWidth === clientWidth` at all three, zero elements
+  overflowing their container, and no console errors.
+
+**KNOWN DEVIATION, carried forward: the footer's `Privacy` and `Support` links
+are still NOT built**, for the original reason — neither page exists, and a
+landing page linking to nowhere is worse than one that does not offer the link.
+The footer ships the brand block and the section links.
+
+#### Refinement pass, 2026-09-10 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
+
+Six corrections to the page above. No section was added, removed, renamed or
+reordered, and no copy was rewritten. **This entry records what changed and why;
+it is not a sign-off.**
+
+- **THREE sign-in buttons, not five** — nav, hero, closing band. The "Sign in to
+  your portal" button in the record band and the `Sign in` entry in the footer
+  link list are gone. Five calls to the same action across one page reads as
+  pestering rather than as an invitation, and the record band's paragraph is a
+  stronger ending than a button. The record band deliberately got **nothing** in
+  its place, not even a text link. Note the nav's desktop and mobile-panel
+  copies are the same button at two breakpoints and are mutually exclusive by
+  media query, so exactly three ever render.
+- **No uppercase anywhere on the page.** The hero eyebrow, the stat labels and
+  the journal mock's field label were all tracked-out caps — the single most
+  generic treatment available, and the thing that made the page look like every
+  other product site. Now sentence case at their own sizes. The only
+  `letter-spacing` left is `-0.01em` on the two serif display headings, which is
+  optical tightening on large type, not tracking.
+- **The hero headline no longer sits on the chapel.** The headline is capped at
+  `clamp(2.4rem, 5vw, 3.9rem)`. *(The `68% 62%` photo position and the `46rem`
+  copy cap recorded here were superseded on 2026-09-10 — see the composition
+  pass below for the current `72% 46%` and `34rem`.)*
+- **The stat plinth is the page's one signature element**, and it fixed a real
+  contrast problem rather than being decoration: the figures previously floated
+  over sunlit grass with nothing behind them. It is a full-bleed strip pinned to
+  the foot of the hero — `rgba(6,23,46,.72)`, `backdrop-filter: blur(6px)`, a 1px
+  top hairline — with its contents on the same `.shell` grid as the headline.
+  *(Its cells gained full-height divider rules on 2026-09-10; the week rail has
+  since taken over as the page's boldest device.)*
+  **"Entries per day / 1" was dropped**; it is a rule, not a statistic. Three
+  facts remain.
+- **Ragged heights fixed by measurement, not by eye.** The three mock cards now
+  flex-column with `min-height: 210px` and `margin-top: auto` on the footer, so
+  all three headings share one baseline (verified: `1419px` for all three at
+  1440). The roles cells stay equal height but top-align their content, with
+  `.role-body` capped at `44ch`. The steps grid went to
+  `3.5rem 18rem 1fr` — 18rem is measured against the longest title, which wrapped
+  at 15rem — and to `align-items: baseline`, so each numeral sits on its title's
+  first baseline instead of floating above it.
+- **The lower half no longer runs out of content.** The record band's
+  `align-items: center` is gone (it floated the shorter column and opened the
+  gap beneath it); `#record` and `#more` drop to `clamp(4rem, 7vw, 6rem)`; the
+  caps grid is `align-content: start` with a `2.25rem` row gap.
+- **The closing band and footer are no longer one slab.** The closing scrim
+  deepens downward to `rgba(6,23,46,.94)` so the photograph fades into the
+  footer's flat `--ink` instead of stopping at a hard edge, and the footer
+  carries a 1px `rgba(255,255,255,.1)` top hairline. The footer is three columns
+  at desktop — wordmark / links / coordinator note — stacking in that order
+  below 960px.
+
+**TWO CSS TRAPS WERE HIT AND BOTH ARE WORTH KNOWING, because each looked
+correct in the source and only failed on screen:**
+
+1. **`color` does not reach the plinth by inheritance.** The plinth is a
+   SIBLING of `.hero-inner`, which is the element carrying `color: #fff`. Moving
+   the facts out of `.hero-inner` therefore dropped the numerals back to the
+   page's own `--text` (`#16273d`) — dark navy on a dark navy strip, invisible —
+   while the labels stayed readable because they set their own colour. The
+   plinth now declares `color: #fff` itself.
+2. **A bare `margin: 0` on an element that also carries `.shell` kills the
+   centering.** `.facts` sits on the same element as `.shell`, so `margin: 0`
+   overrode `margin: 0 auto` and pushed the figures to the viewport edge while
+   the headline stayed on the 1200px grid — a 120px misalignment at 1440. It is
+   `margin: 0 auto` now. The same hazard is why `.hero-copy` exists as a
+   separate wrapper: capping `.hero-inner` at 46rem would have overridden the
+   shell's own max-width and pulled the headline off that grid too.
+
+**THE NAV MARK IS NOT THE COLLEGE SEAL, and that is a deliberate choice.** The
+seal does exist at `web/public/images/mdc-logo.png` (LoginPage renders it at
+144px and 80px) but **not** under `web/src/assets/`. It carries three concentric
+rings of text — "MATER DEI COLLEGE", "SAPIENTIA / CARITAS / ORATIO", "Tubigon,
+Bohol Philippines", "MCMLXXXIII" — plus a beaded border, and is illegible below
+roughly 80px; at the 30px a nav mark wants it is a grey smudge. The inline SVG
+was instead redrawn as the campus chapel's **twin-pitch roofline** — a peaked
+centre with two lower wings, traced from the building in the hero photograph, so
+the mark and the photo behind it are the same building.
+
+**Verified in a real browser at 375 / 768 / 1440**: no page-level horizontal
+scroll and **zero** elements overflowing their container at any of the three,
+three sign-in buttons visible at desktop (three at mobile with the menu open,
+two with it shut), zero elements computing `text-transform: uppercase`, all
+three card headings on one baseline, no step title wrapping, and no console
+errors.
+
+#### Interaction pass, 2026-09-10 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
+
+The page stopped being something you only read. The three mock cards and the
+roles grid became things a visitor operates, the nav tracks where they are, and
+the sign-in count came down again. No section was added, removed, renamed or
+reordered; no copy was rewritten; the palette is untouched. **Every state below
+is a plain `ref` — no store, no animation library, no icon package, no new
+dependency of any kind.** This entry records what changed; it is not a sign-off.
+
+- **TWO sign-in buttons, not four** *(superseded 2026-09-10 by the composition
+  pass below, which cut the closing band's copy and left exactly ONE, in the
+  header)* — the nav (with its mobile-panel twin) and
+  the closing band, which never share a viewport. **The hero's sign-in is
+  gone**: it sat directly under the sticky nav's own gold pill, so the same call
+  appeared twice in one screenful. The hero keeps a single action, "See how it
+  works", promoted from the ghost outline to the gold pill because it is now the
+  only one. `.btn-ghost` had no other caller and was deleted with it.
+- **The journal card locks.** Submit flips the pill Open→Locked (blue→gold),
+  dims the three skeleton bars, and swaps the footer to "Locked Tuesday, 8
+  September" with an **Undo** — the word a coordinator would actually use for
+  reversing a lock, where "Reset" would describe something the real system has
+  no concept of.
+- **The time-record card runs a full day.** `out → in → closed → out` on one
+  button: `Not clocked in` (grey) with an empty Tuesday row, `Clocked in`
+  (green) showing `7:58 — …`, then `Day closed` (grey) showing `7:58 — 16:31 ·
+  8h 33m`. The running total moves `146 → 154 / 486 hrs` as that day banks, so
+  the card demonstrates the sentence under it rather than asserting it.
+- **The week card bundles and then refuses to be edited.** The seven day cells
+  are real `<button>`s that toggle their own entry until **Bundle week** fires;
+  after that every one of them is `disabled` with the hover state gone. That is
+  the entire point the card makes, so it had to be the thing the control
+  actually does — not a caption saying so.
+- **The roles 2x2 grid became a tab set.** It was a tall wall of dark text where
+  most visitors care about exactly one of the four. Now: a `role="tablist"` of
+  four tabs over one `role="tabpanel"`, **roving tabindex** (arrows move and
+  activate with wrap-around, Home/End jump to the ends), `aria-selected` and
+  `aria-controls`/`aria-labelledby` wired both ways. The panel is two columns at
+  desktop — body left, gold-dot list right — so it is wide rather than tall, and
+  carries `min-height: 15rem` so switching tabs never jumps the page under the
+  reader. Below 640px the tab row scrolls **inside its own box** and the panel
+  stacks; deliberately not a second accordion implementation.
+- **The nav tracks the reader.** An `IntersectionObserver` with
+  `rootMargin: '-30% 0px -60% 0px'` lights the matching link with a 2px gold
+  underline. Its callback keeps a **Set of visible ids and picks the first in
+  document order** rather than "last entry wins" — those margins leave a thin
+  band where two sections intersect at once, and document order is what keeps
+  exactly one link lit instead of letting two flicker against each other. Over
+  the hero, none is lit. It is disconnected in `onUnmounted` beside the existing
+  scroll listener. This survives `prefers-reduced-motion` on purpose: it is a
+  state change, not motion.
+- **Anchor links scroll rather than jump**, via `scrollIntoView` with `behavior`
+  switched to `'auto'` when the reader asks for reduced motion. **Every anchor
+  keeps its `href`** so the links still work with no JS, and the handler calls
+  `history.pushState` so the address bar still updates — `preventDefault` alone
+  would have silently stopped that. `scroll-behavior: smooth` was deliberately
+  NOT set on a global selector: this stylesheet is scoped and must not leak into
+  the rest of the app.
+
+**EVERY INTERACTIVE ELEMENT IS A REAL `<button>`** — no click handlers on
+`div`s — which is what makes the whole page operable by keyboard alone. Mock
+controls share one small-type button style (4px radius, 1px `--line`, filling
+with `--paper` on hover); the two "Undo" affordances are borderless `--muted`
+text, underlined on hover, because undoing is a lesser act than doing. `.day`
+keeps its 34px height, clearing the 32px hit-target floor. The gold
+`:focus-visible` outline reaches all of them.
+
+**The mocks must stay the same height in EVERY state**, not just at rest — the
+`min-height: 210px` and `margin-top: auto` on `.mock-foot` are what hold the
+three card headings on one baseline while a visitor is clicking through them.
+Measured at `210 / 210 / 210` with headings at a common top in the initial,
+locked, clocked-in, day-closed and bundled states.
+
+**Verified in a real browser, by mouse and by keyboard alone**: every state in
+all three mocks cycles forward and back; Enter operates a mock button and Space
+toggles a day cell; the tab set answers Arrow/Home/End with correct roving
+`tabindex` and exactly one visible panel; the gold underline moves across all
+four links while scrolling and clears over the hero; a click scrolls the section
+into view and sets `#record` on the URL; leaving the route raises no console or
+page error. At **375 / 768 / 1440** the page itself never scrolls sideways and
+no element overflows its container — the sole element whose content exceeds its
+box is `.tablist`, which is the intended internal scroll.
+
+#### Composition pass, 2026-09-10 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
+
+One real bug and a design pass. No section was added, removed or reordered
+except the new statement band; the palette and typeface are untouched.
+
+**THE HEADER BUG, AND ITS ACTUAL CAUSE.** The header would not stay put, and no
+amount of adjusting its own rules could have fixed it: **`.page` carried
+`overflow-x: hidden`, and any ancestor whose `overflow` is not `visible`
+becomes the scroll container for its descendants** — so `position: sticky`
+resolved against that box rather than the viewport and scrolled away with the
+page. The fix is at the cause: the property is **deleted from `.page`** (with a
+comment saying why it must not come back), and the header is now
+`position: fixed`. Consequences that had to move with it:
+
+- **`.hero`'s `margin-top: -4.4rem` is gone.** It existed to pull the hero up
+  under a sticky header that was still in flow; a fixed header is out of flow,
+  so the hero starts at y=0 and simply pads itself clear.
+- **`scroll-margin-top` on `.band` went 4.5rem → 5.5rem**, clearing the 73px
+  header plus the rail. Measured: a jumped-to section lands at y=88 against a
+  header bottom of 73.
+- **The solid state deepened to `rgba(6,23,46,.96)`** so links never sit on a
+  legible piece of photograph.
+- If horizontal overflow ever reappears, **fix the element that overflows** —
+  `overflow-x: clip` is the only acceptable container-level fallback, because
+  unlike `hidden` it does not create a scroll container.
+
+**A latent bug surfaced while measuring this**: `SECTION_IDS` was in the NAV's
+order (`how, roles, record, more`) but the observer uses it to break ties by
+document order — and `#roles` sits ABOVE `#how` on the page. Whenever the
+observer's band caught both, it lit the lower link. Now in document order
+(`roles, how, record, more`) with a comment saying the two orders differ.
+
+- **The hero is a two-part composition.** The photo sits at
+  **`background-position: 72% 46%`** under a diagonal panel
+  (`linear-gradient(105deg, …)`) that is opaque where the copy is and clear
+  where the building is, so type never lies over architecture. The copy caps at
+  `34rem`; the vertical scrim is confined to the bottom 22% and does one job,
+  seating the plinth. Height dropped to `min(84svh, 720px)` — the old 92svh/820px
+  was what forced the crop. Below 900px the diagonal becomes a flat vertical
+  panel, the photo re-centres to `center 40%` and the copy goes full width.
+- **The stat plinth** is now three cells divided by full-height 1px rules. The
+  plinth's own vertical padding moved ONTO the cells — that is what lets each
+  rule run the full height of the strip instead of stopping at the container's
+  padding box — and the numerals carry `font-variant-numeric: tabular-nums`.
+- **The week rail** is the page's one bold device: seven segments under the
+  fixed header, filling with `--gold` in seven discrete steps as scroll depth
+  goes 0→1. Driven from the **existing** scroll handler (both it and the
+  `is-solid` flag derive from one `scrollY` read, so a second listener would buy
+  nothing), `aria-hidden` because the nav's active link already carries the same
+  information accessibly. Verified 0 filled at the top, 7 at the bottom.
+- **A statement band sits between the roles and `#how`** — one serif line with
+  "signature" in gold, one muted line under it, nothing else. Its job is the
+  pause; the page ran headline-body three times with no change of tempo. **It
+  carries a 1px top hairline**, which is not decoration: the roles band above it
+  is also `--ink`, and without it the two run together into one dark mass and
+  the pause reads as more of the same section.
+- **`#how` is a timeline.** The rule is drawn on `.steps::before` rather than as
+  per-row borders specifically so it can **stop at the centre of the first and
+  last numerals** — this is a sequence with a defined start and end. Each
+  numeral sits in a `--paper` circle on a `--paper` band, so the rule reads as
+  passing behind it. **Three numbers move together** — the step's vertical
+  padding, half the numeral's size, and the rule's `top`/`bottom` offsets;
+  changing the numeral alone detaches the rule from the circles, which is why
+  the 640px override restates all three.
+- **The closing band lost its "Sign in"** and became an identity plate: scrim
+  deepened to `.86 → .97`, `filter: saturate(.55)` on the photo so it reads as a
+  plate rather than a second hero competing with the first, and about a third
+  less height. **"Sign in" now appears exactly ONCE on the page**, in the fixed
+  header — which is the whole payoff of fixing the header properly.
+
+**Verified in a real browser.** The header is `position: fixed` at `top: 0`,
+visible, and its links pass an `elementFromPoint` hit test at every scroll
+position tested — including **scrolled to the very bottom of the footer**
+(scrollY 4388), which was the failure this pass set out to fix. All four nav
+links scroll to their section, land clear of the header, update the hash, and
+light the correct underline; none is lit over the hero. **No horizontal scroll
+at 375 / 768 / 1440 / 1920** with `overflow-x: hidden` gone.
+
+**KNOWN LIMITATION, stated rather than papered over: at 1440px both wings of the
+building cannot BOTH be fully in frame, and no `background-position` can fix
+it** — position pans, it does not zoom. Measured: the photo is 2560x857 and
+`cover` in a 1440x720 box scales it by 0.84 to **2151px wide, 711px wider than
+the frame**; the building occupies ~88% of the source, i.e. ~1890px rendered,
+against 1440px of viewport. Both wings would need the photo area ≤548px tall,
+which contradicts the 84svh/720px height. `72% 46%` is the tuned compromise: it
+clears the chapel peak and cross of the headline and puts the whole right wing
+in the clear half, at the cost of the left wing sitting behind the opaque panel
+— which is consistent with "the building lives in the clear right-hand half".
+At 1920px the full building does fit. Lowering the hero height is the only
+lever that would satisfy it at 1440; that is a call for the project owner.
 
 ## Role Surfaces
 
