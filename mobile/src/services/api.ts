@@ -6,10 +6,22 @@ import * as SecureStore from 'expo-secure-store';
 import { endpoints } from './endpoints';
 import type { CurrentUser } from '../types/api';
 
-// 10.0.2.2 = Android emulator alias for the host machine's localhost.
-// Swap for your machine's LAN IP (e.g. http://192.168.1.20:8000) when
-// testing on a physical device on the same Wi-Fi network.
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://10.0.2.2:8000';
+// THE FALLBACK IS THE LIVE API, NOT LOCALHOST, AND THAT IS DELIBERATE.
+// `EXPO_PUBLIC_*` is inlined at BUNDLE time, and the two ways this app ships
+// read their environment from different places: `eas build` takes eas.json's
+// per-profile `env`, while `eas update` bundles on whatever machine runs it
+// and reads mobile/.env. A developer LAN IP in either one therefore travels
+// into a real student's phone — which is precisely what happened on
+// 2026-09-10/11, when .env still held an August LAN address and every
+// over-the-air update repointed the installed app at a host it could never
+// reach. Every request then failed with no response, so the app called itself
+// offline and login reported "no internet connection" on a perfectly good
+// network. A localhost default made that failure silent; this one degrades to
+// the correct production host instead.
+// For local work against a laptop server, set EXPO_PUBLIC_API_URL in
+// mobile/.env.local (gitignored, and it takes precedence over .env).
+export const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL ?? 'https://interntrack-api-ihvm.onrender.com';
 
 export const TOKEN_KEY = 'interntrack_token';
 
