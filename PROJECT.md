@@ -177,6 +177,58 @@ This is a **monorepo** with three parts:
   only get the same answer more slowly. Two short delays (1.2s, 3.5s), because
   this is a wake-up allowance and a Wi-Fi/mobile-data handover cushion, not a
   general resilience layer.
+  **`EXPO_PUBLIC_*` IS INLINED AT BUNDLE TIME, AND THE TWO SHIP PATHS READ
+  DIFFERENT ENVIRONMENTS — THIS WAS THE REAL CAUSE OF "OFFLINE AFTER AN
+  UPDATE"** (2026-09-11). `eas build` takes its environment from **eas.json's
+  per-profile `env`**; `eas update` bundles on **whatever machine runs it** and
+  reads **`mobile/.env`**. That file still held `http://192.168.254.133:8000` —
+  a laptop LAN address from August — so **every over-the-air update silently
+  repointed the installed app at a host the phone could never reach**. Every
+  request then failed with no response, which is `status === null`, which is
+  exactly the shape of a genuine offline failure: the app called itself
+  offline and login reported "no internet connection" on a perfectly good
+  network. Proven, not inferred — `grep` found the LAN IP inside the shipped
+  Hermes bundle and no trace of the Render host. **This is also why the symptom
+  always followed an update and never a fresh APK**, and why it looked like the
+  update had not applied at all. The earlier `withRetry` work is still correct
+  and still needed, but it was treating a symptom: retrying an unreachable
+  address three times only fails three times.
+  Two guards now, because either alone can be forgotten: **`mobile/.env` must
+  match eas.json** (a LAN IP for local work goes in `.env.local`, which is
+  gitignored and takes precedence), and **`API_BASE_URL`'s fallback is the live
+  API rather than `http://10.0.2.2:8000`** — a localhost default turns a
+  missing variable into a silent, undebuggable outage, where a production
+  default degrades to the correct host.
+  **DEPENDENCY AUDIT, and what "28 vulnerabilities" actually meant**
+  (2026-09-11). `npm audit fix` (semver-safe only) cleared 3 — `js-yaml`,
+  `nanoid`, `@xmldom/xmldom` — leaving 25. **Every remaining fix npm proposes
+  is `expo@57` (SDK 54 → 57, three majors, every native module replaced and a
+  new runtime fingerprint) or a DOWNGRADE of `expo-router` 6.0.24 → 5.1.11.**
+  Neither is a security fix; both are breakage. So the question was which
+  advisories can actually reach a student's phone, answered by exporting with
+  `--source-maps` and reading the module list: **of 1210 modules in the shipped
+  bundle, exactly one vulnerable package has code in it** — `decode-uri-
+  component` (moderate, a self-DoS on malformed percent-encoded input) via
+  `query-string` via `@react-navigation` via `expo-router`. Metro, PostCSS,
+  `@expo/cli`'s config code, `image-size`, `xcode`, `uuid` and the
+  `@expo/config` chain are **build tooling** — they run here and on the EAS
+  builder, never inside the APK, and the `expo-constants`/`expo-linking`/
+  `expo-notifications`/`expo-updates` entries are flagged only for depending on
+  that chain. (The one `@expo/cli` file in the bundle is
+  `build/metro-require/require.js`, the module-require shim, not the vulnerable
+  CLI code.)
+  **`decode-uri-component` is DELIBERATELY LEFT AT 0.2.2.** The patched line
+  (0.4.1+) is **ESM-only** — `"type": "module"` with an `exports` map carrying
+  no `require` condition — while `query-string@7.1.3` is CommonJS and does
+  `require('decode-uri-component')`. Under Metro that require yields the module
+  NAMESPACE, not the default export, so the call site becomes
+  `decodeComponent is not a function` and every URL parse crashes: deep links
+  and the DTR QR landing included. Trading a moderate self-DoS (the student's
+  own phone hangs on a hostile URL, recoverable by force-closing; no server, no
+  other user, no data) for a certain crash on every navigation is the wrong
+  way round. Revisit when `query-string` ships an ESM-compatible major, or when
+  the SDK upgrade happens on purpose. `npx expo install --check` reports every
+  direct dependency already matching SDK 54, and `expo-doctor` passes 18/18.
   **EVERY CONFIRMATION IS THE APP'S OWN DIALOG, NOT `Alert.alert`**
   (`mobile/src/services/confirm.ts` + `mobile/src/components/ConfirmHost.tsx`,
   2026-09-11, project owner: "change the default look in every message… i mean
