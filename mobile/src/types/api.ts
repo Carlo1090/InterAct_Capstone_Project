@@ -36,7 +36,12 @@ export type DashboardResponse = {
     weekly_reports_approved_percent: number;
     ojt_duration_percent: number;
   };
-  recent_activity: { text: string; time: string | null; tone: ActivityTone }[];
+  // Each row carries BOTH the three flattened display fields the Vue SPA reads
+  // and the raw SystemLog fields (`SystemLogEntry`), so this feed renders
+  // through the same ActivityRow the full Activity Log uses. `text`/`time`
+  // are no longer read by the mobile app — kept because the endpoint still
+  // sends them and the web dashboard still needs them.
+  recent_activity: (SystemLogEntry & { text: string; time: string | null; tone: ActivityTone })[];
   internship: {
     host_company: string | null;
     supervisor: string | null;

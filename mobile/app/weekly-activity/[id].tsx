@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ScrollView, View, Text, TextInput, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { ScrollView, View, Text, TextInput, Pressable, ActivityIndicator } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Banner } from '../../src/components/Banner';
@@ -13,6 +13,8 @@ import { endpoints } from '../../src/services/endpoints';
 import { dateRangeLabel } from '../../src/lib/datetime';
 import { colors } from '../../src/constants/colors';
 import { WeeklyActivityEntry } from '../../src/types/api';
+import { showError } from '../../src/services/toast';
+import { confirmAction } from '../../src/services/confirm';
 
 type RowDraft = {
   inclusive_date_start: string;
@@ -84,7 +86,7 @@ export default function WeeklyActivityDetail() {
     setSavingSheet(true);
     const res = await updateSheet({ area_assigned: area.trim() || null, no_of_hours: hours.trim() || null });
     setSavingSheet(false);
-    if (!res.ok) Alert.alert('Could not save', res.error);
+    if (!res.ok) showError('Could not save', res.error);
   }
 
   async function onAddRow() {
@@ -92,21 +94,19 @@ export default function WeeklyActivityDetail() {
     const res = await addEntry(toPayload(newRow));
     setAddingRow(false);
     if (res.ok) setNewRow(EMPTY_ROW);
-    else Alert.alert('Could not add the row', res.error);
+    else showError('Could not add the row', res.error);
   }
 
-  function confirmDelete(entryId: number) {
-    Alert.alert('Delete this row?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          const res = await deleteEntry(entryId);
-          if (!res.ok) Alert.alert('Could not delete', res.error);
-        },
-      },
-    ]);
+  async function confirmDelete(entryId: number) {
+    const ok = await confirmAction({
+      title: 'Delete this row?',
+      message: 'This cannot be undone.',
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    const res = await deleteEntry(entryId);
+    if (!res.ok) showError('Could not delete', res.error);
   }
 
   async function onDownloadPdf() {
@@ -114,7 +114,7 @@ export default function WeeklyActivityDetail() {
     try {
       await downloadAndSharePdf(endpoints.weeklyActivityLogPdf(id), `weekly-time-log-${id}.pdf`);
     } catch (err) {
-      Alert.alert('Could not download PDF', (err as ApiError).message);
+      showError('Could not download PDF', (err as ApiError).message);
     } finally {
       setDownloading(false);
     }
@@ -173,7 +173,7 @@ export default function WeeklyActivityDetail() {
         </Pressable>
       </View>
 
-      <OfflineNotice feature="weeklyActivityLog" show={isOffline} />
+      <OfflineNotice feature="weeklyActivityLog" show={isOffline} error={error} />
 
       <Card title="Form Details">
         {/* Read-only: resolved from the active enrollment, never typed. */}
@@ -281,7 +281,7 @@ function EntryCard({
     setSaving(true);
     const res = await onSave(toPayload(draft));
     setSaving(false);
-    if (!res.ok) Alert.alert('Could not save the row', res.error);
+    if (!res.ok) showError('Could not save the row', res.error);
   }
 
   return (

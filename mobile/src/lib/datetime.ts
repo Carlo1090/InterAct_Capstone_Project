@@ -134,3 +134,90 @@ export function formatWallClock(value: string | null | undefined): string {
   const hour12 = h % 12 === 0 ? 12 : h % 12;
   return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
 }
+
+// --- Wall-clock log timestamps -------------------------------------------
+// `system_logs.logged_at` has no Eloquent cast, so the API returns a bare
+// "Y-m-d H:i:s" with NO timezone marker. It is never parsed with
+// `new Date(string)` — see the header. Its components are split out and
+// rebuilt as a LOCAL Date, which is correct because the server and every
+// user share Asia/Manila.
+
+function wallClockParts(raw: string) {
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) return null;
+  return {
+    year: Number(m[1]),
+    month: Number(m[2]),
+    day: Number(m[3]),
+    hour: Number(m[4]),
+    minute: Number(m[5]),
+    second: Number(m[6] ?? '0'),
+  };
+}
+
+/** The calendar day a log line belongs to, as YYYY-MM-DD. Sliced, not parsed. */
+export function logDayKey(raw: string): string {
+  return raw.slice(0, 10);
+}
+
+/** "Today" / "Yesterday" / "Mon, 8 Sep" for a YYYY-MM-DD key. */
+export function dayHeading(dayKey: string): string {
+  const today = todayISO();
+  if (dayKey === today) return 'Today';
+
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (dayKey === toISODate(yesterday)) return 'Yesterday';
+
+  const d = parseISODate(dayKey);
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    ...(sameYear ? {} : { year: 'numeric' }),
+  });
+}
+
+/**
+ * "Just now" / "12 minutes ago" / "3 hours ago" — the form people actually
+ * read a recent event in. The exact time is still shown alongside, so
+ * nothing is lost.
+ *
+ * A FUTURE timestamp is reported as "Just now" rather than "in 3 hours".
+ * That is not cosmetic: this project has already shipped a bug where
+ * `logged_at` was stamped from the DB server's clock in a different timezone
+ * and every row read as being in the future. Clamping means a clock skew
+ * degrades to a slightly-wrong "just now" instead of something obviously
+ * broken, and the absolute time beside it stays truthful either way.
+ */
+export function relativeLogTime(raw: string): string {
+  const p = wallClockParts(raw);
+  if (!p) return '';
+
+  const then = new Date(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  if (Number.isNaN(then.getTime())) return '';
+
+  const seconds = Math.round((Date.now() - then.getTime()) / 1000);
+  if (seconds < 60) return 'Just now';
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`;
+
+  return formatDate(raw.slice(0, 10), { month: 'short', day: 'numeric' });
+}
+
+/** The clock time on its own — "2:05 PM" — for the secondary line. */
+export function logClockTime(raw: string): string {
+  const p = wallClockParts(raw);
+  if (!p) return raw;
+  const period = p.hour >= 12 ? 'PM' : 'AM';
+  const hour12 = p.hour % 12 === 0 ? 12 : p.hour % 12;
+  return `${hour12}:${String(p.minute).padStart(2, '0')} ${period}`;
+}

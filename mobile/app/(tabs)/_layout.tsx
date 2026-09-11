@@ -1,6 +1,6 @@
 import { Tabs, Redirect } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { View, ActivityIndicator } from 'react-native';
+import { TabBarIcon } from '../../src/components/TabBarIcon';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useCurrentUser } from '../../src/hooks/useCurrentUser';
 import { colors } from '../../src/constants/colors';
@@ -41,7 +41,7 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.blue600,
         tabBarInactiveTintColor: colors.gray400,
-        tabBarStyle: { height: 64, borderTopColor: colors.gray200 },
+        tabBarStyle: { height: 66, borderTopColor: colors.gray200, paddingTop: 4 },
         tabBarLabelStyle: { fontSize: 9, fontWeight: '500' },
       }}
     >
@@ -49,21 +49,27 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Dashboard',
-          tabBarIcon: ({ color }) => <Ionicons name="grid-outline" size={20} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name="grid-outline" size={20} color={color} focused={focused} />
+          ),
         }}
       />
       <Tabs.Screen
         name="calendar"
         options={{
           title: 'Calendar',
-          tabBarIcon: ({ color }) => <Ionicons name="calendar-outline" size={20} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name="calendar-outline" size={20} color={color} focused={focused} />
+          ),
         }}
       />
       <Tabs.Screen
         name="scan"
         options={{
           title: 'Scan',
-          tabBarIcon: ({ color }) => <Ionicons name="qr-code-outline" size={22} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name="qr-code-outline" size={22} color={color} focused={focused} />
+          ),
           // Mirrors the web SPA, which hides its DTR nav item for a programme
           // whose coordinator has the Daily Time Record switched off. The
           // route still exists (the screen renders the server's own "not
@@ -75,14 +81,18 @@ export default function TabsLayout() {
         name="journals"
         options={{
           title: 'Journals',
-          tabBarIcon: ({ color }) => <Ionicons name="document-text-outline" size={20} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name="document-text-outline" size={20} color={color} focused={focused} />
+          ),
         }}
       />
       <Tabs.Screen
         name="weekly"
         options={{
           title: 'Weekly',
-          tabBarIcon: ({ color }) => <Ionicons name="albums-outline" size={20} color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name="albums-outline" size={20} color={color} focused={focused} />
+          ),
         }}
       />
     </Tabs>

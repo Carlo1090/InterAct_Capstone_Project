@@ -4,11 +4,24 @@ import * as Sharing from 'expo-sharing';
 import * as SecureStore from 'expo-secure-store';
 // Safe: endpoints.ts imports nothing, so there is no cycle back into here.
 import { endpoints } from './endpoints';
+import type { CurrentUser } from '../types/api';
 
-// 10.0.2.2 = Android emulator alias for the host machine's localhost.
-// Swap for your machine's LAN IP (e.g. http://192.168.1.20:8000) when
-// testing on a physical device on the same Wi-Fi network.
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://10.0.2.2:8000';
+// THE FALLBACK IS THE LIVE API, NOT LOCALHOST, AND THAT IS DELIBERATE.
+// `EXPO_PUBLIC_*` is inlined at BUNDLE time, and the two ways this app ships
+// read their environment from different places: `eas build` takes eas.json's
+// per-profile `env`, while `eas update` bundles on whatever machine runs it
+// and reads mobile/.env. A developer LAN IP in either one therefore travels
+// into a real student's phone — which is precisely what happened on
+// 2026-09-10/11, when .env still held an August LAN address and every
+// over-the-air update repointed the installed app at a host it could never
+// reach. Every request then failed with no response, so the app called itself
+// offline and login reported "no internet connection" on a perfectly good
+// network. A localhost default made that failure silent; this one degrades to
+// the correct production host instead.
+// For local work against a laptop server, set EXPO_PUBLIC_API_URL in
+// mobile/.env.local (gitignored, and it takes precedence over .env).
+export const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL ?? 'https://interntrack-api-ihvm.onrender.com';
 
 export const TOKEN_KEY = 'interntrack_token';
 
@@ -41,11 +54,26 @@ api.interceptors.request.use(async (config) => {
 export class ApiError extends Error {
   status: number | null;
   fieldErrors?: Record<string, string[]>;
+  /**
+   * True only when the request itself timed out (Axios `ECONNABORTED`/
+   * `ETIMEDOUT`) — never for a genuine "no route to host" failure.
+   *
+   * THE BUG THIS FIXES: every screen's "Offline" banner was firing on ANY
+   * failed request, timeouts included. The API sleeps on a free Render
+   * instance and can take up to the full 60s timeout to wake — so a student
+   * with a perfectly good connection, opening the app right as it woke up,
+   * was told "Offline — check your internet connection" for a problem that
+   * was never theirs. This flag is what lets a caller tell "your device has
+   * no signal" apart from "the server is slow to answer" and say the honest
+   * thing instead of guessing wrong.
+   */
+  isTimeout: boolean;
 
-  constructor(message: string, status: number | null, fieldErrors?: Record<string, string[]>) {
+  constructor(message: string, status: number | null, fieldErrors?: Record<string, string[]>, isTimeout = false) {
     super(message);
     this.status = status;
     this.fieldErrors = fieldErrors;
+    this.isTimeout = isTimeout;
   }
 }
 
@@ -59,7 +87,12 @@ export function toApiError(err: unknown): ApiError {
       // expected and the connection is usually fine. Telling the student to
       // check their Wi-Fi here sends them chasing a problem they don't have.
       if (axiosErr.code === 'ECONNABORTED' || axiosErr.code === 'ETIMEDOUT') {
-        return new ApiError('InternTrack is taking longer than usual to respond. Please try again in a moment.', null);
+        return new ApiError(
+          'InternTrack is taking longer than usual to respond. Please try again in a moment.',
+          null,
+          undefined,
+          true
+        );
       }
       // No response at all — device offline or DNS failure. Deliberately avoids
       // the word "server": that reads as a scary/technical system fault to a
@@ -74,19 +107,76 @@ export function toApiError(err: unknown): ApiError {
   return new ApiError('Something went wrong. Please try again.', null);
 }
 
-export async function apiGet<T>(path: string, params?: Record<string, unknown>): Promise<T> {
-  try {
-    const res = await api.get<T>(path, { params });
-    return res.data;
-  } catch (err) {
-    throw toApiError(err);
+/**
+ * A request that failed for a NETWORK reason is retried; one that the server
+ * actually answered is not.
+ *
+ * THE BUG THIS FIXES: nothing in the app retried anything, ever. A screen that
+ * failed once stayed "Offline" until the student happened to switch tabs or
+ * pull to refresh — so a single unlucky moment stuck the whole app in offline
+ * mode indefinitely, on a phone with a perfectly good connection.
+ *
+ * That unlucky moment is not rare here, it is the NORMAL launch: the API sleeps
+ * on a free Render instance after ~15 minutes idle, and installing or updating
+ * the app is precisely when it has been idle. `preloadAll()` then fires its
+ * whole warm-up at a server that is still waking, and on an over-the-air update
+ * the new bundle is downloading over the same connection at the same time.
+ *
+ * Delays are short and few on purpose. This is not a general resilience layer —
+ * it is a wake-up allowance for a server that is coming back in seconds, and a
+ * cushion for the transient failure a phone hands you when it switches between
+ * Wi-Fi and mobile data.
+ */
+const RETRY_DELAYS_MS = [1200, 3500];
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withRetry<T>(run: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await run();
+    } catch (err) {
+      const apiErr = toApiError(err);
+
+      // `status === null` means no response reached us at all — offline, DNS,
+      // a dropped connection, or a timeout. Anything with a status is the
+      // server's considered answer (401, 422, 500) and repeating it would just
+      // get the same answer more slowly.
+      const worthRetrying = apiErr.status === null && attempt < RETRY_DELAYS_MS.length;
+      if (!worthRetrying) throw apiErr;
+
+      await wait(RETRY_DELAYS_MS[attempt]);
+    }
   }
 }
 
-export async function apiPost<T>(path: string, body?: Record<string, unknown>): Promise<T> {
-  try {
+export async function apiGet<T>(path: string, params?: Record<string, unknown>): Promise<T> {
+  // GET is idempotent, so retrying it can only ever cost time.
+  return withRetry(async () => {
+    const res = await api.get<T>(path, { params });
+    return res.data;
+  });
+}
+
+export async function apiPost<T>(
+  path: string,
+  body?: Record<string, unknown>,
+  options: { retry?: boolean } = {}
+): Promise<T> {
+  // A write is NOT retried by default, and that is the whole reason this is an
+  // opt-in flag rather than the same treatment GET gets: a POST whose response
+  // was lost may well have succeeded, so repeating it can file a second journal
+  // entry or a second punch. Losing a response is exactly the case the journal
+  // outbox exists to handle safely.
+  const send = async () => {
     const res = await api.post<T>(path, body);
     return res.data;
+  };
+
+  try {
+    return options.retry ? await withRetry(send) : await send();
   } catch (err) {
     throw toApiError(err);
   }
@@ -152,7 +242,7 @@ export async function downloadAndSharePdf(path: string, filename: string): Promi
  * boundary, which makes the server parse zero fields and report the photo as
  * missing.
  */
-export async function uploadAvatar(uri: string, mimeType?: string | null): Promise<void> {
+export async function uploadAvatar(uri: string, mimeType?: string | null): Promise<CurrentUser> {
   const token = await SecureStore.getItemAsync(TOKEN_KEY);
 
   // Derive a filename with a real extension — Laravel's `mimes:` rule reads
@@ -188,4 +278,9 @@ export async function uploadAvatar(uri: string, mimeType?: string | null): Promi
     }
     throw new ApiError(message, response.status);
   }
+
+  // The endpoint returns the refreshed user row, so the caller can push it
+  // straight into the shared store — no extra /api/user round trip, and the
+  // header updates the moment the upload lands.
+  return (await response.json()) as CurrentUser;
 }

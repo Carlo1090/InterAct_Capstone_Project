@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { View, Text, FlatList, Pressable } from 'react-native';
+import { View, Text, FlatList, Pressable, Modal } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { TopBar } from '../../src/components/TopBar';
@@ -22,6 +22,7 @@ const FILTERS: { label: string; value: WeekState | 'all' }[] = [
 export default function Weekly() {
   const { logs, loading, error, isOffline, reload } = useWeeklyLogs();
   const [filterIndex, setFilterIndex] = useState(0);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const filter = FILTERS[filterIndex];
 
   const withState = useMemo(
@@ -47,16 +48,37 @@ export default function Weekly() {
         }}
       >
         <Text style={{ fontSize: 20, fontWeight: '700', color: colors.black }}>Weekly Journals</Text>
-        <Pressable onPress={() => setFilterIndex((i) => (i + 1) % FILTERS.length)}>
-          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.blue500 }}>↓ {filter.label}</Text>
+        {/* A real dropdown, not a button that cycles. Cycling meant reaching
+            "Returned" took four taps and there was no way to see what the
+            options even were without pressing through them. Outlined rather
+            than filled — filtering is not the page's main action. */}
+        <Pressable
+          onPress={() => setPickerOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel={`Filter: ${filter.label}. Tap to change.`}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            paddingVertical: 9,
+            paddingHorizontal: 14,
+            borderRadius: 10,
+            borderWidth: 1.5,
+            borderColor: colors.blue600,
+            backgroundColor: colors.white,
+          }}
+        >
+          <Ionicons name="funnel-outline" size={14} color={colors.blue600} />
+          <Text style={{ fontSize: 12.5, fontWeight: '600', color: colors.blue600 }}>{filter.label}</Text>
+          <Ionicons name="chevron-down" size={14} color={colors.blue600} />
         </Pressable>
       </View>
 
-      <OfflineNotice feature="weeklyLogs" show={isOffline && logs.length > 0} />
+      <OfflineNotice feature="weeklyLogs" show={isOffline && logs.length > 0} error={error} />
 
       <Banner variant="info">
-        Weekly compilations are auto-generated every Monday at 12:00 AM. Approved journals are forwarded to your
-        coordinator.
+        Weekly compilations are generated every Monday at 12:00 AM. Approved journals are sent to the coordinator
+        for review.
       </Banner>
 
       {/* The Time Log Summary is the other weekly artifact, so it is reachable
@@ -108,6 +130,88 @@ export default function Weekly() {
           }
         />
       )}
+
+      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
+        {/* Tapping the backdrop closes it — the expected way out of a
+            dropdown, and the reason there is no Cancel button. */}
+        <Pressable
+          onPress={() => setPickerOpen(false)}
+          style={{ flex: 1, backgroundColor: 'rgba(5,13,26,0.35)', justifyContent: 'flex-end' }}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={{
+              backgroundColor: colors.white,
+              borderTopLeftRadius: 18,
+              borderTopRightRadius: 18,
+              paddingTop: 8,
+              paddingBottom: 28,
+            }}
+          >
+            <View style={{ alignItems: 'center', paddingVertical: 8 }}>
+              <View style={{ width: 38, height: 4, borderRadius: 2, backgroundColor: colors.gray200 }} />
+            </View>
+
+            <Text
+              style={{
+                fontSize: 10,
+                fontWeight: '700',
+                letterSpacing: 0.6,
+                textTransform: 'uppercase',
+                color: colors.gray400,
+                paddingHorizontal: 20,
+                paddingTop: 4,
+                paddingBottom: 6,
+              }}
+            >
+              Show
+            </Text>
+
+            {FILTERS.map((option, index) => {
+              const active = index === filterIndex;
+              // The count is worth showing here: it is the difference between
+              // picking a filter and discovering afterwards that it is empty.
+              const count =
+                option.value === 'all'
+                  ? withState.length
+                  : withState.filter((l) => l.state === option.value).length;
+
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() => {
+                    setFilterIndex(index);
+                    setPickerOpen(false);
+                  }}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 12,
+                    paddingVertical: 14,
+                    paddingHorizontal: 20,
+                    backgroundColor: active ? colors.blue50 : colors.white,
+                  }}
+                >
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontSize: 14,
+                      fontWeight: active ? '700' : '500',
+                      color: active ? colors.blue700 : colors.black,
+                    }}
+                  >
+                    {option.label}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: active ? colors.blue600 : colors.gray400, fontWeight: '600' }}>
+                    {count}
+                  </Text>
+                  {active ? <Ionicons name="checkmark" size={17} color={colors.blue600} /> : null}
+                </Pressable>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }

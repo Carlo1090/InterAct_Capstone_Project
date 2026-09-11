@@ -72,8 +72,20 @@ export function useCachedResource<T>(
   }, [cacheKey, enabled]);
 
   // Paint the cached copy before the network call settles.
+  const paintedKey = useRef<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
+
+    // A CHANGED cacheKey means different CONTENT, not a refresh of the same
+    // content — so whatever is on screen belongs to the old key and has to go.
+    // Without this the "keep what is showing" rule below holds the PREVIOUS
+    // key's data on screen under the new key's heading: on the calendar that
+    // meant switching to November left October's grid sitting under the word
+    // November until the network answered.
+    if (paintedKey.current !== null && paintedKey.current !== cacheKey) setData(null);
+    paintedKey.current = cacheKey;
+
     getCached<T>(cacheKey).then((cached) => {
       if (!cancelled && cached !== null) setData((prev) => (prev === null ? cached : prev));
     });

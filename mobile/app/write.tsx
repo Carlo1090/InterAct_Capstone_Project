@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ScrollView, View, Text, TextInput, Pressable, ActivityIndicator, Alert } from 'react-native';
+import { ScrollView, View, Text, TextInput, Pressable, ActivityIndicator } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Banner } from '../src/components/Banner';
@@ -13,6 +13,8 @@ import { getCached, setCached } from '../src/services/offlineCache';
 import { queueEntry, getQueuedEntry, removeQueued } from '../src/services/journalOutbox';
 import { formatDate, todayISO, weekdayLong } from '../src/lib/datetime';
 import { JournalEntryDetail } from '../src/types/api';
+import { showError } from '../src/services/toast';
+import { alertAction, confirmAction } from '../src/services/confirm';
 
 function dateLabelFor(iso: string) {
   return formatDate(iso, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
@@ -83,6 +85,12 @@ export default function Write() {
   // sent yet. Must never be visually indistinguishable from a genuinely
   // server-confirmed draft/submission.
   const [fromQueue, setFromQueue] = useState(false);
+  // The status the QUEUED copy carries, which is not the same question as
+  // whether one exists. Submitting offline used to leave no trace in the
+  // form: reopening the date showed the text back but described it as an
+  // unsubmitted draft and offered Save Draft / Submit again, so it read as
+  // writing a second, redundant entry for a day already submitted.
+  const [queuedStatus, setQueuedStatus] = useState<'draft' | 'submitted' | null>(null);
   // True when this form was built from the cached template rather than a real
   // server response for this date — i.e. a brand-new offline entry for a day
   // never opened online. Its editability is an assumption, not a server fact,
@@ -118,14 +126,22 @@ export default function Write() {
       });
       hydrateFromContent(res, queued?.content);
       setFromQueue(queued !== null);
+      setQueuedStatus(queued?.status ?? null);
       setOfflineDraft(false);
     } catch (err) {
       // Offline (or a real error). Prefer this date's own cached response —
       // it carries the server's real editability and status for the day.
       const cachedEntry = await getCached<JournalEntryDetail>(cacheKey);
       if (cachedEntry) {
-        hydrateFromContent(cachedEntry, queued?.content);
+        // A queued copy is NEWER than the cached server response, so its
+        // status wins — otherwise a day submitted offline reopens claiming
+        // to be whatever the server last knew, i.e. an untouched draft.
+        hydrateFromContent(
+          queued ? { ...cachedEntry, status: queued.status } : cachedEntry,
+          queued?.content
+        );
         setFromQueue(queued !== null);
+        setQueuedStatus(queued?.status ?? null);
         setOfflineDraft(false);
       } else {
         // Never opened this date online. The section list is the same for
@@ -133,8 +149,13 @@ export default function Write() {
         // compose this one — see blankEntryFrom() for why it assumes writable.
         const template = await getCached<JournalTemplate>(TEMPLATE_CACHE_KEY);
         if (template && !isFutureDate(date)) {
-          hydrateFromContent(blankEntryFrom(template, date), queued?.content);
+          const blank = blankEntryFrom(template, date);
+          hydrateFromContent(
+            queued ? { ...blank, status: queued.status } : blank,
+            queued?.content
+          );
           setFromQueue(queued !== null);
+          setQueuedStatus(queued?.status ?? null);
           setOfflineDraft(true);
         } else {
           // Genuinely nothing to render: either a future date, or this device
@@ -205,14 +226,26 @@ export default function Write() {
         // No network at all — this is a success path from the student's
         // perspective, not a failure: save locally and send automatically
         // once connectivity returns, rather than losing the writing.
+        // One queued copy per date — a second save REPLACES the first rather
+        // than stacking, so re-editing a day already submitted offline can
+        // never produce two entries for it.
+        const replacing = queuedStatus !== null;
         await queueEntry({ entry_date: date, status, content: payload });
-        Alert.alert(
-          'Saved on this device',
-          "You're offline right now. This entry will be sent automatically once you're back online.",
-          [{ text: 'OK', onPress: () => router.back() }]
-        );
+        await alertAction({
+          title: replacing ? 'Updated on this device' : 'Saved on this device',
+          message: replacing
+            ? "You're still offline. This replaces what you saved earlier for this day — there is only ever one entry per date, and it sends by itself once you're online."
+            : "You're offline. This sends by itself once you're back online.",
+          tone: 'success',
+          confirmLabel: 'Done',
+        });
+        router.back();
       } else {
-        Alert.alert(status === 'draft' ? 'Could not save draft' : 'Could not submit entry', apiErr.message);
+        void alertAction({
+          title: status === 'draft' ? 'Could not save draft' : 'Could not submit entry',
+          message: apiErr.message,
+          tone: 'danger',
+        });
       }
     } finally {
       setSaving(false);
@@ -223,12 +256,28 @@ export default function Write() {
     persist('draft');
   }
 
-  function confirmSubmit() {
+  async function confirmSubmit() {
     if (!canSubmit) return;
-    Alert.alert('Submit this entry?', 'Once submitted you can still edit it until your week is compiled.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Submit', onPress: () => persist('submitted') },
-    ]);
+
+    // Already submitted offline: this is an EDIT of the copy waiting to send,
+    // not a second submission. Saying "Submit this entry?" again is what made
+    // it feel like filing a duplicate.
+    if (queuedStatus === 'submitted') {
+      const ok = await confirmAction({
+        title: 'Update this entry?',
+        message: 'This replaces what you already sent for this day. It does not add a second entry.',
+        confirmLabel: 'Update',
+      });
+      if (ok) persist('submitted');
+      return;
+    }
+
+    const ok = await confirmAction({
+      title: 'Submit this entry?',
+      message: 'You can still edit it until your week is compiled.',
+      confirmLabel: 'Submit',
+    });
+    if (ok) persist('submitted');
   }
 
   async function onDownloadPdf() {
@@ -236,7 +285,7 @@ export default function Write() {
     try {
       await downloadAndSharePdf(endpoints.journalEntryPdf(date), `daily-journal-${date}.pdf`);
     } catch (err) {
-      Alert.alert('Could not download PDF', (err as ApiError).message);
+      showError('Could not download PDF', (err as ApiError).message);
     } finally {
       setDownloading(false);
     }
@@ -282,7 +331,10 @@ export default function Write() {
           <>
             <Button label="Save Draft" variant="secondary" size="sm" disabled={saving} onPress={saveDraft} />
             <Button
-              label="Submit"
+              // "Update" once a submitted copy is already queued — the button
+              // has to say what it will actually do, or it reads as filing a
+              // second entry for the same day.
+              label={queuedStatus === 'submitted' ? 'Update' : 'Submit'}
               icon="checkmark"
               size="sm"
               disabled={saving || !canSubmit}
@@ -301,13 +353,23 @@ export default function Write() {
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
-        {fromQueue ? (
+        {/* A queued SUBMITTED entry gets its own wording. Saying only "not yet
+            synced" left the student with no sign they had already submitted
+            this day, so reopening it looked like starting a second entry. */}
+        {queuedStatus === 'submitted' ? (
+          <Banner variant="info">
+            You already submitted this day while offline. It's saved on your phone and will send by itself once
+            you're back online. You can still edit it until then — updating replaces it rather than adding another
+            entry.
+          </Banner>
+        ) : fromQueue ? (
           <Banner variant="neutral">
-            Not yet synced — this entry is saved on your device and will be sent automatically once you're back online.
+            Saved on your device as a draft, not yet submitted. It will be sent automatically once you're back
+            online.
           </Banner>
         ) : null}
 
-        {offlineDraft ? (
+        {offlineDraft && queuedStatus === null ? (
           // Deliberately does NOT repeat the "stays editable until your week
           // is compiled" promise below — that is a server fact we do not have
           // offline. Say only what is true: it is saved here, and it gets
@@ -319,7 +381,9 @@ export default function Write() {
         ) : (
           <Banner variant={editable ? 'info' : 'warn'}>
             {editable
-              ? `${entry.status === 'submitted' ? "You've submitted this entry — it" : 'This entry'} stays editable until your week is compiled (every Monday at 12:00 AM).`
+              ? entry.status === 'submitted'
+                ? 'Submitted entries remain editable until the week is compiled every Monday at 12:00 AM.'
+                : 'This entry stays editable until the week is compiled every Monday at 12:00 AM.'
               : LOCKED_REASON_COPY[entry.locked_reason ?? ''] ?? 'This entry is read-only.'}
           </Banner>
         )}

@@ -83,6 +83,21 @@ class StudentDashboardController extends Controller
                 // so the read side must too, or the two silently disagree.
                 'time' => $log->logged_at ? Carbon::parse($log->logged_at, config('app.timezone'))->diffForHumans() : null,
                 'tone' => $this->toneForAction($log->action),
+                // The RAW log fields, alongside the three flattened ones above.
+                // These are exactly what GET profile/activity returns, so a
+                // client can render this feed and the full Activity Log through
+                // one renderer instead of two that drift — which they had: the
+                // dashboard printed the audit table's own wording, name prefix
+                // and all ("Juan Dela Cruz logged in (mobile)"), while the
+                // Activity Log showed "Signed in" with the student's own name
+                // trimmed off. Same five events, two different vocabularies.
+                // ADDITIVE ONLY — `text`/`time`/`tone` stay exactly as they
+                // were, because StudentDashboardPage.vue reads those three and
+                // is deliberately not part of this change.
+                'id' => $log->id,
+                'action' => $log->action,
+                'description' => $log->description,
+                'logged_at' => $log->logged_at,
             ]);
 
         return response()->json([
