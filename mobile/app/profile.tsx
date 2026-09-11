@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollView, View, Text, Pressable, Image, ActivityIndicator, Alert } from 'react-native';
+import { ScrollView, View, Text, Pressable, Image, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -14,6 +14,7 @@ import { useCurrentUser } from '../src/hooks/useCurrentUser';
 import { useDashboard } from '../src/hooks/useDashboard';
 import { useAuth } from '../src/hooks/useAuth';
 import { colors } from '../src/constants/colors';
+import { alertAction, confirmAction } from '../src/services/confirm';
 
 function initialsFor(name: string | undefined) {
   if (!name) return '?';
@@ -30,10 +31,11 @@ export default function Profile() {
   async function onChangePhoto() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert(
-        'Photo access needed',
-        'InternTrack needs access to your photos so you can choose a profile picture.'
-      );
+      await alertAction({
+        title: 'Photo access needed',
+        message: 'Allow photos to choose a profile picture.',
+        tone: 'warn',
+      });
       return;
     }
 
@@ -77,6 +79,17 @@ export default function Profile() {
   const { data: dashboard, loading: dashboardLoading, error: dashboardError, reload } = useDashboard();
 
   async function onLogout() {
+    // Confirm-first, matching the web app's own rule for this action. Nothing
+    // is destroyed, but signing out clears every cache this device holds for
+    // the student, so a mis-tap on the last button of the page should not do
+    // it silently.
+    const ok = await confirmAction({
+      title: 'Log out?',
+      message: 'You will need to sign in again.',
+      confirmLabel: 'Log out',
+      tone: 'danger',
+    });
+    if (!ok) return;
     await logout();
     router.replace('/login');
   }

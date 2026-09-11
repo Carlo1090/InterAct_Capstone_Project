@@ -158,6 +158,70 @@ This is a **monorepo** with three parts:
   overrides the title to **"Reconnecting — this may take a moment"** and shows
   the error's own honest message instead of the per-feature offline note.
   Threaded through all 13 `<OfflineNotice>` call sites.
+  **A network-failed READ is retried; nothing in the app used to retry
+  anything** (`withRetry` in `mobile/src/services/api.ts`, 2026-09-11 — from a
+  real report: "why when we do update to the application i always in up offline
+  mode even thu i have internet"). A screen that failed once stayed `isOffline`
+  until the student happened to switch tabs or pull to refresh, so **one unlucky
+  moment stuck the whole app in offline mode indefinitely** on a perfectly good
+  connection. That moment is the NORMAL launch rather than a rare one: the API
+  sleeps on a free Render instance after ~15 minutes idle, installing or
+  updating is precisely when it has been idle, `preloadAll()` then fires its
+  whole 13-step warm-up SEQUENTIALLY at a server that is still waking, and
+  `usePreload`'s `PRELOAD_TIMEOUT_MS` (12s) releases the splash long before the
+  cold start finishes — so the student lands on screens whose requests are still
+  failing. On an OTA update the new bundle is downloading over the same
+  connection at the same time. Retry fires **only on `status === null`** (no
+  response at all — offline, DNS, dropped connection, timeout); anything
+  carrying a status is the server's considered answer and repeating it would
+  only get the same answer more slowly. Two short delays (1.2s, 3.5s), because
+  this is a wake-up allowance and a Wi-Fi/mobile-data handover cushion, not a
+  general resilience layer.
+  **EVERY CONFIRMATION IS THE APP'S OWN DIALOG, NOT `Alert.alert`**
+  (`mobile/src/services/confirm.ts` + `mobile/src/components/ConfirmHost.tsx`,
+  2026-09-11, project owner: "change the default look in every message… i mean
+  the double verification"). Nineteen call sites across nine screens asked
+  their question through the OS, so the one moment a student is required to
+  stop and read was drawn by Android — Android's type, Android's blue, on a
+  page that is otherwise entirely navy InternTrack. Worse than off-brand: a
+  native Alert gives every question the SAME face, so "Submit this entry?" and
+  "Delete this row?" were visually identical and the destructive one relied
+  entirely on the student reading the word. The dialog now carries a tone
+  (`default` · `danger` · `success` · `warn`) that moves the icon chip, the
+  glyph and the confirm button's fill together, so the weight of an action is
+  visible before a word is read; cancel is the OUTLINED button on the LEFT, so
+  a destructive answer is never the one nearest a right thumb. Every message
+  was rewritten to ONE short line ("This cannot be undone.", "You can still
+  edit it until your week is compiled.") — the native dialogs had grown to
+  three-sentence paragraphs nobody reads at the moment of deciding.
+  **It is promise-based**, so a call site reads as a straight line
+  (`if (!(await confirmAction({…}))) return;`) instead of the callback-in-an-
+  array shape `Alert.alert` forces, which is what had pushed several of these
+  into bespoke helper functions. The store is **module-level** for the same
+  reason `toast.ts`'s is — a dialog has to be openable from a plain async
+  function mid-save, not only from inside a component body — and `ConfirmHost`
+  is mounted once at the root beside `ToastHost`, above the navigator, so it
+  reaches modals like Write Journal too. **`alertAction` is the one-button
+  form** (what `Alert.alert` with no button array was) and is deliberately NOT
+  collapsed into `showError`: a toast slides away on its own, which is right
+  for a receipt and wrong for "your clock-in did not record". Two rules that
+  are easy to lose: the backdrop declines on a confirm but is **inert on a
+  one-button acknowledgement**, so a message that must be read cannot be lost
+  to a stray tap; and a dialog raised from inside a `try/finally` is called
+  with `void`, never awaited, because the `finally` clears the screen's loading
+  flag and awaiting leaves the button spinning behind the dialog. **Log Out
+  gained a confirmation it never had** — the web app has confirmed it since the
+  beginning, and on mobile it clears every cache the device holds for that
+  student (`clearDeviceSession()`), so a mis-tap on the last button of Profile
+  should not do it silently.
+  **A WRITE is deliberately NOT retried**, and that is why `apiPost` takes an
+  opt-in `{ retry: true }` rather than sharing GET's treatment: a POST whose
+  response was lost may well have succeeded, so repeating it can file a second
+  journal entry or a second punch — exactly the case the journal outbox exists
+  to handle safely. **Login is the one write that opts in**: it is the first
+  thing to touch the API after the app has sat unused, and a lost response there
+  told the student to check a connection that was never the problem. A duplicate
+  login only issues a second token.
   It has its own
   `mobile/CLAUDE.md` (importing `mobile/AGENTS.md`) requiring the versioned docs
   at `docs.expo.dev/versions/v54.0.0/` be checked before any mobile code.

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ScrollView, View, Text, TextInput, Pressable, ActivityIndicator, Alert } from 'react-native';
+import { ScrollView, View, Text, TextInput, Pressable, ActivityIndicator } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Banner } from '../src/components/Banner';
@@ -14,6 +14,7 @@ import { queueEntry, getQueuedEntry, removeQueued } from '../src/services/journa
 import { formatDate, todayISO, weekdayLong } from '../src/lib/datetime';
 import { JournalEntryDetail } from '../src/types/api';
 import { showError } from '../src/services/toast';
+import { alertAction, confirmAction } from '../src/services/confirm';
 
 function dateLabelFor(iso: string) {
   return formatDate(iso, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
@@ -230,15 +231,21 @@ export default function Write() {
         // never produce two entries for it.
         const replacing = queuedStatus !== null;
         await queueEntry({ entry_date: date, status, content: payload });
-        Alert.alert(
-          replacing ? 'Updated on this device' : 'Saved on this device',
-          replacing
-            ? "You're still offline. This replaces what you saved earlier for this day — there's only ever one entry per date, and it sends by itself once you're back online."
-            : "You're offline right now. This entry will be sent automatically once you're back online.",
-          [{ text: 'OK', onPress: () => router.back() }]
-        );
+        await alertAction({
+          title: replacing ? 'Updated on this device' : 'Saved on this device',
+          message: replacing
+            ? "You're still offline. This replaces what you saved earlier for this day — there is only ever one entry per date, and it sends by itself once you're online."
+            : "You're offline. This sends by itself once you're back online.",
+          tone: 'success',
+          confirmLabel: 'Done',
+        });
+        router.back();
       } else {
-        Alert.alert(status === 'draft' ? 'Could not save draft' : 'Could not submit entry', apiErr.message);
+        void alertAction({
+          title: status === 'draft' ? 'Could not save draft' : 'Could not submit entry',
+          message: apiErr.message,
+          tone: 'danger',
+        });
       }
     } finally {
       setSaving(false);
@@ -249,28 +256,28 @@ export default function Write() {
     persist('draft');
   }
 
-  function confirmSubmit() {
+  async function confirmSubmit() {
     if (!canSubmit) return;
 
     // Already submitted offline: this is an EDIT of the copy waiting to send,
     // not a second submission. Saying "Submit this entry?" again is what made
     // it feel like filing a duplicate.
     if (queuedStatus === 'submitted') {
-      Alert.alert(
-        'Update this entry?',
-        'You already submitted this day while offline. This replaces what you wrote — it does not add a second entry.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Update', onPress: () => persist('submitted') },
-        ]
-      );
+      const ok = await confirmAction({
+        title: 'Update this entry?',
+        message: 'This replaces what you already sent for this day. It does not add a second entry.',
+        confirmLabel: 'Update',
+      });
+      if (ok) persist('submitted');
       return;
     }
 
-    Alert.alert('Submit this entry?', 'Once submitted you can still edit it until your week is compiled.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Submit', onPress: () => persist('submitted') },
-    ]);
+    const ok = await confirmAction({
+      title: 'Submit this entry?',
+      message: 'You can still edit it until your week is compiled.',
+      confirmLabel: 'Submit',
+    });
+    if (ok) persist('submitted');
   }
 
   async function onDownloadPdf() {

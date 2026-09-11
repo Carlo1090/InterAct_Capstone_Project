@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ScrollView, View, Text, TextInput, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { ScrollView, View, Text, TextInput, Pressable, ActivityIndicator } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Banner } from '../../src/components/Banner';
@@ -14,6 +14,7 @@ import { dateRangeLabel } from '../../src/lib/datetime';
 import { colors } from '../../src/constants/colors';
 import { WeeklyActivityEntry } from '../../src/types/api';
 import { showError } from '../../src/services/toast';
+import { confirmAction } from '../../src/services/confirm';
 
 type RowDraft = {
   inclusive_date_start: string;
@@ -96,18 +97,16 @@ export default function WeeklyActivityDetail() {
     else showError('Could not add the row', res.error);
   }
 
-  function confirmDelete(entryId: number) {
-    Alert.alert('Delete this row?', 'This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          const res = await deleteEntry(entryId);
-          if (!res.ok) showError('Could not delete', res.error);
-        },
-      },
-    ]);
+  async function confirmDelete(entryId: number) {
+    const ok = await confirmAction({
+      title: 'Delete this row?',
+      message: 'This cannot be undone.',
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    const res = await deleteEntry(entryId);
+    if (!res.ok) showError('Could not delete', res.error);
   }
 
   async function onDownloadPdf() {

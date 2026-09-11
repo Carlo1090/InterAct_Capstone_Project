@@ -95,19 +95,76 @@ export function toApiError(err: unknown): ApiError {
   return new ApiError('Something went wrong. Please try again.', null);
 }
 
-export async function apiGet<T>(path: string, params?: Record<string, unknown>): Promise<T> {
-  try {
-    const res = await api.get<T>(path, { params });
-    return res.data;
-  } catch (err) {
-    throw toApiError(err);
+/**
+ * A request that failed for a NETWORK reason is retried; one that the server
+ * actually answered is not.
+ *
+ * THE BUG THIS FIXES: nothing in the app retried anything, ever. A screen that
+ * failed once stayed "Offline" until the student happened to switch tabs or
+ * pull to refresh — so a single unlucky moment stuck the whole app in offline
+ * mode indefinitely, on a phone with a perfectly good connection.
+ *
+ * That unlucky moment is not rare here, it is the NORMAL launch: the API sleeps
+ * on a free Render instance after ~15 minutes idle, and installing or updating
+ * the app is precisely when it has been idle. `preloadAll()` then fires its
+ * whole warm-up at a server that is still waking, and on an over-the-air update
+ * the new bundle is downloading over the same connection at the same time.
+ *
+ * Delays are short and few on purpose. This is not a general resilience layer —
+ * it is a wake-up allowance for a server that is coming back in seconds, and a
+ * cushion for the transient failure a phone hands you when it switches between
+ * Wi-Fi and mobile data.
+ */
+const RETRY_DELAYS_MS = [1200, 3500];
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withRetry<T>(run: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await run();
+    } catch (err) {
+      const apiErr = toApiError(err);
+
+      // `status === null` means no response reached us at all — offline, DNS,
+      // a dropped connection, or a timeout. Anything with a status is the
+      // server's considered answer (401, 422, 500) and repeating it would just
+      // get the same answer more slowly.
+      const worthRetrying = apiErr.status === null && attempt < RETRY_DELAYS_MS.length;
+      if (!worthRetrying) throw apiErr;
+
+      await wait(RETRY_DELAYS_MS[attempt]);
+    }
   }
 }
 
-export async function apiPost<T>(path: string, body?: Record<string, unknown>): Promise<T> {
-  try {
+export async function apiGet<T>(path: string, params?: Record<string, unknown>): Promise<T> {
+  // GET is idempotent, so retrying it can only ever cost time.
+  return withRetry(async () => {
+    const res = await api.get<T>(path, { params });
+    return res.data;
+  });
+}
+
+export async function apiPost<T>(
+  path: string,
+  body?: Record<string, unknown>,
+  options: { retry?: boolean } = {}
+): Promise<T> {
+  // A write is NOT retried by default, and that is the whole reason this is an
+  // opt-in flag rather than the same treatment GET gets: a POST whose response
+  // was lost may well have succeeded, so repeating it can file a second journal
+  // entry or a second punch. Losing a response is exactly the case the journal
+  // outbox exists to handle safely.
+  const send = async () => {
     const res = await api.post<T>(path, body);
     return res.data;
+  };
+
+  try {
+    return options.retry ? await withRetry(send) : await send();
   } catch (err) {
     throw toApiError(err);
   }

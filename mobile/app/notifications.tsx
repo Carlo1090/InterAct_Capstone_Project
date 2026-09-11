@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { View, Text, Pressable, FlatList, Alert } from 'react-native';
+import { View, Text, Pressable, FlatList } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ErrorState, LoadingState } from '../src/components/ErrorState';
@@ -7,6 +7,7 @@ import { useNotifications } from '../src/hooks/useNotifications';
 import { NotificationItem } from '../src/types/api';
 import { colors } from '../src/constants/colors';
 import { OfflineNotice } from '../src/components/OfflineNotice';
+import { confirmAction } from '../src/services/confirm';
 
 const toneForType: Record<string, { icon: keyof typeof Ionicons.glyphMap; color: string }> = {
   email: { icon: 'mail-outline', color: colors.blue600 },
@@ -29,11 +30,14 @@ export default function Notifications() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function onClearAll() {
-    Alert.alert('Clear all notifications?', 'This removes every notification permanently.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Clear All', style: 'destructive', onPress: () => clearAll() },
-    ]);
+  async function onClearAll() {
+    const ok = await confirmAction({
+      title: 'Clear all notifications?',
+      message: 'This cannot be undone.',
+      confirmLabel: 'Clear all',
+      tone: 'danger',
+    });
+    if (ok) clearAll();
   }
 
   return (

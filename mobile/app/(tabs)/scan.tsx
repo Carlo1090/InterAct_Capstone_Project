@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { ScrollView, View, Text, Pressable, ActivityIndicator, Alert, Modal } from 'react-native';
+import { ScrollView, View, Text, Pressable, ActivityIndicator, Modal } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,6 +12,7 @@ import { TopBar } from '../../src/components/TopBar';
 import { colors } from '../../src/constants/colors';
 import { apiGet, apiPost, ApiError } from '../../src/services/api';
 import { endpoints } from '../../src/services/endpoints';
+import { alertAction } from '../../src/services/confirm';
 import { useDtr } from '../../src/hooks/useDtr';
 import { formatDate, formatTime } from '../../src/lib/datetime';
 import { DtrPunchResult, DtrScanPreview, DtrSession } from '../../src/types/api';
@@ -72,10 +73,11 @@ export default function Scan() {
     if (!permission?.granted) {
       const result = await requestPermission();
       if (!result.granted) {
-        Alert.alert(
-          'Camera access needed',
-          'InternTrack needs the camera to read your workplace QR code. You can enable it in Settings.'
-        );
+        await alertAction({
+          title: 'Camera access needed',
+          message: 'Turn the camera on in Settings to scan your QR code.',
+          tone: 'warn',
+        });
         return;
       }
     }
@@ -92,10 +94,11 @@ export default function Scan() {
     const siteToken = extractSiteToken(result.data);
     if (!siteToken) {
       closeCamera();
-      Alert.alert(
-        "That's not an InternTrack code",
-        'Scan the Daily Time Record QR code shown by your supervisor.'
-      );
+      await alertAction({
+        title: 'Not an InternTrack code',
+        message: 'Scan the QR code your supervisor shows.',
+        tone: 'warn',
+      });
       return;
     }
 
@@ -110,12 +113,14 @@ export default function Scan() {
       setToken(siteToken);
     } catch (err) {
       const apiErr = err as ApiError;
-      Alert.alert(
-        apiErr.status === null ? 'You appear to be offline' : 'Could not read that code',
-        apiErr.status === null
-          ? 'A clock-in records where and when you were, so it needs a live connection. Try again once you have signal.'
-          : apiErr.message
-      );
+      void alertAction({
+        title: apiErr.status === null ? 'No connection' : 'Could not read that code',
+        message:
+          apiErr.status === null
+            ? 'A clock-in needs a live connection. Try again when you have signal.'
+            : apiErr.message,
+        tone: 'danger',
+      });
     } finally {
       setResolving(false);
       scanLatch.current = false;
@@ -127,10 +132,11 @@ export default function Scan() {
 
     const permissionResult = await Location.requestForegroundPermissionsAsync();
     if (!permissionResult.granted) {
-      Alert.alert(
-        'Location access needed',
-        'Your clock-in is recorded against the workplace location, so InternTrack needs your position to accept it.'
-      );
+      await alertAction({
+        title: 'Location access needed',
+        message: 'Your clock-in is recorded at the workplace, so it needs your position.',
+        tone: 'warn',
+      });
       return;
     }
 
@@ -148,24 +154,28 @@ export default function Scan() {
       setToken(null);
       await reload();
 
-      Alert.alert(
-        res.action === 'clocked_in' ? 'Clocked in' : 'Clocked out',
+      void alertAction({
+        title: res.action === 'clocked_in' ? 'Clocked in' : 'Clocked out',
         // The server's own message already covers the auto-close case, so
         // there is exactly one wording for it rather than two that could drift.
-        `${res.message}\n\nRecorded for ${res.student_name}, ${res.distance_meters}m from the registered point.`
-      );
+        message: `${res.message}\n\n${res.student_name} · ${res.distance_meters}m from the registered point.`,
+        tone: 'success',
+        confirmLabel: 'Done',
+      });
     } catch (err) {
       const apiErr = err as ApiError;
-      Alert.alert(
-        apiErr.status === null ? 'You appear to be offline' : 'Could not record that punch',
-        apiErr.status === null
-          ? // Deliberately NOT queued like a journal entry: a journal is the
-            // student's own words and is just as true an hour later, but a
-            // punch is a claim about where they were at a moment in time.
-            // Sending it later would record a time and place nobody observed.
-            'A clock-in has to be recorded at the moment it happens, so it cannot be saved for later. Try again once you have signal, or ask your supervisor to adjust the session.'
-          : apiErr.message
-      );
+      void alertAction({
+        title: apiErr.status === null ? 'Not recorded — no connection' : 'Could not record that punch',
+        message:
+          apiErr.status === null
+            ? // Deliberately NOT queued like a journal entry: a journal is the
+              // student's own words and is just as true an hour later, but a
+              // punch is a claim about where they were at a moment in time.
+              // Sending it later would record a time and place nobody observed.
+              'A clock-in cannot be saved for later. Try again with signal, or ask your supervisor to adjust it.'
+            : apiErr.message,
+        tone: 'danger',
+      });
     } finally {
       setPunching(false);
     }

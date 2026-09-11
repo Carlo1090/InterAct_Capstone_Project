@@ -5,6 +5,7 @@ import { useAutoSyncOutbox } from '../src/hooks/useAutoSyncOutbox';
 import { useLocalReminderSync } from '../src/hooks/useLocalReminderSync';
 import { SplashGate } from '../src/components/SplashGate';
 import { ToastHost } from '../src/components/ToastHost';
+import { ConfirmHost } from '../src/components/ConfirmHost';
 
 export default function RootLayout() {
   // Mounted once for the whole app lifetime — flushes any offline-queued
@@ -40,6 +41,11 @@ export default function RootLayout() {
       {/* Above the navigator so an error is visible from every screen,
           including modals like Write Journal. */}
       <ToastHost />
+
+      {/* The app's own confirmation dialog, replacing every Alert.alert.
+          Mounted beside the toast and for the same reason: a crucial action
+          can be confirmed from any screen, modals included. */}
+      <ConfirmHost />
 
       {/* Overlaid rather than wrapped: expo-router expects its navigator to
           be mounted, so the Stack always renders and the splash simply

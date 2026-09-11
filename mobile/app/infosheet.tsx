@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ScrollView, View, Text, TextInput, Pressable, ActivityIndicator, Alert } from 'react-native';
+import { ScrollView, View, Text, TextInput, Pressable, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Banner } from '../src/components/Banner';
@@ -13,6 +13,7 @@ import { InfoSheet, InfoSheetPersonal, InfoSheetAcademic, InfoSheetOjt } from '.
 import { colors } from '../src/constants/colors';
 import { OfflineNotice } from '../src/components/OfflineNotice';
 import { showError } from '../src/services/toast';
+import { alertAction, confirmAction } from '../src/services/confirm';
 
 const YEAR_LEVELS: { value: string; label: string }[] = [
   { value: '1st-year', label: '1st Year' },
@@ -86,7 +87,11 @@ export default function InfoSheetScreen() {
   async function onSubmit() {
     const missing = findMissingRequired(personal!, academic!, ojt!);
     if (missing.length > 0) {
-      Alert.alert('Missing required fields', `Please complete: ${missing.join(', ')}`);
+      await alertAction({
+        title: 'Some fields are still empty',
+        message: `Please complete: ${missing.join(', ')}`,
+        tone: 'warn',
+      });
       return;
     }
     await persist('submitted');
@@ -99,11 +104,15 @@ export default function InfoSheetScreen() {
     setEditing(false);
   }
 
-  function confirmDiscard() {
-    Alert.alert('Discard changes?', 'Your edits will not be saved.', [
-      { text: 'Keep Editing', style: 'cancel' },
-      { text: 'Discard', style: 'destructive', onPress: onCancel },
-    ]);
+  async function confirmDiscard() {
+    const ok = await confirmAction({
+      title: 'Discard your changes?',
+      message: 'Your edits will be lost.',
+      confirmLabel: 'Discard',
+      cancelLabel: 'Keep editing',
+      tone: 'danger',
+    });
+    if (ok) onCancel();
   }
 
   async function onDownloadPdf() {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ScrollView, View, Text, TextInput, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { ScrollView, View, Text, TextInput, Pressable, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Banner } from '../src/components/Banner';
@@ -12,7 +12,8 @@ import { downloadAndSharePdf, ApiError } from '../src/services/api';
 import { endpoints } from '../src/services/endpoints';
 import { todayISO } from '../src/lib/datetime';
 import { colors } from '../src/constants/colors';
-import { showError } from '../src/services/toast';
+import { showError, showSuccess } from '../src/services/toast';
+import { confirmAction } from '../src/services/confirm';
 
 /**
  * Question text copied verbatim from web's StudentExitInterviewPage so the
@@ -150,21 +151,19 @@ export default function ExitInterview() {
     setSaving(false);
 
     if (res.ok) {
-      Alert.alert(submit ? 'Exit interview submitted' : 'Draft saved');
+      showSuccess(submit ? 'Exit interview submitted' : 'Draft saved');
     } else {
       showError(submit ? 'Could not submit' : 'Could not save', res.error);
     }
   }
 
-  function confirmSubmit() {
-    Alert.alert(
-      'Submit your exit interview?',
-      'Your coordinator will review it. You will not be able to edit it afterwards.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Submit', onPress: () => persist(true) },
-      ]
-    );
+  async function confirmSubmit() {
+    const ok = await confirmAction({
+      title: 'Submit your exit interview?',
+      message: 'You cannot edit it after this.',
+      confirmLabel: 'Submit',
+    });
+    if (ok) persist(true);
   }
 
   async function onDownloadPdf() {
