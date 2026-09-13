@@ -29,6 +29,7 @@ use App\Http\Controllers\Coordinator\EnrollmentController;
 use App\Http\Controllers\Coordinator\GroupInfoSheetController;
 use App\Http\Controllers\Coordinator\HteReportController;
 use App\Http\Controllers\Coordinator\JournalTemplateController;
+use App\Http\Controllers\ContactController;
 use App\Http\Controllers\CronController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
@@ -71,6 +72,14 @@ Route::match(['get', 'post'], 'cron/run', [CronController::class, 'run'])
 // checks a bearer token before falling back to the stateful-cookie check, so
 // every existing role:student route below works unchanged once a token
 // exists — no other route/middleware change was needed for mobile.
+// The landing page's contact form. Public and unauthenticated by necessity —
+// the person it exists for is the one who never got their credentials and so
+// cannot sign in to ask about them. Throttled tightly because it is an open
+// endpoint that sends real mail; the coordinator's address lives in config and
+// is never returned to the caller.
+Route::post('contact', [ContactController::class, 'store'])
+    ->middleware('throttle:5,1');
+
 Route::post('mobile/login', [MobileAuthController::class, 'store']);
 Route::middleware('auth:sanctum')->post('mobile/logout', [MobileAuthController::class, 'destroy']);
 

@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+
+import api from '@/lib/axios'
+import { categorizeError } from '@/lib/apiError'
 
 /*
  * The campus photo is imported as a module so Vite fingerprints and copies it.
@@ -42,11 +45,16 @@ const navOnLight = ref(false)
 const navOverHero = ref(true)
 let bandObserver: IntersectionObserver | null = null
 
+/*
+ * In DOCUMENT order. It used to lead with "How it works" while `#roles` sits
+ * above `#how` on the page, so the scroll-spy lit the second link first and the
+ * nav read in a different order from the thing it navigates.
+ */
 const navLinks = [
-  { href: '#how', label: 'How it works' },
   { href: '#roles', label: 'Who uses it' },
+  { href: '#how', label: 'How it works' },
   { href: '#record', label: 'The record' },
-  { href: '#more', label: 'Everything else' },
+  { href: '#more', label: 'Others' },
 ]
 
 /* ---------- D. Which section the reader is actually in ---------- */
@@ -83,7 +91,18 @@ const scrollToAnchor = (event: MouseEvent, href: string): void => {
   history.pushState(null, '', href)
 }
 
+/*
+ * Escape closes whichever dialog is open. One listener rather than one per
+ * surface, and it is removed in `onUnmounted` with the observers.
+ */
+const handleEscape = (event: KeyboardEvent): void => {
+  if (event.key !== 'Escape') return
+  if (dialogOpen.value) closeDialog()
+}
+
 onMounted(() => {
+  window.addEventListener('keydown', handleEscape)
+
   /*
    * Which band is under the floating header. Every top-level band carries a
    * `data-tone`, and the observer crops the root's TOP by the header's own
@@ -143,6 +162,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('keydown', handleEscape)
   sectionObserver?.disconnect()
   sectionObserver = null
   bandObserver?.disconnect()
@@ -276,6 +296,230 @@ const roles = [
   },
 ]
 
+/* ---------- The dialogs: the contact form and the three legal documents ---------- */
+
+type LegalKey = 'privacy' | 'terms' | 'accessibility'
+
+interface LegalSection {
+  heading: string
+  body: string
+}
+
+interface LegalDocument {
+  title: string
+  sections: LegalSection[]
+  /* Label for a hand-off button to the contact form, where a document needs
+   * a route to a person. Absent, no button renders. */
+  contact?: string
+}
+
+/*
+ * Held here rather than as three routed pages: each is a few paragraphs that
+ * describe THIS system, and a page per document would be three destinations
+ * saying nothing an overlay cannot. Every claim below is something the system
+ * actually does — nothing here states a date, an address, a retention period
+ * or a processor the app does not have.
+ */
+const LEGAL: Record<LegalKey, LegalDocument> = {
+  privacy: {
+    title: 'Privacy Notice',
+    sections: [
+      {
+        heading: 'Who this covers',
+        body: 'InternTrack is run by Mater Dei College for its own OJT programme. There is no public sign-up: every account is issued by an OJT coordinator, and this notice applies to the students, company supervisors and college staff who hold one.',
+      },
+      {
+        heading: 'What the system holds',
+        body: 'The student information sheet, daily journal entries, clock-in and clock-out records, the weekly bundles compiled from those entries, the exit interview form, and an audit log of consequential changes. Nothing is asked for that the SIPP paperwork does not already require.',
+      },
+      {
+        heading: 'Who sees it',
+        body: 'The record belongs to Mater Dei College. A student’s entries are read by their own OJT coordinator, by the supervisor at their host company, and by the college administrator who maintains accounts. It is used for the college’s OJT process and for nothing else.',
+      },
+      {
+        heading: 'Entries are fixed once submitted',
+        body: 'A submitted journal entry locks. A correction goes through the coordinator and leaves a trace in the audit log, so the record shows what was changed as well as what stands. Time records are stamped by the system at the moment of the scan and are corrected only by the supervisor, with a reason on file.',
+      },
+      {
+        heading: 'Accounts are deactivated, not erased',
+        body: 'When a placement ends or an account is withdrawn, the account is deactivated rather than deleted, so the journals and time records already filed stay intact for the college’s compliance reporting.',
+      },
+      {
+        heading: 'Your rights, and where to ask',
+        body: 'This notice is written under the Data Privacy Act of 2012 (Republic Act No. 10173). To see, correct or ask about the data held on you, contact your OJT coordinator — the form below reaches them directly.',
+      },
+    ],
+    contact: 'Email the OJT coordinator',
+  },
+  terms: {
+    title: 'Terms of Use',
+    sections: [
+      {
+        heading: 'Who may use it',
+        body: 'InternTrack is for the students, company supervisors, coordinators and administrators of Mater Dei College’s OJT programme. An account is issued to you by a coordinator for that purpose and for no other.',
+      },
+      {
+        heading: 'Your credentials are yours alone',
+        body: 'Your username and password identify you on every entry and every scan. Do not share them, and do not sign in as anyone else. Change your password if you think someone else has it.',
+      },
+      {
+        heading: 'Record the work you did',
+        body: 'A daily journal entry records the work actually done that day, and a clock-in is made where and when you are at the host company. Entering work that did not happen, or scanning on another student’s behalf, is a false record.',
+      },
+      {
+        heading: 'A submitted day is fixed',
+        body: 'Once submitted, an entry is part of the record and cannot be edited by you. If something is wrong, ask your coordinator — or, for a time record, your supervisor. The correction is made by them and leaves a trace.',
+      },
+      {
+        heading: 'Misuse is a college matter',
+        body: 'The record kept here is part of your OJT requirements. A false entry, a shared login or a scan made for someone else is dealt with under the college’s own rules of conduct, not only by the system.',
+      },
+    ],
+  },
+  accessibility: {
+    title: 'Accessibility',
+    sections: [
+      {
+        heading: 'The aim',
+        body: 'InternTrack aims to meet the Web Content Accessibility Guidelines (WCAG) 2.1 at level AA. That is a target the system is built against, not a completed audit.',
+      },
+      {
+        heading: 'Keyboard',
+        body: 'Everything on this page can be operated from the keyboard alone. A skip link at the top jumps past the header, every control is a real button or link, and the element that has focus is outlined in gold.',
+      },
+      {
+        heading: 'Motion',
+        body: 'If your device asks for reduced motion, smooth scrolling and transitions on this page are switched off.',
+      },
+      {
+        heading: 'Screen readers',
+        body: 'Headings follow the order of the page, the campus photographs carry a description, and each dialog is announced as one, with focus kept inside it until it closes.',
+      },
+      {
+        heading: 'Known gaps',
+        body: 'Not every form and report inside the system has yet been checked against the target, and the printed PDF documents follow the college’s paper forms, which were not designed with screen readers in mind.',
+      },
+      {
+        heading: 'Report a problem',
+        body: 'If something here does not work for you, tell your OJT coordinator — the form below reaches them, and the problem will be looked at.',
+      },
+    ],
+    contact: 'Email the OJT coordinator',
+  },
+}
+
+const contactOpen = ref(false)
+const legalOpen = ref<LegalKey | null>(null)
+const dialogOpen = computed(() => contactOpen.value || legalOpen.value !== null)
+const legalDoc = computed(() => (legalOpen.value ? LEGAL[legalOpen.value] : null))
+
+const contactSending = ref(false)
+const contactSent = ref(false)
+const contactError = ref('')
+const contactForm = ref({ name: '', email: '', message: '' })
+const contactFirstField = ref<HTMLInputElement | null>(null)
+const legalClose = ref<HTMLButtonElement | null>(null)
+
+/*
+ * The element that had focus before the FIRST dialog opened, so closing can
+ * hand it back. Without this, dismissing a modal drops focus to `<body>` and a
+ * keyboard user restarts from the top of the page.
+ *
+ * Recorded only while no dialog is up. The privacy notice hands off to the
+ * contact form from inside its own panel, and the button pressed there is
+ * unmounted by the time the form closes — so the element to return to is the
+ * footer link that started the exchange, not the last thing clicked.
+ */
+let dialogOpener: HTMLElement | null = null
+
+const rememberOpener = (): void => {
+  if (dialogOpen.value) return
+  dialogOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+}
+
+/* One dialog at a time: each opener clears the other, so two backdrops can
+ * never stack. */
+const openContact = (): void => {
+  rememberOpener()
+  legalOpen.value = null
+  contactOpen.value = true
+  contactSent.value = false
+  contactError.value = ''
+  void nextTick(() => contactFirstField.value?.focus())
+}
+
+const openLegal = (key: LegalKey): void => {
+  rememberOpener()
+  contactOpen.value = false
+  legalOpen.value = key
+  void nextTick(() => legalClose.value?.focus())
+}
+
+const closeDialog = (): void => {
+  contactOpen.value = false
+  legalOpen.value = null
+  dialogOpener?.focus()
+  dialogOpener = null
+}
+
+/*
+ * A focus trap, because a dialog that lets Tab wander out from behind its own
+ * backdrop is only visually modal. It reads the dialog off `event.currentTarget`
+ * — the backdrop it is bound to — so whichever dialog is up is the one measured,
+ * with no per-dialog ref to keep in step. Queried live rather than cached: the
+ * contact form swaps its fields for a success panel, so the tabbable set changes
+ * while the dialog is open.
+ */
+const trapFocus = (event: KeyboardEvent): void => {
+  if (event.key !== 'Tab' || !(event.currentTarget instanceof HTMLElement)) return
+
+  const focusable = event.currentTarget.querySelectorAll<HTMLElement>(
+    'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled])',
+  )
+  if (focusable.length === 0) return
+
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
+const submitContact = async (): Promise<void> => {
+  if (contactSending.value) return
+
+  contactSending.value = true
+  contactError.value = ''
+
+  try {
+    /*
+     * The shared Axios instance carries NO `baseURL`, so the leading `/api/` is
+     * required — a bare `contact` would resolve against the current page URL
+     * and reach the SPA's own catch-all instead (see PROJECT.md's Gotchas).
+     */
+    await api.post('/api/contact', contactForm.value)
+    contactSent.value = true
+    contactForm.value = { name: '', email: '', message: '' }
+  } catch (error) {
+    /*
+     * `categorizeError` already turns a 422's field errors into readable text,
+     * so the one message it returns covers validation, network and server
+     * failures without this form inventing its own copy for each.
+     */
+    contactError.value = categorizeError(
+      error,
+      'We could not send your message just now. Please try again shortly.',
+    ).message
+  } finally {
+    contactSending.value = false
+  }
+}
+
 const steps = [
   {
     title: 'Submit your information sheet',
@@ -392,8 +636,7 @@ const extras = [
               Every OJT day,<br />written down and accounted for.
             </h1>
             <p class="hero-lede">
-              Students log the work they did. Supervisors sign it. Coordinators see the whole
-              cohort without chasing a single sheet of paper.
+              The OJT logbook, kept as it happens rather than reconstructed later.
             </p>
             <div class="hero-actions">
               <!--
@@ -699,7 +942,7 @@ const extras = [
         -->
         <div class="shell closing-inner">
           <h2 class="display h2">Built at Mater Dei College, for its own interns.</h2>
-          <p class="closing-sub">Tubigon, Bohol &middot; CAST &middot; CABM-B &middot; CABM-H</p>
+          <p class="closing-sub">Cabulijan, Tubigon, Bohol, Philippines</p>
         </div>
       </section>
     </main>
@@ -722,16 +965,24 @@ const extras = [
             <p>Internship journal and progress monitoring for Mater Dei College.</p>
 
             <div class="footer-contact">
-              <!-- TODO: real mailto: address for the OJT coordinator's office. -->
-              <a href="#" class="footer-contact-link">
+              <!--
+                A button, not a `mailto:` — the coordinator's address is never
+                published to the client, so the form posts and the server
+                addresses the message.
+              -->
+              <button type="button" class="footer-contact-link" @click="openContact">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <rect x="2.5" y="4.5" width="19" height="15" rx="2" />
                   <path d="m3 6 9 6.5L21 6" />
                 </svg>
                 Email the OJT coordinator
-              </a>
-              <!-- TODO: the college's public website URL. -->
-              <a href="#" class="footer-contact-link">
+              </button>
+              <a
+                href="https://www.materdeicollege.edu.ph/"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="footer-contact-link"
+              >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <circle cx="12" cy="12" r="9" />
                   <path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18" />
@@ -741,12 +992,13 @@ const extras = [
             </div>
           </div>
 
+          <!--
+            No heading and no "Sign in" row any more: sign-in is permanently in
+            the fixed header, so both were repeating something already on screen.
+            What is left is the two things the header CANNOT say.
+          -->
           <div class="footer-access">
-            <h2 class="footer-heading">Getting in</h2>
             <ul class="footer-access-list">
-              <li>
-                <RouterLink to="/login" class="footer-signin">Sign in</RouterLink>
-              </li>
               <li>
                 Accounts are issued by your OJT coordinator — there is no public
                 sign-up.
@@ -760,15 +1012,148 @@ const extras = [
 
         <div class="footer-base">
           <p class="footer-copy">&copy; 2026 InternTrack &middot; Mater Dei College</p>
-          <!-- TODO: all three point at `#` until the pages themselves exist. -->
+          <!--
+            Buttons opening a dialog, not links to pages: each document is a
+            few paragraphs about this system, and a routed page per document
+            would be three destinations saying nothing the overlay cannot.
+          -->
           <nav class="footer-legal" aria-label="Legal">
-            <a href="#">Privacy Notice</a>
-            <a href="#">Terms of Use</a>
-            <a href="#">Accessibility</a>
+            <button type="button" @click="openLegal('privacy')">Privacy Notice</button>
+            <button type="button" @click="openLegal('terms')">Terms of Use</button>
+            <button type="button" @click="openLegal('accessibility')">Accessibility</button>
           </nav>
         </div>
       </div>
     </footer>
+
+    <!--
+      The contact dialog. Click-outside is bound on the BACKDROP element rather
+      than on document, so a click that starts inside the panel and drags out
+      cannot dismiss it — and `.self` keeps a click on the panel from bubbling up
+      and closing the thing it landed on.
+    -->
+    <div
+      v-if="contactOpen"
+      class="modal-backdrop"
+      @click.self="closeDialog"
+      @keydown="trapFocus"
+    >
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="contact-title"
+      >
+        <div class="modal-head">
+          <h2 id="contact-title" class="display modal-title">Email the OJT coordinator</h2>
+          <button type="button" class="modal-close" aria-label="Close" @click="closeDialog">
+            &times;
+          </button>
+        </div>
+
+        <div v-if="contactSent" class="modal-body">
+          <p class="modal-sent">
+            Thanks — your message has been sent to the OJT coordinator. They will
+            reply to the address you gave.
+          </p>
+          <div class="modal-foot">
+            <button type="button" class="btn btn-gold btn-sm" @click="closeDialog">Close</button>
+          </div>
+        </div>
+
+        <form v-else class="modal-body" novalidate @submit.prevent="submitContact">
+          <p class="modal-intro">
+            Accounts are issued by a coordinator, so send them the detail and they
+            can act on it.
+          </p>
+
+          <label class="field">
+            <span class="field-label">Your name</span>
+            <input
+              ref="contactFirstField"
+              v-model="contactForm.name"
+              type="text"
+              class="field-input"
+              required
+              maxlength="120"
+              autocomplete="name"
+            />
+          </label>
+
+          <label class="field">
+            <span class="field-label">Your email</span>
+            <input
+              v-model="contactForm.email"
+              type="email"
+              class="field-input"
+              required
+              maxlength="255"
+              autocomplete="email"
+            />
+          </label>
+
+          <label class="field">
+            <span class="field-label">What do you need help with?</span>
+            <textarea
+              v-model="contactForm.message"
+              class="field-input field-textarea"
+              rows="4"
+              required
+              minlength="20"
+              maxlength="2000"
+            />
+          </label>
+
+          <p v-if="contactError" class="modal-error" role="alert">{{ contactError }}</p>
+
+          <div class="modal-foot">
+            <button type="button" class="modal-cancel" @click="closeDialog">Cancel</button>
+            <button type="submit" class="btn btn-gold btn-sm" :disabled="contactSending">
+              {{ contactSending ? 'Sending…' : 'Send message' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!--
+      The legal dialog — the same shell, backdrop and handlers as the contact
+      one, and `legalOpen` is cleared whenever the contact form opens (and vice
+      versa), so the two `v-if`s can never both be true.
+    -->
+    <div
+      v-if="legalDoc"
+      class="modal-backdrop"
+      @click.self="closeDialog"
+      @keydown="trapFocus"
+    >
+      <div
+        class="modal modal-wide"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="legal-title"
+      >
+        <div class="modal-head">
+          <h2 id="legal-title" class="display modal-title">{{ legalDoc.title }}</h2>
+          <button ref="legalClose" type="button" class="modal-close" aria-label="Close" @click="closeDialog">
+            &times;
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <section v-for="section in legalDoc.sections" :key="section.heading" class="legal-section">
+            <h3 class="legal-heading">{{ section.heading }}</h3>
+            <p class="legal-body">{{ section.body }}</p>
+          </section>
+
+          <div v-if="legalDoc.contact" class="modal-foot">
+            <button type="button" class="btn btn-gold btn-sm" @click="openContact">
+              {{ legalDoc.contact }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -1966,13 +2351,23 @@ const extras = [
   margin-top: 1.25rem;
 }
 
+/*
+ * Shared by an `<a>` (the website) and a `<button>` (the contact form), so it
+ * carries the button resets too — otherwise the two sit on different baselines
+ * and at different sizes in the same row.
+ */
 .footer-contact-link {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
   color: rgba(255, 255, 255, 0.82);
   text-decoration: none;
+  font: inherit;
   font-size: 0.9rem;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
   transition: color 0.18s ease;
 }
 
@@ -1989,15 +2384,11 @@ const extras = [
   height: 16px;
 }
 
-.footer-heading {
-  margin: 0;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.55);
-}
-
+/* `margin-top: 0.35rem` rather than the 0.9rem that used to clear a heading —
+ * with the heading gone, the old gap left the column visibly starting lower
+ * than the brand block it sits beside. */
 .footer-access-list {
-  margin: 0.9rem 0 0;
+  margin: 0.35rem 0 0;
   padding: 0;
   list-style: none;
   display: flex;
@@ -2007,18 +2398,6 @@ const extras = [
   font-size: 0.88rem;
   line-height: 1.55;
   color: rgba(255, 255, 255, 0.66);
-}
-
-/* The one real destination in the footer, so it is the one thing here that is
- * given the gold. */
-.footer-signin {
-  color: var(--gold);
-  text-decoration: none;
-  font-weight: 600;
-}
-
-.footer-signin:hover {
-  text-decoration: underline;
 }
 
 .footer-base {
@@ -2044,15 +2423,198 @@ const extras = [
   gap: 1.25rem;
 }
 
-.footer-legal a {
-  color: rgba(255, 255, 255, 0.5);
-  text-decoration: none;
+/* Buttons styled as the text links they replaced: they open a dialog rather
+ * than navigate, and a button-shaped control in the legal strip would outrank
+ * the copyright line beside it. */
+.footer-legal button {
+  font: inherit;
   font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.5);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
   transition: color 0.18s ease;
 }
 
-.footer-legal a:hover {
+.footer-legal button:hover {
   color: rgba(255, 255, 255, 0.82);
+}
+
+/* ---------- The contact dialog ---------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(6, 23, 46, 0.62);
+}
+
+/*
+ * The three-part shell the rest of the app uses: a fixed head, a body that is
+ * the only scrolling element, and a foot inside it. `90vh` so a short laptop
+ * viewport scrolls the form rather than pushing its buttons off screen.
+ */
+.modal {
+  width: 100%;
+  max-width: 30rem;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 24px 60px -24px rgba(6, 23, 46, 0.65);
+}
+
+/* Wider than the form: prose at 30rem wraps into a column too narrow to read
+ * six sections down without the page scrolling more than it says. */
+.modal-wide {
+  max-width: 34rem;
+}
+
+.modal-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.1rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 1.2rem;
+  color: var(--ink);
+}
+
+.modal-close {
+  flex: none;
+  font: inherit;
+  font-size: 1.4rem;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  padding: 0.2rem 0.4rem;
+  cursor: pointer;
+}
+
+.modal-close:hover {
+  color: var(--ink);
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.25rem;
+}
+
+.modal-intro,
+.modal-sent {
+  margin: 0 0 1.1rem;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.field {
+  display: block;
+  margin-bottom: 1rem;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.field-input {
+  width: 100%;
+  font: inherit;
+  font-size: 0.92rem;
+  color: var(--text);
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.field-textarea {
+  resize: vertical;
+  min-height: 6rem;
+}
+
+/* Built from `--gold`'s own channels — the page has no red, and inventing one
+ * for a single message would put a fifth colour on a four-colour page. */
+.modal-error {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid rgba(212, 160, 23, 0.4);
+  background: rgba(212, 160, 23, 0.1);
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: #8a6708;
+}
+
+.modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+/* The one addition long prose needs: a heading-to-paragraph rhythm. The
+ * sections carry the gap between them so a trailing `.modal-foot`, when a
+ * document has one, sits at the same distance as the next section would. */
+.legal-section {
+  margin: 0 0 1.25rem;
+}
+
+.legal-section:last-child {
+  margin-bottom: 0;
+}
+
+.legal-heading {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.legal-body {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.modal-cancel {
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  padding: 0.5rem 0.5rem;
+  cursor: pointer;
+}
+
+.modal-cancel:hover {
+  color: var(--ink);
+}
+
+.btn-gold:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* ---------- Responsive ---------- */

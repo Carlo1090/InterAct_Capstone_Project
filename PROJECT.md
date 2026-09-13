@@ -3357,6 +3357,92 @@ above the stat strip, so the `92svh` phone fallback was not needed. No
 horizontal scroll at **375 / 768 / 1440 / 1920**; the only element whose content
 exceeds its box is the tab row's intentional internal scroll.
 
+#### Copy and contact pass, 2026-09-13 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
+
+Eight fixes. Seven are confined to `LandingPage.vue`; the eighth adds the
+landing page's **first backend dependency** — a public contact endpoint.
+
+- **The nav now reads in DOCUMENT order** — Who uses it · How it works · The
+  record · Others. It led with "How it works" while `#roles` sits above `#how`
+  on the page, so the scroll-spy lit the *second* link first and the nav
+  disagreed with the thing it navigates. **`SECTION_IDS` was deliberately NOT
+  touched** — it was already in document order and the observer's tie-break
+  reads it, so "fixing" both would have reintroduced the mismatch from the other
+  side.
+- **"Everything else" → "Others"**, label only; the `#more` id, the section and
+  its "And the rest of the paperwork" heading are unchanged.
+- **The hero lede is one line**: *"The OJT logbook, kept as it happens rather
+  than reconstructed later."* It was three sentences walking through all three
+  roles — a summary of the page rather than an opening for it.
+- **The closing line reads "Cabulijan, Tubigon, Bohol"**, and the three
+  department codes after it became **real `<button>`s** that open a bordered
+  panel inline, directly under the line. Inline and INSIDE the band on purpose:
+  this is a footnote on the line above it, and a modal would make a
+  one-sentence gloss feel like a destination. One open at a time, `aria-expanded`
+  on each, and Escape closes. The panel copies `.role-card`'s border, radius and
+  translucent fill so the page's two translucent-on-dark surfaces are one thing.
+  **The gloss text is `departments.name` as the seeders set it** (see Domain
+  Facts) rather than reworded, so page and database describe the institution
+  identically.
+- **"College website"** points at `https://www.materdeicollege.edu.ph/` with
+  `target="_blank" rel="noopener noreferrer"`; its TODO is gone.
+- **The footer's "Getting in" heading and its "Sign in" row are gone**, and
+  `.footer-signin` with them — sign-in is permanently in the fixed header, so
+  both repeated something already on screen. The two lines the header *cannot*
+  say are kept, and the list's top margin dropped 0.9rem → 0.35rem because the
+  0.9 existed to clear the heading and left the column starting visibly lower
+  than the brand block beside it.
+
+##### The contact form, and why it needed a server
+
+**"Email the OJT coordinator" is a `<button>`, not a `mailto:`** — the whole
+point is that the coordinator's address is never published to the client. It
+opens a modal (name, email, message ≥ 20 chars) that POSTs to a new endpoint.
+
+- **`POST /api/contact`, public and `throttle:5,1`.** Unauthenticated by
+  necessity: the person this exists for is the one who never received their
+  credentials and therefore *cannot* sign in to ask about them. That is also why
+  the throttle is tight — it is an open endpoint that sends real mail.
+- **`App\Http\Requests\ContactCoordinatorRequest`** holds validation. The only
+  non-structural rule is the 20-character floor on the message: a one-word
+  "help" costs the coordinator a round trip to find out what was meant.
+- **`App\Mail\CoordinatorContactMessage`** sends FROM the system address
+  (resolved through the existing `SystemMailFrom`) and sets **`replyTo`** to the
+  visitor. Putting a stranger's address in `From` is what SPF and DKIM exist to
+  reject; `replyTo` is what makes the form useful. **`SystemMailFrom::resolve()`
+  returns `?string`** and null means "fall back to `MAIL_FROM_ADDRESS`" — so the
+  envelope leaves `from` UNSET in that case. Passing the null into
+  `new Address()` throws instead of falling back.
+- **Not queued**, matching every other mail in the project: nothing implements
+  `ShouldQueue` and deployments run `QUEUE_CONNECTION=sync` with no worker, so
+  queueing it would silently never send.
+- **The recipient never reaches the client.** It is read from
+  `config('mail.coordinator_address')` (new `MDC_COORDINATOR_EMAIL`) and handed
+  straight to the transport; the response says only whether the message was
+  accepted, and a delivery exception goes to the log — its text can carry the
+  SMTP conversation, which names the recipient.
+- **Unset, the endpoint answers 503 and says so.** Reporting "sent" when nothing
+  was addressed would leave a student believing somebody had been told, which is
+  the worse of the two failures. `.env.example` carries the key blank.
+
+**ACTION REQUIRED: set `MDC_COORDINATOR_EMAIL` in `.env`.** Until it is set the
+form is reachable and correctly answers 503; `.env` was deliberately left alone.
+
+The modal traps focus (queried live, since the form swaps its fields for a
+success panel), closes on Escape and on backdrop click, returns focus to the
+button that opened it, disables submit in flight, and renders **inline** success
+and error states. Inline rather than the app's toast: `ToastHost` is a
+Tailwind-styled component and this page carries zero Tailwind by design.
+
+**Verified end to end.** Server-side: 503 unconfigured, 200 valid with the mail
+addressed to the coordinator and `replyTo` the sender, 422 on a short message
+and on a bad address, and the Blade rendering without leaking the recipient. In
+a browser: nav order and scroll-spy agree; all three department panels open,
+swap, toggle off and answer Enter; Escape and backdrop close the modal; the 422
+surfaces inline with its own wording and the form stays filled. At **1440 / 960
+/ 375** nothing overflows, the panel and modal both fit, and the location line
+wraps to two lines at 375.
+
 ## Role Surfaces
 
 ### Admin
