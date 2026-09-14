@@ -3443,6 +3443,104 @@ surfaces inline with its own wording and the form stays filled. At **1440 / 960
 / 375** nothing overflows, the panel and modal both fit, and the location line
 wraps to two lines at 375.
 
+#### Palette alignment and a way back, 2026-09-14 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
+
+The landing and sign-in pages read as a different product from the dashboards
+behind them — a navy-and-gold palette sampled from the campus photograph on
+one side, a blue-900→teal gradient on the other, against an app whose
+sidebar is `blue-600 → indigo-700`, whose content sits on `slate-100` and
+whose one action colour is `blue-600`. This pass moves both onto the app's own
+tokens and adds the one navigation the sign-in page was missing. **This entry
+records what changed and why; it is not a sign-off.** Four files:
+`LandingPage.vue`, `LoginPage.vue`, `components/auth/AuthCardShell.vue`, and
+the two pages that shell frames (`ForgotPasswordPage.vue`,
+`ResetPasswordPage.vue`) for their own buttons and links.
+
+**The landing page's custom properties now POINT AT the Tailwind theme
+variables** rather than holding a parallel set of hexes — `--ink:
+var(--color-slate-900, #0f172a)` and so on. Tailwind v4 emits every used token
+as a `--color-*` variable on `:root`, so the scoped stylesheet reads literally
+the same value `bg-blue-600` does, and the two cannot drift. The hex fallback
+is the token's own sRGB value, there only for the day a token stops being used
+anywhere else and is pruned from the build. The same precedent already exists
+in `style.css` (`var(--color-blue-700, #1d4ed8)`). The mapping:
+
+| property | was | now |
+|---|---|---|
+| `--ink` | `#06172e` | `slate-900` |
+| `--navy` | `#0e2c53` | `indigo-700` (the sidebar's deep end) |
+| `--blue` | `#1c56b8` | `blue-600`, plus `--blue-hover`/`--blue-active` = `blue-700`/`800` |
+| `--gold` | `#d4a017` | `amber-400` |
+| `--paper` | `#f3f5f9` | `slate-100` |
+| `--line` | `#d9e0ea` | `slate-200` |
+| `--text` | `#16273d` | `slate-800` |
+| `--muted` | `#5a6c85` | `slate-600` |
+| `--ok` | `#1f7a4d` | `emerald-700` |
+
+- **Gold is no longer an action colour anywhere.** `.btn-gold` is `.btn-primary`
+  — `blue-600` with white text, `blue-700` on hover — the same pill the
+  dashboard hero CTAs use. The skip link and the step numerals went blue too.
+  **The property is still named `--gold`** and holds amber-400, because the app
+  DOES have a secondary accent and it is amber: the student dashboard's "today"
+  dots and every notice banner. It stays exactly where a spot accent belongs —
+  the hero eyebrow, the roles' lead lines, the bullet dots, the statement
+  band's one word, and the nav's active underline over DARK bands.
+- **Two substitutions were made by contrast, not by role.** `--muted` maps to
+  `slate-600`, not the `slate-500` the app's table labels use: the landing page
+  sets whole paragraphs in it on `slate-100`, where `slate-500` is 4.34:1 and
+  fails AA. `--ok` maps to `emerald-700`, not `600`: on the `emerald-50` pill
+  the 600 is 3.58:1. Both are tokens the app already uses for text.
+- **The focus ring is amber on dark bands and blue on light ones.** The app's
+  ring is `blue-500`, but two of this page's bands are now blue themselves
+  (`--navy` is indigo-700) and a blue ring on a blue band is invisible. Over
+  `.band-paper`, the modal and the inverted header the ring is `--blue`.
+- **The nav's active underline inverts with the header.** `amber-400` is a 2px
+  line at under 2:1 against `slate-100`, so `.nav--on-light` switches it to
+  `--blue`. This replaces the old comment's "the gold underline needs no
+  inversion", which was true of the old gold on the old paper.
+- **A LATENT BUG SURFACED: the nav's Sign in pill was rendering its label at
+  68% white.** `.nav-links a` (0-1-1) outranked the pill's own colour rule
+  (0-1-0), and had done so on the gold pill too — barely noticeable on gold,
+  unreadable on blue. `.nav .nav-links a.btn-primary` (0-3-1) pins it white in
+  every state.
+- Every `rgba(6, 23, 46, …)` — the header surface, the scrims, the shadows, the
+  modal backdrop — became `rgba(15, 23, 42, …)`, `slate-900`'s channels. The
+  contact form's error notice is now the app's own banner (`amber-200` /
+  `amber-50` / `amber-800`), and the mock pills use `blue-50`, `emerald-50` and
+  `amber-100` fills.
+
+**The auth pages moved to the SIDEBAR'S gradient** — `from-blue-600
+to-indigo-700`, two stops, exactly as `*Layout.vue` paints it — in place of
+`from-blue-900 via-blue-800 to-teal-500`. Teal appeared nowhere else in the
+app. The ambient blobs are blue/indigo washes; the submit buttons are solid
+`bg-blue-600 hover:bg-blue-700` rather than a gradient with `brightness`; the
+focus underlines, icon tints and rings are `blue-600` / `blue-500`; links are
+`text-blue-700 hover:text-blue-800`. The frosted card's `/75` is unchanged and
+its arithmetic was redone for the new darkest stop: over `indigo-700` a 60%
+white card composites to ~#b4afea (slate-600 at 3.70:1, fails AA), `/70` scrapes
+4.50:1, `/75` clears 4.94:1. The on-gradient brand copy went `text-blue-100` →
+`text-blue-50` (4.24:1 → 4.68:1 against the blue-600 corner).
+
+**"← Back to InternTrack" is a `RouterLink` to `/`, top-left, on all three
+signed-out pages.** No such control existed before — the only "back" links led
+to `/login`. It is deliberately styled as the sidebar's own inactive nav item
+(`text-blue-50`, `hover:bg-white/10`), never as a pill, so it cannot compete
+with Sign in. A link to the route rather than `history.back()` because the
+login page is also reached from a bookmark, a QR code and the password-reset
+email, where "back" leads elsewhere or nowhere. Below `lg` the stacked layout is
+taller than a phone viewport and starts at its column's own top padding, so
+that padding went `py-10` → `pt-16 pb-10` (login) and the shell's `main` the
+same — measured at 375x667, the seal cleared the link on all three pages only
+after that.
+
+**Verified in a real browser.** Every landing token resolves to its oklch
+Tailwind value; zero `[class*="gold"]` elements; no `teal`, `sky-` or
+`blue-900` class left on any of the four auth files; the nav pill's label is
+`#fff` at rest, on hover and over a light band, where the underline is blue;
+the back link is visible, hittable and routes to `/` at 1440 and 375, with no
+overlap on any of the three pages; no horizontal scroll; no console errors.
+`npm run build` and `vue-tsc` both clean.
+
 ## Role Surfaces
 
 ### Admin

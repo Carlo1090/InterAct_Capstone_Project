@@ -53,7 +53,7 @@ let bandObserver: IntersectionObserver | null = null
 const navLinks = [
   { href: '#roles', label: 'Who uses it' },
   { href: '#how', label: 'How it works' },
-  { href: '#record', label: 'The record' },
+  { href: '#record', label: 'Records' },
   { href: '#more', label: 'Others' },
 ]
 
@@ -385,7 +385,7 @@ const LEGAL: Record<LegalKey, LegalDocument> = {
       },
       {
         heading: 'Keyboard',
-        body: 'Everything on this page can be operated from the keyboard alone. A skip link at the top jumps past the header, every control is a real button or link, and the element that has focus is outlined in gold.',
+        body: 'Everything on this page can be operated from the keyboard alone. A skip link at the top jumps past the header, every control is a real button or link, and the element that has focus is clearly outlined.',
       },
       {
         heading: 'Motion',
@@ -594,7 +594,7 @@ const extras = [
             :aria-current="`#${activeSection}` === link.href ? 'true' : undefined"
             @click="scrollToAnchor($event, link.href)"
           >{{ link.label }}</a>
-          <RouterLink to="/login" class="btn btn-gold btn-sm">Sign in</RouterLink>
+          <RouterLink to="/login" class="btn btn-primary btn-sm">Sign in</RouterLink>
         </nav>
 
         <button
@@ -615,7 +615,7 @@ const extras = [
           :href="link.href"
           @click="scrollToAnchor($event, link.href)"
         >{{ link.label }}</a>
-        <RouterLink to="/login" class="btn btn-gold" @click="menuOpen = false">Sign in</RouterLink>
+        <RouterLink to="/login" class="btn btn-primary" @click="menuOpen = false">Sign in</RouterLink>
       </div>
     </header>
 
@@ -644,7 +644,7 @@ const extras = [
                 above it, so a second copy here was the same call twice in one
                 viewport.
               -->
-              <a href="#how" class="btn btn-gold" @click="scrollToAnchor($event, '#how')">
+              <a href="#how" class="btn btn-primary" @click="scrollToAnchor($event, '#how')">
                 See how it works
               </a>
             </div>
@@ -1057,7 +1057,7 @@ const extras = [
             reply to the address you gave.
           </p>
           <div class="modal-foot">
-            <button type="button" class="btn btn-gold btn-sm" @click="closeDialog">Close</button>
+            <button type="button" class="btn btn-primary btn-sm" @click="closeDialog">Close</button>
           </div>
         </div>
 
@@ -1108,7 +1108,7 @@ const extras = [
 
           <div class="modal-foot">
             <button type="button" class="modal-cancel" @click="closeDialog">Cancel</button>
-            <button type="submit" class="btn btn-gold btn-sm" :disabled="contactSending">
+            <button type="submit" class="btn btn-primary btn-sm" :disabled="contactSending">
               {{ contactSending ? 'Sending…' : 'Send message' }}
             </button>
           </div>
@@ -1147,7 +1147,7 @@ const extras = [
           </section>
 
           <div v-if="legalDoc.contact" class="modal-foot">
-            <button type="button" class="btn btn-gold btn-sm" @click="openContact">
+            <button type="button" class="btn btn-primary btn-sm" @click="openContact">
               {{ legalDoc.contact }}
             </button>
           </div>
@@ -1159,23 +1159,35 @@ const extras = [
 
 <style scoped>
 .page {
-  /* Sampled from the campus photo: the building's navy trim and gold glazing. */
-  --ink: #06172e;
-  --navy: #0e2c53;
-  --blue: #1c56b8;
-  --gold: #d4a017;
-  --paper: #f3f5f9;
-  --line: #d9e0ea;
-  --text: #16273d;
-  --muted: #5a6c85;
+  /*
+   * The dashboards' own palette, not a separate one. Every value here is the
+   * Tailwind token the authenticated app is built from — the sidebar is
+   * `blue-600 → indigo-700`, content sits on `slate-100`, cards ring in
+   * `slate-200`, the one primary action colour is `blue-600` and the one
+   * spot accent the app already has is amber (the student dashboard's
+   * "today" dots and its notice banners). Tailwind v4 emits each as a
+   * `--color-*` variable on `:root`, so these read the SAME value the
+   * utilities do; the hex fallback is that token's sRGB value, for the case
+   * where a token stops being used anywhere else and is pruned from the build.
+   */
+  --ink: var(--color-slate-900, #0f172a);
+  --navy: var(--color-indigo-700, #4338ca);
+  --blue: var(--color-blue-600, #2563eb);
+  --blue-hover: var(--color-blue-700, #1d4ed8);
+  --blue-active: var(--color-blue-800, #1e40af);
+  --gold: var(--color-amber-400, #fbbf24);
+  --paper: var(--color-slate-100, #f1f5f9);
+  --line: var(--color-slate-200, #e2e8f0);
+  --text: var(--color-slate-800, #1e293b);
+  --muted: var(--color-slate-600, #475569);
   --display: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
 
   /*
-   * Mock-UI only. The page's single accent is gold; these two exist because a
-   * status pill inside the mock has to read as a status, not as a call to
-   * action. They never appear outside a `.mock`.
+   * Mock-UI only: a status pill inside the mock has to read as a status, not
+   * as a call to action, and `emerald-700` is what the dashboards' own status
+   * tiles use. It never appears outside a `.mock`.
    */
-  --ok: #1f7a4d;
+  --ok: var(--color-emerald-700, #047857);
 
   color: var(--text);
   background: #fff;
@@ -1215,8 +1227,8 @@ const extras = [
   top: 0;
   z-index: 100;
   padding: 0.75rem 1.25rem;
-  background: var(--gold);
-  color: var(--ink);
+  background: var(--blue);
+  color: #fff;
   font-weight: 600;
   text-decoration: none;
 }
@@ -1225,10 +1237,22 @@ const extras = [
   left: 0;
 }
 
+/*
+ * Amber, not the app's blue-500 ring, on the dark bands: two of them are blue
+ * themselves (`--navy` is indigo-700), and a blue ring on a blue band is
+ * invisible. Over paper, the modal and the inverted header the ring is the
+ * app's own blue, so a light surface here focuses exactly as a dashboard does.
+ */
 .page :focus-visible {
   outline: 2px solid var(--gold);
   outline-offset: 3px;
   border-radius: 2px;
+}
+
+.band-paper :focus-visible,
+.modal :focus-visible,
+.nav--on-light :focus-visible {
+  outline-color: var(--blue);
 }
 
 /* ---------- Buttons ---------- */
@@ -1251,17 +1275,19 @@ const extras = [
   font-size: 0.875rem;
 }
 
-.btn-gold {
-  background: var(--gold);
-  color: var(--ink);
+/* The app's one primary: `bg-blue-600` / `hover:bg-blue-700`, white text —
+ * the same pill the dashboard hero CTAs use. */
+.btn-primary {
+  background: var(--blue);
+  color: #fff;
 }
 
-.btn-gold:hover {
-  background: #e5af22;
+.btn-primary:hover {
+  background: var(--blue-hover);
 }
 
-.btn-gold:active {
-  background: #bd8f13;
+.btn-primary:active {
+  background: var(--blue-active);
 }
 
 /* ---------- 1. Nav ---------- */
@@ -1272,7 +1298,7 @@ const extras = [
  * reachable, including from the footer" actually asks for.
  */
 /*
- * NO band over the hero — the logo, wordmark, links and gold pill float
+ * NO band over the hero — the logo, wordmark, links and blue pill float
  * directly on the photograph, which is the whole reason the header stopped
  * looking bolted on. That much is unchanged and stays.
  *
@@ -1302,15 +1328,15 @@ const extras = [
  * a heading legible as it passes underneath rather than merely dimmed.
  */
 .nav--surfaced {
-  background: rgba(6, 23, 46, 0.82);
+  background: rgba(15, 23, 42, 0.82);
   backdrop-filter: blur(12px);
   border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 
 /* …and from `--paper`'s channels over the light bands, for the same reason. */
 .nav--surfaced.nav--on-light {
-  background: rgba(243, 245, 249, 0.86);
-  border-bottom-color: rgba(6, 23, 46, 0.1);
+  background: rgba(241, 245, 249, 0.86);
+  border-bottom-color: rgba(15, 23, 42, 0.1);
 }
 
 .nav .brand,
@@ -1323,7 +1349,7 @@ const extras = [
 .nav .brand-text,
 .nav-links a,
 .nav-toggle {
-  text-shadow: 0 1px 12px rgba(6, 23, 46, 0.45);
+  text-shadow: 0 1px 12px rgba(15, 23, 42, 0.45);
 }
 
 .nav--on-light .brand {
@@ -1353,17 +1379,18 @@ const extras = [
  * `.nav--on-light .nav-links a` have IDENTICAL specificity (0-2-1), so the
  * later of the two won — and that was the `#fff` active rule, which rendered
  * the current section's link white on a near-white band. This selector is
- * 0-3-1 and settles it. The gold underline is inherited from the base active
- * rule and deliberately kept: it is the one part of the indicator that needs no
- * inversion.
+ * 0-3-1 and settles it. The underline inverts with it: amber-400 is a 2px
+ * line at under 2:1 against `slate-100`, so over a light band the indicator is
+ * the app's own blue instead.
  */
 .nav--on-light .nav-links a.is-active {
   color: var(--ink);
+  border-bottom-color: var(--blue);
 }
 
 .nav--on-light .nav-toggle {
   color: var(--ink);
-  border-color: rgba(6, 23, 46, 0.3);
+  border-color: rgba(15, 23, 42, 0.3);
 }
 
 /* The shadow is a light-on-dark device; over paper it would read as a smudge. */
@@ -1374,7 +1401,7 @@ const extras = [
 }
 
 /*
- * The gold pill is deliberately NOT inverted — gold on `--ink` text clears
+ * The blue pill is deliberately NOT inverted — white on `blue-600` clears
  * contrast on both grounds, so it is the one element that never has to change.
  */
 
@@ -1440,7 +1467,7 @@ const extras = [
 
 /*
  * Inactive links sit at 0.68 rather than 0.86 so the jump to a full-white
- * active link is a real step rather than a shade. The gold rule alone was
+ * active link is a real step rather than a shade. The amber rule alone was
  * carrying the whole indication before.
  */
 .nav-links a {
@@ -1471,8 +1498,16 @@ const extras = [
   border-bottom-color: var(--gold);
 }
 
-.nav-links .btn:hover {
-  color: var(--ink);
+/*
+ * 0-3-1 on purpose: the pill is an `<a>` inside `.nav-links`, so both the
+ * 0-1-1 link colour and the 0-2-1 `.nav--on-light` inversion outrank a bare
+ * `.btn-primary` and were painting its label at 68% white — invisible on blue.
+ * It is the one element that keeps white text on every ground and in every
+ * state, so hover is pinned here as well.
+ */
+.nav .nav-links a.btn-primary,
+.nav .nav-links a.btn-primary:hover {
+  color: #fff;
 }
 
 .nav-toggle {
@@ -1554,15 +1589,15 @@ const extras = [
   background:
     linear-gradient(
       to bottom,
-      rgba(6, 23, 46, 0) 62%,
-      rgba(6, 23, 46, 0.78) 100%
+      rgba(15, 23, 42, 0) 62%,
+      rgba(15, 23, 42, 0.78) 100%
     ),
     linear-gradient(
       105deg,
       var(--ink) 0%,
-      rgba(6, 23, 46, 0.94) 34%,
-      rgba(6, 23, 46, 0.55) 52%,
-      rgba(6, 23, 46, 0.1) 72%
+      rgba(15, 23, 42, 0.94) 34%,
+      rgba(15, 23, 42, 0.55) 52%,
+      rgba(15, 23, 42, 0.1) 72%
     );
 }
 
@@ -1622,7 +1657,7 @@ const extras = [
 /*
  * `color: #fff` is load-bearing, not inherited chrome. The plinth is a SIBLING
  * of `.hero-inner`, which is the element carrying white text — so without this
- * the numerals fall back to the page's own `--text` (#16273d) and render dark
+ * the numerals fall back to the page's own `--text` (slate-800) and render dark
  * navy on a dark navy strip, i.e. invisible, while the labels stay readable
  * because they set their own colour. Caught on screen.
  */
@@ -1796,7 +1831,7 @@ const extras = [
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 1rem;
-  box-shadow: 0 10px 24px -18px rgba(6, 23, 46, 0.5);
+  box-shadow: 0 10px 24px -18px rgba(15, 23, 42, 0.5);
 }
 
 .mock-head {
@@ -1821,18 +1856,18 @@ const extras = [
 }
 
 .pill-blue {
-  background: rgba(28, 86, 184, 0.1);
+  background: var(--color-blue-50, #eff6ff);
   color: var(--blue);
 }
 
 .pill-green {
-  background: rgba(31, 122, 77, 0.1);
+  background: var(--color-emerald-50, #ecfdf5);
   color: var(--ok);
 }
 
 .pill-gold {
-  background: rgba(212, 160, 23, 0.16);
-  color: #8a6708;
+  background: var(--color-amber-100, #fef3c7);
+  color: var(--color-amber-800, #92400e);
 }
 
 /* Neutral, for the two time-record states that are neither a warning nor an
@@ -1858,12 +1893,12 @@ const extras = [
   display: block;
   height: 8px;
   border-radius: 4px;
-  background: #e7ecf3;
+  background: var(--color-slate-200, #e2e8f0);
   transition: background-color 0.18s ease;
 }
 
 .bar.is-locked {
-  background: #dbe3ec;
+  background: var(--color-slate-300, #cbd5e1);
 }
 
 .rows {
@@ -2154,7 +2189,7 @@ const extras = [
   height: 2.75rem;
   border-radius: 50%;
   background: var(--paper);
-  color: var(--gold);
+  color: var(--blue);
   font-size: 1.4rem;
   line-height: 1;
 }
@@ -2279,8 +2314,8 @@ const extras = [
   inset: 0;
   background: linear-gradient(
     to bottom,
-    rgba(6, 23, 46, 0.86) 0%,
-    rgba(6, 23, 46, 0.97) 100%
+    rgba(15, 23, 42, 0.86) 0%,
+    rgba(15, 23, 42, 0.97) 100%
   );
 }
 
@@ -2451,7 +2486,7 @@ const extras = [
   align-items: center;
   justify-content: center;
   padding: 1.25rem;
-  background: rgba(6, 23, 46, 0.62);
+  background: rgba(15, 23, 42, 0.62);
 }
 
 /*
@@ -2468,7 +2503,7 @@ const extras = [
   overflow: hidden;
   border-radius: 14px;
   background: #fff;
-  box-shadow: 0 24px 60px -24px rgba(6, 23, 46, 0.65);
+  box-shadow: 0 24px 60px -24px rgba(15, 23, 42, 0.65);
 }
 
 /* Wider than the form: prose at 30rem wraps into a column too narrow to read
@@ -2552,17 +2587,17 @@ const extras = [
   min-height: 6rem;
 }
 
-/* Built from `--gold`'s own channels — the page has no red, and inventing one
- * for a single message would put a fifth colour on a four-colour page. */
+/* The dashboards' own notice banner — `border-amber-200 bg-amber-50
+ * text-amber-800` — rather than a red the app does not use for this. */
 .modal-error {
   margin: 0 0 1rem;
   padding: 0.6rem 0.75rem;
   border-radius: 8px;
-  border: 1px solid rgba(212, 160, 23, 0.4);
-  background: rgba(212, 160, 23, 0.1);
+  border: 1px solid var(--color-amber-200, #fde68a);
+  background: var(--color-amber-50, #fffbeb);
   font-size: 0.86rem;
   line-height: 1.5;
-  color: #8a6708;
+  color: var(--color-amber-800, #92400e);
 }
 
 .modal-foot {
@@ -2612,7 +2647,7 @@ const extras = [
   color: var(--ink);
 }
 
-.btn-gold:disabled {
+.btn-primary:disabled {
   opacity: 0.6;
   cursor: default;
 }
@@ -2633,7 +2668,7 @@ const extras = [
     flex-direction: column;
     gap: 0.35rem;
     padding: 0.5rem 1.25rem 1.25rem;
-    background: rgba(6, 23, 46, 0.97);
+    background: rgba(15, 23, 42, 0.97);
     border-top: 1px solid rgba(255, 255, 255, 0.1);
   }
 
@@ -2689,8 +2724,8 @@ const extras = [
   .hero-scrim {
     background: linear-gradient(
       to bottom,
-      rgba(6, 23, 46, 0.92) 0%,
-      rgba(6, 23, 46, 0.72) 100%
+      rgba(15, 23, 42, 0.92) 0%,
+      rgba(15, 23, 42, 0.72) 100%
     );
   }
 

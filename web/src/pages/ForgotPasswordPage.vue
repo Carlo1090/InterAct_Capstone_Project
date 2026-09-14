@@ -79,7 +79,7 @@ const submit = async () => {
 
       <RouterLink
         to="/login"
-        class="mt-8 flex min-h-[3rem] w-full items-center justify-center rounded-full bg-linear-to-r from-blue-900 to-teal-500 px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:ring-offset-2 focus-visible:outline-none"
+        class="mt-8 flex min-h-[3rem] w-full items-center justify-center rounded-full bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:outline-none"
       >
         Back to sign in
       </RouterLink>
@@ -99,10 +99,10 @@ const submit = async () => {
           required
         />
         <span
-          class="pointer-events-none absolute inset-x-0 -bottom-0.5 h-0.5 origin-left scale-x-0 bg-linear-to-r from-blue-900 to-teal-500 transition-transform duration-300 peer-focus:scale-x-100 motion-reduce:transition-none"
+          class="pointer-events-none absolute inset-x-0 -bottom-0.5 h-0.5 origin-left scale-x-0 bg-blue-600 transition-transform duration-300 peer-focus:scale-x-100 motion-reduce:transition-none"
         />
         <span
-          class="pointer-events-none absolute inset-y-0 right-1 flex items-center text-slate-400 transition duration-200 peer-focus:scale-110 peer-focus:text-teal-600 motion-reduce:transition-none"
+          class="pointer-events-none absolute inset-y-0 right-1 flex items-center text-slate-400 transition duration-200 peer-focus:scale-110 peer-focus:text-blue-600 motion-reduce:transition-none"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5">
             <rect x="3" y="5.5" width="18" height="13" rx="2.2" stroke="currentColor" stroke-width="1.7" />
@@ -121,7 +121,7 @@ const submit = async () => {
 
       <button
         type="submit"
-        class="mt-8 flex min-h-[3rem] w-full items-center justify-center rounded-full bg-linear-to-r from-blue-900 to-teal-500 px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.985] disabled:pointer-events-none disabled:cursor-not-allowed disabled:grayscale"
+        class="mt-8 flex min-h-[3rem] w-full items-center justify-center rounded-full bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.985] disabled:pointer-events-none disabled:cursor-not-allowed disabled:grayscale"
         :disabled="isSending"
       >
         <span class="flex items-center justify-center gap-2">
@@ -141,7 +141,7 @@ const submit = async () => {
       </button>
 
       <p class="mt-6 text-center text-sm text-slate-600">
-        <RouterLink to="/login" class="font-semibold text-blue-900 hover:text-blue-700">Back to sign in</RouterLink>
+        <RouterLink to="/login" class="font-semibold text-blue-700 hover:text-blue-800">Back to sign in</RouterLink>
       </p>
     </form>
   </AuthCardShell>

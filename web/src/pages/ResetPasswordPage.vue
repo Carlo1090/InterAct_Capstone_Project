@@ -111,7 +111,7 @@ const submit = async () => {
             required
           />
           <span
-            class="pointer-events-none absolute inset-x-0 -bottom-0.5 h-0.5 origin-left scale-x-0 bg-linear-to-r from-blue-900 to-teal-500 transition-transform duration-300 peer-focus:scale-x-100 motion-reduce:transition-none"
+            class="pointer-events-none absolute inset-x-0 -bottom-0.5 h-0.5 origin-left scale-x-0 bg-blue-600 transition-transform duration-300 peer-focus:scale-x-100 motion-reduce:transition-none"
           />
         </div>
       </div>
@@ -131,7 +131,7 @@ const submit = async () => {
             required
           />
           <span
-            class="pointer-events-none absolute inset-x-0 -bottom-0.5 h-0.5 origin-left scale-x-0 bg-linear-to-r from-blue-900 to-teal-500 transition-transform duration-300 peer-focus:scale-x-100 motion-reduce:transition-none"
+            class="pointer-events-none absolute inset-x-0 -bottom-0.5 h-0.5 origin-left scale-x-0 bg-blue-600 transition-transform duration-300 peer-focus:scale-x-100 motion-reduce:transition-none"
           />
           <!--
             A plain toggle, not LoginPage's press-and-hold. There the password
@@ -141,7 +141,7 @@ const submit = async () => {
           -->
           <button
             type="button"
-            class="absolute inset-y-0 right-0 flex items-center rounded px-1 text-slate-400 transition select-none hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:outline-none"
+            class="absolute inset-y-0 right-0 flex items-center rounded px-1 text-slate-400 transition select-none hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
             :aria-label="showPassword ? 'Hide password' : 'Show password'"
             @click="showPassword = !showPassword"
           >
@@ -197,7 +197,7 @@ const submit = async () => {
             required
           />
           <span
-            class="pointer-events-none absolute inset-x-0 -bottom-0.5 h-0.5 origin-left scale-x-0 bg-linear-to-r from-blue-900 to-teal-500 transition-transform duration-300 peer-focus:scale-x-100 motion-reduce:transition-none"
+            class="pointer-events-none absolute inset-x-0 -bottom-0.5 h-0.5 origin-left scale-x-0 bg-blue-600 transition-transform duration-300 peer-focus:scale-x-100 motion-reduce:transition-none"
           />
         </div>
       </div>
@@ -212,7 +212,7 @@ const submit = async () => {
 
       <button
         type="submit"
-        class="mt-8 flex min-h-[3rem] w-full items-center justify-center rounded-full bg-linear-to-r from-blue-900 to-teal-500 px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.985] disabled:pointer-events-none disabled:cursor-not-allowed disabled:grayscale"
+        class="mt-8 flex min-h-[3rem] w-full items-center justify-center rounded-full bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.985] disabled:pointer-events-none disabled:cursor-not-allowed disabled:grayscale"
         :disabled="isSaving || !canSubmit"
       >
         <span class="flex items-center justify-center gap-2">
@@ -232,11 +232,11 @@ const submit = async () => {
       </button>
 
       <p class="mt-6 text-center text-sm text-slate-600">
-        <RouterLink to="/forgot-password" class="font-semibold text-blue-900 hover:text-blue-700">
+        <RouterLink to="/forgot-password" class="font-semibold text-blue-700 hover:text-blue-800">
           Request a new link
         </RouterLink>
         <span class="mx-2 text-slate-400">&middot;</span>
-        <RouterLink to="/login" class="font-semibold text-blue-900 hover:text-blue-700">Back to sign in</RouterLink>
+        <RouterLink to="/login" class="font-semibold text-blue-700 hover:text-blue-800">Back to sign in</RouterLink>
       </p>
     </form>
   </AuthCardShell>
