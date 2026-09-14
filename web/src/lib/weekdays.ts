@@ -5,7 +5,6 @@
  * same range differently.
  */
 export const WEEKDAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-export const WEEKDAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 
 /** Whether ISO weekday `day` falls in the inclusive [start, end] range, wrapping past Sunday when end precedes start (e.g. Sat(6) -> Tue(2)). */
 export function isDayInRange(day: number, start: number, end: number): boolean {

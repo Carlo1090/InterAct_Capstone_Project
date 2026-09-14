@@ -36,8 +36,11 @@ type BatchForm = {
   start_date: string
   end_date: string
   required_hours: number
-  working_days_start: number
-  working_days_end: number
+  // The picker's two points. `end === null` is "start only" (a single-day
+  // range); `start === null` is "nothing chosen" and blocks Save. The server
+  // column is NOT NULL either way, so save() collapses a null end to the start.
+  working_days_start: number | null
+  working_days_end: number | null
   daily_reminder_time: string
   journal_template_id: number | null
   ojt_type: OjtType
@@ -114,7 +117,11 @@ const endDateInvalid = computed(() => Boolean(form.start_date && form.end_date &
 // `v-model.number` yields '' for a cleared input, which Number.isInteger rejects.
 const requiredHoursInvalid = computed(() => !Number.isInteger(form.required_hours) || form.required_hours < 1)
 
-const hasFieldErrors = computed(() => endDateInvalid.value || requiredHoursInvalid.value)
+// The picker lets a coordinator deselect every day; the batch still needs at
+// least one, so an empty selection blocks Save rather than reaching the server.
+const workingDaysInvalid = computed(() => form.working_days_start === null)
+
+const hasFieldErrors = computed(() => endDateInvalid.value || requiredHoursInvalid.value || workingDaysInvalid.value)
 
 // Templates are many-programs-per-template now — filter on membership, not a
 // single program_id (which no longer exists on the template).
@@ -174,7 +181,10 @@ const openEditModal = (batch: Batch) => {
   form.end_date = batch.end_date?.slice(0, 10) ?? ''
   form.required_hours = batch.required_hours
   form.working_days_start = batch.working_days_start
-  form.working_days_end = batch.working_days_end
+  // A saved single-day batch is (d, d) in the database; the picker represents
+  // that as start-only so a tap on the day deselects it instead of reading as
+  // an ambiguous "end that equals the start".
+  form.working_days_end = batch.working_days_end === batch.working_days_start ? null : batch.working_days_end
   form.daily_reminder_time = batch.daily_reminder_time.slice(0, 5)
   form.journal_template_id = batch.journal_template_id ?? null
   form.is_active = batch.is_active ?? true
@@ -223,8 +233,11 @@ const save = async () => {
   modalMessage.value = ''
 
   try {
+    // A start-only selection is a one-day range on the wire.
+    const working_days_end = form.working_days_end ?? form.working_days_start
+
     if (editingBatchId.value) {
-      const { name, academic_year, semester, start_date, end_date, required_hours, working_days_start, working_days_end, daily_reminder_time, journal_template_id, is_active } = form
+      const { name, academic_year, semester, start_date, end_date, required_hours, working_days_start, daily_reminder_time, journal_template_id, is_active } = form
       await api.put(`/api/coordinator/batches/${editingBatchId.value}`, {
         name,
         academic_year,
@@ -239,7 +252,7 @@ const save = async () => {
         is_active,
       })
     } else {
-      await api.post('/api/coordinator/batches', form)
+      await api.post('/api/coordinator/batches', { ...form, working_days_end })
     }
 
     await load()
@@ -839,6 +852,7 @@ onMounted(load)
             <div>
               <label class="mb-2 block text-sm font-medium text-slate-700">Working Days</label>
               <WeekdayRangePicker v-model:start="form.working_days_start" v-model:end="form.working_days_end" />
+              <p v-if="workingDaysInvalid" class="mt-1 text-xs text-red-600">Pick at least one working day.</p>
             </div>
           </section>
 

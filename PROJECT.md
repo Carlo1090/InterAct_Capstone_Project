@@ -484,13 +484,38 @@ rather than "fixed" as part of this change — see below).
 - **`batches.working_days_start` / `working_days_end`** (tinyInteger, ISO
   weekday 1=Mon..7=Sun, both NOT NULL) hold the real range now, picked on the
   coordinator's Create/Edit Batch form via **`WeekdayRangePicker.vue`**
-  (`components/coordinator/`) — seven circles (M T W T F S S), click one to
-  start a selection, click another to complete the range. **The range WRAPS
-  across the week when the end precedes the start** (e.g. clicking Sat then Tue
-  sets Sat/Sun/Mon/Tue) — deliberately not normalized to "whichever direction is
-  shorter", since an ordered two-click range is unambiguous and silently
-  flipping it would sometimes produce a different set of days than the
-  coordinator actually clicked.
+  (`components/coordinator/`) — seven pill buttons (Mon Tue Wed Thu Fri Sat
+  Sun, three-letter labels for legibility over single letters). **The
+  selection is two points, a START and an optional END, and every tap on a
+  chosen point toggles it OFF** (reworked 2026-09-14 at the project owner's
+  request — the first cut "cancelled back to the previous range", which is
+  not what deselect means): nothing chosen → tap X sets the start; start only
+  → tap the start empties the selection, tap another day sets the end; full
+  range → tap the END drops just the end (so a different one can be picked
+  without starting over), tap the START empties everything, tap any other day
+  starts fresh. **The start and end are deliberately NOT symmetric**: dropping
+  the start empties the selection rather than promoting the end, because the
+  start is the anchor the range hangs off and "I tapped Monday and now only
+  Friday is lit" reads as a glitch. Press-and-drag writes the same two points
+  (release on the end; glide back onto the pressed day and it is start-only),
+  so the tap rules apply to a dragged range exactly as to a tapped one — tap
+  the day you released on and it drops off.
+  - **`end === null` is the ONLY representation of a single day**, never
+    `(d, d)`. `CoordinatorBatchesPage` collapses a null end to the start on
+    save (the columns are NOT NULL) and expands a stored `(d, d)` back to null
+    when it loads a batch for editing — otherwise a tap on that day would be
+    an ambiguous "an end that equals the start".
+  - **`start === null` (nothing chosen) is a real, reachable state and blocks
+    Save** via `workingDaysInvalid` in `hasFieldErrors`, with an inline
+    "Pick at least one working day." — it never reaches the server. The label
+    reads "No days selected" in red.
+  - Both paths go through the shared `formatDayRange`/`isDayInRange` helpers,
+    so neither can disagree with the other about the result.
+  - **The range WRAPS across the week when the end precedes the start** (e.g.
+    Sat then Tue sets Sat/Sun/Mon/Tue) — deliberately not normalized to
+    "whichever direction is shorter", since an ordered two-click range is
+    unambiguous and silently flipping it would sometimes produce a different
+    set of days than the coordinator actually clicked.
 - **`working_days_per_week` STAYS** — every existing consumer (the reminder
   command, the student dashboard's missing-count, the journal calendar, the
   reminder-preference defaults) still reads it — but it is now **derived
@@ -531,8 +556,8 @@ rather than "fixed" as part of this change — see below).
 - `AdminBatchesPage`'s read-only batch view now shows the range as
   `"Mon – Fri"` (or the wrapped equivalent, e.g. `"Sat – Tue"`) via the shared
   `web/src/lib/weekdays.ts` helpers (`formatDayRange`, `isDayInRange`,
-  `WEEKDAY_NAMES`/`WEEKDAY_LETTERS`) — the same helpers the picker itself uses,
-  so the two can never describe a range differently.
+  `WEEKDAY_NAMES`) — the same helpers the picker itself uses, so the two can
+  never describe a range differently.
 
 Coverage: `tests/Unit/Support/BatchWorkingDaysTest.php` pins the
 behavior-preserving mapping, the wraparound math (`isWorkingDayInRange`, both
