@@ -32,7 +32,8 @@ class JournalCalendarController extends Controller
 
         $range = $this->ojtRange($enrollment);
         $today = today();
-        $workingDaysPerWeek = $enrollment->batch->working_days_per_week;
+        $workingDaysStart = $enrollment->batch->working_days_start;
+        $workingDaysEnd = $enrollment->batch->working_days_end;
 
         $entriesByDate = JournalEntry::where('student_id', $user->id)
             // whereDate on both bounds, never whereBetween: entry_date is a
@@ -50,7 +51,7 @@ class JournalCalendarController extends Controller
         while ($cursor->lessThanOrEqualTo($end)) {
             $days[] = [
                 'date' => $cursor->toDateString(),
-                'status' => $this->statusFor($cursor, $range, $workingDaysPerWeek, $today, $enrollment, $entriesByDate->get($cursor->toDateString())),
+                'status' => $this->statusFor($cursor, $range, $workingDaysStart, $workingDaysEnd, $today, $enrollment, $entriesByDate->get($cursor->toDateString())),
             ];
             $cursor = $cursor->addDay();
         }
@@ -64,7 +65,7 @@ class JournalCalendarController extends Controller
     /**
      * @param  array{start: CarbonInterface, end: CarbonInterface}  $range
      */
-    private function statusFor(CarbonImmutable $date, array $range, int $workingDaysPerWeek, CarbonInterface $today, BatchStudent $enrollment, ?JournalEntry $entry): string
+    private function statusFor(CarbonImmutable $date, array $range, int $workingDaysStart, int $workingDaysEnd, CarbonInterface $today, BatchStudent $enrollment, ?JournalEntry $entry): string
     {
         if ($date->lt($range['start'])) {
             return 'no_entry';
@@ -96,7 +97,7 @@ class JournalCalendarController extends Controller
 
         // Nothing written. Only now does the schedule matter: a non-working day
         // was never expected, so it stays 'no_entry' and is never 'missing'.
-        if (! BatchWorkingDays::isWorkingDay($date, $workingDaysPerWeek)) {
+        if (! BatchWorkingDays::isWorkingDayInRange($date, $workingDaysStart, $workingDaysEnd)) {
             return 'no_entry';
         }
 

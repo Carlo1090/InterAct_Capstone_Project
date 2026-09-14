@@ -30,7 +30,14 @@ class StoreBatchRequest extends FormRequest
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after:start_date'],
             'required_hours' => ['required', 'integer', 'min:1'],
-            'working_days_per_week' => ['required', 'integer', 'between:1,7'],
+            // The circle picker sends a start/end day; working_days_per_week
+            // (still read by every reminder/dashboard/calendar consumer) is
+            // derived automatically from it — see BatchObserver. A caller still
+            // posting only the legacy count is accepted too, so nothing older
+            // than this feature breaks.
+            'working_days_start' => ['required_with:working_days_end', 'nullable', 'integer', 'between:1,7'],
+            'working_days_end' => ['required_with:working_days_start', 'nullable', 'integer', 'between:1,7'],
+            'working_days_per_week' => ['required_without_all:working_days_start,working_days_end', 'nullable', 'integer', 'between:1,7'],
             'daily_reminder_time' => ['required', 'date_format:H:i'],
             'journal_template_id' => [
                 'nullable',

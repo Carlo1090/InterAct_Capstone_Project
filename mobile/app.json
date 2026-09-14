@@ -17,14 +17,14 @@
     "android": {
       "package": "com.mdc.interntrack",
       "adaptiveIcon": {
-        "backgroundColor": "#0a1628",
+        "backgroundColor": "#20304c",
         "foregroundImage": "./assets/adaptive-icon.png"
       }
     },
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0a1628"
+      "backgroundColor": "#20304c"
     },
     "plugins": [
       "expo-router",
@@ -57,6 +57,13 @@
         "projectId": "8e4c1694-b304-4463-8406-5eb160a63593"
       }
     },
-    "owner": "karlo1090s-team"
+    "owner": "karlo1090s-team",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/8e4c1694-b304-4463-8406-5eb160a63593",
+      "fallbackToCacheTimeout": 0
+    }
   }
 }

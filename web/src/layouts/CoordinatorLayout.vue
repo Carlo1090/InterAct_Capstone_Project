@@ -143,7 +143,12 @@ const mobileOpen = ref(false)
 
 const pageTitle = computed(() => (typeof route.meta.title === 'string' ? route.meta.title : 'Coordinator Dashboard'))
 const userName = computed(() => auth.user?.name ?? 'Prof. Alicia Montoya')
-const department = computed(() => auth.user?.program?.department?.name ?? 'Business Administration')
+// A coordinator's own program_id is always null (see PROJECT.md's coordinator
+// scope note) — their department comes through departments_coordinated
+// instead, which AuthUserPayload eager-loads for exactly this. The department
+// CODE renders here (not the name), matching how the rest of the app treats
+// departments.code as the identifier.
+const department = computed(() => auth.user?.departments_coordinated?.[0]?.code ?? 'No Department')
 
 // --- "New info-sheet submissions" sidebar dot ------------------------------
 // Shows a dot on the Student Info Sheets nav item when a submission has arrived

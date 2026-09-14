@@ -55,6 +55,7 @@ export function TopBar() {
         <NotificationBell />
         <Pressable
           onPress={() => router.push('/profile')}
+          accessibilityLabel="Profile"
           style={{
             width: 34,
             height: 34,
@@ -64,9 +65,19 @@ export function TopBar() {
             borderColor: colors.blue400,
             alignItems: 'center',
             justifyContent: 'center',
+            // Required, or a square photo spills past the circular border.
+            overflow: 'hidden',
           }}
         >
-          <Text style={{ color: 'white', fontSize: 13, fontWeight: '600' }}>{initialsFor(user?.name)}</Text>
+          {/* The header used to render initials ONLY, so a student who set a
+              profile photo never saw it here — half of why changing the photo
+              looked like it hadn't worked. (The other half was that each
+              screen held its own copy of the user; see userStore.) */}
+          {user?.avatar_url ? (
+            <Image source={{ uri: user.avatar_url }} style={{ width: '100%', height: '100%' }} />
+          ) : (
+            <Text style={{ color: 'white', fontSize: 13, fontWeight: '600' }}>{initialsFor(user?.name)}</Text>
+          )}
         </Pressable>
       </View>
     </View>

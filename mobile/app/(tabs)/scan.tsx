@@ -1,9 +1,10 @@
 import { useCallback, useRef, useState } from 'react';
-import { ScrollView, View, Text, Pressable, ActivityIndicator, Alert, Modal } from 'react-native';
+import { ScrollView, View, Text, Pressable, ActivityIndicator, Modal } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { Banner } from '../../src/components/Banner';
+import { OfflineNotice } from '../../src/components/OfflineNotice';
 import { Button } from '../../src/components/Button';
 import { Card } from '../../src/components/Card';
 import { ErrorState, LoadingState } from '../../src/components/ErrorState';
@@ -11,6 +12,7 @@ import { TopBar } from '../../src/components/TopBar';
 import { colors } from '../../src/constants/colors';
 import { apiGet, apiPost, ApiError } from '../../src/services/api';
 import { endpoints } from '../../src/services/endpoints';
+import { alertAction } from '../../src/services/confirm';
 import { useDtr } from '../../src/hooks/useDtr';
 import { formatDate, formatTime } from '../../src/lib/datetime';
 import { DtrPunchResult, DtrScanPreview, DtrSession } from '../../src/types/api';
@@ -71,10 +73,11 @@ export default function Scan() {
     if (!permission?.granted) {
       const result = await requestPermission();
       if (!result.granted) {
-        Alert.alert(
-          'Camera access needed',
-          'InternTrack needs the camera to read your workplace QR code. You can enable it in Settings.'
-        );
+        await alertAction({
+          title: 'Camera access needed',
+          message: 'Turn the camera on in Settings to scan your QR code.',
+          tone: 'warn',
+        });
         return;
       }
     }
@@ -91,10 +94,11 @@ export default function Scan() {
     const siteToken = extractSiteToken(result.data);
     if (!siteToken) {
       closeCamera();
-      Alert.alert(
-        "That's not an InternTrack code",
-        'Scan the Daily Time Record QR code shown by your supervisor.'
-      );
+      await alertAction({
+        title: 'Not an InternTrack code',
+        message: 'Scan the QR code your supervisor shows.',
+        tone: 'warn',
+      });
       return;
     }
 
@@ -109,12 +113,14 @@ export default function Scan() {
       setToken(siteToken);
     } catch (err) {
       const apiErr = err as ApiError;
-      Alert.alert(
-        apiErr.status === null ? 'You appear to be offline' : 'Could not read that code',
-        apiErr.status === null
-          ? 'A clock-in records where and when you were, so it needs a live connection. Try again once you have signal.'
-          : apiErr.message
-      );
+      void alertAction({
+        title: apiErr.status === null ? 'No connection' : 'Could not read that code',
+        message:
+          apiErr.status === null
+            ? 'A clock-in needs a live connection. Try again when you have signal.'
+            : apiErr.message,
+        tone: 'danger',
+      });
     } finally {
       setResolving(false);
       scanLatch.current = false;
@@ -126,10 +132,11 @@ export default function Scan() {
 
     const permissionResult = await Location.requestForegroundPermissionsAsync();
     if (!permissionResult.granted) {
-      Alert.alert(
-        'Location access needed',
-        'Your clock-in is recorded against the workplace location, so InternTrack needs your position to accept it.'
-      );
+      await alertAction({
+        title: 'Location access needed',
+        message: 'Your clock-in is recorded at the workplace, so it needs your position.',
+        tone: 'warn',
+      });
       return;
     }
 
@@ -147,24 +154,28 @@ export default function Scan() {
       setToken(null);
       await reload();
 
-      Alert.alert(
-        res.action === 'clocked_in' ? 'Clocked in' : 'Clocked out',
+      void alertAction({
+        title: res.action === 'clocked_in' ? 'Clocked in' : 'Clocked out',
         // The server's own message already covers the auto-close case, so
         // there is exactly one wording for it rather than two that could drift.
-        `${res.message}\n\nRecorded for ${res.student_name}, ${res.distance_meters}m from the registered point.`
-      );
+        message: `${res.message}\n\n${res.student_name} · ${res.distance_meters}m from the registered point.`,
+        tone: 'success',
+        confirmLabel: 'Done',
+      });
     } catch (err) {
       const apiErr = err as ApiError;
-      Alert.alert(
-        apiErr.status === null ? 'You appear to be offline' : 'Could not record that punch',
-        apiErr.status === null
-          ? // Deliberately NOT queued like a journal entry: a journal is the
-            // student's own words and is just as true an hour later, but a
-            // punch is a claim about where they were at a moment in time.
-            // Sending it later would record a time and place nobody observed.
-            'A clock-in has to be recorded at the moment it happens, so it cannot be saved for later. Try again once you have signal, or ask your supervisor to adjust the session.'
-          : apiErr.message
-      );
+      void alertAction({
+        title: apiErr.status === null ? 'Not recorded — no connection' : 'Could not record that punch',
+        message:
+          apiErr.status === null
+            ? // Deliberately NOT queued like a journal entry: a journal is the
+              // student's own words and is just as true an hour later, but a
+              // punch is a claim about where they were at a moment in time.
+              // Sending it later would record a time and place nobody observed.
+              'A clock-in cannot be saved for later. Try again with signal, or ask your supervisor to adjust it.'
+            : apiErr.message,
+        tone: 'danger',
+      });
     } finally {
       setPunching(false);
     }
@@ -190,11 +201,13 @@ export default function Scan() {
       <TopBar />
 
       <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
-        {isOffline ? (
-          <Banner variant="neutral">
-            Offline — showing your saved record. Scanning to clock in or out needs a connection.
-          </Banner>
-        ) : null}
+        {/* Was a hardcoded `neutral` banner — grey on grey, and it bypassed
+            OfflineNotice entirely, so this screen kept the quiet treatment
+            after every other screen got the loud one. It matters MOST here:
+            the DTR is the app's one online_only feature, so offline the
+            button genuinely cannot work, and a student standing at the door
+            needs to see that rather than tap a dead control. */}
+        <OfflineNotice feature="dtr" show={isOffline} error={error} />
 
         {open ? (
           <Banner variant="info">
@@ -277,9 +290,29 @@ export default function Scan() {
                   {/* Surfaced so a student can see WHY a session isn't
                       counting rather than silently wondering. */}
                   {session.adjustment_reason ? (
-                    <Text style={{ fontSize: 11, color: colors.warnTx, marginTop: 2 }}>
-                      {session.adjustment_reason}
-                    </Text>
+                    /* Amber text alone read as a caption. This says a
+                       supervisor changed the row, which is the one line on a
+                       session a student may need to query. */
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 5,
+                        alignSelf: 'flex-start',
+                        backgroundColor: colors.warnBg,
+                        borderWidth: 1,
+                        borderColor: colors.warnBorder,
+                        borderRadius: 7,
+                        paddingHorizontal: 7,
+                        paddingVertical: 4,
+                        marginTop: 5,
+                      }}
+                    >
+                      <Ionicons name="warning" size={11} color={colors.warnTx} />
+                      <Text style={{ flex: 1, fontSize: 10.5, color: colors.warnTx, lineHeight: 14 }}>
+                        {session.adjustment_reason}
+                      </Text>
+                    </View>
                   ) : null}
                 </View>
                 <Text style={{ fontSize: 12.5, fontWeight: '600', color: colors.gray600 }}>
@@ -350,10 +383,46 @@ export default function Scan() {
                 </View>
 
                 {preview.next_action === 'blocked_other_site' ? (
-                  <Text style={{ fontSize: 12.5, color: colors.redTx, marginBottom: 14, lineHeight: 18 }}>
-                    You still have an open session at a different site. Clock out there first, or ask your supervisor
-                    to close it.
-                  </Text>
+                  /* This is the one thing on the card that STOPS the punch, and
+                     it used to be a plain red paragraph sitting where the
+                     neutral explainer otherwise sits — the same size, the same
+                     position, no icon. Given the Clock In button below is also
+                     disabled, a student had nothing telling them why. */
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      gap: 9,
+                      backgroundColor: colors.redBg,
+                      borderWidth: 1,
+                      borderColor: '#fecaca',
+                      borderLeftWidth: 5,
+                      borderLeftColor: colors.redDark,
+                      borderRadius: 10,
+                      padding: 11,
+                      marginBottom: 14,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 11,
+                        backgroundColor: colors.redDark,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons name="alert" size={14} color={colors.white} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 12.5, fontWeight: '700', color: colors.redTx, marginBottom: 2 }}>
+                        Open session at another site
+                      </Text>
+                      <Text style={{ fontSize: 11.5, color: colors.redTx, lineHeight: 16 }}>
+                        Clock out there first, or ask your supervisor to close it.
+                      </Text>
+                    </View>
+                  </View>
                 ) : (
                   <Text style={{ fontSize: 12, color: colors.gray500, marginBottom: 14, lineHeight: 17 }}>
                     Your location is checked against this site (within {preview.site.radius_meters}m) and recorded with

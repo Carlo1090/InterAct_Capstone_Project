@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { ScrollView, View, Text, TextInput, Pressable, Alert } from 'react-native';
+import { ScrollView, View, Text, TextInput, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Banner } from '../../src/components/Banner';
 import { Button } from '../../src/components/Button';
 import { Card } from '../../src/components/Card';
 import { ErrorState, LoadingState } from '../../src/components/ErrorState';
@@ -10,6 +9,8 @@ import { OfflineNotice } from '../../src/components/OfflineNotice';
 import { useWeeklyActivityLogs } from '../../src/hooks/useWeeklyActivityLogs';
 import { dateRangeLabel, todayISO } from '../../src/lib/datetime';
 import { colors } from '../../src/constants/colors';
+import { showError } from '../../src/services/toast';
+import { alertAction } from '../../src/services/confirm';
 
 /**
  * Weekly Activity Log and Time Log Summary — the list of Period-Covered
@@ -27,11 +28,19 @@ export default function WeeklyActivityIndex() {
 
   async function onCreate() {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart) || !/^\d{4}-\d{2}-\d{2}$/.test(weekEnd)) {
-      Alert.alert('Check the dates', 'Both dates need to be in YYYY-MM-DD form, e.g. 2026-09-01.');
+      await alertAction({
+        title: 'Check the dates',
+        message: 'Use the form YYYY-MM-DD, e.g. 2026-09-01.',
+        tone: 'warn',
+      });
       return;
     }
     if (weekEnd < weekStart) {
-      Alert.alert('Check the dates', 'The end date cannot be before the start date.');
+      await alertAction({
+        title: 'Check the dates',
+        message: 'The end date cannot be before the start date.',
+        tone: 'warn',
+      });
       return;
     }
 
@@ -48,7 +57,7 @@ export default function WeeklyActivityIndex() {
       setArea('');
       router.push(`/weekly-activity/${result.id}`);
     } else {
-      Alert.alert('Could not create the sheet', result.error);
+      showError('Could not create the sheet', result.error);
     }
   }
 
@@ -89,12 +98,8 @@ export default function WeeklyActivityIndex() {
         </Text>
       </View>
 
-      <OfflineNotice feature="weeklyActivityLog" show={isOffline} />
+      <OfflineNotice feature="weeklyActivityLog" show={isOffline} error={error} />
 
-      <Banner variant="info">
-        One sheet per Period Covered, each holding the activity rows from the official MDC form. The supervisor signs
-        the printed copy by hand — the app never stores a signature.
-      </Banner>
 
       <View style={{ paddingHorizontal: 20, marginTop: 16 }}>
         {showForm ? null : (

@@ -1,17 +1,20 @@
 import { useState } from 'react';
-import { ScrollView, View, Text, Pressable, Image, ActivityIndicator, Alert } from 'react-native';
+import { ScrollView, View, Text, Pressable, Image, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Button } from '../src/components/Button';
 import { OfflineNotice } from '../src/components/OfflineNotice';
 import { uploadAvatar, ApiError } from '../src/services/api';
+import { setUser } from '../src/services/userStore';
+import { showError, showSuccess } from '../src/services/toast';
 import { InfoSectionTitle, ProfileRow } from '../src/components/InfoField';
 import { ErrorState, LoadingState } from '../src/components/ErrorState';
 import { useCurrentUser } from '../src/hooks/useCurrentUser';
 import { useDashboard } from '../src/hooks/useDashboard';
 import { useAuth } from '../src/hooks/useAuth';
 import { colors } from '../src/constants/colors';
+import { alertAction, confirmAction } from '../src/services/confirm';
 
 function initialsFor(name: string | undefined) {
   if (!name) return '?';
@@ -28,10 +31,11 @@ export default function Profile() {
   async function onChangePhoto() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert(
-        'Photo access needed',
-        'InternTrack needs access to your photos so you can choose a profile picture.'
-      );
+      await alertAction({
+        title: 'Photo access needed',
+        message: 'Allow photos to choose a profile picture.',
+        tone: 'warn',
+      });
       return;
     }
 
@@ -49,12 +53,15 @@ export default function Profile() {
     const asset = picked.assets[0];
     setUploadingPhoto(true);
     try {
-      await uploadAvatar(asset.uri, asset.mimeType);
-      await refetch();
-      Alert.alert('Profile photo updated');
+      // The endpoint returns the refreshed user, so push it straight into the
+      // shared store. Every screen holding a user — the header avatar above
+      // all — re-renders at once, which is what was broken before.
+      const updated = await uploadAvatar(asset.uri, asset.mimeType);
+      setUser(updated);
+      showSuccess('Profile photo updated');
     } catch (err) {
       const apiErr = err as ApiError;
-      Alert.alert(
+      showError(
         'Could not update your photo',
         apiErr.status === null
           ? 'You appear to be offline. Try again once you have a connection.'
@@ -72,6 +79,17 @@ export default function Profile() {
   const { data: dashboard, loading: dashboardLoading, error: dashboardError, reload } = useDashboard();
 
   async function onLogout() {
+    // Confirm-first, matching the web app's own rule for this action. Nothing
+    // is destroyed, but signing out clears every cache this device holds for
+    // the student, so a mis-tap on the last button of the page should not do
+    // it silently.
+    const ok = await confirmAction({
+      title: 'Log out?',
+      message: 'You will need to sign in again.',
+      confirmLabel: 'Log out',
+      tone: 'danger',
+    });
+    if (!ok) return;
     await logout();
     router.replace('/login');
   }
@@ -93,6 +111,29 @@ export default function Profile() {
           gap: 10,
         }}
       >
+        {/* Profile is pushed from the header avatar and had no way back —
+            the only exits were Log Out or the hardware button. Absolutely
+            positioned so the avatar stays centred in the banner. */}
+        <Pressable
+          onPress={() => router.back()}
+          accessibilityLabel="Go back"
+          hitSlop={10}
+          style={{
+            position: 'absolute',
+            top: 44,
+            left: 16,
+            width: 34,
+            height: 34,
+            borderRadius: 8,
+            borderWidth: 1.5,
+            borderColor: colors.blue700,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name="chevron-back" size={18} color="white" />
+        </Pressable>
+
         <Pressable
           onPress={onChangePhoto}
           disabled={uploadingPhoto}
@@ -133,7 +174,7 @@ export default function Profile() {
         ) : null}
       </View>
 
-      <OfflineNotice feature="profile" show={isOffline} />
+      <OfflineNotice feature="profile" show={isOffline} error={userError} />
 
       <InfoSectionTitle>Account</InfoSectionTitle>
       <ProfileRow label="Username" value={user.username} />

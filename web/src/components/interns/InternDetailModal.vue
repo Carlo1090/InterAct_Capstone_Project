@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import DetailPanelSkeleton from '@/components/ui/skeletons/DetailPanelSkeleton.vue'
 import TooltipWrap from '@/components/ui/TooltipWrap.vue'
 import type { InternDetail } from '@/types/api'
 
@@ -79,7 +80,7 @@ const copyContact = async () => {
       </div>
 
       <div class="flex-1 overflow-y-auto px-6 py-5">
-        <p v-if="isLoading" class="text-sm text-slate-500">Loading...</p>
+        <DetailPanelSkeleton v-if="isLoading" :fields="6" :placement-fields="3" />
         <p v-else-if="errorMessage" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ errorMessage }}</p>
 
         <template v-else-if="detail">

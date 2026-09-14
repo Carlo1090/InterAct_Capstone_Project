@@ -134,6 +134,8 @@ Route::middleware(['auth:sanctum', 'role:admin'])
 
         Route::get('programs', [ProgramController::class, 'index']);
         Route::get('programs/{program}', [ProgramController::class, 'show']);
+        Route::post('programs', [ProgramController::class, 'store']);
+        Route::put('programs/{program}', [ProgramController::class, 'update']);
 
         Route::get('batches', [BatchController::class, 'index']);
         Route::get('batches/{batch}', [BatchController::class, 'show']);
@@ -189,6 +191,7 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         // the official form, and fill the coordinator's own block on it.
         // There is no accept/reject: an exit interview gates nothing.
         Route::get('exit-interviews', [CoordinatorExitInterviewController::class, 'index']);
+        Route::get('exit-interviews/summary', [CoordinatorExitInterviewController::class, 'summary']);
         Route::get('exit-interviews/{exitInterview}', [CoordinatorExitInterviewController::class, 'show']);
         Route::put('exit-interviews/{exitInterview}', [CoordinatorExitInterviewController::class, 'update']);
         Route::get('exit-interviews/{exitInterview}/pdf', [CoordinatorExitInterviewController::class, 'pdf']);
@@ -240,6 +243,8 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::get('users/interns/{student}', [EnrollmentController::class, 'showIntern']);
         Route::delete('users/interns/{student}', [EnrollmentController::class, 'destroyAccount']);
         Route::get('users/supervisors', [EnrollmentController::class, 'supervisors']);
+        Route::get('users/supervisors/{supervisor}', [EnrollmentController::class, 'showSupervisor']);
+        Route::delete('users/supervisors/{supervisor}', [EnrollmentController::class, 'destroySupervisorAccount']);
 
         // Credential Manager — reissuing a password moved OFF the Users page
         // and into the profile popover, and now covers supervisors too. See

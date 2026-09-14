@@ -4,6 +4,8 @@ import { RouterLink } from 'vue-router'
 import api from '@/lib/axios'
 import LoadStatus from '@/components/LoadStatus.vue'
 import NotEnrolledNotice from '@/components/student/NotEnrolledNotice.vue'
+import StatCardGridSkeleton from '@/components/ui/skeletons/StatCardGridSkeleton.vue'
+import SectionCardSkeleton from '@/components/ui/skeletons/SectionCardSkeleton.vue'
 import { categorizeError } from '@/lib/apiError'
 import { isNotEnrolledError } from '@/lib/enrollment'
 import { useAuthStore } from '@/stores/auth'
@@ -79,7 +81,7 @@ const drawn = ref(false)
  * and the "today is not over yet" rule server-side, so `missing` is only ever
  * returned for a past DUTY day. Deriving red days here from dates alone would
  * mean re-implementing `BatchWorkingDays` on the client without the
- * `working_days_per_week` field, which is not exposed.
+ * `working_days_start`/`working_days_end` fields, which are not exposed.
  *
  * Its own loading/error state, so a failure degrades the strip to the
  * count-based bar rather than blanking the panel.
@@ -565,6 +567,17 @@ onMounted(async () => {
     </div>
 
     <LoadStatus :loading="isLoading" :error="errorMessage" :retry="load">
+      <template #skeleton>
+        <StatCardGridSkeleton :count="4" />
+        <div class="mt-5 grid gap-5 xl:grid-cols-2">
+          <SectionCardSkeleton variant="progress" :rows="2" />
+          <SectionCardSkeleton variant="activity" :rows="3" />
+        </div>
+        <div class="mt-5">
+          <SectionCardSkeleton variant="details" :rows="5" />
+        </div>
+      </template>
+
       <NotEnrolledNotice v-if="notEnrolled" />
 
       <template v-else-if="dashboard">

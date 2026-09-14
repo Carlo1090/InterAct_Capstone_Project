@@ -9,6 +9,8 @@ import { ErrorState, LoadingState } from '../src/components/ErrorState';
 import { colors } from '../src/constants/colors';
 import { useReminderPreferences } from '../src/hooks/useReminderPreferences';
 import { OfflineNotice } from '../src/components/OfflineNotice';
+import { ErrorNotice } from '../src/components/ErrorNotice';
+import { formatWallClock } from '../src/lib/datetime';
 
 const DAYS: { iso: number; label: string }[] = [
   { iso: 1, label: 'Mon' },
@@ -69,35 +71,17 @@ export default function ReminderSettings() {
         <Text style={{ fontSize: 20, fontWeight: '700', color: colors.black }}>Reminder Settings</Text>
       </View>
 
-      <OfflineNotice feature="reminderSettings" show={isOffline} />
+      <OfflineNotice feature="reminderSettings" show={isOffline} error={error} />
 
-      <Banner variant="info">
-        We'll nudge you if a working day's journal entry is still missing. Turn this off entirely, or customize
-        which days and what time.
-      </Banner>
 
       {/* Two different mechanisms sit behind one setting, and they behave
           differently — saying so is more useful than implying one system. */}
       <Banner variant="neutral">
-        These days and times also set an alarm on this phone, so you still get reminded with no internet. The
-        on-phone reminder is a general nudge — it can't check which entries are missing without a connection.
+        Selected days and times trigger offline phone reminders. These reminders are general and cannot detect
+        missing entries without internet access.
       </Banner>
 
-      {saveError ? (
-        <View
-          style={{
-            marginHorizontal: 20,
-            marginTop: 16,
-            backgroundColor: colors.redBg,
-            borderWidth: 1,
-            borderColor: '#fecaca',
-            borderRadius: 10,
-            padding: 12,
-          }}
-        >
-          <Text style={{ color: colors.redTx, fontSize: 12.5 }}>{saveError}</Text>
-        </View>
-      ) : null}
+      {saveError ? <ErrorNotice message={saveError} /> : null}
 
       <Pressable
         onPress={() => setEnabled((e) => !e)}
@@ -151,7 +135,7 @@ export default function ReminderSettings() {
 
       <View style={{ marginHorizontal: 20, marginTop: 16 }}>
         <Text style={{ fontSize: 10, fontWeight: '600', color: colors.gray600, marginBottom: 8, textTransform: 'uppercase' }}>
-          Time {time === null ? `(batch default ${data.defaults.time})` : ''}
+          Time {time === null ? `(batch default ${formatWallClock(data.defaults.time)})` : ''}
         </Text>
         <Pressable
           onPress={() => setShowPicker(true)}
@@ -165,16 +149,23 @@ export default function ReminderSettings() {
             opacity: enabled ? 1 : 0.5,
           }}
         >
-          <Text style={{ fontSize: 13.5, color: colors.black }}>{effectiveTime}</Text>
+          {/* Shown as standard time. What gets STORED is still 24-hour
+              "HH:mm" — the backend's reminder_time is a time column and the
+              reminder command reads the hour off it, so only the display
+              changes here. */}
+          <Text style={{ fontSize: 13.5, color: colors.black }}>{formatWallClock(effectiveTime)}</Text>
         </Pressable>
         {showPicker ? (
           <DateTimePicker
             value={new Date(`1970-01-01T${effectiveTime}:00`)}
             mode="time"
-            is24Hour
+            // The picker itself now offers AM/PM rather than a 24-hour dial.
+            is24Hour={false}
             onChange={(_, selected) => {
               setShowPicker(Platform.OS === 'ios');
               if (selected) {
+                // getHours() is 24-hour regardless of how the picker was
+                // displayed, so the stored value is unchanged in shape.
                 const hh = String(selected.getHours()).padStart(2, '0');
                 const mm = String(selected.getMinutes()).padStart(2, '0');
                 setTime(`${hh}:${mm}`);

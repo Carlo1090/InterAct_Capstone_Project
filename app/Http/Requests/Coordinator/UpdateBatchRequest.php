@@ -31,7 +31,10 @@ class UpdateBatchRequest extends FormRequest
             'start_date' => ['sometimes', 'date'],
             'end_date' => ['sometimes', 'date', 'after:start_date'],
             'required_hours' => ['sometimes', 'integer', 'min:1'],
-            'working_days_per_week' => ['sometimes', 'integer', 'between:1,7'],
+            // See StoreBatchRequest — same shape, all optional on a partial update.
+            'working_days_start' => ['sometimes', 'required_with:working_days_end', 'nullable', 'integer', 'between:1,7'],
+            'working_days_end' => ['sometimes', 'required_with:working_days_start', 'nullable', 'integer', 'between:1,7'],
+            'working_days_per_week' => ['sometimes', 'nullable', 'integer', 'between:1,7'],
             'daily_reminder_time' => ['sometimes', 'date_format:H:i'],
             'is_active' => ['sometimes', 'boolean'],
             'ojt_type' => ['sometimes', Rule::in(Batch::OJT_TYPES)],

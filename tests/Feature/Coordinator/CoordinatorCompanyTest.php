@@ -167,6 +167,53 @@ class CoordinatorCompanyTest extends TestCase
         ]);
     }
 
+    /**
+     * Email is optional here too — username + password is the primary,
+     * always-available sign-in path. A supervisor account created with no
+     * email still gets a working, auto-generated username, and the login
+     * panel's payload surfaces it so the coordinator can hand it over.
+     */
+    public function test_create_supervisor_without_an_email_auto_generates_a_username(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $company = Company::create(['name' => 'No Email Co', 'address' => 'A', 'is_active' => true]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->postJson("/api/coordinator/companies/{$company->id}/supervisors/new", [
+            'name' => 'No Email Supervisor',
+            'password' => 'password123',
+            'position' => 'Manager',
+        ]);
+
+        $response->assertCreated();
+
+        $supervisor = User::where('name', 'No Email Supervisor')->firstOrFail();
+        $this->assertNull($supervisor->email);
+        $this->assertNotEmpty($supervisor->username);
+
+        $login = collect($response->json('supervisors'))->firstWhere('is_login', true);
+        $this->assertSame($supervisor->username, $login['user']['username']);
+    }
+
+    public function test_create_supervisor_with_a_chosen_username(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $company = Company::create(['name' => 'Chosen Username Co', 'address' => 'A', 'is_active' => true]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson("/api/coordinator/companies/{$company->id}/supervisors/new", [
+            'name' => 'Chosen Supervisor',
+            'username' => 'chosen.supervisor',
+            'password' => 'password123',
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('users', ['username' => 'chosen.supervisor', 'email' => null]);
+    }
+
     public function test_detach_supervisor(): void
     {
         $bsit = $this->programFor('BSIT', 'CAST');

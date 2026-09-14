@@ -24,6 +24,10 @@ export type AuthUser = {
   must_change_password: boolean
   avatar_url: string | null
   program?: Program | null
+  // Coordinators only: the department(s) they're assigned to (at most one, per
+  // coordinator_departments' unique constraint) — their own program_id is
+  // always null, so this is the real source for their department, not `program`.
+  departments_coordinated?: { id: number; code: string; name: string }[]
   // Students only: true until their info sheet is approved (enrollment gate).
   student_gated?: boolean
   // Students only: true when they cleared intake but were dropped from their

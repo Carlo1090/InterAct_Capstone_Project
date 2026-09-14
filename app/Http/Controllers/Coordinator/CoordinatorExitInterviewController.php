@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Coordinator;
 use App\Http\Controllers\Concerns\BuildsExitInterviewPdf;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Coordinator\SaveExitInterviewReviewRequest;
+use App\Models\Batch;
 use App\Models\Program;
 use App\Models\StudentExitInterview;
 use App\Models\SystemLog;
+use App\Support\ExitInterviewFormLayout;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -46,14 +49,7 @@ class CoordinatorExitInterviewController extends Controller
             'search' => ['nullable', 'string', 'max:100'],
         ]);
 
-        $scopedProgramIds = $request->user()->coordinatorProgramIds();
-        $programIds = $scopedProgramIds;
-
-        if (! empty($validated['program_id'])) {
-            $requested = (int) $validated['program_id'];
-            abort_unless($scopedProgramIds->contains($requested), 403, 'That program is outside your assigned department(s).');
-            $programIds = collect([$requested]);
-        }
+        [$scopedProgramIds, $programIds] = $this->resolveScope($request, isset($validated['program_id']) && $validated['program_id'] !== null ? (int) $validated['program_id'] : null);
 
         $interviews = StudentExitInterview::whereHas('batch', fn ($query) => $query->whereIn('program_id', $programIds))
             ->when(
@@ -171,6 +167,130 @@ class CoordinatorExitInterviewController extends Controller
         $slug = str($exitInterview->student?->name ?? (string) $exitInterview->student_id)->slug();
 
         return $this->renderExitInterviewPdf($exitInterview, "exit-interview-{$slug}.pdf");
+    }
+
+    /**
+     * The aggregate Summary Report on Student Exit Interview — every
+     * in-scope intern's answer to question 1 gathered together, then
+     * question 2, and so on, instead of one row per student. Hard Rule #4
+     * used to keep this whole document out of scope; narrowed 2026-09-10 at
+     * the project owner's request. Reached as a tab on the same
+     * Student Exit Interviews page, not a separate nav item.
+     *
+     * Deliberately NOT curated like the Annual SIPP / HTE / Group Info Sheet
+     * reports: those exist so a coordinator can correct messy real-world
+     * data before filing an official annex. There is nothing to correct
+     * here — every answer is text the student already submitted themselves
+     * — so this is a live read, recomputed on every request, with nothing
+     * persisted.
+     *
+     * DRAFTS ARE EXCLUDED. A draft can be blank or half-typed, and only a
+     * submitted interview is guaranteed to carry all fourteen answers
+     * (StoreExitInterviewRequest enforces that on submit) — including a
+     * draft would let an empty in-progress form skew what looks like a
+     * completed tally.
+     */
+    public function summary(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'program_id' => ['nullable', 'integer'],
+            'academic_year' => ['nullable', 'string', 'max:20'],
+        ]);
+
+        [$scopedProgramIds, $programIds] = $this->resolveScope($request, isset($validated['program_id']) && $validated['program_id'] !== null ? (int) $validated['program_id'] : null);
+
+        $academicYears = Batch::whereIn('program_id', $scopedProgramIds)
+            ->distinct()
+            ->orderByDesc('academic_year')
+            ->pluck('academic_year')
+            ->values();
+
+        $academicYear = $validated['academic_year'] ?? $academicYears->first();
+
+        $interviews = StudentExitInterview::whereIn('submission_status', ['submitted', 'reviewed'])
+            ->whereHas('batch', function ($query) use ($programIds, $academicYear) {
+                $query->whereIn('program_id', $programIds);
+
+                if ($academicYear) {
+                    $query->where('academic_year', $academicYear);
+                }
+            })
+            ->with(['student:id,name,student_id_number', 'batch.program:id,code,name'])
+            ->orderBy('student_id')
+            ->get();
+
+        $questions = [];
+
+        foreach (ExitInterviewFormLayout::SECTIONS as $section) {
+            foreach ($section['questions'] as $question) {
+                $choiceKey = $question['choice'] ?? null;
+                $tally = $choiceKey ? ['yes' => 0, 'no' => 0, 'unanswered' => 0] : null;
+                $answers = [];
+
+                foreach ($interviews as $interview) {
+                    $responses = $interview->responses ?? [];
+                    $text = trim((string) ($responses[$question['key']] ?? ''));
+                    $choice = $choiceKey ? ($responses[$choiceKey] ?? null) : null;
+
+                    if ($choiceKey) {
+                        $tally[in_array($choice, ['yes', 'no'], true) ? $choice : 'unanswered']++;
+                    }
+
+                    if ($text === '' && $choice === null) {
+                        continue;
+                    }
+
+                    $program = $interview->batch?->program;
+
+                    $answers[] = [
+                        'student_id' => $interview->student_id,
+                        'student_name' => $interview->student?->name ?? '',
+                        'student_id_number' => $interview->student?->student_id_number,
+                        'program' => $program?->code ?? $program?->name ?? '',
+                        'choice' => $choice,
+                        'text' => $text,
+                    ];
+                }
+
+                $questions[] = [
+                    'key' => $question['key'],
+                    'number' => $question['n'],
+                    'section' => $section['heading'],
+                    'text' => $question['text'],
+                    'choice_key' => $choiceKey,
+                    'tally' => $tally,
+                    'answers' => $answers,
+                ];
+            }
+        }
+
+        return response()->json([
+            'programs' => Program::whereIn('id', $scopedProgramIds)->orderBy('name')->get(['id', 'name', 'code']),
+            'academic_years' => $academicYears,
+            'academic_year' => $academicYear,
+            'total_respondents' => $interviews->count(),
+            'questions' => $questions,
+        ]);
+    }
+
+    /**
+     * Shared by index() and summary(): the coordinator's own department-wide
+     * scope, optionally narrowed to one requested program (403 if it is
+     * outside that scope).
+     *
+     * @return array{0: Collection<int, int>, 1: Collection<int, int>}
+     */
+    private function resolveScope(Request $request, ?int $requestedProgramId): array
+    {
+        $scopedProgramIds = $request->user()->coordinatorProgramIds();
+        $programIds = $scopedProgramIds;
+
+        if ($requestedProgramId !== null) {
+            abort_unless($scopedProgramIds->contains($requestedProgramId), 403, 'That program is outside your assigned department(s).');
+            $programIds = collect([$requestedProgramId]);
+        }
+
+        return [$scopedProgramIds, $programIds];
     }
 
     private function assertInScope(Request $request, StudentExitInterview $interview): void

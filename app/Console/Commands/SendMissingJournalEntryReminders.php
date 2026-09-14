@@ -63,7 +63,7 @@ class SendMissingJournalEntryReminders extends Command
                 // Day gate + on/off switch. A student who set their own days owns
                 // this answer (weekends included); otherwise it falls back to the
                 // batch's working-day pattern, i.e. the previous behaviour.
-                if (! ReminderSchedule::remindsOn($today, $profile, $batch->working_days_per_week)) {
+                if (! ReminderSchedule::remindsOn($today, $profile, $batch->working_days_start, $batch->working_days_end)) {
                     $notScheduled++;
 
                     continue;
@@ -184,7 +184,7 @@ class SendMissingJournalEntryReminders extends Command
         while ($cursor->lte($today)) {
             $date = $cursor->toDateString();
 
-            if (BatchWorkingDays::isWorkingDay($cursor, $batch->working_days_per_week)
+            if (BatchWorkingDays::isWorkingDayInRange($cursor, $batch->working_days_start, $batch->working_days_end)
                 && ! in_array($date, $submitted, true)) {
                 $missing[] = $date;
             }

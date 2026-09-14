@@ -46,7 +46,235 @@ This is a **monorepo** with three parts:
   punch deliberately is not). All dates and times go through
   `mobile/src/lib/datetime.ts` — never `toISOString()` for "today", which is
   UTC and was silently a day behind for the first eight hours of every Manila
-  day. It has its own
+  day. **Signing out wipes what the device is holding for that student** —
+  `clearDeviceSession()` in `mobile/src/hooks/useAuth.ts` clears the read caches
+  (`clearAllCached`), the queued journal writes (`clearOutbox`), the on-device
+  alarms and the shared user store, and `login()` re-runs it whenever the account
+  that just signed in is not the one the cache describes (the session can also
+  end by a token simply expiring). Before that, only the in-memory store was
+  reset: the next student on the same handset was painted with the previous
+  student's name, photo, dashboard and journals, and — worst — a journal queued
+  offline by the previous student was flushed under the NEW student's bearer
+  token, filing one student's writing against another's account.
+  **The dashboard's Recent Activity and the full Activity Log are ONE
+  renderer** (2026-09-08) — `mobile/src/lib/activityLog.ts` holds the
+  action→plain-language map, the category icons/colours and `trimOwnName`, and
+  `mobile/src/components/ActivityRow.tsx` draws the row for both. They read the
+  same five `SystemLog` rows and used to describe them differently: the
+  dashboard printed the raw audit `description`, own-name prefix and all
+  ("Juan Dela Cruz logged in (mobile)"), against a bare coloured dot, while the
+  Activity Log showed "Signed in" with an icon, a category colour and the name
+  trimmed. `StudentDashboardController` now returns the raw `id`/`action`/
+  `description`/`logged_at` alongside the existing `text`/`time`/`tone` —
+  **additive, because `StudentDashboardPage.vue` reads those three** and the
+  web dashboard is deliberately not part of that change. `ActivityRow`'s
+  `variant` prop changes the container only (a standing card on its own screen,
+  a divided list inside the dashboard card), never the information.
+  **The palette is NAVY, GENTLED** (2026-09-09, project owner) — same family,
+  lower intensity, every value in `mobile/src/constants/colors.ts` measured
+  rather than picked: ground `#20304C` on white is **13.22:1** (was `#0A1628`
+  at 18.13:1, a contrast wall), primary `#3A5A8F` is **6.91:1** at saturation
+  0.42 (was `#1E4D9B` at 0.83, close to electric), canvas `#F4F7FB` carries a
+  faint blue cast, and the muted label colour went `#94A3B8` → `#7C8AA3`,
+  which was a real accessibility fix (2.39:1 → 3.25:1, since the old value
+  sat under even the 3:1 large-text floor). **`blue300` `#A3C0E6` is
+  light-on-dark ONLY** — 7.08:1 on the ground, 1.87:1 on white, so it must
+  never become text on a pale surface. **Status colours are deliberately
+  unchanged**: green/red/amber carry meaning (submitted, missing, needs
+  action) rather than brand, and re-tinting them toward navy would weaken
+  exactly the signals that must stay loud.
+  **`Banner` has an `offline` variant and it is the loudest thing on its
+  page.** Offline used to render as `neutral` — grey text on a grey wash in a
+  grey border, the app's quietest treatment — so the one notice saying "this
+  may be out of date" looked less important than the blue tips beside it. It
+  now carries its meaning FOUR ways (left stripe, filled icon chip, bold
+  title, colour), because colour alone fails a red-green colour-blind reader
+  and a phone screen in daylight. `OfflineNotice` uses it for BOTH levels and
+  differentiates by title — "Offline — your work is safe" where writes
+  genuinely queue, "Offline — showing saved data" everywhere else.
+  **The journal calendar is cache-first and pre-warms its neighbours.**
+  `useJournalCalendar` hand-rolled its own fetch and read the cache **only
+  inside the catch block**, so a saved month was used only when a request
+  actually FAILED — on a working-but-slow connection (a sleeping free-tier
+  API costs 30-60s to wake) every month change was a blocking round trip with
+  nothing on screen. It now goes through `useCachedResource` (the sixth hook
+  to hand-roll that pattern and the second to drift from it, which is the
+  whole reason that helper exists) and background-warms the two ADJACENT
+  months after each load — silently, and skipped entirely while offline
+  rather than firing two doomed requests. `useCachedResource` also now CLEARS
+  `data` when `cacheKey` changes: a different key is different content, not a
+  refresh, and without it October's grid sat under the word November until
+  the network answered.
+  **The tab bar icons answer a tap** (`mobile/src/components/TabBarIcon.tsx`,
+  2026-09-09) — an overshoot to 1.42 then a spring to a resting 1.12 with a
+  2px lift. It keys off **`focused`, never an `onPress`**: the tab bar owns
+  the press, so a second handler would fire on taps the navigator rejects (the
+  already-active tab) and miss every focus change that did not come from a tap
+  (a deep link, `router.replace`, hardware back). `useNativeDriver` throughout,
+  and it honours `AccessibilityInfo.isReduceMotionEnabled()` — this fires on
+  every navigation, which is exactly the repeated movement that setting exists
+  to stop.
+  **The login screen matches the project owner's mockup** (2026-09-09): a DARK
+  navy ground (`#2a3f60 → blue900 → #16213a`, diagonal) instead of the old pale
+  `blue300 → blue100` wash, which had left a white card floating on an
+  almost-white page with no edge; two hairline rings in the card header echoing
+  the logo; an elevated card (**both** `elevation` and `shadow*`, since iOS
+  ignores the first and Android the second); and neutral `blue50` icon chips on
+  tinted fields. **That last one fixed a real signal bug** — the password field
+  carried a RED icon slab, and red is the app's error colour everywhere else,
+  so a resting password field read as a field in an error state. The footer
+  moved to `blue300`, the light-on-dark token, since `blue700` is invisible on
+  the new ground.
+  **JS-only changes now ship OVER THE AIR** (`expo-updates` ~29, 2026-09-10) —
+  `eas update --branch preview` pushes a new bundle to installed apps, no
+  reinstall. `runtimeVersion` uses the **`fingerprint` policy**, which is the
+  safety interlock: it hashes the native project, so an update built against
+  different native code is simply never offered to an older APK rather than
+  being delivered and crashing. `eas.json` pins `channel` per profile
+  (`preview`/`production`/`development`) — without it a build subscribes to no
+  channel and can never receive an update at all.
+  **A NATIVE change still needs a real build**: a new library with native
+  modules, the icon, the splash, permissions, the package name, or the SDK.
+  Build 16 is the first APK carrying the update client — **every APK before it
+  can never be updated over the air**, which is why it was cut immediately
+  after wiring this up. The splash and adaptive-icon backgrounds were corrected
+  from the pre-redesign `#0a1628` to the palette's own `#20304C` in that same
+  build, since native config is exactly what OTA cannot reach afterwards.
+  **`checkAutomatically` defaults to `ALWAYS`, and `fallbackToCacheTimeout: 0`
+  means a published update needs TWO app launches to actually appear** — the
+  first checks and downloads in the background while still showing the old
+  bundle (it never waits), the second applies what was downloaded. Fully
+  closing and reopening once is not enough; there is no in-app "update ready"
+  affordance, so this has to be explained to whoever is testing a fresh push.
+  **`OfflineNotice` distinguishes a dead connection from a slow server**
+  (`ApiError.isTimeout`, 2026-09-10 — found from a real report: "im currently
+  on offline even thu i have internet connections"). Every screen's `isOffline`
+  flag fires on ANY failed request, and the API sleeps on a free Render
+  instance and can take up to the full 60s timeout to wake — so a student
+  opening the app right as it woke up was told "Offline — check your internet
+  connection" for a problem that was never theirs. `isOffline` itself is
+  unchanged (still gates writes, still falls back to cache); `OfflineNotice`
+  now takes an optional `error` prop and, when `error.isTimeout` is true,
+  overrides the title to **"Reconnecting — this may take a moment"** and shows
+  the error's own honest message instead of the per-feature offline note.
+  Threaded through all 13 `<OfflineNotice>` call sites.
+  **A network-failed READ is retried; nothing in the app used to retry
+  anything** (`withRetry` in `mobile/src/services/api.ts`, 2026-09-11 — from a
+  real report: "why when we do update to the application i always in up offline
+  mode even thu i have internet"). A screen that failed once stayed `isOffline`
+  until the student happened to switch tabs or pull to refresh, so **one unlucky
+  moment stuck the whole app in offline mode indefinitely** on a perfectly good
+  connection. That moment is the NORMAL launch rather than a rare one: the API
+  sleeps on a free Render instance after ~15 minutes idle, installing or
+  updating is precisely when it has been idle, `preloadAll()` then fires its
+  whole 13-step warm-up SEQUENTIALLY at a server that is still waking, and
+  `usePreload`'s `PRELOAD_TIMEOUT_MS` (12s) releases the splash long before the
+  cold start finishes — so the student lands on screens whose requests are still
+  failing. On an OTA update the new bundle is downloading over the same
+  connection at the same time. Retry fires **only on `status === null`** (no
+  response at all — offline, DNS, dropped connection, timeout); anything
+  carrying a status is the server's considered answer and repeating it would
+  only get the same answer more slowly. Two short delays (1.2s, 3.5s), because
+  this is a wake-up allowance and a Wi-Fi/mobile-data handover cushion, not a
+  general resilience layer.
+  **`EXPO_PUBLIC_*` IS INLINED AT BUNDLE TIME, AND THE TWO SHIP PATHS READ
+  DIFFERENT ENVIRONMENTS — THIS WAS THE REAL CAUSE OF "OFFLINE AFTER AN
+  UPDATE"** (2026-09-11). `eas build` takes its environment from **eas.json's
+  per-profile `env`**; `eas update` bundles on **whatever machine runs it** and
+  reads **`mobile/.env`**. That file still held `http://192.168.254.133:8000` —
+  a laptop LAN address from August — so **every over-the-air update silently
+  repointed the installed app at a host the phone could never reach**. Every
+  request then failed with no response, which is `status === null`, which is
+  exactly the shape of a genuine offline failure: the app called itself
+  offline and login reported "no internet connection" on a perfectly good
+  network. Proven, not inferred — `grep` found the LAN IP inside the shipped
+  Hermes bundle and no trace of the Render host. **This is also why the symptom
+  always followed an update and never a fresh APK**, and why it looked like the
+  update had not applied at all. The earlier `withRetry` work is still correct
+  and still needed, but it was treating a symptom: retrying an unreachable
+  address three times only fails three times.
+  Two guards now, because either alone can be forgotten: **`mobile/.env` must
+  match eas.json** (a LAN IP for local work goes in `.env.local`, which is
+  gitignored and takes precedence), and **`API_BASE_URL`'s fallback is the live
+  API rather than `http://10.0.2.2:8000`** — a localhost default turns a
+  missing variable into a silent, undebuggable outage, where a production
+  default degrades to the correct host.
+  **DEPENDENCY AUDIT, and what "28 vulnerabilities" actually meant**
+  (2026-09-11). `npm audit fix` (semver-safe only) cleared 3 — `js-yaml`,
+  `nanoid`, `@xmldom/xmldom` — leaving 25. **Every remaining fix npm proposes
+  is `expo@57` (SDK 54 → 57, three majors, every native module replaced and a
+  new runtime fingerprint) or a DOWNGRADE of `expo-router` 6.0.24 → 5.1.11.**
+  Neither is a security fix; both are breakage. So the question was which
+  advisories can actually reach a student's phone, answered by exporting with
+  `--source-maps` and reading the module list: **of 1210 modules in the shipped
+  bundle, exactly one vulnerable package has code in it** — `decode-uri-
+  component` (moderate, a self-DoS on malformed percent-encoded input) via
+  `query-string` via `@react-navigation` via `expo-router`. Metro, PostCSS,
+  `@expo/cli`'s config code, `image-size`, `xcode`, `uuid` and the
+  `@expo/config` chain are **build tooling** — they run here and on the EAS
+  builder, never inside the APK, and the `expo-constants`/`expo-linking`/
+  `expo-notifications`/`expo-updates` entries are flagged only for depending on
+  that chain. (The one `@expo/cli` file in the bundle is
+  `build/metro-require/require.js`, the module-require shim, not the vulnerable
+  CLI code.)
+  **`decode-uri-component` is DELIBERATELY LEFT AT 0.2.2.** The patched line
+  (0.4.1+) is **ESM-only** — `"type": "module"` with an `exports` map carrying
+  no `require` condition — while `query-string@7.1.3` is CommonJS and does
+  `require('decode-uri-component')`. Under Metro that require yields the module
+  NAMESPACE, not the default export, so the call site becomes
+  `decodeComponent is not a function` and every URL parse crashes: deep links
+  and the DTR QR landing included. Trading a moderate self-DoS (the student's
+  own phone hangs on a hostile URL, recoverable by force-closing; no server, no
+  other user, no data) for a certain crash on every navigation is the wrong
+  way round. Revisit when `query-string` ships an ESM-compatible major, or when
+  the SDK upgrade happens on purpose. `npx expo install --check` reports every
+  direct dependency already matching SDK 54, and `expo-doctor` passes 18/18.
+  **EVERY CONFIRMATION IS THE APP'S OWN DIALOG, NOT `Alert.alert`**
+  (`mobile/src/services/confirm.ts` + `mobile/src/components/ConfirmHost.tsx`,
+  2026-09-11, project owner: "change the default look in every message… i mean
+  the double verification"). Nineteen call sites across nine screens asked
+  their question through the OS, so the one moment a student is required to
+  stop and read was drawn by Android — Android's type, Android's blue, on a
+  page that is otherwise entirely navy InternTrack. Worse than off-brand: a
+  native Alert gives every question the SAME face, so "Submit this entry?" and
+  "Delete this row?" were visually identical and the destructive one relied
+  entirely on the student reading the word. The dialog now carries a tone
+  (`default` · `danger` · `success` · `warn`) that moves the icon chip, the
+  glyph and the confirm button's fill together, so the weight of an action is
+  visible before a word is read; cancel is the OUTLINED button on the LEFT, so
+  a destructive answer is never the one nearest a right thumb. Every message
+  was rewritten to ONE short line ("This cannot be undone.", "You can still
+  edit it until your week is compiled.") — the native dialogs had grown to
+  three-sentence paragraphs nobody reads at the moment of deciding.
+  **It is promise-based**, so a call site reads as a straight line
+  (`if (!(await confirmAction({…}))) return;`) instead of the callback-in-an-
+  array shape `Alert.alert` forces, which is what had pushed several of these
+  into bespoke helper functions. The store is **module-level** for the same
+  reason `toast.ts`'s is — a dialog has to be openable from a plain async
+  function mid-save, not only from inside a component body — and `ConfirmHost`
+  is mounted once at the root beside `ToastHost`, above the navigator, so it
+  reaches modals like Write Journal too. **`alertAction` is the one-button
+  form** (what `Alert.alert` with no button array was) and is deliberately NOT
+  collapsed into `showError`: a toast slides away on its own, which is right
+  for a receipt and wrong for "your clock-in did not record". Two rules that
+  are easy to lose: the backdrop declines on a confirm but is **inert on a
+  one-button acknowledgement**, so a message that must be read cannot be lost
+  to a stray tap; and a dialog raised from inside a `try/finally` is called
+  with `void`, never awaited, because the `finally` clears the screen's loading
+  flag and awaiting leaves the button spinning behind the dialog. **Log Out
+  gained a confirmation it never had** — the web app has confirmed it since the
+  beginning, and on mobile it clears every cache the device holds for that
+  student (`clearDeviceSession()`), so a mis-tap on the last button of Profile
+  should not do it silently.
+  **A WRITE is deliberately NOT retried**, and that is why `apiPost` takes an
+  opt-in `{ retry: true }` rather than sharing GET's treatment: a POST whose
+  response was lost may well have succeeded, so repeating it can file a second
+  journal entry or a second punch — exactly the case the journal outbox exists
+  to handle safely. **Login is the one write that opts in**: it is the first
+  thing to touch the API after the app has sat unused, and a lost response there
+  told the student to check a connection that was never the problem. A duplicate
+  login only issues a second token.
+  It has its own
   `mobile/CLAUDE.md` (importing `mobile/AGENTS.md`) requiring the versioned docs
   at `docs.expo.dev/versions/v54.0.0/` be checked before any mobile code.
 
@@ -71,6 +299,33 @@ mutes that hook.
 
 Google sign-in is wired but strictly **link-only** — it never creates accounts.
 Username + password remains the primary, always-available path.
+
+**Every account-creation surface treats email as optional (2026-09-10).**
+`Admin\UserController::store()` (Create Coordinator) and
+`Coordinator\CreateSupervisorRequest`/`CoordinatorCompanyController::createSupervisor()`
+(Create Supervisor, both the standalone modal on Users → Supervisors and the
+inline form on Partner Companies) now validate `email` as `nullable` rather
+than `required`, and both accept an optional `username` field alongside it
+(same `nullable|string|min:3|max:50|regex` shape as the student-creation
+`CreateAccountRequest` already used). Leaving both blank still yields a
+working account: `User::booted()`'s `creating` hook auto-generates a username
+from the name when there is no email to derive one from. This closes the last
+two account-creation paths that still forced an email — every other creation
+flow (student accounts, bulk import aside, which needs an address to auto-mail
+credentials to) already worked this way. Google verification remains the only
+way `email_verified_at` gets set, so username+password stays how these
+accounts sign in until someone chooses to link Google.
+
+Consequences threaded through so a blank-email account stays identifiable to
+the person who created it: the success toast on both creation forms echoes the
+assigned username back (reading it from the create response — `User::store()`
+returns the full model, `createSupervisor()`'s response's `supervisors[]`
+carries a `user.username`); `EnrollmentController::supervisors()`,
+`CoordinatorCompanyController::index()`/`companyPayload()`/`mapSupervisors()`
+all select `username` alongside `email` now; and every list/panel that used to
+print only `supervisor.email` falls back to `@username` when there is no
+email (`CoordinatorInternsPage.vue`'s Supervisors tab, both table and mobile
+card view; `CoordinatorCompaniesPage.vue`'s OJT Supervisor Login panel).
 
 ## Hard Rules
 
@@ -99,15 +354,17 @@ Username + password remains the primary, always-available path.
      JSON payload columns, `UNIQUE(student_id, batch_id)`. It is the only
      table outside the v2 schema; the JSON columns exist so adding or
      rewording a question on the paper form never means a migration.
-4. **Out of scope — do not build:** photo capture on clock-in, and the
-   **Summary Report on Student Exit Interview** — the aggregate report, which
-   is a different document from the per-student form.
-   **NARROWED 2026-08-30 (project owner):** this entry used to read "exit
-   interview report generation" and was read as covering the whole subject.
-   The per-student **Internship Program Student Exit Interview Form** is now
-   **IN scope and BUILT** (students fill it in, coordinators read and print
-   it) — see Exit Interview below. Only the aggregate SUMMARY report is still
-   out.
+4. **Out of scope — do not build:** photo capture on clock-in.
+   **NARROWED 2026-08-30 (project owner):** this entry used to also list the
+   **Summary Report on Student Exit Interview** as out of scope; the
+   per-student **Internship Program Student Exit Interview Form** was carved
+   in first — see Exit Interview below.
+   **NARROWED 2026-09-10 (project owner):** the aggregate **Summary Report on
+   Student Exit Interview** is now also **IN scope and BUILT** — every
+   in-scope intern's answer to each question gathered together, reached as a
+   tab on the coordinator's Student Exit Interviews page. See Exit Interview →
+   Summary Report below. Photo capture on clock-in remains the only item left
+   here.
    **RESCINDED 2026-08-20 (project owner):** geofence clock-in, QR clock-in and
    the in-app camera scanner were all previously listed here as out of scope.
    They are now **IN scope and BUILT** — see Daily Time Record below. Do not
@@ -126,7 +383,11 @@ Username + password remains the primary, always-available path.
 ## Domain Facts
 
 - **3 departments, 7 programs:** CAST → BSIT · CABM-B → BSBA-FM, BSBA-MM,
-  BSBA-OM, BSA · CABM-H → BSTM, BSHRM
+  BSBA-OM, BSA · CABM-H → BSTM, BSHRM.
+  **These are the SEEDED STARTING POINT, not a fixed set** (corrected
+  2026-09-08). The admin creates departments, and since 2026-09-08 creates
+  **programs** under them as well — see Admin → Programs below. Treat the seven
+  as what a fresh install ships with; a running install may hold any number.
 - **`departments.code` is the identifier; `departments.name` is display only.**
   Every lookup in the project keys off the code
   (`Department::where('code', 'CABM-B')`), it is what fits a narrow column and
@@ -189,7 +450,8 @@ Username + password remains the primary, always-available path.
   **Internship Program Student Exit Interview Form**, built 2026-08-30
   (reference: `docs/reference/INTERNSHIP PROGRAM STUDENT EXIT INTERVIEW -
   BUSINESS.pdf`). The aggregate **Summary Report on Student Exit Interview**
-  is a separate document and remains out of scope.
+  — every intern's answer to each question gathered together — was added
+  2026-09-10; see Exit Interview → Summary Report below.
 
 ## Core Data Model & Invariants
 
@@ -245,10 +507,25 @@ already coordinate (`batchesCoordinated()`, kept only as a backward-safety net).
 **`users.program_id` is retained but is NOT the coordinator scoping source.**
 Every coordinator page is scoped by this; out-of-scope access 403s.
 
-NOTE: a coordinator's **department name does not reach the frontend at all** —
-`/api/user` loads only `program.department`, and a coordinator's
-`users.program_id` is null. This is why scope notices render a `'your
-department'` fallback rather than a real name.
+**CORRECTED 2026-09-10 (project owner, found live):** this note used to say a
+coordinator's department never reaches the frontend at all, because
+`/api/user` only loaded `program.department` and a coordinator's
+`users.program_id` is null — true as far as it went, but it meant
+`AuthUserPayload::build()` never loaded `departmentsCoordinated` either, so
+`CoordinatorLayout.vue`'s header (`"Coordinator · {{ department }}"`) fell
+through to a **hardcoded placeholder** (`'Business Administration'`) for
+*every* coordinator, unconditionally — it only went unnoticed because that
+string happens to sound plausible for a CABM-type department. `build()` now
+loads `departmentsCoordinated:id,code,name` for coordinators (at most one row,
+per the unique constraint above), and the header reads
+`departments_coordinated[0].code` — the **code**, matching how the rest of the
+app treats `departments.code` as the identifier, not `departments.name`.
+**`CoordinatorDashboardPage.vue`'s scope notice ("This workspace is scoped
+to…") had the IDENTICAL bug**, reading the same always-null
+`program?.department?.name` — it read as a deliberate design choice ("a
+'your department' fallback rather than a real name") only because its
+fallback text was generic enough to pass as intentional copy rather than a
+wrong name. Fixed the same way, same field.
 
 ### Company Supervisor: login-bearing vs named-only
 
@@ -304,12 +581,51 @@ Consequences, all deliberate:
   **completed/dropped** rows (historical — they keep whoever supervised them).
 - Remaining edge: detaching a login **without** re-attaching leaves active rows
   pointing at the former login, since `supervisor_id` is NOT NULL.
-- `EnrollmentController::options()` deliberately does **not** filter
-  `supervisors[]` by `is_active`, matching `Company::loginSupervisor()`, so the
-  read-only display and the backend agree even for a deactivated login.
 - **Seeders bypass this gate** (expected) — they write `batch_students` directly
   via Eloquent, so `migrate:fresh --seed` is unaffected. But every demo company
   referenced by an enrollment still needs a login supervisor for later UI edits.
+
+**CORRECTED 2026-09-11 (project owner, found live): `EnrollmentController::options()`'s
+`supervisors[]` used to be every supervisor-role user in the ENTIRE system,
+unfiltered by scope or company.** A brand-new coordinator with zero companies
+of their own saw every other department's supervisors in the "Attach Existing
+Supervisor" dropdown on Partner Companies — the old doc line above ("does not
+filter by is_active") was true but incomplete: it filtered by nothing at all.
+Fixed by splitting what had been one overloaded list into two:
+
+- **The read-only "which supervisor does this company resolve to" preview**
+  (the Enroll form and the Add-Intern roster form) now reads
+  `companies[].login_supervisor` — a field resolved per-company via
+  `Company::loginSupervisor()`, added directly onto the (still deliberately
+  unscoped) `companies[]` array. `enrollResolvedSupervisor`
+  (`CoordinatorInternsPage.vue`) and `addResolvedSupervisor`
+  (`CoordinatorBatchesPage.vue`) both read it this way now, instead of
+  scanning a `supervisors[]` list by a `company_ids` field (removed — see
+  below). This preserves the existing behavior that a company can be shared
+  across departments and its resolved supervisor still shown/required to
+  enroll there, which is why `companies[]` itself stays unscoped.
+- **The "Attach Existing Supervisor" dropdown's `supervisors[]`** is now scoped
+  by a new **`ScopesCoordinatorAccounts::attachableSupervisorIds()`**: a
+  supervisor already on one of the coordinator's own in-scope companies, OR
+  attached to **no** company at all yet (a freshly-created or just-detached
+  "floating" account nobody has claimed). **Deliberately NOT just
+  `scopedSupervisorIds()`** — that method is built entirely from existing
+  `CompanySupervisor` rows, so it can never contain a floating supervisor,
+  and using it alone would have made every freshly-created or freshly-detached
+  supervisor permanently unattachable by anyone. Pinned by
+  `test_the_attach_dropdown_excludes_a_supervisor_exclusive_to_another_department`
+  (`tests/Feature/Coordinator/EnrollmentTest.php`), which is also the
+  regression guard for the `company_ids` removal — the sibling test
+  `test_a_shared_companys_login_supervisor_resolves_even_when_out_of_scope`
+  pins that a shared company's preview still works after the split.
+- **`CoordinatorCompanyController::attachSupervisor()` now independently
+  enforces the same `attachableSupervisorIds()` check server-side (403)** —
+  the dropdown only narrows what is *shown*; `AttachSupervisorRequest`'s own
+  rule (`Rule::exists('users','id')->where('role','supervisor')`) only proves
+  the id names *some* supervisor, not one this coordinator may touch, so a
+  crafted request could otherwise attach an out-of-scope supervisor regardless
+  of what the UI offered. Pinned by
+  `test_attaching_a_supervisor_exclusive_to_another_department_is_refused`.
 
 ## OJT Type — supervisor-supported vs coordinator-centered
 
@@ -382,6 +698,102 @@ is always allowed**, because the batches page PUTs the whole form back including
 fields the coordinator never touched. `BatchController` returns
 `interns_count` so the form can disable the control rather than offer a change
 the server would refuse.
+
+## Working Days — a real day-of-week range, not just a count (2026-09-11)
+
+Built at the project owner's request, after live testing surfaced that the old
+"Working Days / Week" field was just a plain number (1-7) with no notion of
+*which* days — `App\Support\BatchWorkingDays::isWorkingDay()` only ever checked
+1-5 → Mon-Fri, 6 → Mon-Sat, 7 → every day, always anchored to Monday. A batch
+whose real week ran, say, Tuesday-Saturday had no way to say so, and values 1-4
+were indistinguishable from 5 (a pre-existing ambiguity, deliberately preserved
+rather than "fixed" as part of this change — see below).
+
+- **`batches.working_days_start` / `working_days_end`** (tinyInteger, ISO
+  weekday 1=Mon..7=Sun, both NOT NULL) hold the real range now, picked on the
+  coordinator's Create/Edit Batch form via **`WeekdayRangePicker.vue`**
+  (`components/coordinator/`) — seven pill buttons (Mon Tue Wed Thu Fri Sat
+  Sun, three-letter labels for legibility over single letters). **The
+  selection is two points, a START and an optional END, and every tap on a
+  chosen point toggles it OFF** (reworked 2026-09-14 at the project owner's
+  request — the first cut "cancelled back to the previous range", which is
+  not what deselect means): nothing chosen → tap X sets the start; start only
+  → tap the start empties the selection, tap another day sets the end; full
+  range → tap the END drops just the end (so a different one can be picked
+  without starting over), tap the START empties everything, tap any other day
+  starts fresh. **The start and end are deliberately NOT symmetric**: dropping
+  the start empties the selection rather than promoting the end, because the
+  start is the anchor the range hangs off and "I tapped Monday and now only
+  Friday is lit" reads as a glitch. Press-and-drag writes the same two points
+  (release on the end; glide back onto the pressed day and it is start-only),
+  so the tap rules apply to a dragged range exactly as to a tapped one — tap
+  the day you released on and it drops off.
+  - **`end === null` is the ONLY representation of a single day**, never
+    `(d, d)`. `CoordinatorBatchesPage` collapses a null end to the start on
+    save (the columns are NOT NULL) and expands a stored `(d, d)` back to null
+    when it loads a batch for editing — otherwise a tap on that day would be
+    an ambiguous "an end that equals the start".
+  - **`start === null` (nothing chosen) is a real, reachable state and blocks
+    Save** via `workingDaysInvalid` in `hasFieldErrors`, with an inline
+    "Pick at least one working day." — it never reaches the server. The label
+    reads "No days selected" in red.
+  - Both paths go through the shared `formatDayRange`/`isDayInRange` helpers,
+    so neither can disagree with the other about the result.
+  - **The range WRAPS across the week when the end precedes the start** (e.g.
+    Sat then Tue sets Sat/Sun/Mon/Tue) — deliberately not normalized to
+    "whichever direction is shorter", since an ordered two-click range is
+    unambiguous and silently flipping it would sometimes produce a different
+    set of days than the coordinator actually clicked.
+- **`working_days_per_week` STAYS** — every existing consumer (the reminder
+  command, the student dashboard's missing-count, the journal calendar, the
+  reminder-preference defaults) still reads it — but it is now **derived
+  automatically**, never typed directly. `App\Observers\BatchObserver`
+  (`#[ObservedBy]` on `Batch`, the same mechanism `UserObserver` uses) keeps the
+  two in step on every save: picking a range derives the count
+  (`BatchWorkingDays::countFromRange()`, wrap-aware); posting only the legacy
+  count (an older client, or a seeder) derives a Monday-anchored range
+  (`BatchWorkingDays::rangeFromLegacyCount()`) using the **exact** mapping the
+  old count-only logic assumed, so nothing that already existed changes
+  behavior.
+  **Seeders bypass this**, same as `UserObserver`'s username generation —
+  `DatabaseSeeder` uses `WithoutModelEvents`, which mutes `BatchObserver` too,
+  so the three seeders that create a `Batch` directly
+  (`CabmbCoordinatorCenteredDemoSeeder`, `CabmbUsersDemoSeeder`,
+  `StudentDemoEnrollmentSeeder`) now write `working_days_start`/`_end`
+  explicitly alongside `working_days_per_week`.
+- **`BatchWorkingDays::isWorkingDayInRange($date, $start, $end)`** is the real
+  predicate now (wraparound-aware); the old `isWorkingDay($date, $count)` is
+  kept byte-for-byte as-is for any caller that only ever has a count (none
+  exist in `app/` today). The 5 real consumers —
+  `SendMissingJournalEntryReminders`, `StudentDashboardController`,
+  `JournalCalendarController`, `ReminderPreferenceController`,
+  `ReminderSchedule::remindsOn()` — were switched to pass the range instead of
+  the count; this is what makes an arbitrary start+end day *mean* something
+  app-wide, not just look different on the form.
+- **Migration backfill freezes the exact old mapping** for every batch that
+  already existed (7→[1,7], 6→[1,6], else→[1,5]), so nothing already seeded or
+  live changed behavior the moment the migration ran — verified via
+  `php artisan migrate:fresh --seed` and a direct query of the seeded batches
+  afterward.
+- Both `StoreBatchRequest`/`UpdateBatchRequest` (coordinator) accept either
+  shape — `working_days_start`+`working_days_end` (paired via
+  `required_with` both ways) or the bare legacy `working_days_per_week` — so an
+  older caller still works. `Admin\StoreBatchRequest` got the same treatment for
+  parity, though it remains **dead code**: no route or test wires it, and the
+  admin's own Batches page is read-only (view-only modal, no create/edit form).
+- `AdminBatchesPage`'s read-only batch view now shows the range as
+  `"Mon – Fri"` (or the wrapped equivalent, e.g. `"Sat – Tue"`) via the shared
+  `web/src/lib/weekdays.ts` helpers (`formatDayRange`, `isDayInRange`,
+  `WEEKDAY_NAMES`) — the same helpers the picker itself uses, so the two can
+  never describe a range differently.
+
+Coverage: `tests/Unit/Support/BatchWorkingDaysTest.php` pins the
+behavior-preserving mapping, the wraparound math (`isWorkingDayInRange`, both
+directions of `countFromRange`), and the legacy-count round trip. No existing
+test needed a behavior change — the 25+ tests touching
+`working_days_per_week` were re-run and stayed green as-is, since
+`BatchObserver` derives it transparently from whichever field a test/request
+already sends.
 
 ### The coordinator's review surface
 
@@ -1050,6 +1462,66 @@ the one exception to soft-deactivation: it 422s any account carrying OJT history
 (`journal_entries`/`weekly_logs`/`weekly_activity_logs`) and only erases truly
 empty accounts. It can never destroy SIPP records.
 
+### Permanently deleting a supervisor account (2026-09-11)
+
+Built at the project owner's request — the Users → Supervisors tab had no row
+actions at all (no View, no Delete) until now; only `detachSupervisor` existed
+(Partner Companies), and that only removes a company's login attachment, not
+the account. `EnrollmentController::showSupervisor`/`destroySupervisorAccount`
+(routes `coordinator/users/supervisors/{supervisor}`, GET and DELETE) fill both
+gaps, mirroring `showIntern`/`destroyAccount`'s shape but not their guard.
+
+**Why a supervisor delete needed its own guard, not the student one reused:**
+`batch_students.supervisor_id` is a **`cascadeOnDelete`** foreign key — it is
+the authoritative student-to-company/supervisor linkage (see Enrollment above).
+Deleting a supervisor who was ever pinned to an enrollment, active or
+historical, would silently **delete those `batch_students` rows along with
+them** — not merely the supervisor's own login. This is a much larger blast
+radius than the student case (where `journal_entries`/`weekly_logs` are keyed
+by `student_id`+`batch_id`, not by the row being deleted) and is the actual
+reason this feature did not already exist: building it safely meant tracing
+every FK a `users` row carries first.
+
+`destroySupervisorAccount()` therefore blocks (422) on either:
+
+- **Any `batch_students` row, of any status, ever pinned to them** — the
+  cascade-risk case above.
+- **Any `weekly_logs` row they reviewed** (`weekly_logs.supervisor_id` is only
+  `nullOnDelete`, so the review itself survives, but deleting them would strip
+  off WHO gave the verdict).
+
+**Deliberately NOT gated on still being attached to a company.**
+`company_supervisors.user_id` is `cascadeOnDelete` too, but carries no history
+behind it — just "who is currently logged in as this company" — so losing that
+pointer on delete is exactly what a manual detach already does on purpose.
+Requiring a detach-first step would add friction with nothing to show for it,
+and would have made the account briefly **unreachable**: the Supervisors list
+(`supervisors()`) is built entirely from `company_supervisors` rows in scope,
+so a supervisor detached from every company vanishes from it. Both
+`showSupervisor` and `destroySupervisorAccount` are scoped by
+**`attachableSupervisorIds()`** (already defined on `ScopesCoordinatorAccounts`
+for the "Attach Existing Supervisor" dropdown), not `scopedSupervisorIds()`,
+specifically so a detached "floating" supervisor stays viewable and deletable
+rather than 403ing the very account the action exists to reach.
+
+**Frontend**: the Supervisors tab table (and its mobile card list) gained an
+Actions column identical in shape to the Interns tab's — a bordered outline
+**View** button and a red outline **Delete** button. View opens
+`SupervisorDetailModal.vue` (mirrors `InternDetailModal.vue`), showing the
+supervisor's companies (with position) and, new information the row itself
+doesn't show, the actual roster of interns currently or previously assigned to
+them (`SupervisorDetail`'s `interns[]`). Delete reuses the exact same
+`DangerCountdownModal` the intern delete already used — a 7-second hold before
+"Delete permanently" unlocks, `tone: danger`, Cancel always active — rather
+than a second confirmation pattern; a blocked (422) delete surfaces the guard's
+reason as a normal error toast, same as every other guarded action in the app.
+
+Coverage: `tests/Feature/Coordinator/CoordinatorUsersTest.php` — the two 422
+guards (assigned-to-an-enrollment, reviewed-a-weekly-log), a clean delete that
+also cascades the `company_supervisors` attachment away, both 403/404 scope
+checks, and the floating-supervisor case (detached, no history) staying
+reachable through both endpoints.
+
 **Graceful "enrollment inactive" state**: `User::isEnrollmentPaused()` (a student
 past intake with no `active`/`completed` row) surfaces as `student_paused` on
 `/api/user`. The router bounces them to a read-only `/student/paused` page and
@@ -1557,8 +2029,9 @@ application reports.
 ## Exit Interview
 
 Built 2026-08-30 at the project owner's request. Narrows Hard Rule #4: the
-per-student **form** is in scope and built; the aggregate **Summary Report on
-Student Exit Interview** is a different document and is still out.
+per-student **form** is in scope and built. The aggregate **Summary Report on
+Student Exit Interview** followed on 2026-09-10, narrowing Hard Rule #4 a
+second time — see Summary Report below.
 
 The student fills in the official CABM "Internship Program Student Exit
 Interview Form" at the close of their placement; their coordinator reads every
@@ -1573,9 +2046,11 @@ downloads a measured facsimile to file. Reference:
   after Student Info Sheet, because that is the order a student meets them:
   intake first, exit last.
 - **Coordinator**: `CoordinatorExitInterviewController`
-  (`index`/`show`/`update`/`pdf`, routes `coordinator/exit-interviews*`), page
-  `CoordinatorExitInterviewsPage.vue` at `/coordinator/exit-interviews`, nav
-  label **"Student Exit Interviews"**.
+  (`index`/`show`/`update`/`pdf`/`summary`, routes `coordinator/exit-interviews*`),
+  page `CoordinatorExitInterviewsPage.vue` at `/coordinator/exit-interviews`, nav
+  label **"Student Exit Interviews"**. The page carries two tabs — **By
+  Student** (the queue below) and **Summary Report** (see below) — rather than
+  a second nav item; see Summary Report for why.
 
 ### Schema — one additive table
 
@@ -1790,6 +2265,65 @@ lock, the completed/dropped split, the page size) and
 `tests/Feature/Coordinator/CoordinatorExitInterviewTest.php` (program scoping,
 the 403s, the coordinator block never touching `responses`, and the draft that
 cannot be signed off) cover the endpoints.
+
+### Summary Report — every intern's answer gathered per question
+
+Built 2026-09-10 at the project owner's request, narrowing Hard Rule #4 a
+second time. This is the aggregate **Summary Report on Student Exit
+Interview** that Hard Rule #4 used to keep out of scope: instead of one row
+per student, every in-scope intern's answer to question 1 is gathered
+together, then question 2, and so on — `GET coordinator/exit-interviews/summary`
+via `CoordinatorExitInterviewController::summary()`.
+
+**Reached as a "Summary Report" tab on the same `CoordinatorExitInterviewsPage.vue`,
+not a second nav item or route.** The project owner asked for it inside the
+existing Student Exit Interviews page rather than as its own sidebar entry.
+
+- **Scope is `coordinatorProgramIds()`**, exactly like the by-student queue,
+  with the identical optional `program_id` narrowing (403 out of scope). The
+  view is **combined across every in-scope program by default** — not
+  per-program tabs like the Annual SIPP report editor — since the client's ask
+  was framed as "one page gathering all the answers," with the program filter
+  available to narrow it.
+- **Filtered by `academic_year`** (via `batches.academic_year`, the same
+  column the Annual SIPP/HTE reports key on), defaulting to the most recent
+  year that has any batch in scope.
+- **DRAFTS ARE EXCLUDED — only `submitted` and `reviewed` interviews feed
+  it.** A draft can be blank or half-typed, and only a submitted interview is
+  guaranteed to carry all fourteen answers (`StoreExitInterviewRequest`
+  enforces that on submit); including drafts would let an in-progress form
+  skew a tally into looking like a completed one. This is the opposite of the
+  by-student queue, which deliberately DOES include drafts (see above) — the
+  two answer different questions ("who has started?" vs. "what did people who
+  finished actually say?").
+- **Deliberately NOT curated, unlike the Annual SIPP / HTE / Group Info Sheet
+  report editors.** Those exist so a coordinator can correct messy real-world
+  source data (a mistyped company name, a missing hire date) before filing an
+  official annex. There is nothing to correct here — every answer is text the
+  student already submitted themselves — so this is a **live read, recomputed
+  on every request, with nothing persisted.** No `manual_rows`, no
+  `deleted_ids`, no override JSON column.
+- **No PDF export.** Unlike the per-student form, there is no reference
+  document for this aggregate — `docs/reference/` has no facsimile to measure
+  it against — so a PDF here would be an unmatched, made-up layout rather than
+  a measured one. Easy to add later against the same query if ever needed.
+- The 14-question catalog (number, section heading, text, and which four carry
+  a ☐ Yes ☐ No pair) is read straight off **`ExitInterviewFormLayout::SECTIONS`**
+  rather than re-declared a third time — it already backs the PDF and cannot
+  drift from the actual form wording.
+- **Choice questions (q2/q7/q10/q11) carry a `{yes, no, unanswered}` tally**
+  alongside the same per-student answer list; a student who picked Yes/No but
+  left the explanation blank still appears (with `text: ''`), since the choice
+  itself is an answer.
+- **A blank text answer is skipped from that question's list entirely**,
+  matching the app-wide "skip fields whose value is blank" convention — it is
+  not rendered as an empty row.
+
+Coverage: `tests/Feature/Coordinator/ExitInterviewSummaryTest.php` — gathering
+answers under their own question, draft exclusion (and that a `reviewed`
+interview still counts), blank-answer skipping, choice tallies including
+`unanswered`, program scope (403 + filtering), academic-year default/filter,
+and the empty-but-valid shape when nobody has submitted yet.
 
 ### Demo data
 
@@ -3557,6 +4091,86 @@ events); it does record batch and roster transitions, info-sheet accept/reject,
 enrollment, weekly-journal approve/return, and journal submission via
 `SystemLog::record()`.
 
+#### Programs are admin-managed, not hardcoded (2026-09-08)
+
+`Admin/ProgramController` gained **`store`** and **`update`**
+(`POST admin/programs`, `PUT admin/programs/{program}`) with
+`StoreProgramRequest` / `UpdateProgramRequest`. Until this, the controller was
+read-only and its own docblock said "the 7 programs are fixed at seed time" —
+so a department the admin created had no way to be given a single program, and
+the only route to one was editing `DepartmentProgramSeeder` and re-seeding.
+
+**This RESTORES something that was deliberately removed.** Program CRUD existed
+until commit `23da1f9` (2026-07-12), which stripped it along with the admin's
+batch CRUD. That was a scope decision, not a technical blocker, and it is
+reversed at the project owner's request. `ProgramControllerTest`'s
+`test_store_and_update_routes_no_longer_exist` (which asserted 405 on both) is
+gone with it — it pinned the absence of the feature.
+
+**Two surfaces, and the department one is the primary:**
+
+- **Admin → Departments → View → Programs** carries **"+ Add Program"**. A
+  program is created inside the department it belongs to, so the department is
+  *context* rather than another field to get wrong. Its modal is **`z-60`**, not
+  the app's usual `z-50`, because it opens over the department detail modal.
+  On success it **re-fetches the department detail** rather than pushing the row
+  in by hand — that table carries per-program intern tallies the create response
+  cannot know — and reloads the list behind it, whose rows carry `programs_count`.
+- **Admin → Programs** carries the same action with a department picker, plus a
+  per-row **Edit**. Creating while a department filter is applied seeds the
+  picker with it (a default, not a lock). The Actions column is pinned at
+  **165px**, measured against the two real buttons (View ~59px + 8px gap + Edit
+  ~54px + the cell's own 32px of `px-4`), not against its heading.
+
+**The rules, each deliberate:**
+
+- **`code` is unique WITHIN a department, never globally** — mirroring the
+  table's own `UNIQUE(department_id, code)`. Departments are independent
+  top-level units, so two of them may legitimately run the same code; validating
+  globally would refuse a legal program, and not validating at all would surface
+  the index violation as a 500 instead of a 422.
+- **`code` IS editable, unlike a department's** — a deliberate difference.
+  Nothing in `app/` resolves a program by code (batches, users and templates all
+  key off `program_id`); only the demo seeders do, and they run against a fresh
+  database. A mistyped code must stay fixable, because the alternative is
+  deactivate-and-recreate, which strands every batch pointing at the original row.
+- **`department_id` is NOT accepted by `update`** and is disabled in the form.
+  Re-parenting a program would hand every batch and intern under it to another
+  department's coordinators in one silent write — a migration of live records,
+  not an edit to a reference row.
+- **There is no delete, matching the app's soft-deactivation posture.**
+  `batches.program_id` and `journal_templates.program_id` are `cascadeOnDelete`
+  and `batch_students` cascades from `batches`, so deleting a used program would
+  take its batches, enrollments and journals with it. `is_active` is the control
+  — though note it is **display-only today**: nothing in the app filters on it.
+
+**CACHE INVALIDATION IS THE LOAD-BEARING PART, and the pre-2026-07-12 version
+did not have it** (the caching layer landed after that code was removed).
+`ProgramController::forgetCachesFor()` drops three things on every write:
+`reference:programs`, `reference:departments` (its rows carry `programs_count`),
+and — the one that matters — **`coordinator-program-ids:{id}` for every
+coordinator of that department**. `User::coordinatorProgramIds()` resolves to
+every program in the coordinator's department and caches it for a **DAY**, so
+without this a newly-added program is invisible to the very coordinator who has
+to build a batch for it, with the database perfectly correct the whole time.
+Verified both ways: with the clause removed
+`test_a_new_program_is_immediately_in_its_coordinators_scope` fails reporting
+**0 programs in scope**, and in a browser `mdccore`'s Create Batch picker showed
+a program added seconds earlier.
+
+**`DepartmentProgramSeeder` IS NOW ADDITIVE, and that had to change first.** It
+pruned — deleting every department outside its hardcoded list and, inside each,
+every program outside its list. That was safe only while nothing could create an
+eighth program. With admin-created programs it is unrecoverable data loss on a
+live install, via the cascade above, and the trigger is the *documented* way to
+correct reference data: `db:seed --class=DepartmentProgramSeeder`, exactly what
+was run on 2026-09-08 to fix the department names. Both prunes are gone.
+**`migrate:fresh --seed` was never affected** — it starts from an empty database,
+so the prunes were always no-ops there, which is precisely why the hazard was
+invisible. Pinned by
+`test_an_admin_created_program_survives_a_reference_re_seed`, verified to fail
+against the old seeder.
+
 ### Coordinator
 
 All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scope
@@ -3572,6 +4186,18 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
   coordinator's students **plus companies not yet linked to any enrollment** (no
   creator column exists, so unlinked implies visible, keeping freshly-created
   companies in view). Includes the representatives and supervisor-login panels.
+  **"Department" is a plain informational text field** (2026-09-11, corrected
+  at the project owner's request) bound directly to `companies.industry` — it
+  used to render as a dropdown of business-sector suggestions (with an
+  "Other…" escape hatch) that could read as a constrained choice tied to the
+  college's own Departments, when it is actually free text that gates nothing.
+  Now a plain input mirroring the adjacent "Department Head" field exactly,
+  with a caption stating it is descriptive-only. **Create/Attach Supervisor
+  now toast on success** (they used to succeed silently) — wording matches the
+  Users page's own supervisor-creation flow exactly (echoing the assigned
+  username when one was auto-generated). See "The supervisor is tied to the
+  company" above for the "Attach Existing Supervisor" scoping fix from the
+  same pass.
 - **Student Info Sheets** — the Accept/Reject queue; defaults to **All** statuses.
 - **Journal Review** (`/coordinator/journal-review`) — the coordinator's OWN
   approve/return queue plus each intern's full notebook, for
@@ -3584,7 +4210,10 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
   in-scope intern's exit interview, filterable by program / status / name,
   with a per-row and in-modal **Download PDF**. Read the fourteen answers and
   fill the coordinator's own compliance block; there is **no accept/reject**,
-  because an exit interview gates nothing. See Exit Interview above.
+  because an exit interview gates nothing. A second tab, **Summary Report**,
+  gathers every intern's answer to each question together instead of one row
+  per student — no PDF, no curation, drafts excluded. See Exit Interview
+  above.
 - **Weekly and Time Log Summary** (`/coordinator/weekly-time-logs`) — read-only
   list of every in-scope intern's MDC Weekly Activity Log sheet, with a per-row
   and in-modal **Download PDF**. See Weekly Activity Log above; there is no
@@ -3606,10 +4235,12 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
   attached to any company in the coordinator's company-scope. Header actions are
   tab-contextual. "Create Supervisor" **requires a company first** — a supervisor
   is always a Company Supervisor. The Interns tab also has **"Bulk Import
-  (Excel)"** (see Intake & Enrollment above). Its row actions are **View and
-  Delete only** — the old per-row **"Resend"** moved to the Credential Manager
-  in the profile popover on 2026-09-08 and must not come back here; see
-  Credential Manager under Intake & Enrollment for why.
+  (Excel)"** (see Intake & Enrollment above). Both tabs' row actions are **View
+  and Delete only** — the old per-row **"Resend"** moved to the Credential
+  Manager in the profile popover on 2026-09-08 and must not come back here; see
+  Credential Manager under Intake & Enrollment for why. The Supervisors tab
+  gained its own View/Delete on 2026-09-11 — see Permanently deleting a
+  supervisor account, below.
 - **Batch roster management** is separate from the enroll flow, scoped by batch
   program. Adding a student who is already active in another batch **MOVES** them
   (old row dropped, new active row, behind a wrong-batch-guard confirm).
@@ -3888,6 +4519,12 @@ zero-cost deploy stack. Cached with explicit invalidation at the known write
 points (the TTL is a backstop, not the mechanism):
 `User::coordinatorProgramIds()`, `Admin/ProgramController::index()`,
 `Admin/DepartmentController::index()`, and `SystemSetting::cached()`.
+
+`reference:programs` genuinely had **no** write point to invalidate at until
+2026-09-08 — programs were uncreatable, so the day-long TTL *was* the mechanism.
+Now that the admin creates them, `ProgramController::forgetCachesFor()` is that
+hook, and it drops the per-coordinator scope cache as well as the two reference
+lists. See Admin → Programs above for why that third one is the one that bites.
 
 Dashboard aggregates are deliberately **not** cached — they are per-user, change
 frequently, and were not found to be expensive.
