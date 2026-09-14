@@ -7,7 +7,9 @@ defineProps<{
 </script>
 
 <template>
-  <p v-if="loading" class="text-sm text-slate-500">Loading...</p>
+  <slot v-if="loading" name="skeleton">
+    <p class="text-sm text-slate-500">Loading...</p>
+  </slot>
   <div v-else-if="error" class="flex items-center justify-between gap-3 rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
     <span>{{ error }}</span>
     <button

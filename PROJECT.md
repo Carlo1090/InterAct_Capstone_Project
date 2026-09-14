@@ -46,7 +46,235 @@ This is a **monorepo** with three parts:
   punch deliberately is not). All dates and times go through
   `mobile/src/lib/datetime.ts` — never `toISOString()` for "today", which is
   UTC and was silently a day behind for the first eight hours of every Manila
-  day. It has its own
+  day. **Signing out wipes what the device is holding for that student** —
+  `clearDeviceSession()` in `mobile/src/hooks/useAuth.ts` clears the read caches
+  (`clearAllCached`), the queued journal writes (`clearOutbox`), the on-device
+  alarms and the shared user store, and `login()` re-runs it whenever the account
+  that just signed in is not the one the cache describes (the session can also
+  end by a token simply expiring). Before that, only the in-memory store was
+  reset: the next student on the same handset was painted with the previous
+  student's name, photo, dashboard and journals, and — worst — a journal queued
+  offline by the previous student was flushed under the NEW student's bearer
+  token, filing one student's writing against another's account.
+  **The dashboard's Recent Activity and the full Activity Log are ONE
+  renderer** (2026-09-08) — `mobile/src/lib/activityLog.ts` holds the
+  action→plain-language map, the category icons/colours and `trimOwnName`, and
+  `mobile/src/components/ActivityRow.tsx` draws the row for both. They read the
+  same five `SystemLog` rows and used to describe them differently: the
+  dashboard printed the raw audit `description`, own-name prefix and all
+  ("Juan Dela Cruz logged in (mobile)"), against a bare coloured dot, while the
+  Activity Log showed "Signed in" with an icon, a category colour and the name
+  trimmed. `StudentDashboardController` now returns the raw `id`/`action`/
+  `description`/`logged_at` alongside the existing `text`/`time`/`tone` —
+  **additive, because `StudentDashboardPage.vue` reads those three** and the
+  web dashboard is deliberately not part of that change. `ActivityRow`'s
+  `variant` prop changes the container only (a standing card on its own screen,
+  a divided list inside the dashboard card), never the information.
+  **The palette is NAVY, GENTLED** (2026-09-09, project owner) — same family,
+  lower intensity, every value in `mobile/src/constants/colors.ts` measured
+  rather than picked: ground `#20304C` on white is **13.22:1** (was `#0A1628`
+  at 18.13:1, a contrast wall), primary `#3A5A8F` is **6.91:1** at saturation
+  0.42 (was `#1E4D9B` at 0.83, close to electric), canvas `#F4F7FB` carries a
+  faint blue cast, and the muted label colour went `#94A3B8` → `#7C8AA3`,
+  which was a real accessibility fix (2.39:1 → 3.25:1, since the old value
+  sat under even the 3:1 large-text floor). **`blue300` `#A3C0E6` is
+  light-on-dark ONLY** — 7.08:1 on the ground, 1.87:1 on white, so it must
+  never become text on a pale surface. **Status colours are deliberately
+  unchanged**: green/red/amber carry meaning (submitted, missing, needs
+  action) rather than brand, and re-tinting them toward navy would weaken
+  exactly the signals that must stay loud.
+  **`Banner` has an `offline` variant and it is the loudest thing on its
+  page.** Offline used to render as `neutral` — grey text on a grey wash in a
+  grey border, the app's quietest treatment — so the one notice saying "this
+  may be out of date" looked less important than the blue tips beside it. It
+  now carries its meaning FOUR ways (left stripe, filled icon chip, bold
+  title, colour), because colour alone fails a red-green colour-blind reader
+  and a phone screen in daylight. `OfflineNotice` uses it for BOTH levels and
+  differentiates by title — "Offline — your work is safe" where writes
+  genuinely queue, "Offline — showing saved data" everywhere else.
+  **The journal calendar is cache-first and pre-warms its neighbours.**
+  `useJournalCalendar` hand-rolled its own fetch and read the cache **only
+  inside the catch block**, so a saved month was used only when a request
+  actually FAILED — on a working-but-slow connection (a sleeping free-tier
+  API costs 30-60s to wake) every month change was a blocking round trip with
+  nothing on screen. It now goes through `useCachedResource` (the sixth hook
+  to hand-roll that pattern and the second to drift from it, which is the
+  whole reason that helper exists) and background-warms the two ADJACENT
+  months after each load — silently, and skipped entirely while offline
+  rather than firing two doomed requests. `useCachedResource` also now CLEARS
+  `data` when `cacheKey` changes: a different key is different content, not a
+  refresh, and without it October's grid sat under the word November until
+  the network answered.
+  **The tab bar icons answer a tap** (`mobile/src/components/TabBarIcon.tsx`,
+  2026-09-09) — an overshoot to 1.42 then a spring to a resting 1.12 with a
+  2px lift. It keys off **`focused`, never an `onPress`**: the tab bar owns
+  the press, so a second handler would fire on taps the navigator rejects (the
+  already-active tab) and miss every focus change that did not come from a tap
+  (a deep link, `router.replace`, hardware back). `useNativeDriver` throughout,
+  and it honours `AccessibilityInfo.isReduceMotionEnabled()` — this fires on
+  every navigation, which is exactly the repeated movement that setting exists
+  to stop.
+  **The login screen matches the project owner's mockup** (2026-09-09): a DARK
+  navy ground (`#2a3f60 → blue900 → #16213a`, diagonal) instead of the old pale
+  `blue300 → blue100` wash, which had left a white card floating on an
+  almost-white page with no edge; two hairline rings in the card header echoing
+  the logo; an elevated card (**both** `elevation` and `shadow*`, since iOS
+  ignores the first and Android the second); and neutral `blue50` icon chips on
+  tinted fields. **That last one fixed a real signal bug** — the password field
+  carried a RED icon slab, and red is the app's error colour everywhere else,
+  so a resting password field read as a field in an error state. The footer
+  moved to `blue300`, the light-on-dark token, since `blue700` is invisible on
+  the new ground.
+  **JS-only changes now ship OVER THE AIR** (`expo-updates` ~29, 2026-09-10) —
+  `eas update --branch preview` pushes a new bundle to installed apps, no
+  reinstall. `runtimeVersion` uses the **`fingerprint` policy**, which is the
+  safety interlock: it hashes the native project, so an update built against
+  different native code is simply never offered to an older APK rather than
+  being delivered and crashing. `eas.json` pins `channel` per profile
+  (`preview`/`production`/`development`) — without it a build subscribes to no
+  channel and can never receive an update at all.
+  **A NATIVE change still needs a real build**: a new library with native
+  modules, the icon, the splash, permissions, the package name, or the SDK.
+  Build 16 is the first APK carrying the update client — **every APK before it
+  can never be updated over the air**, which is why it was cut immediately
+  after wiring this up. The splash and adaptive-icon backgrounds were corrected
+  from the pre-redesign `#0a1628` to the palette's own `#20304C` in that same
+  build, since native config is exactly what OTA cannot reach afterwards.
+  **`checkAutomatically` defaults to `ALWAYS`, and `fallbackToCacheTimeout: 0`
+  means a published update needs TWO app launches to actually appear** — the
+  first checks and downloads in the background while still showing the old
+  bundle (it never waits), the second applies what was downloaded. Fully
+  closing and reopening once is not enough; there is no in-app "update ready"
+  affordance, so this has to be explained to whoever is testing a fresh push.
+  **`OfflineNotice` distinguishes a dead connection from a slow server**
+  (`ApiError.isTimeout`, 2026-09-10 — found from a real report: "im currently
+  on offline even thu i have internet connections"). Every screen's `isOffline`
+  flag fires on ANY failed request, and the API sleeps on a free Render
+  instance and can take up to the full 60s timeout to wake — so a student
+  opening the app right as it woke up was told "Offline — check your internet
+  connection" for a problem that was never theirs. `isOffline` itself is
+  unchanged (still gates writes, still falls back to cache); `OfflineNotice`
+  now takes an optional `error` prop and, when `error.isTimeout` is true,
+  overrides the title to **"Reconnecting — this may take a moment"** and shows
+  the error's own honest message instead of the per-feature offline note.
+  Threaded through all 13 `<OfflineNotice>` call sites.
+  **A network-failed READ is retried; nothing in the app used to retry
+  anything** (`withRetry` in `mobile/src/services/api.ts`, 2026-09-11 — from a
+  real report: "why when we do update to the application i always in up offline
+  mode even thu i have internet"). A screen that failed once stayed `isOffline`
+  until the student happened to switch tabs or pull to refresh, so **one unlucky
+  moment stuck the whole app in offline mode indefinitely** on a perfectly good
+  connection. That moment is the NORMAL launch rather than a rare one: the API
+  sleeps on a free Render instance after ~15 minutes idle, installing or
+  updating is precisely when it has been idle, `preloadAll()` then fires its
+  whole 13-step warm-up SEQUENTIALLY at a server that is still waking, and
+  `usePreload`'s `PRELOAD_TIMEOUT_MS` (12s) releases the splash long before the
+  cold start finishes — so the student lands on screens whose requests are still
+  failing. On an OTA update the new bundle is downloading over the same
+  connection at the same time. Retry fires **only on `status === null`** (no
+  response at all — offline, DNS, dropped connection, timeout); anything
+  carrying a status is the server's considered answer and repeating it would
+  only get the same answer more slowly. Two short delays (1.2s, 3.5s), because
+  this is a wake-up allowance and a Wi-Fi/mobile-data handover cushion, not a
+  general resilience layer.
+  **`EXPO_PUBLIC_*` IS INLINED AT BUNDLE TIME, AND THE TWO SHIP PATHS READ
+  DIFFERENT ENVIRONMENTS — THIS WAS THE REAL CAUSE OF "OFFLINE AFTER AN
+  UPDATE"** (2026-09-11). `eas build` takes its environment from **eas.json's
+  per-profile `env`**; `eas update` bundles on **whatever machine runs it** and
+  reads **`mobile/.env`**. That file still held `http://192.168.254.133:8000` —
+  a laptop LAN address from August — so **every over-the-air update silently
+  repointed the installed app at a host the phone could never reach**. Every
+  request then failed with no response, which is `status === null`, which is
+  exactly the shape of a genuine offline failure: the app called itself
+  offline and login reported "no internet connection" on a perfectly good
+  network. Proven, not inferred — `grep` found the LAN IP inside the shipped
+  Hermes bundle and no trace of the Render host. **This is also why the symptom
+  always followed an update and never a fresh APK**, and why it looked like the
+  update had not applied at all. The earlier `withRetry` work is still correct
+  and still needed, but it was treating a symptom: retrying an unreachable
+  address three times only fails three times.
+  Two guards now, because either alone can be forgotten: **`mobile/.env` must
+  match eas.json** (a LAN IP for local work goes in `.env.local`, which is
+  gitignored and takes precedence), and **`API_BASE_URL`'s fallback is the live
+  API rather than `http://10.0.2.2:8000`** — a localhost default turns a
+  missing variable into a silent, undebuggable outage, where a production
+  default degrades to the correct host.
+  **DEPENDENCY AUDIT, and what "28 vulnerabilities" actually meant**
+  (2026-09-11). `npm audit fix` (semver-safe only) cleared 3 — `js-yaml`,
+  `nanoid`, `@xmldom/xmldom` — leaving 25. **Every remaining fix npm proposes
+  is `expo@57` (SDK 54 → 57, three majors, every native module replaced and a
+  new runtime fingerprint) or a DOWNGRADE of `expo-router` 6.0.24 → 5.1.11.**
+  Neither is a security fix; both are breakage. So the question was which
+  advisories can actually reach a student's phone, answered by exporting with
+  `--source-maps` and reading the module list: **of 1210 modules in the shipped
+  bundle, exactly one vulnerable package has code in it** — `decode-uri-
+  component` (moderate, a self-DoS on malformed percent-encoded input) via
+  `query-string` via `@react-navigation` via `expo-router`. Metro, PostCSS,
+  `@expo/cli`'s config code, `image-size`, `xcode`, `uuid` and the
+  `@expo/config` chain are **build tooling** — they run here and on the EAS
+  builder, never inside the APK, and the `expo-constants`/`expo-linking`/
+  `expo-notifications`/`expo-updates` entries are flagged only for depending on
+  that chain. (The one `@expo/cli` file in the bundle is
+  `build/metro-require/require.js`, the module-require shim, not the vulnerable
+  CLI code.)
+  **`decode-uri-component` is DELIBERATELY LEFT AT 0.2.2.** The patched line
+  (0.4.1+) is **ESM-only** — `"type": "module"` with an `exports` map carrying
+  no `require` condition — while `query-string@7.1.3` is CommonJS and does
+  `require('decode-uri-component')`. Under Metro that require yields the module
+  NAMESPACE, not the default export, so the call site becomes
+  `decodeComponent is not a function` and every URL parse crashes: deep links
+  and the DTR QR landing included. Trading a moderate self-DoS (the student's
+  own phone hangs on a hostile URL, recoverable by force-closing; no server, no
+  other user, no data) for a certain crash on every navigation is the wrong
+  way round. Revisit when `query-string` ships an ESM-compatible major, or when
+  the SDK upgrade happens on purpose. `npx expo install --check` reports every
+  direct dependency already matching SDK 54, and `expo-doctor` passes 18/18.
+  **EVERY CONFIRMATION IS THE APP'S OWN DIALOG, NOT `Alert.alert`**
+  (`mobile/src/services/confirm.ts` + `mobile/src/components/ConfirmHost.tsx`,
+  2026-09-11, project owner: "change the default look in every message… i mean
+  the double verification"). Nineteen call sites across nine screens asked
+  their question through the OS, so the one moment a student is required to
+  stop and read was drawn by Android — Android's type, Android's blue, on a
+  page that is otherwise entirely navy InternTrack. Worse than off-brand: a
+  native Alert gives every question the SAME face, so "Submit this entry?" and
+  "Delete this row?" were visually identical and the destructive one relied
+  entirely on the student reading the word. The dialog now carries a tone
+  (`default` · `danger` · `success` · `warn`) that moves the icon chip, the
+  glyph and the confirm button's fill together, so the weight of an action is
+  visible before a word is read; cancel is the OUTLINED button on the LEFT, so
+  a destructive answer is never the one nearest a right thumb. Every message
+  was rewritten to ONE short line ("This cannot be undone.", "You can still
+  edit it until your week is compiled.") — the native dialogs had grown to
+  three-sentence paragraphs nobody reads at the moment of deciding.
+  **It is promise-based**, so a call site reads as a straight line
+  (`if (!(await confirmAction({…}))) return;`) instead of the callback-in-an-
+  array shape `Alert.alert` forces, which is what had pushed several of these
+  into bespoke helper functions. The store is **module-level** for the same
+  reason `toast.ts`'s is — a dialog has to be openable from a plain async
+  function mid-save, not only from inside a component body — and `ConfirmHost`
+  is mounted once at the root beside `ToastHost`, above the navigator, so it
+  reaches modals like Write Journal too. **`alertAction` is the one-button
+  form** (what `Alert.alert` with no button array was) and is deliberately NOT
+  collapsed into `showError`: a toast slides away on its own, which is right
+  for a receipt and wrong for "your clock-in did not record". Two rules that
+  are easy to lose: the backdrop declines on a confirm but is **inert on a
+  one-button acknowledgement**, so a message that must be read cannot be lost
+  to a stray tap; and a dialog raised from inside a `try/finally` is called
+  with `void`, never awaited, because the `finally` clears the screen's loading
+  flag and awaiting leaves the button spinning behind the dialog. **Log Out
+  gained a confirmation it never had** — the web app has confirmed it since the
+  beginning, and on mobile it clears every cache the device holds for that
+  student (`clearDeviceSession()`), so a mis-tap on the last button of Profile
+  should not do it silently.
+  **A WRITE is deliberately NOT retried**, and that is why `apiPost` takes an
+  opt-in `{ retry: true }` rather than sharing GET's treatment: a POST whose
+  response was lost may well have succeeded, so repeating it can file a second
+  journal entry or a second punch — exactly the case the journal outbox exists
+  to handle safely. **Login is the one write that opts in**: it is the first
+  thing to touch the API after the app has sat unused, and a lost response there
+  told the student to check a connection that was never the problem. A duplicate
+  login only issues a second token.
+  It has its own
   `mobile/CLAUDE.md` (importing `mobile/AGENTS.md`) requiring the versioned docs
   at `docs.expo.dev/versions/v54.0.0/` be checked before any mobile code.
 

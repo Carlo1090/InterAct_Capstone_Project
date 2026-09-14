@@ -4,6 +4,8 @@ import { RouterLink } from 'vue-router'
 import api from '@/lib/axios'
 import LoadStatus from '@/components/LoadStatus.vue'
 import NotEnrolledNotice from '@/components/student/NotEnrolledNotice.vue'
+import StatCardGridSkeleton from '@/components/ui/skeletons/StatCardGridSkeleton.vue'
+import SectionCardSkeleton from '@/components/ui/skeletons/SectionCardSkeleton.vue'
 import { categorizeError } from '@/lib/apiError'
 import { isNotEnrolledError } from '@/lib/enrollment'
 import { useAuthStore } from '@/stores/auth'
@@ -565,6 +567,17 @@ onMounted(async () => {
     </div>
 
     <LoadStatus :loading="isLoading" :error="errorMessage" :retry="load">
+      <template #skeleton>
+        <StatCardGridSkeleton :count="4" />
+        <div class="mt-5 grid gap-5 xl:grid-cols-2">
+          <SectionCardSkeleton variant="progress" :rows="2" />
+          <SectionCardSkeleton variant="activity" :rows="3" />
+        </div>
+        <div class="mt-5">
+          <SectionCardSkeleton variant="details" :rows="5" />
+        </div>
+      </template>
+
       <NotEnrolledNotice v-if="notEnrolled" />
 
       <template v-else-if="dashboard">

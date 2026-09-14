@@ -124,3 +124,26 @@ export async function flushQueue(): Promise<{ sent: number; failed: number; stil
   const remaining = await readQueue();
   return { sent, failed: failedCount, stillQueued: remaining.length };
 }
+
+/**
+ * Drops every queued and failed entry. Called on sign-out.
+ *
+ * THIS IS THE SHARPEST EDGE OF THE STALE-CACHE BUG, not a tidy-up: flushQueue()
+ * posts with whatever bearer token is current, and useAutoSyncOutbox fires it on
+ * reconnect and on foreground without asking who is signed in. So a journal
+ * student A wrote offline, then signed out of, would be filed against student
+ * B's account the moment B's phone came back online — B's record, in A's words,
+ * with nothing on either screen admitting it.
+ *
+ * Discarding on sign-out is the right trade here: an unsent entry belongs to the
+ * session that wrote it, and the alternative (keying the queue by user id and
+ * holding it) means storing one student's writing on a handset they have
+ * already signed out of.
+ */
+export async function clearOutbox(): Promise<void> {
+  try {
+    await AsyncStorage.multiRemove([QUEUE_KEY, FAILED_KEY]);
+  } catch {
+    // best-effort
+  }
+}

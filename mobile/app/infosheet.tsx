@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ScrollView, View, Text, TextInput, Pressable, ActivityIndicator, Alert } from 'react-native';
+import { ScrollView, View, Text, TextInput, Pressable, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Banner } from '../src/components/Banner';
@@ -12,6 +12,8 @@ import { endpoints } from '../src/services/endpoints';
 import { InfoSheet, InfoSheetPersonal, InfoSheetAcademic, InfoSheetOjt } from '../src/types/api';
 import { colors } from '../src/constants/colors';
 import { OfflineNotice } from '../src/components/OfflineNotice';
+import { showError } from '../src/services/toast';
+import { alertAction, confirmAction } from '../src/services/confirm';
 
 const YEAR_LEVELS: { value: string; label: string }[] = [
   { value: '1st-year', label: '1st Year' },
@@ -74,7 +76,7 @@ export default function InfoSheetScreen() {
     if (result.ok) {
       setEditing(false);
     } else {
-      Alert.alert('Could not save', result.error);
+      showError('Could not save', result.error);
     }
   }
 
@@ -85,7 +87,11 @@ export default function InfoSheetScreen() {
   async function onSubmit() {
     const missing = findMissingRequired(personal!, academic!, ojt!);
     if (missing.length > 0) {
-      Alert.alert('Missing required fields', `Please complete: ${missing.join(', ')}`);
+      await alertAction({
+        title: 'Some fields are still empty',
+        message: `Please complete: ${missing.join(', ')}`,
+        tone: 'warn',
+      });
       return;
     }
     await persist('submitted');
@@ -98,11 +104,15 @@ export default function InfoSheetScreen() {
     setEditing(false);
   }
 
-  function confirmDiscard() {
-    Alert.alert('Discard changes?', 'Your edits will not be saved.', [
-      { text: 'Keep Editing', style: 'cancel' },
-      { text: 'Discard', style: 'destructive', onPress: onCancel },
-    ]);
+  async function confirmDiscard() {
+    const ok = await confirmAction({
+      title: 'Discard your changes?',
+      message: 'Your edits will be lost.',
+      confirmLabel: 'Discard',
+      cancelLabel: 'Keep editing',
+      tone: 'danger',
+    });
+    if (ok) onCancel();
   }
 
   async function onDownloadPdf() {
@@ -110,7 +120,7 @@ export default function InfoSheetScreen() {
     try {
       await downloadAndSharePdf(endpoints.infoSheetPdf, 'student-information-sheet.pdf');
     } catch (err) {
-      Alert.alert('Could not download PDF', (err as ApiError).message);
+      showError('Could not download PDF', (err as ApiError).message);
     } finally {
       setDownloading(false);
     }
@@ -159,7 +169,7 @@ export default function InfoSheetScreen() {
         )}
       </View>
 
-      <OfflineNotice feature="infoSheet" show={isOffline} />
+      <OfflineNotice feature="infoSheet" show={isOffline} error={error} />
 
       <StatusBanner status={data.submission_status} rejectionReason={data.rejection_reason} editing={editing} />
 
@@ -236,14 +246,14 @@ function StatusBanner({
   rejectionReason: string | null;
   editing: boolean;
 }) {
-  if (editing) {
-    return <Banner variant="info">You are editing your information sheet. Save your changes, or go back to discard them.</Banner>;
-  }
+  // No banner while editing: the student just pressed Edit, so saying so tells
+  // them nothing they did not do themselves.
+  if (editing) return null;
   if (status === 'rejected') {
     return <Banner variant="warn">Returned for changes: {rejectionReason || 'Please review and resubmit.'}</Banner>;
   }
   if (status === 'submitted') {
-    return <Banner variant="info">Submitted — awaiting your coordinator's review.</Banner>;
+    return <Banner variant="info">Submitted — awaiting coordinator review.</Banner>;
   }
   if (status === 'approved') {
     return (
