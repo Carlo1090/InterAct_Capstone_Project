@@ -4,13 +4,15 @@ import axios from 'axios'
 import api from '@/lib/axios'
 import { confirmAction, showToast } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
+import { RouterLink } from 'vue-router'
 import TooltipWrap from '@/components/ui/TooltipWrap.vue'
-import type { Department, DepartmentDetail, PaginatedResponse, User } from '@/types/api'
+import type { AdminExitInterviewFormsResponse, Department, DepartmentDetail, PaginatedResponse, User } from '@/types/api'
 
 type DepartmentForm = {
   code: string
   name: string
   dean_name: string
+  exit_interview_form: string
   is_active: boolean
 }
 
@@ -39,7 +41,27 @@ const isModalOpen = ref(false)
 const editingDepartmentId = ref<number | null>(null)
 const isSaving = ref(false)
 const modalError = ref('')
-const departmentForm = ref<DepartmentForm>({ code: '', name: '', dean_name: '', is_active: true })
+const departmentForm = ref<DepartmentForm>({ code: '', name: '', dean_name: '', exit_interview_form: '', is_active: true })
+
+/**
+ * The hardcoded exit interview forms a department can be assigned. Loaded
+ * once alongside the coordinator options; the select is REQUIRED on create,
+ * since a department is never left without a form and the admin should
+ * choose rather than inherit a default they never saw.
+ */
+const exitInterviewForms = ref<AdminExitInterviewFormsResponse['forms']>([])
+
+const loadExitInterviewForms = async () => {
+  try {
+    const response = await api.get<AdminExitInterviewFormsResponse>('/api/admin/exit-interview-forms')
+    exitInterviewForms.value = response.data.forms
+  } catch {
+    exitInterviewForms.value = []
+  }
+}
+
+const exitInterviewFormLabel = (key: string): string =>
+  exitInterviewForms.value.find((form) => form.key === key)?.label ?? key
 
 // Adding a program is done from inside the department it belongs to, so the
 // department is context rather than another field to pick. The Programs page
@@ -208,7 +230,7 @@ const saveProgram = async () => {
 }
 
 const resetForm = () => {
-  departmentForm.value = { code: '', name: '', dean_name: '', is_active: true }
+  departmentForm.value = { code: '', name: '', dean_name: '', exit_interview_form: '', is_active: true }
   modalError.value = ''
 }
 
@@ -224,6 +246,7 @@ const openEditModal = (department: Department) => {
     code: department.code,
     name: department.name,
     dean_name: department.dean_name ?? '',
+    exit_interview_form: department.exit_interview_form,
     is_active: department.is_active,
   }
   modalError.value = ''
@@ -244,6 +267,7 @@ const saveDepartment = async () => {
       await api.put(`/api/admin/departments/${editingDepartmentId.value}`, {
         name: departmentForm.value.name,
         dean_name: departmentForm.value.dean_name || null,
+        exit_interview_form: departmentForm.value.exit_interview_form,
         is_active: departmentForm.value.is_active,
       })
     } else {
@@ -251,6 +275,7 @@ const saveDepartment = async () => {
         code: departmentForm.value.code,
         name: departmentForm.value.name,
         dean_name: departmentForm.value.dean_name || null,
+        exit_interview_form: departmentForm.value.exit_interview_form,
       })
     }
     closeModal()
@@ -266,6 +291,7 @@ const saveDepartment = async () => {
 onMounted(() => {
   loadDepartments()
   loadCoordinatorOptions()
+  loadExitInterviewForms()
 })
 </script>
 
@@ -329,6 +355,19 @@ onMounted(() => {
                 <TooltipWrap :label="department.name" placement="top" class="max-w-full">
                   <span class="block max-w-full truncate">{{ department.name }}</span>
                 </TooltipWrap>
+                <!-- The assigned exit interview form rides UNDER the name
+                     rather than in a seventh column: the table is already six
+                     columns at its measured widths, and one more collapsed
+                     Name to two letters. Same call the Journal Review queue
+                     makes for a company under its batch. -->
+                <TooltipWrap :label="exitInterviewFormLabel(department.exit_interview_form)" placement="top" class="max-w-full">
+                  <span
+                    class="block max-w-full truncate text-xs font-normal text-slate-400"
+                    :aria-label="exitInterviewFormLabel(department.exit_interview_form)"
+                  >
+                    Exit interview: {{ department.exit_interview_form }}
+                  </span>
+                </TooltipWrap>
               </td>
               <td class="truncate px-4 py-3 text-sm text-slate-500">{{ department.dean_name || '—' }}</td>
               <td class="px-4 py-3 text-sm tabular-nums text-slate-700">{{ department.programs_count ?? 0 }}</td>
@@ -377,6 +416,7 @@ onMounted(() => {
           <p class="mt-1.5 text-sm font-semibold wrap-break-word text-slate-900">{{ department.name }}</p>
           <p class="mt-1 truncate text-xs text-slate-500">
             Dean: {{ department.dean_name || '—' }} · {{ department.programs_count ?? 0 }} program{{ (department.programs_count ?? 0) === 1 ? '' : 's' }}
+            · Exit interview: {{ department.exit_interview_form }}
           </p>
           <div class="mt-3 flex items-center gap-2">
             <button type="button" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50" @click="openViewModal(department)">View</button>
@@ -423,12 +463,34 @@ onMounted(() => {
               class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm"
             />
             <p class="mt-1.5 text-xs text-slate-500">
-              The full department name, written out as it should read to a person. Do not repeat the code here.
+              Enter the department&rsquo;s full name as it should appear. Do not include the department code.
             </p>
           </div>
           <div>
             <label class="mb-1.5 block text-xs font-bold text-slate-600" for="department-dean-name">Dean's Name (optional)</label>
             <input id="department-dean-name" v-model="departmentForm.dean_name" type="text" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm" />
+          </div>
+          <div>
+            <label class="mb-1.5 block text-xs font-bold text-slate-600" for="department-exit-interview-form">Exit Interview Form</label>
+            <select
+              id="department-exit-interview-form"
+              v-model="departmentForm.exit_interview_form"
+              class="h-10 w-full max-w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+            >
+              <option value="" disabled>Choose a form…</option>
+              <option v-for="form in exitInterviewForms" :key="form.key" :value="form.key">
+                {{ form.label }} — {{ form.question_count }} questions
+              </option>
+            </select>
+            <p class="mt-1.5 text-xs text-slate-500">
+              The official exit interview this department's students fill in at the end of their OJT. The forms
+              themselves are fixed — see
+              <RouterLink to="/admin/exit-interviews" class="font-semibold underline">Exit Interview</RouterLink>
+              for what each asks.
+              <template v-if="editingDepartmentId">
+                Changing it affects interviews started from now on; those already begun keep their form.
+              </template>
+            </p>
           </div>
           <div v-if="editingDepartmentId">
             <label class="flex items-center gap-2 text-sm font-medium text-slate-700">

@@ -209,6 +209,7 @@ class DepartmentControllerTest extends TestCase
         $response = $this->postJson('/api/admin/departments', [
             'code' => 'CABM-H',
             'name' => 'College of Hospitality Management',
+            'exit_interview_form' => 'cabm',
         ]);
 
         $response->assertCreated();

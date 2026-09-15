@@ -8,6 +8,7 @@ import { Card } from '../src/components/Card';
 import { ErrorState, LoadingState } from '../src/components/ErrorState';
 import { OfflineNotice } from '../src/components/OfflineNotice';
 import { useExitInterview } from '../src/hooks/useExitInterview';
+import type { ExitInterviewResponse } from '../src/types/api';
 import { downloadAndSharePdf, ApiError } from '../src/services/api';
 import { endpoints } from '../src/services/endpoints';
 import { todayISO } from '../src/lib/datetime';
@@ -16,100 +17,16 @@ import { showError, showSuccess } from '../src/services/toast';
 import { confirmAction } from '../src/services/confirm';
 
 /**
- * Question text copied verbatim from web's StudentExitInterviewPage so the
- * two clients cannot ask the same numbered question differently. The four
- * with a `choice` carry a printed Yes/No pair on the paper form; their free
- * text is the explanation beside it.
+ * No question list lives here. The payload carries `form` — the student's
+ * own department's exit interview form (CAST, CABM, whichever the admin
+ * assigned) — so this screen renders any of the hardcoded forms without a
+ * transcription that could drift from the web page's. A `yes_no_text`
+ * question carries a printed Yes/No pair whose answer is stored under
+ * `choice`; a `scale` question is a row of options and no free text at all.
  */
-const SECTIONS: {
-  letter: string;
-  title: string;
-  questions: { key: string; number: number; label: string; choice?: string; explainLabel?: string }[];
-}[] = [
-  {
-    letter: 'B',
-    title: 'Internship Placement and Responsibilities',
-    questions: [
-      { key: 'q1', number: 1, label: 'What were your primary duties and responsibilities during your internship?' },
-      {
-        key: 'q2',
-        number: 2,
-        label: 'Were your assigned tasks relevant to your academic program?',
-        choice: 'q2_choice',
-        explainLabel: 'Please explain',
-      },
-    ],
-  },
-  {
-    letter: 'C',
-    title: 'Skills and Competencies Developed',
-    questions: [
-      { key: 'q3', number: 3, label: 'What technical skills did you learn or improve during your internship?' },
-      {
-        key: 'q4',
-        number: 4,
-        label:
-          'What soft skills did you develop during your internship? (e.g., communication, teamwork, time management, professionalism)',
-      },
-      { key: 'q5', number: 5, label: 'Which skill do you think improved the most during your training?' },
-    ],
-  },
-  {
-    letter: 'D',
-    title: 'Internship Experience',
-    questions: [
-      { key: 'q6', number: 6, label: 'How would you describe your overall internship experience?' },
-      {
-        key: 'q7',
-        number: 7,
-        label: 'Were you given adequate supervision and guidance by your company supervisor?',
-        choice: 'q7_choice',
-        explainLabel: 'Please explain',
-      },
-    ],
-  },
-  {
-    letter: 'E',
-    title: 'Challenges Encountered',
-    questions: [
-      {
-        key: 'q8',
-        number: 8,
-        label: 'What challenges did you encounter during your internship? How did you address these challenges?',
-      },
-    ],
-  },
-  {
-    letter: 'F',
-    title: 'Learning and Career Insights',
-    questions: [
-      { key: 'q9', number: 9, label: 'What important lessons did you learn from your internship?' },
-      {
-        key: 'q10',
-        number: 10,
-        label: 'Did your internship influence your career plans?',
-        choice: 'q10_choice',
-        explainLabel: 'If yes, please explain',
-      },
-      {
-        key: 'q11',
-        number: 11,
-        label: 'Do you feel prepared to enter the workforce after completing your OJT/INTERNSHIP?',
-        choice: 'q11_choice',
-        explainLabel: 'Please explain',
-      },
-    ],
-  },
-  {
-    letter: 'G',
-    title: 'Feedback and Recommendations',
-    questions: [
-      { key: 'q12', number: 12, label: 'What aspects of the OJT/INTERNSHIP program were most beneficial to you?' },
-      { key: 'q13', number: 13, label: 'What improvements would you suggest for the OJT/INTERNSHIP program?' },
-      { key: 'q14', number: 14, label: 'What advice would you give to future OJT/INTERNSHIP students?' },
-    ],
-  },
-];
+type Question = ExitInterviewResponse['form']['sections'][number]['questions'][number];
+
+const CHOICE_OPTIONS: Record<string, string> = { yes: 'Yes', no: 'No' };
 
 export default function ExitInterview() {
   const { data, loading, error, isOffline, reload, save } = useExitInterview();
@@ -257,56 +174,66 @@ export default function ExitInterview() {
         />
       </Card>
 
-      {SECTIONS.map((section) => (
-        <Card key={section.letter} title={`${section.letter}. ${section.title}`}>
-          {section.questions.map((q) => (
-            <View key={q.key} style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: 12.5, fontWeight: '600', color: colors.black, marginBottom: 8, lineHeight: 18 }}>
-                {q.number}. {q.label}
-              </Text>
+      {data.form.sections.map((section) => (
+        <Card key={section.heading} title={section.heading}>
+          {section.questions.map((q: Question) => {
+            // Where the choice lives and which options it offers: a Yes/No
+            // pair answers under `choice`, a rating under the question's own
+            // key. A plain question has neither.
+            const choiceKey = q.type === 'yes_no_text' ? q.choice : q.type === 'scale' ? q.key : undefined;
+            const options = q.type === 'scale' ? q.options ?? {} : q.type === 'yes_no_text' ? CHOICE_OPTIONS : null;
 
-              {q.choice ? (
-                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 8 }}>
-                  {(['yes', 'no'] as const).map((option) => {
-                    const active = responses[q.choice!] === option;
-                    return (
-                      <Pressable
-                        key={option}
-                        onPress={() => !locked && setAnswer(q.choice!, option)}
-                        style={{
-                          paddingVertical: 8,
-                          paddingHorizontal: 20,
-                          borderRadius: 10,
-                          borderWidth: 1.5,
-                          borderColor: active ? colors.blue600 : colors.gray200,
-                          backgroundColor: active ? colors.blue600 : colors.white,
-                          opacity: locked ? 0.6 : 1,
-                        }}
-                      >
-                        <Text
+            return (
+              <View key={q.key} style={{ marginBottom: 16 }}>
+                <Text style={{ fontSize: 12.5, fontWeight: '600', color: colors.black, marginBottom: 8, lineHeight: 18 }}>
+                  {q.n}. {q.text}
+                </Text>
+
+                {choiceKey && options ? (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 }}>
+                    {Object.entries(options).map(([option, optionLabel]) => {
+                      const active = responses[choiceKey] === option;
+                      return (
+                        <Pressable
+                          key={option}
+                          onPress={() => !locked && setAnswer(choiceKey, option)}
                           style={{
-                            fontSize: 12.5,
-                            fontWeight: '600',
-                            color: active ? colors.white : colors.gray600,
+                            paddingVertical: 8,
+                            paddingHorizontal: 16,
+                            borderRadius: 10,
+                            borderWidth: 1.5,
+                            borderColor: active ? colors.blue600 : colors.gray200,
+                            backgroundColor: active ? colors.blue600 : colors.white,
+                            opacity: locked ? 0.6 : 1,
                           }}
                         >
-                          {option === 'yes' ? 'Yes' : 'No'}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              ) : null}
+                          <Text
+                            style={{
+                              fontSize: 12.5,
+                              fontWeight: '600',
+                              color: active ? colors.white : colors.gray600,
+                            }}
+                          >
+                            {optionLabel}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : null}
 
-              <AnswerBox
-                value={responses[q.key] ?? ''}
-                onChange={(v) => setAnswer(q.key, v)}
-                editable={!locked}
-                placeholder={q.explainLabel ?? 'Your answer'}
-                limit={data.answer_char_limits[q.key] ?? data.answer_char_limit}
-              />
-            </View>
-          ))}
+                {q.type !== 'scale' ? (
+                  <AnswerBox
+                    value={responses[q.key] ?? ''}
+                    onChange={(v) => setAnswer(q.key, v)}
+                    editable={!locked}
+                    placeholder={q.label ? q.label.replace(/:$/, '') : 'Your answer'}
+                    limit={data.answer_char_limits[q.key] ?? data.answer_char_limit}
+                  />
+                ) : null}
+              </View>
+            );
+          })}
         </Card>
       ))}
 
@@ -371,7 +298,7 @@ function AnswerBox({
         }}
       />
       {/* The limit comes from the printed form's own line count, not an
-          arbitrary cap — question 7 has four lines where the rest have five. */}
+          arbitrary cap. */}
       <Text style={{ fontSize: 10.5, color: over ? colors.redTx : colors.gray400, marginTop: 4, textAlign: 'right' }}>
         {value.length} / {limit}
       </Text>

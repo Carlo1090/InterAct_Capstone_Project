@@ -117,7 +117,7 @@ class AuditLogControllerTest extends TestCase
     {
         Sanctum::actingAs($this->admin(), ['*']);
 
-        $this->postJson('/api/admin/departments', ['code' => 'CAST', 'name' => 'Department One'])->assertCreated();
+        $this->postJson('/api/admin/departments', ['code' => 'CAST', 'name' => 'Department One', 'exit_interview_form' => 'cast'])->assertCreated();
         $departmentTwo = Department::create(['code' => 'CABM-B', 'name' => 'Department Two', 'is_active' => true]);
         $this->putJson("/api/admin/departments/{$departmentTwo->id}", ['name' => 'Department Two Updated'])->assertOk();
 

@@ -9,7 +9,8 @@ use App\Models\Batch;
 use App\Models\Program;
 use App\Models\StudentExitInterview;
 use App\Models\SystemLog;
-use App\Support\ExitInterviewFormLayout;
+use App\Support\ExitInterview\ExitInterviewForm;
+use App\Support\ExitInterview\ExitInterviewForms;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -81,6 +82,7 @@ class CoordinatorExitInterviewController extends Controller
                 'submitted_at' => $interview->submitted_at?->toIso8601String(),
                 'reviewed_at' => $interview->reviewed_at?->toIso8601String(),
                 'compliance' => $section['compliance'] ?? null,
+                'form_key' => $interview->form_key,
             ];
         });
 
@@ -107,6 +109,9 @@ class CoordinatorExitInterviewController extends Controller
             'header' => $this->exitInterviewHeader($exitInterview),
             'responses' => $exitInterview->responses ?? [],
             'coordinator_section' => $exitInterview->coordinator_section ?? [],
+            // The question set this interview was answered under, so the modal
+            // renders the right department's form beside the answers.
+            'form' => $exitInterview->form()->toArray(),
         ]);
     }
 
@@ -185,10 +190,18 @@ class CoordinatorExitInterviewController extends Controller
      * persisted.
      *
      * DRAFTS ARE EXCLUDED. A draft can be blank or half-typed, and only a
-     * submitted interview is guaranteed to carry all fourteen answers
+     * submitted interview is guaranteed to carry every answer
      * (StoreExitInterviewRequest enforces that on submit) — including a
      * draft would let an empty in-progress form skew what looks like a
      * completed tally.
+     *
+     * ONE FORM PER REPORT. The questions come from the coordinator's own
+     * department's assigned form, and only interviews answered under THAT
+     * form are gathered: question 1 on the CAST form is not question 1 on
+     * the CABM form, so answers to the two can never sit in one list.
+     * Interviews snapshotted under a different form (a department whose
+     * assignment changed mid-year) are counted separately in
+     * `other_form_respondents` rather than silently dropped.
      */
     public function summary(Request $request): JsonResponse
     {
@@ -199,6 +212,8 @@ class CoordinatorExitInterviewController extends Controller
 
         [$scopedProgramIds, $programIds] = $this->resolveScope($request, isset($validated['program_id']) && $validated['program_id'] !== null ? (int) $validated['program_id'] : null);
 
+        $form = ExitInterviewForms::forDepartment($request->user()->departmentsCoordinated()->first());
+
         $academicYears = Batch::whereIn('program_id', $scopedProgramIds)
             ->distinct()
             ->orderByDesc('academic_year')
@@ -207,7 +222,7 @@ class CoordinatorExitInterviewController extends Controller
 
         $academicYear = $validated['academic_year'] ?? $academicYears->first();
 
-        $interviews = StudentExitInterview::whereIn('submission_status', ['submitted', 'reviewed'])
+        $allInterviews = StudentExitInterview::whereIn('submission_status', ['submitted', 'reviewed'])
             ->whereHas('batch', function ($query) use ($programIds, $academicYear) {
                 $query->whereIn('program_id', $programIds);
 
@@ -219,56 +234,76 @@ class CoordinatorExitInterviewController extends Controller
             ->orderBy('student_id')
             ->get();
 
+        $interviews = $allInterviews->where('form_key', $form->key)->values();
+
         $questions = [];
 
-        foreach (ExitInterviewFormLayout::SECTIONS as $section) {
-            foreach ($section['questions'] as $question) {
-                $choiceKey = $question['choice'] ?? null;
-                $tally = $choiceKey ? ['yes' => 0, 'no' => 0, 'unanswered' => 0] : null;
-                $answers = [];
+        foreach ($form->questions() as $question) {
+            $choiceKey = $question['choice'] ?? null;
+            $isScale = $question['type'] === ExitInterviewForm::TYPE_SCALE;
 
-                foreach ($interviews as $interview) {
-                    $responses = $interview->responses ?? [];
-                    $text = trim((string) ($responses[$question['key']] ?? ''));
-                    $choice = $choiceKey ? ($responses[$choiceKey] ?? null) : null;
+            // A Yes/No pair tallies yes / no / unanswered; a rating row tallies
+            // each of its own options plus unanswered. A plain question has
+            // nothing to count.
+            $tally = null;
 
-                    if ($choiceKey) {
-                        $tally[in_array($choice, ['yes', 'no'], true) ? $choice : 'unanswered']++;
-                    }
+            if ($choiceKey) {
+                $tally = ['yes' => 0, 'no' => 0, 'unanswered' => 0];
+            } elseif ($isScale) {
+                $tally = array_fill_keys(array_keys($question['options']), 0) + ['unanswered' => 0];
+            }
 
-                    if ($text === '' && $choice === null) {
-                        continue;
-                    }
+            $answers = [];
 
-                    $program = $interview->batch?->program;
+            foreach ($interviews as $interview) {
+                $responses = $interview->responses ?? [];
+                $text = $isScale ? '' : trim((string) ($responses[$question['key']] ?? ''));
+                $choice = null;
 
-                    $answers[] = [
-                        'student_id' => $interview->student_id,
-                        'student_name' => $interview->student?->name ?? '',
-                        'student_id_number' => $interview->student?->student_id_number,
-                        'program' => $program?->code ?? $program?->name ?? '',
-                        'choice' => $choice,
-                        'text' => $text,
-                    ];
+                if ($choiceKey) {
+                    $choice = $responses[$choiceKey] ?? null;
+                    $tally[in_array($choice, ['yes', 'no'], true) ? $choice : 'unanswered']++;
+                } elseif ($isScale) {
+                    $choice = $responses[$question['key']] ?? null;
+                    $tally[is_string($choice) && isset($question['options'][$choice]) ? $choice : 'unanswered']++;
                 }
 
-                $questions[] = [
-                    'key' => $question['key'],
-                    'number' => $question['n'],
-                    'section' => $section['heading'],
-                    'text' => $question['text'],
-                    'choice_key' => $choiceKey,
-                    'tally' => $tally,
-                    'answers' => $answers,
+                if ($text === '' && $choice === null) {
+                    continue;
+                }
+
+                $program = $interview->batch?->program;
+
+                $answers[] = [
+                    'student_id' => $interview->student_id,
+                    'student_name' => $interview->student?->name ?? '',
+                    'student_id_number' => $interview->student?->student_id_number,
+                    'program' => $program?->code ?? $program?->name ?? '',
+                    'choice' => $choice,
+                    'text' => $text,
                 ];
             }
+
+            $questions[] = [
+                'key' => $question['key'],
+                'number' => $question['n'],
+                'section' => $question['section'],
+                'text' => $question['text'],
+                'type' => $question['type'],
+                'choice_key' => $choiceKey,
+                'options' => $isScale ? $question['options'] : null,
+                'tally' => $tally,
+                'answers' => $answers,
+            ];
         }
 
         return response()->json([
             'programs' => Program::whereIn('id', $scopedProgramIds)->orderBy('name')->get(['id', 'name', 'code']),
             'academic_years' => $academicYears,
             'academic_year' => $academicYear,
+            'form' => ['key' => $form->key, 'label' => $form->label],
             'total_respondents' => $interviews->count(),
+            'other_form_respondents' => $allInterviews->count() - $interviews->count(),
             'questions' => $questions,
         ]);
     }

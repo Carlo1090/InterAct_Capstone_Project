@@ -2,9 +2,25 @@
 
 namespace App\Support;
 
+use App\Support\ExitInterview\ExitInterviewForm;
+use App\Support\ExitInterview\ExitInterviewForms;
+
 /**
- * The layout of the CABM "Internship Program Student Exit Interview Form" —
- * a COMPUTED document, not a list of hand-placed coordinates.
+ * The layout of an exit interview form — a COMPUTED document, not a list of
+ * hand-placed coordinates.
+ *
+ * ONE LAYOUT, MANY FORMS (2026-09-15). The geometry below was measured off the
+ * CABM "Internship Program Student Exit Interview Form" and every department's
+ * form is laid onto it: the same masthead block, Section A, rule pitch, answer
+ * box, coordinator block and signatories. What varies per form is the question
+ * set (App\Support\ExitInterview\ExitInterviewForm), so an instance is built
+ * per form via Layout::for() and the questions are PAGINATED AUTOMATICALLY —
+ * a page breaks before any question whose answer box would run into the
+ * folio, a section heading never sits alone at the foot of a page, and the
+ * coordinator block moves to a fresh page when the last page cannot hold it.
+ * For the 14-question CABM form that reproduces the original hand-stated
+ * break after question 7 exactly; the 31-question CAST form runs to more
+ * pages, and each is computed rather than stated.
  *
  * Reference: docs/reference/INTERNSHIP PROGRAM STUDENT EXIT INTERVIEW - BUSINESS.pdf
  *
@@ -55,7 +71,7 @@ final class ExitInterviewFormLayout
     public const PAGE_HEIGHT = 936.0;
 
     // ─────────────────────────────────────────────────────────────────────
-    // The horizontal grid. ONE set of columns for BOTH pages — the reference
+    // The horizontal grid. ONE set of columns for EVERY page — the reference
     // shifts its whole body 18pt between page 1 and page 2, which is the most
     // visible of its irregularities and has no reason behind it.
     //
@@ -97,6 +113,10 @@ final class ExitInterviewFormLayout
 
     private const CHOICE_OPTION_GAP = 10.0;
 
+    /** Between the options of a rating row (☐ Excellent ☐ Very Good …), which
+     *  sits on its own line under the question rather than beside it. */
+    private const SCALE_OPTION_GAP = 14.0;
+
     // ─────────────────────────────────────────────────────────────────────
     // The vertical rhythm. LINE is the form's own unit — the reference's rule
     // pitch — and everything else is stated against it.
@@ -105,13 +125,19 @@ final class ExitInterviewFormLayout
     /** One line of type, and one ruled line. The reference's own 13.2pt. */
     public const LINE = 13.2;
 
-    /** Masthead block, kept exactly as measured — it is the form's identity. */
+    /**
+     * Masthead block, kept exactly as measured — it is the form's identity.
+     * The college line and the two title lines are the FORM's own
+     * (ExitInterviewForm::$collegeLine / $titleLines); only the baselines,
+     * faces and sizes are fixed here. A one-line title leaves the second
+     * baseline empty rather than shifting anything up.
+     */
     public const MASTHEAD = [
         ['text' => 'Mater Dei College', 'baseline' => 53.33, 'font' => 'serif', 'size' => 15.95, 'color' => '#205E99'],
         ['text' => 'Tubigon, Bohol', 'baseline' => 66.89, 'font' => 'body', 'size' => 9.5],
-        ['text' => 'College of Accountancy, Business and Management (CABM)', 'baseline' => 95.45, 'font' => 'serifBold', 'size' => 14.05],
-        ['text' => 'INTERNSHIP PROGRAM STUDENT EXIT', 'baseline' => 120.77, 'font' => 'bold', 'size' => 9.4],
-        ['text' => 'INTERVIEW FORM', 'baseline' => 133.25, 'font' => 'bold', 'size' => 9.4],
+        ['slot' => 'college', 'baseline' => 95.45, 'font' => 'serifBold', 'size' => 14.05],
+        ['slot' => 'title:0', 'baseline' => 120.77, 'font' => 'bold', 'size' => 9.4],
+        ['slot' => 'title:1', 'baseline' => 133.25, 'font' => 'bold', 'size' => 9.4],
     ];
 
     private const MASTHEAD_BOTTOM = 133.25;
@@ -144,8 +170,18 @@ final class ExitInterviewFormLayout
      *  still clears the ink. */
     public const BASELINE_LIFT = 2.4;
 
-    /** Page 2's first element. */
+    /** The first baseline on every page after the first. */
     private const PAGE_2_TOP = 58.97;
+
+    /**
+     * No rule or run may sit below this; a question whose answer box would is
+     * moved to the next page instead. It is FOLIO_BASELINE less the 20pt
+     * clearance the layout test demands and a little more, so the guarantee
+     * holds by construction rather than by the luck of a question count. It
+     * leaves the CABM form's own measured pages unchanged: its page 2 ends at
+     * 871.37, and its page 1 could not have held question 8 either way.
+     */
+    private const CONTENT_BOTTOM = 882.5;
 
     /** Last answer rule of the questions → the "Student Signature:" row. */
     private const GAP_TO_SIGNATURE = 22.0;
@@ -219,14 +255,9 @@ final class ExitInterviewFormLayout
     private const CHECK_BOTTOM_EM = -0.013;
 
     // ─────────────────────────────────────────────────────────────────────
-    // Content. Verbatim from the reference — the wording, the numbering and
-    // the section order are the college's, not ours.
+    // Content that is the TEMPLATE's rather than any one form's: Section A,
+    // the coordinator block. The questions come from the form.
     // ─────────────────────────────────────────────────────────────────────
-
-    public const PREAMBLE = [
-        'This exit interview gathers feedback from students regarding their OJT/Internship experience. The information',
-        'collected will help evaluate the effectiveness of the Internship program and identify areas for improvement.',
-    ];
 
     /**
      * Section A, as a two-column grid. The reference pairs "Date of Interview"
@@ -241,65 +272,6 @@ final class ExitInterviewFormLayout
         [['label' => 'Department/Position Assigned:', 'key' => 'department_position'], ['label' => 'Training Period:', 'key' => 'training_period']],
         [['label' => 'Total Hours Completed:', 'key' => 'total_hours'], ['label' => 'Date of Interview:', 'key' => 'date_of_interview']],
         [['label' => 'OJT/INTERNSHIP Coordinator:', 'key' => 'coordinator_name']],
-    ];
-
-    /**
-     * Sections B-G. `page` is stated rather than computed: the break has to
-     * fall after question 7 — page 1 cannot hold an eighth answer box, and
-     * moving question 7 to page 2 pushes the coordinator's block off the foot
-     * of the sheet. Everything else about the flow is derived.
-     */
-    public const SECTIONS = [
-        [
-            'page' => 1,
-            'heading' => 'B. Internship Placement and Responsibilities',
-            'questions' => [
-                ['n' => 1, 'key' => 'q1', 'text' => 'What were your primary duties and responsibilities during your internship?'],
-                ['n' => 2, 'key' => 'q2', 'text' => 'Were your assigned tasks relevant to your academic program?', 'choice' => 'q2_choice', 'label' => 'Please explain:'],
-            ],
-        ],
-        [
-            'page' => 1,
-            'heading' => 'C. Skills and Competencies Developed',
-            'questions' => [
-                ['n' => 3, 'key' => 'q3', 'text' => 'What technical skills did you learn or improve during your internship?'],
-                ['n' => 4, 'key' => 'q4', 'text' => 'What soft skills did you develop during your internship? (e.g., communication, teamwork, time management, professionalism)'],
-                ['n' => 5, 'key' => 'q5', 'text' => 'Which skill do you think improved the most during your training?'],
-            ],
-        ],
-        [
-            'page' => 1,
-            'heading' => 'D. Internship Experience',
-            'questions' => [
-                ['n' => 6, 'key' => 'q6', 'text' => 'How would you describe your overall internship experience?'],
-                ['n' => 7, 'key' => 'q7', 'text' => 'Were you given adequate supervision and guidance by your company supervisor?', 'choice' => 'q7_choice', 'label' => 'Please explain:'],
-            ],
-        ],
-        [
-            'page' => 2,
-            'heading' => 'E. Challenges Encountered',
-            'questions' => [
-                ['n' => 8, 'key' => 'q8', 'text' => 'What challenges did you encounter during your internship? How did you address these challenges?'],
-            ],
-        ],
-        [
-            'page' => 2,
-            'heading' => 'F. Learning and Career Insights',
-            'questions' => [
-                ['n' => 9, 'key' => 'q9', 'text' => 'What important lessons did you learn from your internship?'],
-                ['n' => 10, 'key' => 'q10', 'text' => 'Did your internship influence your career plans?', 'choice' => 'q10_choice', 'label' => 'If yes, please explain:'],
-                ['n' => 11, 'key' => 'q11', 'text' => 'Do you feel prepared to enter the workforce after completing your OJT/INTERNSHIP?', 'choice' => 'q11_choice'],
-            ],
-        ],
-        [
-            'page' => 2,
-            'heading' => 'G. Feedback and Recommendations',
-            'questions' => [
-                ['n' => 12, 'key' => 'q12', 'text' => 'What aspects of the OJT/INTERNSHIP program were most beneficial to you?'],
-                ['n' => 13, 'key' => 'q13', 'text' => 'What improvements would you suggest for the OJT/INTERNSHIP program?'],
-                ['n' => 14, 'key' => 'q14', 'text' => 'What advice would you give to future OJT/INTERNSHIP students?'],
-            ],
-        ],
     ];
 
     /** The two compliance options, and the coordinator's own free-text fields. */
@@ -332,11 +304,27 @@ final class ExitInterviewFormLayout
      *  that stops a megabyte reaching the measurer. */
     public const HARD_CHAR_CAP = 800;
 
-    /** @var array<string, mixed>|null */
-    private static ?array $document = null;
+    /** @var array<string, self> One instance per form key. */
+    private static array $instances = [];
 
     /** @var array<int, int>|null Helvetica advance widths, per 1000 units. */
     private static ?array $widths = null;
+
+    /** @var array<string, mixed>|null */
+    private ?array $document = null;
+
+    private function __construct(public readonly ExitInterviewForm $form) {}
+
+    /**
+     * The layout for one form. Cached per key, since document() is a few
+     * thousand width measurements.
+     */
+    public static function for(ExitInterviewForm|string $form): self
+    {
+        $form = $form instanceof ExitInterviewForm ? $form : ExitInterviewForms::get($form);
+
+        return self::$instances[$form->key] ??= new self($form);
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     // The computed document.
@@ -344,14 +332,14 @@ final class ExitInterviewFormLayout
 
     /**
      * Everything that does not depend on a particular student's answers: every
-     * text run, rule, blank and checkbox, already positioned.
+     * text run, rule, blank and checkbox, already positioned and paginated.
      *
-     * @return array{texts: array<int, array<string, mixed>>, rules: array<int, array<string, mixed>>, boxes: array<int, array<string, mixed>>, fields: array<string, array<int, array{page: int, x: float, y: float, w: float}>>, blanks: array<string, array{page: int, x: float, y: float, w: float, baseline: float}>, marks: array<string, array{page: int, x: float, baseline: float}>, bottom: array<int, float>}
+     * @return array{pages: int, texts: array<int, array<string, mixed>>, rules: array<int, array<string, mixed>>, boxes: array<int, array<string, mixed>>, fields: array<string, array<int, array{page: int, x: float, y: float, w: float}>>, blanks: array<string, array{page: int, x: float, y: float, w: float, baseline: float}>, marks: array<string, array{page: int, x: float, baseline: float}>, bottom: array<int, float>, questions_bottom: float}
      */
-    public static function document(): array
+    public function document(): array
     {
-        if (self::$document !== null) {
-            return self::$document;
+        if ($this->document !== null) {
+            return $this->document;
         }
 
         $texts = [];
@@ -364,6 +352,12 @@ final class ExitInterviewFormLayout
         // ── Masthead, centred on the PAGE (the reference centres it on x 306,
         //    not on the ruled column). ────────────────────────────────────
         foreach (self::MASTHEAD as $line) {
+            $text = $line['text'] ?? $this->mastheadSlot($line['slot']);
+
+            if ($text === null) {
+                continue;
+            }
+
             $texts[] = [
                 'page' => 1,
                 'x' => 0.0,
@@ -372,23 +366,27 @@ final class ExitInterviewFormLayout
                 'baseline' => $line['baseline'],
                 'font' => $line['font'],
                 'size' => $line['size'],
-                'text' => $line['text'],
+                'text' => $text,
                 'color' => $line['color'] ?? null,
             ];
         }
 
-        // ── Standing preamble ───────────────────────────────────────────
-        $y = self::MASTHEAD_BOTTOM + self::GAP_MASTHEAD_TO_INTRO;
+        // ── Standing preamble, where the form carries one ───────────────
+        $y = self::MASTHEAD_BOTTOM;
 
-        foreach (self::PREAMBLE as $index => $line) {
-            $texts[] = self::run(1, self::MARGIN_LEFT, $y + ($index * self::LINE), $line);
+        if ($this->form->preamble !== []) {
+            $y += self::GAP_MASTHEAD_TO_INTRO;
+
+            foreach ($this->form->preamble as $index => $line) {
+                $texts[] = self::run(1, self::MARGIN_LEFT, $y + ($index * self::LINE), $line);
+            }
+
+            $y += (count($this->form->preamble) - 1) * self::LINE;
         }
 
-        $y += (count(self::PREAMBLE) - 1) * self::LINE;
-
-        // ── A. Student Information ──────────────────────────────────────
+        // ── Student information (the template's Section A) ──────────────
         $y += self::GAP_TO_HEADING;
-        $texts[] = self::heading(1, $y, 'A. Student Information');
+        $texts[] = self::heading(1, $y, $this->form->studentInfoHeading);
 
         $y += self::GAP_HEADING_TO_ROW;
 
@@ -419,13 +417,21 @@ final class ExitInterviewFormLayout
 
         $y += (count(self::SECTION_A_ROWS) - 1) * self::LINE;
 
-        // ── B - G: the questions ────────────────────────────────────────
+        // ── The questions, paginated ────────────────────────────────────
         $choiceX = self::RULE_RIGHT - self::choicePairWidth();
         $page = 1;
 
-        foreach (self::SECTIONS as $section) {
-            if ($section['page'] !== $page) {
-                $page = $section['page'];
+        foreach ($this->form->normalisedSections() as $section) {
+            $questions = $section['questions'];
+
+            // A heading and its first question travel together: a heading
+            // alone at the foot of a page announces a section that starts
+            // overleaf, which is the orphan every typesetter avoids.
+            $need = self::GAP_RULES_TO_HEADING + self::GAP_HEADING_TO_ROW
+                + $this->questionHeight($questions[0], $choiceX);
+
+            if ($y + $need > self::CONTENT_BOTTOM) {
+                $page++;
                 $y = self::PAGE_2_TOP - self::GAP_RULES_TO_HEADING;
             }
 
@@ -433,157 +439,39 @@ final class ExitInterviewFormLayout
             $texts[] = self::heading($page, $y, $section['heading']);
             $y += self::GAP_HEADING_TO_ROW;
 
-            foreach ($section['questions'] as $qIndex => $question) {
+            foreach ($questions as $qIndex => $question) {
                 if ($qIndex > 0) {
-                    $y += self::GAP_RULES_TO_QUESTION;
-                }
-
-                $hasChoice = isset($question['choice']);
-
-                // A question carrying a ☐ Yes ☐ No pair wraps short of the
-                // choice column, so the pair can sit in the SAME place on
-                // every one of them instead of trailing whatever length the
-                // question happened to be.
-                $textWidth = ($hasChoice ? $choiceX - self::CHOICE_GUTTER : self::RULE_RIGHT) - self::TEXT_X;
-
-                $lines = self::wrap($question['text'], array_fill(0, 4, $textWidth));
-
-                $texts[] = self::run($page, self::NUMBER_X, $y, $question['n'].'.');
-
-                foreach ($lines as $index => $line) {
-                    $texts[] = self::run($page, self::TEXT_X, $y + ($index * self::LINE), $line);
-                }
-
-                $y += (count($lines) - 1) * self::LINE;
-
-                if ($hasChoice) {
-                    foreach (self::choicePair($choiceX) as $option) {
-                        $boxes[] = ['page' => $page, 'x' => $option['box'], 'y' => $y - self::BOX_SIZE - 0.2];
-                        $texts[] = self::run($page, $option['label_x'], $y, $option['label']);
-
-                        $marks[$question['choice'].':'.$option['value']] = self::check($page, $option['box'], $y - self::BOX_SIZE - 0.2);
+                    if ($y + self::GAP_RULES_TO_QUESTION + $this->questionHeight($question, $choiceX) > self::CONTENT_BOTTOM) {
+                        $page++;
+                        $y = self::PAGE_2_TOP;
+                    } else {
+                        $y += self::GAP_RULES_TO_QUESTION;
                     }
                 }
 
-                // ── The answer box ──────────────────────────────────────
-                $first = $y + self::GAP_QUESTION_TO_RULES;
-                $lineSpecs = [];
-
-                for ($i = 0; $i < self::ANSWER_LINES; $i++) {
-                    $ruleY = $first + ($i * self::LINE);
-                    $rules[] = ['page' => $page, 'x' => self::MARGIN_LEFT, 'y' => $ruleY, 'w' => self::RULE_RIGHT - self::MARGIN_LEFT];
-
-                    $inset = 0.0;
-
-                    // "Please explain:" rides the FIRST answer line rather
-                    // than being orphaned onto a line of its own at a
-                    // different indent — the same treatment the coordinator's
-                    // "If pending, specify:" already gets.
-                    if ($i === 0 && isset($question['label'])) {
-                        $texts[] = self::run($page, self::MARGIN_LEFT, $ruleY - self::BASELINE_LIFT, $question['label']);
-                        $inset = self::textWidth($question['label']) + self::LABEL_GAP;
-                    }
-
-                    $lineSpecs[] = [
-                        'page' => $page,
-                        'x' => self::MARGIN_LEFT + $inset,
-                        'y' => $ruleY,
-                        'w' => self::RULE_RIGHT - self::MARGIN_LEFT - $inset,
-                    ];
-                }
-
-                $fields[$question['key']] = $lineSpecs;
-                $y = $first + ((self::ANSWER_LINES - 1) * self::LINE);
+                $y = $this->placeQuestion($question, $page, $y, $choiceX, $texts, $rules, $boxes, $fields, $marks);
             }
         }
 
         $questionsBottom = $y;
 
-        // ── Student signature ───────────────────────────────────────────
-        $y += self::GAP_TO_SIGNATURE;
+        // ── The coordinator's block and the signatories ─────────────────
+        // Measured first on scratch arrays, so it can be moved whole to a
+        // fresh page when the last page of questions cannot hold it — a
+        // signature block split across a page break is worse than a page
+        // that is mostly blank.
+        $scratch = [[], [], [], [], [], []];
+        $trailerHeight = $this->placeTrailer(0, 0.0, ...$scratch);
 
-        foreach ([['Student Signature:', self::MARGIN_LEFT, self::COL_STOP], ['Date:', self::COL2_LABEL_X, self::RULE_RIGHT]] as [$label, $labelX, $stop]) {
-            $texts[] = self::run(2, $labelX, $y, $label);
-            $blankX = $labelX + self::textWidth($label) + self::BLANK_GAP;
-            $rules[] = ['page' => 2, 'x' => $blankX, 'y' => $y + self::BASELINE_LIFT, 'w' => $stop - $blankX];
+        if ($y + $trailerHeight > self::CONTENT_BOTTOM) {
+            $page++;
+            $y = self::PAGE_2_TOP - self::GAP_TO_SIGNATURE;
         }
 
-        // ── Section for the OJT/Internship Coordinator ──────────────────
-        $y += self::GAP_TO_HEADING;
-        $texts[] = self::heading(2, $y, 'SECTION FOR OJT/INTERNSHIP COORDINATOR');
-
-        $y += self::GAP_HEADING_TO_ROW;
-        $texts[] = self::heading(2, $y, 'Compliance Verification:');
-        $texts[] = self::run(
-            2,
-            self::MARGIN_LEFT + self::textWidth('Compliance Verification:', self::HEADING_SIZE) + self::BLANK_GAP,
-            $y,
-            'Did the student submit all required OJT/INTERNSHIP documents and reports?'
-        );
-
-        foreach (self::COMPLIANCE_OPTIONS as $value => $label) {
-            $y += self::LINE;
-            $boxes[] = ['page' => 2, 'x' => self::TEXT_X, 'y' => $y - self::BOX_SIZE - 0.2];
-            $texts[] = self::run(2, self::TEXT_X + self::BOX_SIZE + 5.0, $y, $label);
-            $marks['compliance:'.$value] = self::check(2, self::TEXT_X, $y - self::BOX_SIZE - 0.2);
-        }
-
-        // "If pending, specify:" — the same inset-label pattern as the
-        // questions' "Please explain:", so the label sits ON its first rule
-        // rather than orphaned above it.
-        $y += self::LINE + self::BASELINE_LIFT;
-        $texts[] = self::run(2, self::MARGIN_LEFT, $y - self::BASELINE_LIFT, 'If pending, specify:');
-        $inset = self::textWidth('If pending, specify:') + self::LABEL_GAP;
-
-        $pending = [];
-
-        for ($i = 0; $i < 2; $i++) {
-            $ruleY = $y + ($i * self::LINE);
-            $rules[] = ['page' => 2, 'x' => self::MARGIN_LEFT, 'y' => $ruleY, 'w' => self::RULE_RIGHT - self::MARGIN_LEFT];
-            $lineInset = $i === 0 ? $inset : 0.0;
-            $pending[] = [
-                'page' => 2,
-                'x' => self::MARGIN_LEFT + $lineInset,
-                'y' => $ruleY,
-                'w' => self::RULE_RIGHT - self::MARGIN_LEFT - $lineInset,
-            ];
-        }
-
-        $fields['pending_detail'] = $pending;
-        $y += self::LINE;
-
-        // Remarks: a label with clear ruled space under it, on the same
-        // rhythm as every other answer box.
-        $y += self::GAP_RULES_TO_HEADING;
-        $texts[] = self::heading(2, $y, 'Remarks:');
-
-        $y += self::GAP_QUESTION_TO_RULES;
-        $remarks = [];
-
-        for ($i = 0; $i < self::REMARKS_LINES; $i++) {
-            $ruleY = $y + ($i * self::LINE);
-            $rules[] = ['page' => 2, 'x' => self::MARGIN_LEFT, 'y' => $ruleY, 'w' => self::RULE_RIGHT - self::MARGIN_LEFT];
-            $remarks[] = ['page' => 2, 'x' => self::MARGIN_LEFT, 'y' => $ruleY, 'w' => self::RULE_RIGHT - self::MARGIN_LEFT];
-        }
-
-        $fields['remarks'] = $remarks;
-        $y += (self::REMARKS_LINES - 1) * self::LINE;
-
-        // ── Signatories ─────────────────────────────────────────────────
-        $y += self::GAP_TO_HEADING;
-        [$blanks['coordinator_reviewed_on']] = self::signatory($texts, $rules, $y, 'OJT/INTERNSHIP Coordinator Signature:', 'coordinator_signature_name');
-
-        $y += self::GAP_BETWEEN_SIGNATORIES;
-        [$blanks['dean_reviewed_on'], $deanNameX] = self::signatory($texts, $rules, $y, 'Reviewed by:', 'dean_name');
-
-        // "Dean" captions the name above it, so it is set at the name's own
-        // left edge rather than at an offset nobody can re-derive.
-        $texts[] = self::run(2, $deanNameX, $y + self::LINE, 'Dean');
-
-        $signatoryBottom = $y + self::LINE;
+        $signatoryBottom = $this->placeTrailer($page, $y, $texts, $rules, $boxes, $fields, $blanks, $marks);
 
         // ── Folio ───────────────────────────────────────────────────────
-        foreach ([1, 2] as $folio) {
+        for ($folio = 1; $folio <= $page; $folio++) {
             $texts[] = [
                 'page' => $folio,
                 'x' => self::FOLIO_X,
@@ -597,7 +485,16 @@ final class ExitInterviewFormLayout
             ];
         }
 
-        return self::$document = [
+        $bottom = [];
+
+        for ($p = 1; $p <= $page; $p++) {
+            $bottom[$p] = self::pageBottom($rules, $p);
+        }
+
+        $bottom[$page] = max($bottom[$page], $signatoryBottom);
+
+        return $this->document = [
+            'pages' => $page,
             'texts' => $texts,
             'rules' => $rules,
             'boxes' => $boxes,
@@ -606,10 +503,7 @@ final class ExitInterviewFormLayout
             'marks' => $marks,
             // The lowest ink on each page, so a test can prove nothing runs
             // into the folio.
-            'bottom' => [
-                1 => self::pageBottom($rules, 1),
-                2 => max(self::pageBottom($rules, 2), $signatoryBottom),
-            ],
+            'bottom' => $bottom,
             'questions_bottom' => $questionsBottom,
         ];
     }
@@ -620,11 +514,11 @@ final class ExitInterviewFormLayout
      *
      * @return array<string, array<int, array{0: int, 1: float}>>
      */
-    public static function rules(): array
+    public function rules(): array
     {
         $rules = [];
 
-        foreach (self::document()['fields'] as $key => $lines) {
+        foreach ($this->document()['fields'] as $key => $lines) {
             $rules[$key] = array_map(fn (array $line) => [$line['page'], round($line['y'], 2)], $lines);
         }
 
@@ -637,11 +531,11 @@ final class ExitInterviewFormLayout
      * @param  array<string, string|null>  $answers
      * @return array<int, array{page: int, left: float, width: float, baseline: float, text: string}>
      */
-    public static function place(array $answers): array
+    public function place(array $answers): array
     {
         $placed = [];
 
-        foreach (self::document()['fields'] as $key => $lines) {
+        foreach ($this->document()['fields'] as $key => $lines) {
             $text = trim((string) ($answers[$key] ?? ''));
 
             if ($text === '') {
@@ -667,20 +561,20 @@ final class ExitInterviewFormLayout
     /**
      * The soft character cap for one field, from how many rules it has.
      */
-    public static function charLimitFor(string $key): int
+    public function charLimitFor(string $key): int
     {
-        return count(self::rules()[$key] ?? []) * self::CHARS_PER_LINE ?: self::ANSWER_CHAR_LIMIT;
+        return count($this->rules()[$key] ?? []) * self::CHARS_PER_LINE ?: self::ANSWER_CHAR_LIMIT;
     }
 
     /**
      * @return array<string, int>
      */
-    public static function charLimits(): array
+    public function charLimits(): array
     {
         $limits = [];
 
-        foreach (array_keys(self::rules()) as $key) {
-            $limits[$key] = self::charLimitFor($key);
+        foreach (array_keys($this->rules()) as $key) {
+            $limits[$key] = $this->charLimitFor($key);
         }
 
         return $limits;
@@ -696,10 +590,10 @@ final class ExitInterviewFormLayout
      * which is correct at render time, since a PDF cannot refuse — so the
      * refusal has to happen at validation time instead.
      */
-    public static function fits(string $key, ?string $text): bool
+    public function fits(string $key, ?string $text): bool
     {
         $text = trim((string) $text);
-        $lines = self::document()['fields'][$key] ?? null;
+        $lines = $this->document()['fields'][$key] ?? null;
 
         if ($text === '' || $lines === null) {
             return true;
@@ -810,6 +704,244 @@ final class ExitInterviewFormLayout
     // ─────────────────────────────────────────────────────────────────────
 
     /**
+     * The masthead text for a form-supplied slot, or null for a title line
+     * the form does not have. A one-line title leaves the second slot to the
+     * form's subtitle, if it has one (CAST prints "On-the-Job Training (OJT)
+     * Program" there); otherwise the slot stays empty.
+     */
+    private function mastheadSlot(string $slot): ?string
+    {
+        if ($slot === 'college') {
+            return $this->form->collegeLine;
+        }
+
+        [, $index] = explode(':', $slot);
+        $index = (int) $index;
+
+        if ($index === 1 && ! isset($this->form->titleLines[1])) {
+            return $this->form->subtitle;
+        }
+
+        return $this->form->titleLines[$index] ?? null;
+    }
+
+    /**
+     * The question's own text lines, wrapped short of the choice column when
+     * it carries a ☐ Yes ☐ No pair.
+     *
+     * @param  array<string, mixed>  $question
+     * @return array<int, string>
+     */
+    private function questionLines(array $question, float $choiceX): array
+    {
+        $hasChoice = $question['type'] === ExitInterviewForm::TYPE_YES_NO_TEXT;
+        $textWidth = ($hasChoice ? $choiceX - self::CHOICE_GUTTER : self::RULE_RIGHT) - self::TEXT_X;
+
+        return self::wrap($question['text'], array_fill(0, 4, $textWidth));
+    }
+
+    /**
+     * How far a question runs from its first baseline to its lowest ink — the
+     * number the paginator compares against the page's content limit.
+     *
+     * @param  array<string, mixed>  $question
+     */
+    private function questionHeight(array $question, float $choiceX): float
+    {
+        $height = (count($this->questionLines($question, $choiceX)) - 1) * self::LINE;
+
+        if ($question['type'] === ExitInterviewForm::TYPE_SCALE) {
+            // One more line for the row of boxes; no answer rules.
+            return $height + self::LINE;
+        }
+
+        return $height + self::GAP_QUESTION_TO_RULES + ((self::ANSWER_LINES - 1) * self::LINE);
+    }
+
+    /**
+     * Place one question at $y on $page and return the y of its lowest ink.
+     *
+     * @param  array<string, mixed>  $question
+     * @param  array<int, array<string, mixed>>  $texts
+     * @param  array<int, array<string, mixed>>  $rules
+     * @param  array<int, array<string, mixed>>  $boxes
+     * @param  array<string, array<int, array<string, mixed>>>  $fields
+     * @param  array<string, array<string, mixed>>  $marks
+     */
+    private function placeQuestion(array $question, int $page, float $y, float $choiceX, array &$texts, array &$rules, array &$boxes, array &$fields, array &$marks): float
+    {
+        $lines = $this->questionLines($question, $choiceX);
+
+        $texts[] = self::run($page, self::NUMBER_X, $y, $question['n'].'.');
+
+        foreach ($lines as $index => $line) {
+            $texts[] = self::run($page, self::TEXT_X, $y + ($index * self::LINE), $line);
+        }
+
+        $y += (count($lines) - 1) * self::LINE;
+
+        // A rating question is a row of boxes on the line under the question,
+        // each option's box and label spaced by its own measured width, and
+        // no answer rules at all — the paper form gives it none.
+        if ($question['type'] === ExitInterviewForm::TYPE_SCALE) {
+            $y += self::LINE;
+            $x = self::TEXT_X;
+
+            foreach ($question['options'] as $value => $label) {
+                $boxes[] = ['page' => $page, 'x' => $x, 'y' => $y - self::BOX_SIZE - 0.2];
+                $texts[] = self::run($page, $x + self::BOX_SIZE + self::CHOICE_LABEL_GAP, $y, $label);
+                $marks[$question['key'].':'.$value] = self::check($page, $x, $y - self::BOX_SIZE - 0.2);
+
+                $x += self::BOX_SIZE + self::CHOICE_LABEL_GAP + self::textWidth($label) + self::SCALE_OPTION_GAP;
+            }
+
+            return $y;
+        }
+
+        // A question carrying a ☐ Yes ☐ No pair wraps short of the choice
+        // column, so the pair can sit in the SAME place on every one of them
+        // instead of trailing whatever length the question happened to be.
+        if ($question['type'] === ExitInterviewForm::TYPE_YES_NO_TEXT) {
+            foreach (self::choicePair($choiceX) as $option) {
+                $boxes[] = ['page' => $page, 'x' => $option['box'], 'y' => $y - self::BOX_SIZE - 0.2];
+                $texts[] = self::run($page, $option['label_x'], $y, $option['label']);
+
+                $marks[$question['choice'].':'.$option['value']] = self::check($page, $option['box'], $y - self::BOX_SIZE - 0.2);
+            }
+        }
+
+        // ── The answer box ──────────────────────────────────────────────
+        $first = $y + self::GAP_QUESTION_TO_RULES;
+        $lineSpecs = [];
+
+        for ($i = 0; $i < self::ANSWER_LINES; $i++) {
+            $ruleY = $first + ($i * self::LINE);
+            $rules[] = ['page' => $page, 'x' => self::MARGIN_LEFT, 'y' => $ruleY, 'w' => self::RULE_RIGHT - self::MARGIN_LEFT];
+
+            $inset = 0.0;
+
+            // "Please explain:" rides the FIRST answer line rather than being
+            // orphaned onto a line of its own at a different indent — the
+            // same treatment the coordinator's "If pending, specify:" already
+            // gets.
+            if ($i === 0 && ! empty($question['label'])) {
+                $texts[] = self::run($page, self::MARGIN_LEFT, $ruleY - self::BASELINE_LIFT, $question['label']);
+                $inset = self::textWidth($question['label']) + self::LABEL_GAP;
+            }
+
+            $lineSpecs[] = [
+                'page' => $page,
+                'x' => self::MARGIN_LEFT + $inset,
+                'y' => $ruleY,
+                'w' => self::RULE_RIGHT - self::MARGIN_LEFT - $inset,
+            ];
+        }
+
+        $fields[$question['key']] = $lineSpecs;
+
+        return $first + ((self::ANSWER_LINES - 1) * self::LINE);
+    }
+
+    /**
+     * The student signature row, the coordinator's block and the two
+     * signatories, from the last answer rule at $y. Returns the block's
+     * lowest ink. Called once on scratch arrays to learn its height, then
+     * once for real.
+     *
+     * @param  array<int, array<string, mixed>>  $texts
+     * @param  array<int, array<string, mixed>>  $rules
+     * @param  array<int, array<string, mixed>>  $boxes
+     * @param  array<string, array<int, array<string, mixed>>>  $fields
+     * @param  array<string, array<string, mixed>>  $blanks
+     * @param  array<string, array<string, mixed>>  $marks
+     */
+    private function placeTrailer(int $page, float $y, array &$texts, array &$rules, array &$boxes, array &$fields, array &$blanks, array &$marks): float
+    {
+        // ── Student signature ───────────────────────────────────────────
+        $y += self::GAP_TO_SIGNATURE;
+
+        foreach ([['Student Signature:', self::MARGIN_LEFT, self::COL_STOP], ['Date:', self::COL2_LABEL_X, self::RULE_RIGHT]] as [$label, $labelX, $stop]) {
+            $texts[] = self::run($page, $labelX, $y, $label);
+            $blankX = $labelX + self::textWidth($label) + self::BLANK_GAP;
+            $rules[] = ['page' => $page, 'x' => $blankX, 'y' => $y + self::BASELINE_LIFT, 'w' => $stop - $blankX];
+        }
+
+        // ── Section for the OJT/Internship Coordinator ──────────────────
+        $y += self::GAP_TO_HEADING;
+        $texts[] = self::heading($page, $y, 'SECTION FOR OJT/INTERNSHIP COORDINATOR');
+
+        $y += self::GAP_HEADING_TO_ROW;
+        $texts[] = self::heading($page, $y, 'Compliance Verification:');
+        $texts[] = self::run(
+            $page,
+            self::MARGIN_LEFT + self::textWidth('Compliance Verification:', self::HEADING_SIZE) + self::BLANK_GAP,
+            $y,
+            'Did the student submit all required OJT/INTERNSHIP documents and reports?'
+        );
+
+        foreach (self::COMPLIANCE_OPTIONS as $value => $label) {
+            $y += self::LINE;
+            $boxes[] = ['page' => $page, 'x' => self::TEXT_X, 'y' => $y - self::BOX_SIZE - 0.2];
+            $texts[] = self::run($page, self::TEXT_X + self::BOX_SIZE + 5.0, $y, $label);
+            $marks['compliance:'.$value] = self::check($page, self::TEXT_X, $y - self::BOX_SIZE - 0.2);
+        }
+
+        // "If pending, specify:" — the same inset-label pattern as the
+        // questions' "Please explain:", so the label sits ON its first rule
+        // rather than orphaned above it.
+        $y += self::LINE + self::BASELINE_LIFT;
+        $texts[] = self::run($page, self::MARGIN_LEFT, $y - self::BASELINE_LIFT, 'If pending, specify:');
+        $inset = self::textWidth('If pending, specify:') + self::LABEL_GAP;
+
+        $pending = [];
+
+        for ($i = 0; $i < 2; $i++) {
+            $ruleY = $y + ($i * self::LINE);
+            $rules[] = ['page' => $page, 'x' => self::MARGIN_LEFT, 'y' => $ruleY, 'w' => self::RULE_RIGHT - self::MARGIN_LEFT];
+            $lineInset = $i === 0 ? $inset : 0.0;
+            $pending[] = [
+                'page' => $page,
+                'x' => self::MARGIN_LEFT + $lineInset,
+                'y' => $ruleY,
+                'w' => self::RULE_RIGHT - self::MARGIN_LEFT - $lineInset,
+            ];
+        }
+
+        $fields['pending_detail'] = $pending;
+        $y += self::LINE;
+
+        // Remarks: a label with clear ruled space under it, on the same
+        // rhythm as every other answer box.
+        $y += self::GAP_RULES_TO_HEADING;
+        $texts[] = self::heading($page, $y, 'Remarks:');
+
+        $y += self::GAP_QUESTION_TO_RULES;
+        $remarks = [];
+
+        for ($i = 0; $i < self::REMARKS_LINES; $i++) {
+            $ruleY = $y + ($i * self::LINE);
+            $rules[] = ['page' => $page, 'x' => self::MARGIN_LEFT, 'y' => $ruleY, 'w' => self::RULE_RIGHT - self::MARGIN_LEFT];
+            $remarks[] = ['page' => $page, 'x' => self::MARGIN_LEFT, 'y' => $ruleY, 'w' => self::RULE_RIGHT - self::MARGIN_LEFT];
+        }
+
+        $fields['remarks'] = $remarks;
+        $y += (self::REMARKS_LINES - 1) * self::LINE;
+
+        // ── Signatories ─────────────────────────────────────────────────
+        $y += self::GAP_TO_HEADING;
+        [$blanks['coordinator_reviewed_on']] = self::signatory($texts, $rules, $page, $y, 'OJT/INTERNSHIP Coordinator Signature:', 'coordinator_signature_name');
+
+        $y += self::GAP_BETWEEN_SIGNATORIES;
+        [$blanks['dean_reviewed_on'], $deanNameX] = self::signatory($texts, $rules, $page, $y, 'Reviewed by:', 'dean_name');
+
+        // "Dean" captions the name above it, so it is set at the name's own
+        // left edge rather than at an offset nobody can re-derive.
+        $texts[] = self::run($page, $deanNameX, $y + self::LINE, 'Dean');
+
+        return $y + self::LINE;
+    }
+
+    /**
      * A check mark centred in the box at ($boxX, $boxTop), from the glyph's
      * own metrics rather than from eyeballed offsets.
      *
@@ -852,21 +984,21 @@ final class ExitInterviewFormLayout
      * @param  array<int, array<string, mixed>>  $rules
      * @return array{0: array{page: int, x: float, y: float, w: float, baseline: float}, 1: float}
      */
-    private static function signatory(array &$texts, array &$rules, float $y, string $label, string $nameKey): array
+    private static function signatory(array &$texts, array &$rules, int $page, float $y, string $label, string $nameKey): array
     {
-        $texts[] = self::heading(2, $y, $label);
+        $texts[] = self::heading($page, $y, $label);
 
         $nameX = self::MARGIN_LEFT + self::textWidth($label, self::HEADING_SIZE) + self::BLANK_GAP;
 
-        $texts[] = ['page' => 2, 'x' => $nameX, 'w' => null, 'align' => 'left', 'baseline' => $y, 'font' => 'bold', 'size' => self::HEADING_SIZE, 'text' => '{'.$nameKey.'}', 'color' => null];
+        $texts[] = ['page' => $page, 'x' => $nameX, 'w' => null, 'align' => 'left', 'baseline' => $y, 'font' => 'bold', 'size' => self::HEADING_SIZE, 'text' => '{'.$nameKey.'}', 'color' => null];
 
-        $texts[] = self::run(2, self::COL2_LABEL_X + 60.0, $y, 'Date:');
+        $texts[] = self::run($page, self::COL2_LABEL_X + 60.0, $y, 'Date:');
 
         $blankX = self::COL2_LABEL_X + 60.0 + self::textWidth('Date:') + self::BLANK_GAP;
-        $rules[] = ['page' => 2, 'x' => $blankX, 'y' => $y + self::BASELINE_LIFT, 'w' => self::RULE_RIGHT - $blankX];
+        $rules[] = ['page' => $page, 'x' => $blankX, 'y' => $y + self::BASELINE_LIFT, 'w' => self::RULE_RIGHT - $blankX];
 
         return [
-            ['page' => 2, 'x' => $blankX + 3.0, 'y' => $y + self::BASELINE_LIFT, 'w' => self::RULE_RIGHT - $blankX - 3.0, 'baseline' => $y],
+            ['page' => $page, 'x' => $blankX + 3.0, 'y' => $y + self::BASELINE_LIFT, 'w' => self::RULE_RIGHT - $blankX - 3.0, 'baseline' => $y],
             $nameX,
         ];
     }

@@ -5,6 +5,7 @@ use App\Http\Controllers\Auth\MobileAuthController;
 use App\Http\Controllers\Admin\BatchController;
 use App\Http\Controllers\Admin\BatchStudentPurgeController;
 use App\Http\Controllers\Admin\DepartmentController;
+use App\Http\Controllers\Admin\ExitInterviewFormController;
 use App\Http\Controllers\Admin\ProgramController;
 use App\Http\Controllers\Admin\StudentInfoSheetController as AdminStudentInfoSheetController;
 use App\Http\Controllers\Admin\SystemSettingController;
@@ -131,6 +132,10 @@ Route::middleware(['auth:sanctum', 'role:admin'])
         Route::put('departments/{department}', [DepartmentController::class, 'update']);
         Route::post('departments/{department}/coordinators', [DepartmentController::class, 'assignCoordinator']);
         Route::delete('departments/{department}/coordinators/{coordinator}', [DepartmentController::class, 'removeCoordinator']);
+
+        // The hardcoded exit interview forms a department can be assigned —
+        // read-only; the assignment itself is made on the department.
+        Route::get('exit-interview-forms', [ExitInterviewFormController::class, 'index']);
 
         Route::get('programs', [ProgramController::class, 'index']);
         Route::get('programs/{program}', [ProgramController::class, 'show']);

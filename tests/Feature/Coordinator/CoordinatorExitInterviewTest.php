@@ -9,6 +9,7 @@ use App\Models\Department;
 use App\Models\Program;
 use App\Models\StudentExitInterview;
 use App\Models\User;
+use App\Support\ExitInterview\ExitInterviewForms;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -75,10 +76,10 @@ class CoordinatorExitInterviewTest extends TestCase
         ]);
 
         $responses = [];
-        foreach (StudentExitInterview::QUESTION_KEYS as $key) {
+        foreach (ExitInterviewForms::get('cabm')->questionKeys() as $key) {
             $responses[$key] = 'Answer for '.$key.'.';
         }
-        foreach (StudentExitInterview::CHOICE_KEYS as $key) {
+        foreach (ExitInterviewForms::get('cabm')->choiceKeys() as $key) {
             $responses[$key] = 'yes';
         }
 

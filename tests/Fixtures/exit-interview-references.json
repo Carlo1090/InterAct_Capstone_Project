@@ -1,0 +1,107 @@
+{
+  "_note": "Generated from the two reference PDFs in docs/reference/ (text runs read off their content streams, 2026-09-15). The paper's own words — ExitInterviewFormsTest holds every form definition to these.",
+  "cast": {
+    "masthead": [
+      "Mater Dei College",
+      "Tubigon, Bohol",
+      "COLLEGE OF ARTS, SCIENCES, AND TECHNOLOGY",
+      "EXIT INTERVIEW QUESTIONNAIRE FOR ON-THE-JOB (OJT) STUDENTS",
+      "On-the-Job Training (OJT) Program"
+    ],
+    "headings": [
+      "A. OJT Experience",
+      "B. Workplace and Training Environment",
+      "C. Application of Knowledge and Skills",
+      "D. Professional Development",
+      "E. Overall Assessment",
+      "F. Final Reflection"
+    ],
+    "questions": {
+      "1": "How would you describe your overall experience during your OJT?",
+      "2": "What were the most valuable experiences you gained during your OJT?",
+      "3": "What specific knowledge or skills did you learn or improve during your OJT?",
+      "4": "Which tasks or activities did you find most meaningful? Why?",
+      "5": "Were the tasks assigned to you related to your course or field of specialization? Please explain.",
+      "6": "What challenges or difficulties did you encounter during your OJT?",
+      "7": "How did you deal with or overcome these challenges?",
+      "8": "How would you describe the working environment in your assigned company/agency?",
+      "9": "Were you given sufficient orientation before starting your OJT?",
+      "10": "Were the facilities, equipment, and resources adequate for your training?",
+      "11": "How would you describe your relationship with your immediate supervisor or training officer?",
+      "12": "Did your supervisor provide adequate guidance, feedback, and support? Please explain.",
+      "13": "Were you treated fairly and respectfully as an OJT student?",
+      "14": "Were you able to apply the knowledge and skills you learned in school during your OJT?",
+      "15": "What academic knowledge or skills were most useful during your training?",
+      "16": "What skills did you realize you still need to improve?",
+      "17": "Did your OJT help you become more confident in performing work-related tasks? Why or why not?",
+      "18": "Did the OJT help you better understand the expectations and responsibilities of your future profession?",
+      "19": "What professional values or attitudes did you develop during your OJT?",
+      "20": "Did your OJT improve your communication, teamwork, time management, or problem-solving skills? Please give examples.",
+      "21": "What did you learn about workplace discipline, professionalism, and responsibility?",
+      "22": "Did the OJT experience influence your career plans or professional goals? How?",
+      "28": "What was the best aspect of your OJT experience?",
+      "29": "What was the most difficult or least satisfactory aspect of your OJT experience?",
+      "30": "What changes or improvements would you recommend for future OJT students?",
+      "31": "What advice would you give to students who will undergo OJT in the future?",
+      "32": "Would you recommend your OJT company/agency to future students? Why or why not?",
+      "33": "Overall, how would you rate your OJT experience?",
+      "35": "What is the most important lesson you learned from your OJT experience?",
+      "36": "What skills or competencies do you plan to further develop after completing your OJT?",
+      "37": "Is there anything else you would like to share about your OJT experience that was not covered by the questions above?"
+    },
+    "labels": {},
+    "options": [
+      "Excellent",
+      "Very Good",
+      "Good",
+      "Fair",
+      "Poor"
+    ]
+  },
+  "cabm": {
+    "masthead": [
+      "Mater Dei College",
+      "Tubigon, Bohol",
+      "College of Accountancy, Business and Management (CABM)",
+      "INTERNSHIP PROGRAM STUDENT EXIT",
+      "INTERVIEW FORM"
+    ],
+    "headings": [
+      "B. Internship Placement and Responsibilities",
+      "C. Skills and Competencies Developed",
+      "D. Internship Experience",
+      "E. Challenges Encountered",
+      "F. Learning and Career Insights",
+      "G. Feedback and Recommendations"
+    ],
+    "questions": {
+      "1": "What were your primary duties and responsibilities during your internship?",
+      "2": "Were your assigned tasks relevant to your academic program?",
+      "3": "What technical skills did you learn or improve during your internship?",
+      "4": "What soft skills did you develop during your internship? (e.g., communication, teamwork, time management, professionalism)",
+      "5": "Which skill do you think improved the most during your training?",
+      "6": "How would you describe your overall internship experience?",
+      "7": "Were you given adequate supervision and guidance by your company supervisor?",
+      "8": "What challenges did you encounter during your internship? How did you address these challenges?",
+      "9": "What important lessons did you learn from your internship?",
+      "10": "Did your internship influence your career plans?",
+      "11": "Do you feel prepared to enter the workforce after completing your OJT/INTERNSHIP?",
+      "12": "What aspects of the OJT/INTERNSHIP program were most beneficial to you?",
+      "13": "What improvements would you suggest for the OJT/INTERNSHIP program?",
+      "14": "What advice would you give to future OJT/INTERNSHIP students?"
+    },
+    "labels": {
+      "2": "Please explain:",
+      "7": "Please explain:",
+      "10": "If yes, please explain:",
+      "11": ""
+    },
+    "options": [
+      "With pending requirements"
+    ],
+    "preamble": [
+      "This exit interview gathers feedback from students regarding their OJT/Internship experience. The information collected",
+      "will help evaluate the effectiveness of the Internship program and identify areas for improvement."
+    ]
+  }
+}

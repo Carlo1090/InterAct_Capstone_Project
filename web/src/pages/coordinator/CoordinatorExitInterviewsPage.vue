@@ -9,31 +9,18 @@ import type {
   CoordinatorExitInterviewRow,
   CoordinatorExitInterviewsResponse,
   CoordinatorExitInterviewSummaryResponse,
+  ExitInterviewQuestion,
   ExitInterviewStatus,
 } from '@/types/api'
 
 /**
- * The fourteen questions of the CABM exit interview form, in printed order,
- * with the ☐ Yes ☐ No pairs attached to the four that carry them. This mirrors
- * StudentExitInterviewPage's own list — both are transcriptions of the same
- * paper form, so if one changes the other must.
+ * No question list lives here. The detail payload carries `form` — the form
+ * the interview was answered under (CAST, CABM, whichever) — and the modal
+ * renders whatever that says, so this page reads any department's form
+ * without a transcription that could drift from the student's own page.
  */
-const QUESTIONS = [
-  { key: 'q1', number: 1, section: 'B. Internship Placement and Responsibilities', label: 'What were your primary duties and responsibilities during your internship?' },
-  { key: 'q2', number: 2, section: '', label: 'Were your assigned tasks relevant to your academic program?', choice: 'q2_choice' },
-  { key: 'q3', number: 3, section: 'C. Skills and Competencies Developed', label: 'What technical skills did you learn or improve during your internship?' },
-  { key: 'q4', number: 4, section: '', label: 'What soft skills did you develop during your internship?' },
-  { key: 'q5', number: 5, section: '', label: 'Which skill do you think improved the most during your training?' },
-  { key: 'q6', number: 6, section: 'D. Internship Experience', label: 'How would you describe your overall internship experience?' },
-  { key: 'q7', number: 7, section: '', label: 'Were you given adequate supervision and guidance by your company supervisor?', choice: 'q7_choice' },
-  { key: 'q8', number: 8, section: 'E. Challenges Encountered', label: 'What challenges did you encounter during your internship? How did you address these challenges?' },
-  { key: 'q9', number: 9, section: 'F. Learning and Career Insights', label: 'What important lessons did you learn from your internship?' },
-  { key: 'q10', number: 10, section: '', label: 'Did your internship influence your career plans?', choice: 'q10_choice' },
-  { key: 'q11', number: 11, section: '', label: 'Do you feel prepared to enter the workforce after completing your OJT/INTERNSHIP?', choice: 'q11_choice' },
-  { key: 'q12', number: 12, section: 'G. Feedback and Recommendations', label: 'What aspects of the OJT/INTERNSHIP program were most beneficial to you?' },
-  { key: 'q13', number: 13, section: '', label: 'What improvements would you suggest for the OJT/INTERNSHIP program?' },
-  { key: 'q14', number: 14, section: '', label: 'What advice would you give to future OJT/INTERNSHIP students?' },
-] as const
+const isScale = (question: ExitInterviewQuestion) => question.type === 'scale'
+const isYesNo = (question: ExitInterviewQuestion) => question.type === 'yes_no_text'
 
 const programId = ref<number | null>(null)
 const status = ref<ExitInterviewStatus | ''>('')
@@ -180,10 +167,37 @@ const saveReview = async () => {
 
 const answerOf = (key: string): string => (detail.value?.responses[key] ?? '').trim()
 
-const choiceOf = (key: string | undefined): string => {
-  if (!key) return ''
-  const value = detail.value?.responses[key]
+/** A Yes/No pair's answer, or a rating's chosen option, as the paper prints it. */
+const choiceOf = (question: ExitInterviewQuestion): string => {
+  if (isScale(question)) {
+    const value = detail.value?.responses[question.key] ?? ''
+    return (value && question.options?.[value]) || '—'
+  }
+  if (!question.choice) return ''
+  const value = detail.value?.responses[question.choice]
   return value === 'yes' ? 'Yes' : value === 'no' ? 'No' : '—'
+}
+
+/**
+ * A rating tally in printed order ("2 Excellent · 1 Good"), or a Yes/No one
+ * ("3 Yes · 1 No"); unanswered is appended only when it is non-zero.
+ */
+const tallyText = (question: CoordinatorExitInterviewSummaryResponse['questions'][number]): string => {
+  if (!question.tally) return ''
+  const labels: Record<string, string> = question.options ?? { yes: 'Yes', no: 'No' }
+  const parts = Object.entries(labels).map(([key, label]) => `${question.tally?.[key] ?? 0} ${label}`)
+  if (question.tally.unanswered) parts.push(`${question.tally.unanswered} unanswered`)
+  return parts.join(' · ')
+}
+
+/** The pill label for one answer's choice on the summary — Yes/No or an option name. */
+const choiceLabel = (
+  question: CoordinatorExitInterviewSummaryResponse['questions'][number],
+  choice: string | null,
+): string => {
+  if (!choice) return ''
+  if (question.options) return question.options[choice] ?? choice
+  return choice === 'yes' ? 'Yes' : 'No'
 }
 
 // --- Summary tab: every intern's answer to Q1 gathered together, then Q2,
@@ -248,7 +262,7 @@ onMounted(load)
     <ToastHost />
 
     <div class="rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-      Every exit interview your interns have started appears here. Open one to read all fourteen answers, record
+      Every exit interview your interns have started appears here. Open one to read every answer, record
       the <strong>coordinator's compliance verification</strong> at the foot of the form, and download the printed
       MDC form for your SIPP file. There is no accept or reject — an exit interview is feedback, not an
       application.
@@ -523,9 +537,11 @@ onMounted(load)
           <p v-else-if="detailError" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ detailError }}</p>
 
           <div v-else-if="detail" class="space-y-6">
-            <!-- A. Student Information -->
+            <!-- Student information (the template's Section A) -->
             <div>
-              <h4 class="text-xs font-medium uppercase tracking-wide text-slate-400">A. Student Information</h4>
+              <h4 class="text-xs font-medium uppercase tracking-wide text-slate-400">
+                {{ detail.form.student_info_heading }}
+              </h4>
               <dl class="mt-2 grid gap-x-6 gap-y-3 sm:grid-cols-2">
                 <div>
                   <dt class="text-xs text-slate-400">Department/Position Assigned</dt>
@@ -546,19 +562,21 @@ onMounted(load)
               </dl>
             </div>
 
-            <!-- B - G, the student's own answers -->
-            <div v-for="question in QUESTIONS" :key="question.key">
-              <h4 v-if="question.section" class="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
-                {{ question.section }}
-              </h4>
-              <p class="text-sm font-medium text-slate-800">{{ question.number }}. {{ question.label }}</p>
-              <p v-if="'choice' in question" class="mt-1 text-sm font-semibold text-slate-700">
-                {{ choiceOf(question.choice) }}
-              </p>
-              <p class="mt-1 whitespace-pre-line text-sm text-slate-600">
-                {{ answerOf(question.key) || '— not answered —' }}
-              </p>
-            </div>
+            <!-- The student's own answers, in the form's own sections -->
+            <template v-for="section in detail.form.sections" :key="section.heading">
+              <div v-for="(question, index) in section.questions" :key="question.key">
+                <h4 v-if="index === 0" class="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+                  {{ section.heading }}
+                </h4>
+                <p class="text-sm font-medium text-slate-800">{{ question.n }}. {{ question.text }}</p>
+                <p v-if="isYesNo(question) || isScale(question)" class="mt-1 text-sm font-semibold text-slate-700">
+                  {{ choiceOf(question) }}
+                </p>
+                <p v-if="!isScale(question)" class="mt-1 whitespace-pre-line text-sm text-slate-600">
+                  {{ answerOf(question.key) || '— not answered —' }}
+                </p>
+              </div>
+            </template>
 
             <!-- The coordinator's own block on the paper form -->
             <div class="rounded-lg bg-slate-50 p-4 ring-1 ring-slate-200/70">
@@ -567,7 +585,7 @@ onMounted(load)
               </h4>
               <p class="mt-1 text-xs text-slate-500">
                 Did the student submit all required OJT/INTERNSHIP documents and reports? This prints at the foot of
-                page 2.
+                the last page.
               </p>
 
               <p
@@ -652,8 +670,8 @@ onMounted(load)
     <!-- Summary Report: every in-scope intern's answer to Q1 gathered
          together, then Q2, and so on — read one question at a time rather
          than one student at a time. Live read, nothing persisted; drafts are
-         excluded since only a submitted form is guaranteed to carry all
-         fourteen answers. See PROJECT.md, Exit Interview → Summary Report. -->
+         excluded since only a submitted form is guaranteed to carry every
+         answer. The questions are the department's own form's. See PROJECT.md, Exit Interview → Summary Report. -->
     <template v-else>
       <div class="flex flex-wrap items-end gap-3">
         <label class="block">
@@ -705,7 +723,13 @@ onMounted(load)
         <p class="text-sm text-slate-500">
           Gathered from <strong>{{ summaryData.total_respondents }}</strong>
           {{ summaryData.total_respondents === 1 ? 'submitted exit interview' : 'submitted exit interviews' }}
-          <span v-if="summaryAcademicYear">for {{ summaryAcademicYear }}</span>.
+          <span v-if="summaryAcademicYear">for {{ summaryAcademicYear }}</span>
+          on the <strong>{{ summaryData.form.label }}</strong>.
+          <span v-if="summaryData.other_form_respondents">
+            {{ summaryData.other_form_respondents }} more
+            {{ summaryData.other_form_respondents === 1 ? 'was' : 'were' }} answered on a different form and
+            {{ summaryData.other_form_respondents === 1 ? 'is' : 'are' }} not gathered here.
+          </span>
         </p>
 
         <p v-if="summaryData.total_respondents === 0" class="rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-500">
@@ -732,8 +756,7 @@ onMounted(load)
                 </span>
                 <span class="flex shrink-0 items-center gap-3">
                   <span v-if="question.tally" class="hidden text-xs text-slate-500 sm:inline">
-                    {{ question.tally.yes }} Yes · {{ question.tally.no }} No
-                    <template v-if="question.tally.unanswered">· {{ question.tally.unanswered }} unanswered</template>
+                    {{ tallyText(question) }}
                   </span>
                   <span class="text-xs text-slate-400">{{ question.answers.length }} answers</span>
                   <span class="text-slate-400">{{ openQuestions.has(question.key) ? '−' : '+' }}</span>
@@ -742,8 +765,7 @@ onMounted(load)
 
               <div v-if="openQuestions.has(question.key)" class="border-t border-slate-100 px-4 py-3">
                 <p v-if="question.tally" class="mb-3 text-xs font-medium text-slate-500 sm:hidden">
-                  {{ question.tally.yes }} Yes · {{ question.tally.no }} No
-                  <template v-if="question.tally.unanswered">· {{ question.tally.unanswered }} unanswered</template>
+                  {{ tallyText(question) }}
                 </p>
 
                 <p v-if="question.answers.length === 0" class="text-sm text-slate-500">
@@ -760,9 +782,15 @@ onMounted(load)
                       <span
                         v-if="answer.choice"
                         class="rounded-full px-2 py-0.5 text-xs font-semibold"
-                        :class="answer.choice === 'yes' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'"
+                        :class="
+                          question.options
+                            ? 'bg-blue-50 text-blue-700'
+                            : answer.choice === 'yes'
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : 'bg-rose-50 text-rose-700'
+                        "
                       >
-                        {{ answer.choice === 'yes' ? 'Yes' : 'No' }}
+                        {{ choiceLabel(question, answer.choice) }}
                       </span>
                     </div>
                     <p v-if="answer.text" class="mt-1 whitespace-pre-line text-sm text-slate-600">{{ answer.text }}</p>

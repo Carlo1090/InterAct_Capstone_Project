@@ -9,6 +9,7 @@ use App\Models\Department;
 use App\Models\Program;
 use App\Models\StudentExitInterview;
 use App\Models\User;
+use App\Support\ExitInterview\ExitInterviewForms;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -79,10 +80,10 @@ class ExitInterviewSummaryTest extends TestCase
         ]);
 
         $responses = [];
-        foreach (StudentExitInterview::QUESTION_KEYS as $key) {
+        foreach (ExitInterviewForms::get('cabm')->questionKeys() as $key) {
             $responses[$key] = 'Answer for '.$key.'.';
         }
-        foreach (StudentExitInterview::CHOICE_KEYS as $key) {
+        foreach (ExitInterviewForms::get('cabm')->choiceKeys() as $key) {
             $responses[$key] = 'yes';
         }
 
@@ -273,5 +274,54 @@ class ExitInterviewSummaryTest extends TestCase
         foreach ($response->json('questions') as $question) {
             $this->assertSame([], $question['answers']);
         }
+    }
+
+    /**
+     * ONE FORM PER REPORT. The questions are the coordinator's department's
+     * assigned form, only interviews snapshotted under that form are
+     * gathered, and a rating question tallies its own options — question 1
+     * on the CAST form is not question 1 on the CABM form.
+     */
+    public function test_the_summary_is_the_departments_own_form_and_tallies_a_rating(): void
+    {
+        $program = $this->programFor('BSIT');
+        $program->department->update(['exit_interview_form' => 'cast']);
+        $coordinator = $this->coordinatorFor($program);
+        $batch = $this->batchFor($program, $coordinator);
+
+        $castAnswers = [];
+        foreach (ExitInterviewForms::get('cast')->questionKeys() as $key) {
+            $castAnswers[$key] = 'CAST answer for '.$key.'.';
+        }
+
+        $first = $this->interviewFor($batch, 'First Student');
+        $first->update(['form_key' => 'cast', 'responses' => ['q33' => 'excellent'] + $castAnswers]);
+
+        $second = $this->interviewFor($batch, 'Second Student');
+        $second->update(['form_key' => 'cast', 'responses' => ['q33' => 'good'] + $castAnswers]);
+
+        // A leftover CABM interview on the same batch is counted, not mixed in.
+        $this->interviewFor($batch, 'Older Student');
+
+        Sanctum::actingAs($coordinator);
+
+        $response = $this->getJson('/api/coordinator/exit-interviews/summary')->assertOk();
+
+        $response->assertJsonPath('form.key', 'cast');
+        $this->assertSame(2, $response->json('total_respondents'));
+        $this->assertSame(1, $response->json('other_form_respondents'));
+        $this->assertCount(31, $response->json('questions'));
+
+        $questions = collect($response->json('questions'))->keyBy('key');
+
+        $this->assertSame('A. OJT Experience', $questions['q1']['section']);
+        $this->assertSame(['First Student', 'Second Student'], array_column($questions['q1']['answers'], 'student_name'));
+
+        $this->assertSame('scale', $questions['q33']['type']);
+        $this->assertSame(
+            ['excellent' => 1, 'very_good' => 0, 'good' => 1, 'fair' => 0, 'poor' => 0, 'unanswered' => 0],
+            $questions['q33']['tally']
+        );
+        $this->assertSame(['excellent', 'good'], array_column($questions['q33']['answers'], 'choice'));
     }
 }

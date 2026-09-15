@@ -2,11 +2,14 @@
     use App\Support\ExitInterviewFormLayout as L;
 
     /**
-     * The CABM Internship Program Student Exit Interview Form.
+     * An exit interview form — whichever department's, since every one is
+     * laid onto the same measured template and differs only in its questions
+     * and masthead.
      *
-     * THIS BLADE HOLDS NO GEOMETRY. Every position comes from
-     * App\Support\ExitInterviewFormLayout::document(), which computes the whole
-     * form from one horizontal grid and one vertical rhythm — see that class
+     * THIS BLADE HOLDS NO GEOMETRY. Every position comes from the layout
+     * instance handed in as $layout (ExitInterviewFormLayout::for() on the
+     * interview's own form), which computes and PAGINATES the whole form from
+     * one horizontal grid and one vertical rhythm — see that class
      * for what was measured off the reference PDF and what was regularised, and
      * why. Adding a number here instead of there is what let the reference's
      * own spacing drift in the first place.
@@ -15,7 +18,7 @@
      * converted with the face's own probed ratio and every run carries
      * `line-height: font-size` and exactly ONE line.
      */
-    $doc = L::document();
+    $doc = $layout->document();
 
     $top = fn (array $el) => round($el['baseline'] - ($el['size'] * (L::BASELINE_RATIO[$el['font']] ?? 0.814)), 3);
 
@@ -25,30 +28,15 @@
 
     $onPage = fn (array $items, int $page) => array_values(array_filter($items, fn ($i) => $i['page'] === $page));
 
-    // A ticked box, if that option was chosen.
-    $ticked = function (string $key) use ($choices, $compliance): array {
-        $marks = [];
-
-        foreach ($choices as $question => $value) {
-            if ($value !== null) {
-                $marks[$question.'_choice:'.$value] = true;
-            }
-        }
-
-        if ($compliance !== null) {
-            $marks['compliance:'.$compliance] = true;
-        }
-
-        return $marks;
-    };
-
-    $checked = $ticked('');
+    // Which boxes carry a check mark: the flat map the controller built from
+    // the answers, keyed exactly as the layout keys its marks.
+    $checked = $ticked;
 @endphp
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Internship Program Student Exit Interview Form</title>
+    <title>{{ implode(' ', $layout->form->titleLines) }}</title>
     <style>
         /* The layout is absolute, so the page carries no margin of its own —
            every x and y is measured from the page corner. */
@@ -57,7 +45,7 @@
         body { margin: 0; padding: 0; color: #000; font-family: Helvetica, Arial, sans-serif; }
 
         .page { position: relative; width: {{ L::PAGE_WIDTH }}pt; height: {{ L::PAGE_HEIGHT - 1 }}pt; overflow: hidden; }
-        .page-2 { page-break-before: always; }
+        .page-n { page-break-before: always; }
 
         /* One computed run: one line, never wrapped. */
         .t { position: absolute; margin: 0; padding: 0; white-space: nowrap; }
@@ -80,8 +68,8 @@
 </head>
 <body>
 
-@foreach ([1, 2] as $page)
-    <div class="page {{ $page === 2 ? 'page-2' : '' }}">
+@foreach (range(1, $doc['pages']) as $page)
+    <div class="page {{ $page > 1 ? 'page-n' : '' }}">
 
         {{-- Printed rules: answer lines, Section A blanks, signature lines --}}
         @foreach ($onPage($doc['rules'], $page) as $rule)

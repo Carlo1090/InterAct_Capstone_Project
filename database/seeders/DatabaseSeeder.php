@@ -75,6 +75,9 @@ class DatabaseSeeder extends Seeder
         // each state (reviewed / submitted / draft), so the coordinator's
         // Student Exit Interviews page has something in every filter.
         $this->call(CabmbExitInterviewDemoSeeder::class);
+        // The same three states for the CAST students (mdcstudent*), on the
+        // CAST department's own form — so both hardcoded forms are visible.
+        $this->call(CastExitInterviewDemoSeeder::class);
         $this->call(SippBsaDemoSeeder::class);
         $this->call(CabmbIntakeDemoSeeder::class);
         $this->call(GroupInfoSheetDemoSeeder::class);

@@ -333,8 +333,46 @@ export type WeeklyActivityLogDetail = WeeklyActivityLogSummary & {
 
 export type ExitInterviewChoice = 'yes' | 'no';
 
+/**
+ * One question of a department's exit interview form, as the API serves it.
+ * `text` is five ruled lines on paper; `yes_no_text` adds a printed Yes/No
+ * pair whose answer is stored under `choice`; `scale` is a row of boxes and
+ * nothing else, its answer stored under the question's own key.
+ */
+export type ExitInterviewQuestion = {
+  n: number;
+  key: string;
+  text: string;
+  type: 'text' | 'yes_no_text' | 'scale';
+  choice?: string;
+  label?: string | null;
+  options?: Record<string, string>;
+};
+
+export type ExitInterviewSection = {
+  heading: string;
+  questions: ExitInterviewQuestion[];
+};
+
+/**
+ * A department's hardcoded exit interview form — the question set to render.
+ * Which one a student sees is their batch's department's choice, and an
+ * interview keeps the form it was begun under (`form_key`).
+ */
+export type ExitInterviewForm = {
+  key: string;
+  label: string;
+  college_line: string;
+  title: string;
+  subtitle: string | null;
+  student_info_heading: string;
+  sections: ExitInterviewSection[];
+  question_count: number;
+};
+
 export type ExitInterviewRecord = {
   id: number;
+  form_key: string;
   submission_status: 'draft' | 'submitted' | 'reviewed';
   submitted_at: string | null;
   reviewed_at: string | null;
@@ -344,10 +382,12 @@ export type ExitInterviewRecord = {
 
 export type ExitInterviewResponse = {
   interview: ExitInterviewRecord | null;
+  /** The question set to render — the student's department's form. */
+  form: ExitInterviewForm;
   header: Record<string, string | null>;
   suggested_total_hours: string | number | null;
-  /** Per-question, because question 7 has four printed lines and the rest
-   *  have five — the form's own geometry, not an arbitrary cap. */
+  /** Per-question, from the printed line count of each — the form's own
+   *  geometry, not an arbitrary cap. A rating question has no entry. */
   answer_char_limits: Record<string, number>;
   answer_char_limit: number;
   /** The placement should be over before this means anything, but the

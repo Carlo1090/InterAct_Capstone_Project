@@ -27,6 +27,7 @@ class DepartmentProgramSeeder extends Seeder
         $departments = [
             'CAST' => [
                 'name' => 'College of Arts, Sciences and Technology',
+                'exit_interview_form' => 'cast',
                 'programs' => [
                     ['code' => 'BSIT', 'name' => 'BSIT'],
                 ],
@@ -44,6 +45,7 @@ class DepartmentProgramSeeder extends Seeder
             // the unit as two separate lines.
             'CABM-B' => [
                 'name' => 'Business Department – College of Accountancy, Business and Management',
+                'exit_interview_form' => 'cabm',
                 'programs' => [
                     ['code' => 'BSBA-FM', 'name' => 'BSBA-FM'],
                     ['code' => 'BSBA-MM', 'name' => 'BSBA-MM'],
@@ -53,6 +55,9 @@ class DepartmentProgramSeeder extends Seeder
             ],
             'CABM-H' => [
                 'name' => 'Hospitality Department – College of Accountancy, Business and Management',
+                // No hospitality edition of the form exists yet; it fills in
+                // the CABM (Business) one until one does.
+                'exit_interview_form' => 'cabm',
                 'programs' => [
                     ['code' => 'BSTM', 'name' => 'BSTM'],
                     ['code' => 'BSHRM', 'name' => 'BSHRM'],
@@ -86,7 +91,13 @@ class DepartmentProgramSeeder extends Seeder
                 ['name' => $departmentData['name']]
             );
 
-            $department->update(['name' => $departmentData['name']]);
+            // The exit interview form is the seeded STARTING assignment for the
+            // departments MDC ships with; the admin changes it on the Departments
+            // page, and a re-seed re-asserts it alongside the name.
+            $department->update([
+                'name' => $departmentData['name'],
+                'exit_interview_form' => $departmentData['exit_interview_form'],
+            ]);
 
             foreach ($departmentData['programs'] as $programData) {
                 $program = Program::firstOrCreate(

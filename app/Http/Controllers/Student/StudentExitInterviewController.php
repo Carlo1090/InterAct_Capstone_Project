@@ -11,15 +11,21 @@ use App\Models\Notification;
 use App\Models\StudentExitInterview;
 use App\Models\SystemLog;
 use App\Services\DtrService;
+use App\Support\ExitInterview\ExitInterviewForms;
 use App\Support\ExitInterviewFormLayout;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * The student's own copy of the CABM "Internship Program Student Exit
- * Interview Form" — the last thing an intern fills in, at the close of the
- * placement.
+ * The student's own copy of their department's exit interview form — the last
+ * thing an intern fills in, at the close of the placement.
+ *
+ * WHICH form is the batch's department's choice (ExitInterviewForms), and the
+ * question set rides on the payload as `form`, so the SPA and the mobile app
+ * render whatever their department asks rather than carrying a transcription
+ * of one department's paper. The interview row snapshots the form key on
+ * first write; from then on it is the row's own.
  *
  * DELIBERATE DEVIATION FROM THE PROJECT-WIDE WRITE RULE, and the only one on
  * any student surface: every other student WRITE endpoint requires
@@ -46,14 +52,17 @@ class StudentExitInterviewController extends Controller
         abort_if($enrollment === null, 422, 'You are not enrolled in an OJT batch, so there is no internship to exit from yet.');
 
         $interview = $this->find($user->id, $enrollment->batch_id);
+        $form = ExitInterviewForms::forInterview($interview, $enrollment);
+        $layout = ExitInterviewFormLayout::for($form);
 
         return response()->json([
             'interview' => $interview ? $this->payload($interview) : null,
+            'form' => $form->toArray(),
             'header' => $this->readOnlyHeader($enrollment),
             'suggested_total_hours' => $this->suggestedTotalHours($enrollment),
-            // Per QUESTION, since question 7 has four printed lines and
-            // every other has five. The SPA sizes its counters from this.
-            'answer_char_limits' => ExitInterviewFormLayout::charLimits(),
+            // Per QUESTION, from the printed line count of each. The SPA sizes
+            // its counters from this.
+            'answer_char_limits' => $layout->charLimits(),
             'answer_char_limit' => ExitInterviewFormLayout::ANSWER_CHAR_LIMIT,
             // The placement has to be over (or all but over) before an exit
             // interview means anything, but the student is warned rather than
@@ -83,6 +92,11 @@ class StudentExitInterviewController extends Controller
         $interview = StudentExitInterview::updateOrCreate(
             ['student_id' => $user->id, 'batch_id' => $enrollment->batch_id],
             [
+                // The form the Request validated against — its own snapshot
+                // for an interview already begun, else the department's
+                // current choice. Written on every save so the row can never
+                // hold answers keyed by one form and a key naming another.
+                'form_key' => $request->form()->key,
                 'student_info' => $validated['student_info'] ?? [],
                 'responses' => $validated['responses'] ?? [],
                 'submission_status' => $submitting ? 'submitted' : 'draft',
@@ -132,6 +146,7 @@ class StudentExitInterviewController extends Controller
     {
         return [
             'id' => $interview->id,
+            'form_key' => $interview->form_key,
             'submission_status' => $interview->submission_status,
             'submitted_at' => $interview->submitted_at?->toIso8601String(),
             'reviewed_at' => $interview->reviewed_at?->toIso8601String(),
