@@ -115,4 +115,21 @@ return [
         'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | OJT Coordinator Address
+    |--------------------------------------------------------------------------
+    |
+    | Where the landing page's public contact form delivers. Left EMPTY by
+    | default on purpose: unset, the endpoint answers 503 and says the form is
+    | not configured, rather than silently accepting messages that go nowhere.
+    |
+    | This value is server-side only — it is never returned to the client, since
+    | the endpoint it backs is unauthenticated and publishing a staff mailbox
+    | there would be handing it to anyone who asked.
+    |
+    */
+
+    'coordinator_address' => env('MDC_COORDINATOR_EMAIL'),
+
 ];

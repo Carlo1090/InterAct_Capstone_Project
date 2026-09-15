@@ -185,8 +185,8 @@ onMounted(load)
       </svg>
       <p class="leading-relaxed">
         <strong class="font-bold">Stay on track.</strong>
-        A reminder is emailed at <strong>9:00 PM</strong> for any missing daily entry, and your daily journals are
-        compiled into a weekly log every <strong>Sunday evening</strong>. Red <strong>Missing</strong> days still need an entry.
+        Missing entries trigger a <strong>9:00 PM</strong> email reminder. Daily journals are compiled into a weekly
+        log every <strong>Sunday evening</strong>. Red <strong>Missing</strong> days require an entry.
       </p>
     </div>
   </section>

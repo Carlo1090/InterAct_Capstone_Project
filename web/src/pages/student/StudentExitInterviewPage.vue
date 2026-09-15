@@ -6,100 +6,19 @@ import ToastHost from '@/components/ToastHost.vue'
 import { confirmAction, showToast } from '@/lib/toast'
 import { useFormDraft } from '@/lib/formDraft'
 import ValidationErrorList from '@/components/ui/ValidationErrorList.vue'
-import type { StudentExitInterviewResponse } from '@/types/api'
+import type { ExitInterviewForm, ExitInterviewQuestion, StudentExitInterviewResponse } from '@/types/api'
 
 /**
- * The CABM "Internship Program Student Exit Interview Form", reproduced
- * section by section in the order the paper form prints them, so a student
- * filling this in and a coordinator reading the PDF are looking at the same
- * document. Section letters and question numbers are the form's own — do not
- * renumber them.
+ * The question set is NOT transcribed here. It arrives on the payload as
+ * `form` — the student's own department's exit interview form (CAST, CABM,
+ * whichever the admin assigned) — so this page renders any of the hardcoded
+ * forms without knowing which. Section letters and question numbers are the
+ * paper form's own and come from the server with the questions.
  */
-const SECTIONS = [
-  {
-    letter: 'B',
-    title: 'Internship Placement and Responsibilities',
-    questions: [
-      { key: 'q1', number: 1, label: 'What were your primary duties and responsibilities during your internship?' },
-      {
-        key: 'q2',
-        number: 2,
-        label: 'Were your assigned tasks relevant to your academic program?',
-        choice: 'q2_choice',
-        explainLabel: 'Please explain',
-      },
-    ],
-  },
-  {
-    letter: 'C',
-    title: 'Skills and Competencies Developed',
-    questions: [
-      { key: 'q3', number: 3, label: 'What technical skills did you learn or improve during your internship?' },
-      {
-        key: 'q4',
-        number: 4,
-        label:
-          'What soft skills did you develop during your internship? (e.g., communication, teamwork, time management, professionalism)',
-      },
-      { key: 'q5', number: 5, label: 'Which skill do you think improved the most during your training?' },
-    ],
-  },
-  {
-    letter: 'D',
-    title: 'Internship Experience',
-    questions: [
-      { key: 'q6', number: 6, label: 'How would you describe your overall internship experience?' },
-      {
-        key: 'q7',
-        number: 7,
-        label: 'Were you given adequate supervision and guidance by your company supervisor?',
-        choice: 'q7_choice',
-        explainLabel: 'Please explain',
-      },
-    ],
-  },
-  {
-    letter: 'E',
-    title: 'Challenges Encountered',
-    questions: [
-      {
-        key: 'q8',
-        number: 8,
-        label: 'What challenges did you encounter during your internship? How did you address these challenges?',
-      },
-    ],
-  },
-  {
-    letter: 'F',
-    title: 'Learning and Career Insights',
-    questions: [
-      { key: 'q9', number: 9, label: 'What important lessons did you learn from your internship?' },
-      {
-        key: 'q10',
-        number: 10,
-        label: 'Did your internship influence your career plans?',
-        choice: 'q10_choice',
-        explainLabel: 'If yes, please explain',
-      },
-      {
-        key: 'q11',
-        number: 11,
-        label: 'Do you feel prepared to enter the workforce after completing your OJT/INTERNSHIP?',
-        choice: 'q11_choice',
-        explainLabel: 'Please explain',
-      },
-    ],
-  },
-  {
-    letter: 'G',
-    title: 'Feedback and Recommendations',
-    questions: [
-      { key: 'q12', number: 12, label: 'What aspects of the OJT/INTERNSHIP program were most beneficial to you?' },
-      { key: 'q13', number: 13, label: 'What improvements would you suggest for the OJT/INTERNSHIP program?' },
-      { key: 'q14', number: 14, label: 'What advice would you give to future OJT/INTERNSHIP students?' },
-    ],
-  },
-] as const
+const form = ref<ExitInterviewForm | null>(null)
+
+const isScale = (question: ExitInterviewQuestion) => question.type === 'scale'
+const isYesNo = (question: ExitInterviewQuestion) => question.type === 'yes_no_text'
 
 type Answers = Record<string, string>
 type Choices = Record<string, 'yes' | 'no' | ''>
@@ -115,9 +34,9 @@ const submittedAt = ref<string | null>(null)
 const suggestedHours = ref<number | null>(null)
 const ojtCompleted = ref(false)
 /**
- * Per QUESTION, from the server: question 7 has four printed lines on the
- * form and every other question has five, so they do not share a cap. This is
- * a guide, not the guarantee — the server measures the rendered width, since
+ * Per QUESTION, from the server, from the printed line count of each (a
+ * rating question has no lines and so no entry here). This is a guide, not
+ * the guarantee — the server measures the rendered width, since
  * the same character count fits five lines in prose and overruns in capitals.
  */
 const charLimits = ref<Record<string, number>>({})
@@ -127,10 +46,20 @@ const info = reactive({ department_position: '', total_hours: '', date_of_interv
 const answers = reactive<Answers>({})
 const choices = reactive<Choices>({})
 
-for (const section of SECTIONS) {
-  for (const question of section.questions) {
-    answers[question.key] = ''
-    if ('choice' in question && question.choice) choices[question.choice] = ''
+/**
+ * Seed one entry per question of the form just received, so v-model has
+ * somewhere to write and `unanswered` has something to count. A rating
+ * question's answer lives in `answers` under its own key (an option key
+ * rather than free text); a Yes/No pair's choice lives in `choices`.
+ */
+const seedAnswers = (received: ExitInterviewForm) => {
+  for (const key of Object.keys(answers)) delete answers[key]
+  for (const key of Object.keys(choices)) delete choices[key]
+  for (const section of received.sections) {
+    for (const question of section.questions) {
+      answers[question.key] = ''
+      if (isYesNo(question) && question.choice) choices[question.choice] = ''
+    }
   }
 }
 
@@ -156,11 +85,11 @@ const remaining = (key: string): number => limitFor(key) - (answers[key]?.length
 
 const unanswered = computed(() => {
   const missing: string[] = []
-  for (const section of SECTIONS) {
+  for (const section of form.value?.sections ?? []) {
     for (const question of section.questions) {
-      if (!answers[question.key]?.trim()) missing.push(String(question.number))
-      if ('choice' in question && question.choice && !choices[question.choice]) {
-        if (!missing.includes(String(question.number))) missing.push(String(question.number))
+      if (!answers[question.key]?.trim()) missing.push(String(question.n))
+      if (isYesNo(question) && question.choice && !choices[question.choice]) {
+        if (!missing.includes(String(question.n))) missing.push(String(question.n))
       }
     }
   }
@@ -196,6 +125,8 @@ const load = async () => {
   try {
     const { data } = await api.get<StudentExitInterviewResponse>('/api/student/exit-interview')
 
+    form.value = data.form
+    seedAnswers(data.form)
     header.value = data.header
     suggestedHours.value = data.suggested_total_hours
     charLimits.value = data.answer_char_limits
@@ -302,12 +233,15 @@ onMounted(load)
     <div class="rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
       <p class="font-semibold">About this form</p>
       <p class="mt-1">
-        This is the official <strong>Internship Program Student Exit Interview Form</strong>. You fill it in at the
-        end of your OJT. Your answers help the college evaluate the internship program and improve it for the
+        This is your department's official <strong>{{ form?.label ?? 'Exit Interview Form' }}</strong>. You fill
+        it in at the end of your OJT. Your answers help the college evaluate the internship program and improve it for the
         students who come after you — they are <strong>not</strong> a grade and your company does not see them.
       </p>
       <ul class="mt-2 list-inside list-disc space-y-1 text-blue-800">
-        <li>Answer all fourteen questions in your own words. Each answer fits about five printed lines.</li>
+        <li>
+          Answer all {{ form?.question_count ?? '' }} questions in your own words. Each written answer fits about
+          five printed lines.
+        </li>
         <li><strong>Save draft</strong> as often as you like — nothing is sent until you press Submit.</li>
         <li>Once you <strong>submit</strong>, your answers are locked and go to your OJT coordinator.</li>
         <li>Your coordinator completes the last block of the form and signs the printed copy.</li>
@@ -338,8 +272,7 @@ onMounted(load)
         v-if="!isLocked && !ojtCompleted"
         class="rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-600 ring-1 ring-slate-200/70"
       >
-        Your OJT is still marked as in progress. You can start filling this in now and submit it once you have
-        finished your hours — or whenever your coordinator asks for it.
+        OJT is still in progress. This can be filled out now and submitted after completing the required hours.
       </p>
 
       <p v-if="isLocked" class="rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-600 ring-1 ring-slate-200/70">
@@ -350,7 +283,7 @@ onMounted(load)
 
       <!-- ── A. Student Information ─────────────────────────────────────── -->
       <div class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
-        <h3 class="text-sm font-semibold text-slate-900">A. Student Information</h3>
+        <h3 class="text-sm font-semibold text-slate-900">{{ form?.student_info_heading ?? 'Student Information' }}</h3>
         <p class="mt-1 text-xs text-slate-500">
           Most of this is filled in from your enrollment and cannot be changed here.
         </p>
@@ -415,19 +348,20 @@ onMounted(load)
         </div>
       </div>
 
-      <!-- ── B - G ──────────────────────────────────────────────────────── -->
+      <!-- ── The questions, section by section as the form defines them ── -->
       <div
-        v-for="section in SECTIONS"
-        :key="section.letter"
+        v-for="section in form?.sections ?? []"
+        :key="section.heading"
         class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70"
       >
-        <h3 class="text-sm font-semibold text-slate-900">{{ section.letter }}. {{ section.title }}</h3>
+        <h3 class="text-sm font-semibold text-slate-900">{{ section.heading }}</h3>
 
         <div class="mt-4 space-y-6">
           <div v-for="question in section.questions" :key="question.key">
-            <p class="text-sm font-medium text-slate-800">{{ question.number }}. {{ question.label }}</p>
+            <p class="text-sm font-medium text-slate-800">{{ question.n }}. {{ question.text }}</p>
 
-            <div v-if="'choice' in question && question.choice" class="mt-2 flex items-center gap-5">
+            <!-- A printed ☐ Yes ☐ No pair, then the explanation below it. -->
+            <div v-if="isYesNo(question) && question.choice" class="mt-2 flex items-center gap-5">
               <label class="inline-flex items-center gap-2 text-sm text-slate-700">
                 <input
                   v-model="choices[question.choice]"
@@ -450,21 +384,41 @@ onMounted(load)
               </label>
             </div>
 
-            <label class="mt-2 block">
-              <span v-if="'explainLabel' in question" class="text-xs font-bold text-slate-600">
-                {{ question.explainLabel }}
-              </span>
-              <textarea
-                v-model="answers[question.key]"
-                rows="4"
-                :maxlength="limitFor(question.key)"
-                :disabled="isLocked"
-                class="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
-              />
-            </label>
-            <p class="mt-1 text-right text-xs" :class="remaining(question.key) < 40 ? 'text-amber-600' : 'text-slate-400'">
-              {{ remaining(question.key) }} characters left
-            </p>
+            <!-- A rating row: one box per option and no free text at all. -->
+            <div v-if="isScale(question)" class="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2">
+              <label
+                v-for="(optionLabel, optionKey) in question.options"
+                :key="optionKey"
+                class="inline-flex items-center gap-2 text-sm text-slate-700"
+              >
+                <input
+                  v-model="answers[question.key]"
+                  type="radio"
+                  :value="optionKey"
+                  :disabled="isLocked"
+                  class="h-4 w-4"
+                />
+                {{ optionLabel }}
+              </label>
+            </div>
+
+            <template v-else>
+              <label class="mt-2 block">
+                <span v-if="question.label" class="text-xs font-bold text-slate-600">
+                  {{ question.label.replace(/:$/, '') }}
+                </span>
+                <textarea
+                  v-model="answers[question.key]"
+                  rows="4"
+                  :maxlength="limitFor(question.key)"
+                  :disabled="isLocked"
+                  class="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
+                />
+              </label>
+              <p class="mt-1 text-right text-xs" :class="remaining(question.key) < 40 ? 'text-amber-600' : 'text-slate-400'">
+                {{ remaining(question.key) }} characters left
+              </p>
+            </template>
           </div>
         </div>
       </div>

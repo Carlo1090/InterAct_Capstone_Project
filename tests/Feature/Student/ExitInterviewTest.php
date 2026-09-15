@@ -10,6 +10,7 @@ use App\Models\Program;
 use App\Models\StudentExitInterview;
 use App\Models\StudentInformationSheet;
 use App\Models\User;
+use App\Support\ExitInterview\ExitInterviewForms;
 use App\Support\ExitInterviewFormLayout;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -77,11 +78,11 @@ class ExitInterviewTest extends TestCase
     {
         $responses = [];
 
-        foreach (StudentExitInterview::QUESTION_KEYS as $key) {
+        foreach (ExitInterviewForms::get('cabm')->questionKeys() as $key) {
             $responses[$key] = 'Answer for '.$key.'.';
         }
 
-        foreach (StudentExitInterview::CHOICE_KEYS as $key) {
+        foreach (ExitInterviewForms::get('cabm')->choiceKeys() as $key) {
             $responses[$key] = 'yes';
         }
 
@@ -108,9 +109,9 @@ class ExitInterviewTest extends TestCase
         $response->assertJsonPath('header.company', 'Tagbilaran Cooperative Bank');
         $response->assertJsonPath('header.coordinator_name', 'Prof. Balbero');
         $response->assertJsonPath('header.assigned_division', 'Loans Department');
-        $response->assertJsonPath('answer_char_limits.q1', ExitInterviewFormLayout::charLimitFor('q1'));
+        $response->assertJsonPath('answer_char_limits.q1', ExitInterviewFormLayout::for('cabm')->charLimitFor('q1'));
         // Question 7 has four printed lines, not five.
-        $response->assertJsonPath('answer_char_limits.q7', ExitInterviewFormLayout::charLimitFor('q7'));
+        $response->assertJsonPath('answer_char_limits.q7', ExitInterviewFormLayout::for('cabm')->charLimitFor('q7'));
     }
 
     public function test_a_draft_saves_with_nothing_filled_in(): void

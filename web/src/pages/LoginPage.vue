@@ -374,14 +374,30 @@ const login = async () => {
 </script>
 <template>
   <main
-    class="bg-drift relative flex min-h-dvh w-full overflow-hidden bg-linear-to-br from-blue-900 via-blue-800 to-teal-500"
+    class="bg-drift relative flex min-h-dvh w-full overflow-hidden bg-linear-to-br from-blue-600 to-indigo-700"
     :class="entered && 'entered'"
   >
     <!-- Ambient drift. Decorative only, and fully stilled under prefers-reduced-motion. -->
     <div aria-hidden="true" class="pointer-events-none absolute inset-0 overflow-hidden">
-      <span class="blob blob-a absolute -left-24 top-[-10%] h-[28rem] w-[28rem] rounded-full bg-linear-to-br from-teal-300 to-blue-400 opacity-25 blur-3xl" />
-      <span class="blob blob-b absolute -right-32 bottom-[-15%] h-[32rem] w-[32rem] rounded-full bg-linear-to-tr from-sky-300 to-teal-200 opacity-25 blur-3xl" />
+      <span class="blob blob-a absolute -left-24 top-[-10%] h-[28rem] w-[28rem] rounded-full bg-linear-to-br from-blue-300 to-indigo-300 opacity-25 blur-3xl" />
+      <span class="blob blob-b absolute -right-32 bottom-[-15%] h-[32rem] w-[32rem] rounded-full bg-linear-to-tr from-blue-200 to-indigo-200 opacity-25 blur-3xl" />
     </div>
+
+    <!--
+      The way back to the landing page, styled as the sidebar's own inactive
+      nav item (blue-50 text on the gradient, white/10 on hover) rather than as
+      a pill — it must never compete with Sign in for the eye. A RouterLink to
+      `/` rather than history.back(): the login page is also reached from a
+      bookmark, a QR code and the password-reset email, where "back" would
+      lead somewhere else or nowhere.
+    -->
+    <RouterLink
+      to="/"
+      class="absolute top-5 left-5 z-10 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-blue-50 transition hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none"
+    >
+      <span aria-hidden="true">&larr;</span>
+      Back to InternTrack
+    </RouterLink>
 
     <!--
       Desktop brand panel. Below lg the same content is stacked above the card.
@@ -409,20 +425,23 @@ const login = async () => {
         <div class="reveal" :style="delay(160)">
           <div class="mx-auto mt-5 h-px w-16 bg-white/30" />
 
-          <p class="mx-auto mt-5 max-w-sm text-sm leading-relaxed text-blue-100">
+          <p class="mx-auto mt-5 max-w-sm text-sm leading-relaxed text-blue-50">
             Internship Journal and Progress Monitoring System
             <span class="mt-1 block">Mater Dei College &middot; Tubigon, Bohol</span>
           </p>
         </div>
       </div>
 
-      <p class="reveal absolute inset-x-0 bottom-8 text-center text-xs text-blue-200" :style="delay(500)">
+      <p class="reveal absolute inset-x-0 bottom-8 text-center text-xs text-blue-100" :style="delay(500)">
         &copy; Mater Dei College
       </p>
     </section>
 
     <!-- Card column -->
-    <section class="relative flex flex-1 items-center justify-center px-5 py-10 sm:px-6">
+    <!-- `pt-16` below lg: the stacked layout is taller than a phone viewport, so
+         the column starts at its own top padding and the seal would otherwise
+         sit under the back link at top-5. -->
+    <section class="relative flex flex-1 items-center justify-center px-5 pt-16 pb-10 sm:px-6 lg:py-10">
       <div class="w-full max-w-sm">
         <!-- Stacked brand block, below lg only. -->
         <div class="mb-6 text-center text-white lg:hidden">
@@ -437,7 +456,7 @@ const login = async () => {
             <h1 class="mt-4 text-2xl font-bold tracking-tight">Welcome to InternTrack</h1>
           </div>
           <div class="reveal" :style="delay(160)">
-            <p class="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-blue-100">
+            <p class="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-blue-50">
               Internship Journal and Progress Monitoring System
               <span class="mt-1 block">Mater Dei College &middot; Tubigon, Bohol</span>
             </p>
@@ -457,9 +476,10 @@ const login = async () => {
         >
           <!--
             `bg-white/75`, not the /60 of the reference: over the darkest gradient
-            stop (blue-900) a 60% white card composites to ~#a5b0d0, on which
-            slate-600 body text measures 3.50:1 — well under WCAG AA. /70 reaches
-            only 4.35:1. /75 composites to ~#c7ceE2 and clears 4.82:1.
+            stop (indigo-700, the sidebar's own deep end) a 60% white card
+            composites to ~#b4afea, on which slate-600 body text measures 3.70:1 —
+            under WCAG AA. /70 scrapes 4.50:1 with no headroom. /75 composites to
+            ~#d0cdf2 and clears 4.94:1.
           -->
           <div
             class="frost tilt relative overflow-hidden rounded-2xl border border-white/50 bg-white/75 p-6 shadow-2xl backdrop-blur-2xl sm:p-8"
@@ -497,7 +517,7 @@ const login = async () => {
                       required
                     />
                     <span
-                      class="pointer-events-none absolute inset-x-0 -bottom-0.5 h-0.5 origin-left scale-x-0 bg-linear-to-r from-blue-900 to-teal-500 transition-transform duration-300 peer-focus:scale-x-100 motion-reduce:transition-none"
+                      class="pointer-events-none absolute inset-x-0 -bottom-0.5 h-0.5 origin-left scale-x-0 bg-blue-600 transition-transform duration-300 peer-focus:scale-x-100 motion-reduce:transition-none"
                     />
                     <!--
                       `inset-y-0 flex items-center` rather than a tuned `bottom-*`:
@@ -507,7 +527,7 @@ const login = async () => {
                       apart, which is what read as crowding.
                     -->
                     <span
-                      class="pointer-events-none absolute inset-y-0 right-1 flex items-center text-slate-400 transition duration-200 peer-focus:scale-110 peer-focus:text-teal-600 motion-reduce:transition-none"
+                      class="pointer-events-none absolute inset-y-0 right-1 flex items-center text-slate-400 transition duration-200 peer-focus:scale-110 peer-focus:text-blue-600 motion-reduce:transition-none"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5">
                         <circle cx="12" cy="8.5" r="3.6" stroke="currentColor" stroke-width="1.7" />
@@ -537,7 +557,7 @@ const login = async () => {
                       required
                     />
                     <span
-                      class="pointer-events-none absolute inset-x-0 -bottom-0.5 h-0.5 origin-left scale-x-0 bg-linear-to-r from-blue-900 to-teal-500 transition-transform duration-300 peer-focus:scale-x-100 motion-reduce:transition-none"
+                      class="pointer-events-none absolute inset-x-0 -bottom-0.5 h-0.5 origin-left scale-x-0 bg-blue-600 transition-transform duration-300 peer-focus:scale-x-100 motion-reduce:transition-none"
                     />
                     <!--
                       Right-edge geometry, matched to the username field on the
@@ -548,7 +568,7 @@ const login = async () => {
                       leaving a 12px gap between the two glyphs.
                     -->
                     <span
-                      class="pointer-events-none absolute inset-y-0 right-8 flex items-center text-slate-400 transition duration-200 peer-focus:scale-110 peer-focus:text-teal-600 motion-reduce:transition-none"
+                      class="pointer-events-none absolute inset-y-0 right-8 flex items-center text-slate-400 transition duration-200 peer-focus:scale-110 peer-focus:text-blue-600 motion-reduce:transition-none"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5">
                         <rect x="4.5" y="10" width="15" height="10.5" rx="2.2" stroke="currentColor" stroke-width="1.7" />
@@ -558,7 +578,7 @@ const login = async () => {
                     <button
                       ref="eyeButton"
                       type="button"
-                      class="absolute inset-y-0 right-0 flex items-center rounded px-1 text-slate-400 transition select-none hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:outline-none"
+                      class="absolute inset-y-0 right-0 flex items-center rounded px-1 text-slate-400 transition select-none hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
                       aria-label="Press and hold to show password"
                       @mousedown.prevent="revealPassword"
                       @mouseup="hidePassword"
@@ -613,7 +633,7 @@ const login = async () => {
                 <div class="mt-3 text-right">
                   <RouterLink
                     to="/forgot-password"
-                    class="rounded text-sm font-medium text-blue-900 transition hover:text-blue-700 focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:outline-none"
+                    class="rounded text-sm font-medium text-blue-700 transition hover:text-blue-800 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
                   >
                     Forgot password?
                   </RouterLink>
@@ -667,7 +687,7 @@ const login = async () => {
                   -->
                   <button
                     type="submit"
-                    class="sheen relative flex min-h-[3rem] w-full items-center justify-center overflow-hidden rounded-full bg-linear-to-r from-blue-900 to-teal-500 px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.985] disabled:pointer-events-none disabled:cursor-not-allowed disabled:grayscale"
+                    class="sheen relative flex min-h-[3rem] w-full items-center justify-center overflow-hidden rounded-full bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.985] disabled:pointer-events-none disabled:cursor-not-allowed disabled:grayscale"
                     :disabled="isLoading"
                   >
                     <!-- Sheen: absolutely positioned, so it never enters the flex row. -->
@@ -707,7 +727,7 @@ const login = async () => {
                 -->
                 <button
                   type="button"
-                  class="mt-6 flex min-h-[3rem] w-full items-center justify-center rounded-full border border-white/60 bg-white/70 px-6 py-3 text-sm font-semibold text-slate-700 shadow-sm ring-0 ring-white/0 backdrop-blur transition hover:-translate-y-px hover:border-white hover:bg-white hover:ring-2 hover:ring-white/60 focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:ring-offset-2 focus-visible:outline-none"
+                  class="mt-6 flex min-h-[3rem] w-full items-center justify-center rounded-full border border-white/60 bg-white/70 px-6 py-3 text-sm font-semibold text-slate-700 shadow-sm ring-0 ring-white/0 backdrop-blur transition hover:-translate-y-px hover:border-white hover:bg-white hover:ring-2 hover:ring-white/60 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:outline-none"
                   @click="signInWithGoogle"
                 >
                   <span class="flex items-center justify-center gap-2.5">

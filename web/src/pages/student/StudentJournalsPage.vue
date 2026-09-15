@@ -60,7 +60,7 @@ onMounted(load)
 <template>
   <section class="space-y-5">
     <div class="rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-      Daily journal entries only track <strong>submission status</strong>. Review and approval happen after the entries are compiled into your <strong>weekly journal</strong>.
+      Entries are reviewed after compiling into the <strong>weekly journal</strong>.
     </div>
 
     <div class="flex flex-wrap gap-3">

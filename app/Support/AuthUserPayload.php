@@ -76,6 +76,15 @@ class AuthUserPayload
         }
 
         if ($user->isCoordinator()) {
+            // A coordinator's department never reaches the frontend through
+            // `program.department` above — `users.program_id` is null for
+            // every coordinator (see coordinatorProgramIds()), so that load()
+            // is always skipped for this role. The assigned department lives
+            // on the coordinator_departments pivot instead. At most one row
+            // ever exists per coordinator (coordinator_departments.coordinator_id
+            // is unique — see "Coordinator scope" in PROJECT.md).
+            $user->load('departmentsCoordinated:id,code,name');
+
             // Whether this coordinator has any cohort they personally review.
             // Needed on the payload rather than on the page itself for the same
             // reason as `student_dtr_enabled` above: CoordinatorLayout filters

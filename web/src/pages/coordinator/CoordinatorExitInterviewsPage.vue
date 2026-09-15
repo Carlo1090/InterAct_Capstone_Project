@@ -8,31 +8,19 @@ import type {
   CoordinatorExitInterviewDetail,
   CoordinatorExitInterviewRow,
   CoordinatorExitInterviewsResponse,
+  CoordinatorExitInterviewSummaryResponse,
+  ExitInterviewQuestion,
   ExitInterviewStatus,
 } from '@/types/api'
 
 /**
- * The fourteen questions of the CABM exit interview form, in printed order,
- * with the ☐ Yes ☐ No pairs attached to the four that carry them. This mirrors
- * StudentExitInterviewPage's own list — both are transcriptions of the same
- * paper form, so if one changes the other must.
+ * No question list lives here. The detail payload carries `form` — the form
+ * the interview was answered under (CAST, CABM, whichever) — and the modal
+ * renders whatever that says, so this page reads any department's form
+ * without a transcription that could drift from the student's own page.
  */
-const QUESTIONS = [
-  { key: 'q1', number: 1, section: 'B. Internship Placement and Responsibilities', label: 'What were your primary duties and responsibilities during your internship?' },
-  { key: 'q2', number: 2, section: '', label: 'Were your assigned tasks relevant to your academic program?', choice: 'q2_choice' },
-  { key: 'q3', number: 3, section: 'C. Skills and Competencies Developed', label: 'What technical skills did you learn or improve during your internship?' },
-  { key: 'q4', number: 4, section: '', label: 'What soft skills did you develop during your internship?' },
-  { key: 'q5', number: 5, section: '', label: 'Which skill do you think improved the most during your training?' },
-  { key: 'q6', number: 6, section: 'D. Internship Experience', label: 'How would you describe your overall internship experience?' },
-  { key: 'q7', number: 7, section: '', label: 'Were you given adequate supervision and guidance by your company supervisor?', choice: 'q7_choice' },
-  { key: 'q8', number: 8, section: 'E. Challenges Encountered', label: 'What challenges did you encounter during your internship? How did you address these challenges?' },
-  { key: 'q9', number: 9, section: 'F. Learning and Career Insights', label: 'What important lessons did you learn from your internship?' },
-  { key: 'q10', number: 10, section: '', label: 'Did your internship influence your career plans?', choice: 'q10_choice' },
-  { key: 'q11', number: 11, section: '', label: 'Do you feel prepared to enter the workforce after completing your OJT/INTERNSHIP?', choice: 'q11_choice' },
-  { key: 'q12', number: 12, section: 'G. Feedback and Recommendations', label: 'What aspects of the OJT/INTERNSHIP program were most beneficial to you?' },
-  { key: 'q13', number: 13, section: '', label: 'What improvements would you suggest for the OJT/INTERNSHIP program?' },
-  { key: 'q14', number: 14, section: '', label: 'What advice would you give to future OJT/INTERNSHIP students?' },
-] as const
+const isScale = (question: ExitInterviewQuestion) => question.type === 'scale'
+const isYesNo = (question: ExitInterviewQuestion) => question.type === 'yes_no_text'
 
 const programId = ref<number | null>(null)
 const status = ref<ExitInterviewStatus | ''>('')
@@ -179,10 +167,91 @@ const saveReview = async () => {
 
 const answerOf = (key: string): string => (detail.value?.responses[key] ?? '').trim()
 
-const choiceOf = (key: string | undefined): string => {
-  if (!key) return ''
-  const value = detail.value?.responses[key]
+/** A Yes/No pair's answer, or a rating's chosen option, as the paper prints it. */
+const choiceOf = (question: ExitInterviewQuestion): string => {
+  if (isScale(question)) {
+    const value = detail.value?.responses[question.key] ?? ''
+    return (value && question.options?.[value]) || '—'
+  }
+  if (!question.choice) return ''
+  const value = detail.value?.responses[question.choice]
   return value === 'yes' ? 'Yes' : value === 'no' ? 'No' : '—'
+}
+
+/**
+ * A rating tally in printed order ("2 Excellent · 1 Good"), or a Yes/No one
+ * ("3 Yes · 1 No"); unanswered is appended only when it is non-zero.
+ */
+const tallyText = (question: CoordinatorExitInterviewSummaryResponse['questions'][number]): string => {
+  if (!question.tally) return ''
+  const labels: Record<string, string> = question.options ?? { yes: 'Yes', no: 'No' }
+  const parts = Object.entries(labels).map(([key, label]) => `${question.tally?.[key] ?? 0} ${label}`)
+  if (question.tally.unanswered) parts.push(`${question.tally.unanswered} unanswered`)
+  return parts.join(' · ')
+}
+
+/** The pill label for one answer's choice on the summary — Yes/No or an option name. */
+const choiceLabel = (
+  question: CoordinatorExitInterviewSummaryResponse['questions'][number],
+  choice: string | null,
+): string => {
+  if (!choice) return ''
+  if (question.options) return question.options[choice] ?? choice
+  return choice === 'yes' ? 'Yes' : 'No'
+}
+
+// --- Summary tab: every intern's answer to Q1 gathered together, then Q2,
+// and so on. Reached as a tab on this same page rather than a separate nav
+// item — see PROJECT.md, Exit Interview → Summary Report. -------------------
+const activeTab = ref<'by_student' | 'summary'>('by_student')
+const summaryData = ref<CoordinatorExitInterviewSummaryResponse | null>(null)
+const isSummaryLoading = ref(false)
+const summaryProgramId = ref<number | null>(null)
+const summaryAcademicYear = ref('')
+const openQuestions = reactive(new Set<string>())
+
+const loadSummary = async () => {
+  isSummaryLoading.value = true
+
+  try {
+    const params: Record<string, string | number> = {}
+    if (summaryProgramId.value) params.program_id = summaryProgramId.value
+    if (summaryAcademicYear.value) params.academic_year = summaryAcademicYear.value
+
+    const { data } = await api.get<CoordinatorExitInterviewSummaryResponse>(
+      '/api/coordinator/exit-interviews/summary',
+      { params },
+    )
+    summaryData.value = data
+    summaryAcademicYear.value = data.academic_year ?? ''
+  } catch {
+    showToast('Unable to load the exit interview summary.', 'error')
+  } finally {
+    isSummaryLoading.value = false
+  }
+}
+
+const selectTab = (tab: 'by_student' | 'summary') => {
+  activeTab.value = tab
+  if (tab === 'summary' && !summaryData.value) loadSummary()
+}
+
+const toggleQuestion = (key: string) => {
+  if (openQuestions.has(key)) openQuestions.delete(key)
+  else openQuestions.add(key)
+}
+
+const expandAllQuestions = () => {
+  summaryData.value?.questions.forEach((q) => openQuestions.add(q.key))
+}
+
+const collapseAllQuestions = () => {
+  openQuestions.clear()
+}
+
+const isNewSection = (index: number): boolean => {
+  const questions = summaryData.value?.questions ?? []
+  return index === 0 || questions[index - 1]?.section !== questions[index]?.section
 }
 
 onMounted(load)
@@ -193,12 +262,42 @@ onMounted(load)
     <ToastHost />
 
     <div class="rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-      Every exit interview your interns have started appears here. Open one to read all fourteen answers, record
+      Every exit interview your interns have started appears here. Open one to read every answer, record
       the <strong>coordinator's compliance verification</strong> at the foot of the form, and download the printed
       MDC form for your SIPP file. There is no accept or reject — an exit interview is feedback, not an
       application.
     </div>
 
+    <!-- Tabs: the roster view, and the Summary Report (every intern's answer
+         to each question gathered together) added 2026-09-10. -->
+    <div class="flex gap-2 border-b border-slate-200">
+      <button
+        type="button"
+        class="border-b-2 px-3 py-2 text-sm font-semibold transition"
+        :class="
+          activeTab === 'by_student'
+            ? 'border-blue-600 text-blue-600'
+            : 'border-transparent text-slate-500 hover:text-slate-700'
+        "
+        @click="selectTab('by_student')"
+      >
+        By Student
+      </button>
+      <button
+        type="button"
+        class="border-b-2 px-3 py-2 text-sm font-semibold transition"
+        :class="
+          activeTab === 'summary'
+            ? 'border-blue-600 text-blue-600'
+            : 'border-transparent text-slate-500 hover:text-slate-700'
+        "
+        @click="selectTab('summary')"
+      >
+        Summary Report
+      </button>
+    </div>
+
+    <template v-if="activeTab === 'by_student'">
     <!-- Filters -->
     <div class="flex flex-wrap items-end gap-3">
       <label class="block">
@@ -438,9 +537,11 @@ onMounted(load)
           <p v-else-if="detailError" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ detailError }}</p>
 
           <div v-else-if="detail" class="space-y-6">
-            <!-- A. Student Information -->
+            <!-- Student information (the template's Section A) -->
             <div>
-              <h4 class="text-xs font-medium uppercase tracking-wide text-slate-400">A. Student Information</h4>
+              <h4 class="text-xs font-medium uppercase tracking-wide text-slate-400">
+                {{ detail.form.student_info_heading }}
+              </h4>
               <dl class="mt-2 grid gap-x-6 gap-y-3 sm:grid-cols-2">
                 <div>
                   <dt class="text-xs text-slate-400">Department/Position Assigned</dt>
@@ -461,19 +562,21 @@ onMounted(load)
               </dl>
             </div>
 
-            <!-- B - G, the student's own answers -->
-            <div v-for="question in QUESTIONS" :key="question.key">
-              <h4 v-if="question.section" class="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
-                {{ question.section }}
-              </h4>
-              <p class="text-sm font-medium text-slate-800">{{ question.number }}. {{ question.label }}</p>
-              <p v-if="'choice' in question" class="mt-1 text-sm font-semibold text-slate-700">
-                {{ choiceOf(question.choice) }}
-              </p>
-              <p class="mt-1 whitespace-pre-line text-sm text-slate-600">
-                {{ answerOf(question.key) || '— not answered —' }}
-              </p>
-            </div>
+            <!-- The student's own answers, in the form's own sections -->
+            <template v-for="section in detail.form.sections" :key="section.heading">
+              <div v-for="(question, index) in section.questions" :key="question.key">
+                <h4 v-if="index === 0" class="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+                  {{ section.heading }}
+                </h4>
+                <p class="text-sm font-medium text-slate-800">{{ question.n }}. {{ question.text }}</p>
+                <p v-if="isYesNo(question) || isScale(question)" class="mt-1 text-sm font-semibold text-slate-700">
+                  {{ choiceOf(question) }}
+                </p>
+                <p v-if="!isScale(question)" class="mt-1 whitespace-pre-line text-sm text-slate-600">
+                  {{ answerOf(question.key) || '— not answered —' }}
+                </p>
+              </div>
+            </template>
 
             <!-- The coordinator's own block on the paper form -->
             <div class="rounded-lg bg-slate-50 p-4 ring-1 ring-slate-200/70">
@@ -482,7 +585,7 @@ onMounted(load)
               </h4>
               <p class="mt-1 text-xs text-slate-500">
                 Did the student submit all required OJT/INTERNSHIP documents and reports? This prints at the foot of
-                page 2.
+                the last page.
               </p>
 
               <p
@@ -562,5 +665,142 @@ onMounted(load)
         </div>
       </section>
     </div>
+    </template>
+
+    <!-- Summary Report: every in-scope intern's answer to Q1 gathered
+         together, then Q2, and so on — read one question at a time rather
+         than one student at a time. Live read, nothing persisted; drafts are
+         excluded since only a submitted form is guaranteed to carry every
+         answer. The questions are the department's own form's. See PROJECT.md, Exit Interview → Summary Report. -->
+    <template v-else>
+      <div class="flex flex-wrap items-end gap-3">
+        <label class="block">
+          <span class="text-xs font-bold text-slate-600">Program</span>
+          <select
+            v-model="summaryProgramId"
+            class="mt-1 block w-full max-w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm sm:w-auto"
+            @change="loadSummary()"
+          >
+            <option :value="null">All Programs</option>
+            <option v-for="program in summaryData?.programs ?? []" :key="program.id" :value="program.id">
+              {{ program.code ?? program.name }}
+            </option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="text-xs font-bold text-slate-600">Academic Year</span>
+          <select
+            v-model="summaryAcademicYear"
+            class="mt-1 block w-full max-w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm sm:w-auto"
+            @change="loadSummary()"
+          >
+            <option v-if="!(summaryData?.academic_years?.length)" value="">No data yet</option>
+            <option v-for="year in summaryData?.academic_years ?? []" :key="year" :value="year">{{ year }}</option>
+          </select>
+        </label>
+
+        <div class="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            @click="expandAllQuestions"
+          >
+            Expand all
+          </button>
+          <button
+            type="button"
+            class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            @click="collapseAllQuestions"
+          >
+            Collapse all
+          </button>
+        </div>
+      </div>
+
+      <p v-if="isSummaryLoading" class="text-sm text-slate-500">Loading...</p>
+
+      <template v-else-if="summaryData">
+        <p class="text-sm text-slate-500">
+          Gathered from <strong>{{ summaryData.total_respondents }}</strong>
+          {{ summaryData.total_respondents === 1 ? 'submitted exit interview' : 'submitted exit interviews' }}
+          <span v-if="summaryAcademicYear">for {{ summaryAcademicYear }}</span>
+          on the <strong>{{ summaryData.form.label }}</strong>.
+          <span v-if="summaryData.other_form_respondents">
+            {{ summaryData.other_form_respondents }} more
+            {{ summaryData.other_form_respondents === 1 ? 'was' : 'were' }} answered on a different form and
+            {{ summaryData.other_form_respondents === 1 ? 'is' : 'are' }} not gathered here.
+          </span>
+        </p>
+
+        <p v-if="summaryData.total_respondents === 0" class="rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-500">
+          None of your interns has submitted an exit interview for this academic year yet.
+        </p>
+
+        <div v-else class="space-y-3">
+          <div v-for="(question, index) in summaryData.questions" :key="question.key">
+            <h4
+              v-if="isNewSection(index)"
+              class="mb-1 mt-4 text-xs font-medium uppercase tracking-wide text-slate-400"
+            >
+              {{ question.section }}
+            </h4>
+
+            <div class="rounded-lg bg-white shadow-sm ring-1 ring-slate-200/70">
+              <button
+                type="button"
+                class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                @click="toggleQuestion(question.key)"
+              >
+                <span class="text-sm font-semibold text-slate-800">
+                  {{ question.number }}. {{ question.text }}
+                </span>
+                <span class="flex shrink-0 items-center gap-3">
+                  <span v-if="question.tally" class="hidden text-xs text-slate-500 sm:inline">
+                    {{ tallyText(question) }}
+                  </span>
+                  <span class="text-xs text-slate-400">{{ question.answers.length }} answers</span>
+                  <span class="text-slate-400">{{ openQuestions.has(question.key) ? '−' : '+' }}</span>
+                </span>
+              </button>
+
+              <div v-if="openQuestions.has(question.key)" class="border-t border-slate-100 px-4 py-3">
+                <p v-if="question.tally" class="mb-3 text-xs font-medium text-slate-500 sm:hidden">
+                  {{ tallyText(question) }}
+                </p>
+
+                <p v-if="question.answers.length === 0" class="text-sm text-slate-500">
+                  No answers to this question yet.
+                </p>
+
+                <ul v-else class="divide-y divide-slate-100">
+                  <li v-for="answer in question.answers" :key="answer.student_id" class="py-3">
+                    <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <p class="text-sm font-semibold text-slate-800">
+                        {{ answer.student_name }}
+                        <span class="font-normal text-slate-400">({{ answer.program || '—' }})</span>
+                      </p>
+                      <span
+                        v-if="answer.choice"
+                        class="rounded-full px-2 py-0.5 text-xs font-semibold"
+                        :class="
+                          question.options
+                            ? 'bg-blue-50 text-blue-700'
+                            : answer.choice === 'yes'
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : 'bg-rose-50 text-rose-700'
+                        "
+                      >
+                        {{ choiceLabel(question, answer.choice) }}
+                      </span>
+                    </div>
+                    <p v-if="answer.text" class="mt-1 whitespace-pre-line text-sm text-slate-600">{{ answer.text }}</p>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </template>
   </section>
 </template>

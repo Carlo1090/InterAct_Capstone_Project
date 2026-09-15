@@ -311,9 +311,8 @@ onMounted(load)
                 </span>
               </p>
               <p class="mt-2 text-sm text-slate-500">
-                Counted from your clock-ins at
-                <span class="font-medium text-slate-700">{{ data.company ?? 'your host company' }}</span
-                >. Sessions still open or awaiting your supervisor's review are not included.
+                Approved clock-ins at
+                <span class="font-medium text-slate-700">{{ data.company ?? 'your host company' }}</span>
               </p>
             </div>
           </div>
@@ -322,8 +321,7 @@ onMounted(load)
         <!-- This week -->
         <div>
           <h2 class="mb-3 text-xs font-medium uppercase tracking-wide text-slate-400">
-            This week &middot; {{ formatDate(data.week?.start ?? null) }} to {{ formatDate(data.week?.end ?? null) }}
-            <span class="ml-1 text-slate-500">({{ formatHours(data.week?.minutes) }})</span>
+            This week
           </h2>
 
           <div class="overflow-x-auto rounded-xl bg-white shadow-sm ring-1 ring-slate-200/70">
@@ -378,10 +376,6 @@ onMounted(load)
             </table>
           </div>
 
-          <p class="mt-3 text-xs text-slate-400">
-            You can also point your phone's own camera app at the QR code your supervisor shows at your workplace — it
-            opens the same clock-in page, and asks you to confirm before anything is recorded.
-          </p>
         </div>
       </template>
     </LoadStatus>

@@ -300,6 +300,33 @@ mutes that hook.
 Google sign-in is wired but strictly **link-only** — it never creates accounts.
 Username + password remains the primary, always-available path.
 
+**Every account-creation surface treats email as optional (2026-09-10).**
+`Admin\UserController::store()` (Create Coordinator) and
+`Coordinator\CreateSupervisorRequest`/`CoordinatorCompanyController::createSupervisor()`
+(Create Supervisor, both the standalone modal on Users → Supervisors and the
+inline form on Partner Companies) now validate `email` as `nullable` rather
+than `required`, and both accept an optional `username` field alongside it
+(same `nullable|string|min:3|max:50|regex` shape as the student-creation
+`CreateAccountRequest` already used). Leaving both blank still yields a
+working account: `User::booted()`'s `creating` hook auto-generates a username
+from the name when there is no email to derive one from. This closes the last
+two account-creation paths that still forced an email — every other creation
+flow (student accounts, bulk import aside, which needs an address to auto-mail
+credentials to) already worked this way. Google verification remains the only
+way `email_verified_at` gets set, so username+password stays how these
+accounts sign in until someone chooses to link Google.
+
+Consequences threaded through so a blank-email account stays identifiable to
+the person who created it: the success toast on both creation forms echoes the
+assigned username back (reading it from the create response — `User::store()`
+returns the full model, `createSupervisor()`'s response's `supervisors[]`
+carries a `user.username`); `EnrollmentController::supervisors()`,
+`CoordinatorCompanyController::index()`/`companyPayload()`/`mapSupervisors()`
+all select `username` alongside `email` now; and every list/panel that used to
+print only `supervisor.email` falls back to `@username` when there is no
+email (`CoordinatorInternsPage.vue`'s Supervisors tab, both table and mobile
+card view; `CoordinatorCompaniesPage.vue`'s OJT Supervisor Login panel).
+
 ## Hard Rules
 
 1. **Do not create a duplicate migration.** Check `database/migrations/` first.
@@ -327,15 +354,17 @@ Username + password remains the primary, always-available path.
      JSON payload columns, `UNIQUE(student_id, batch_id)`. It is the only
      table outside the v2 schema; the JSON columns exist so adding or
      rewording a question on the paper form never means a migration.
-4. **Out of scope — do not build:** photo capture on clock-in, and the
-   **Summary Report on Student Exit Interview** — the aggregate report, which
-   is a different document from the per-student form.
-   **NARROWED 2026-08-30 (project owner):** this entry used to read "exit
-   interview report generation" and was read as covering the whole subject.
-   The per-student **Internship Program Student Exit Interview Form** is now
-   **IN scope and BUILT** (students fill it in, coordinators read and print
-   it) — see Exit Interview below. Only the aggregate SUMMARY report is still
-   out.
+4. **Out of scope — do not build:** photo capture on clock-in.
+   **NARROWED 2026-08-30 (project owner):** this entry used to also list the
+   **Summary Report on Student Exit Interview** as out of scope; the
+   per-student **Internship Program Student Exit Interview Form** was carved
+   in first — see Exit Interview below.
+   **NARROWED 2026-09-10 (project owner):** the aggregate **Summary Report on
+   Student Exit Interview** is now also **IN scope and BUILT** — every
+   in-scope intern's answer to each question gathered together, reached as a
+   tab on the coordinator's Student Exit Interviews page. See Exit Interview →
+   Summary Report below. Photo capture on clock-in remains the only item left
+   here.
    **RESCINDED 2026-08-20 (project owner):** geofence clock-in, QR clock-in and
    the in-app camera scanner were all previously listed here as out of scope.
    They are now **IN scope and BUILT** — see Daily Time Record below. Do not
@@ -354,7 +383,14 @@ Username + password remains the primary, always-available path.
 ## Domain Facts
 
 - **3 departments, 7 programs:** CAST → BSIT · CABM-B → BSBA-FM, BSBA-MM,
-  BSBA-OM, BSA · CABM-H → BSTM, BSHRM
+  BSBA-OM, BSA · CABM-H → BSTM, BSHRM.
+  **These are the SEEDED STARTING POINT, not a fixed set** (corrected
+  2026-09-08). The admin creates departments, and since 2026-09-08 creates
+  **programs** under them as well — see Admin → Programs below. Treat the seven
+  as what a fresh install ships with; a running install may hold any number.
+- **Each department is assigned one hardcoded exit interview form**
+  (`departments.exit_interview_form`, chosen by the admin; seeded CAST → `cast`,
+  both CABM departments → `cabm`). See Exit Interview.
 - **`departments.code` is the identifier; `departments.name` is display only.**
   Every lookup in the project keys off the code
   (`Department::where('code', 'CABM-B')`), it is what fits a narrow column and
@@ -417,7 +453,8 @@ Username + password remains the primary, always-available path.
   **Internship Program Student Exit Interview Form**, built 2026-08-30
   (reference: `docs/reference/INTERNSHIP PROGRAM STUDENT EXIT INTERVIEW -
   BUSINESS.pdf`). The aggregate **Summary Report on Student Exit Interview**
-  is a separate document and remains out of scope.
+  — every intern's answer to each question gathered together — was added
+  2026-09-10; see Exit Interview → Summary Report below.
 
 ## Core Data Model & Invariants
 
@@ -473,10 +510,25 @@ already coordinate (`batchesCoordinated()`, kept only as a backward-safety net).
 **`users.program_id` is retained but is NOT the coordinator scoping source.**
 Every coordinator page is scoped by this; out-of-scope access 403s.
 
-NOTE: a coordinator's **department name does not reach the frontend at all** —
-`/api/user` loads only `program.department`, and a coordinator's
-`users.program_id` is null. This is why scope notices render a `'your
-department'` fallback rather than a real name.
+**CORRECTED 2026-09-10 (project owner, found live):** this note used to say a
+coordinator's department never reaches the frontend at all, because
+`/api/user` only loaded `program.department` and a coordinator's
+`users.program_id` is null — true as far as it went, but it meant
+`AuthUserPayload::build()` never loaded `departmentsCoordinated` either, so
+`CoordinatorLayout.vue`'s header (`"Coordinator · {{ department }}"`) fell
+through to a **hardcoded placeholder** (`'Business Administration'`) for
+*every* coordinator, unconditionally — it only went unnoticed because that
+string happens to sound plausible for a CABM-type department. `build()` now
+loads `departmentsCoordinated:id,code,name` for coordinators (at most one row,
+per the unique constraint above), and the header reads
+`departments_coordinated[0].code` — the **code**, matching how the rest of the
+app treats `departments.code` as the identifier, not `departments.name`.
+**`CoordinatorDashboardPage.vue`'s scope notice ("This workspace is scoped
+to…") had the IDENTICAL bug**, reading the same always-null
+`program?.department?.name` — it read as a deliberate design choice ("a
+'your department' fallback rather than a real name") only because its
+fallback text was generic enough to pass as intentional copy rather than a
+wrong name. Fixed the same way, same field.
 
 ### Company Supervisor: login-bearing vs named-only
 
@@ -532,12 +584,51 @@ Consequences, all deliberate:
   **completed/dropped** rows (historical — they keep whoever supervised them).
 - Remaining edge: detaching a login **without** re-attaching leaves active rows
   pointing at the former login, since `supervisor_id` is NOT NULL.
-- `EnrollmentController::options()` deliberately does **not** filter
-  `supervisors[]` by `is_active`, matching `Company::loginSupervisor()`, so the
-  read-only display and the backend agree even for a deactivated login.
 - **Seeders bypass this gate** (expected) — they write `batch_students` directly
   via Eloquent, so `migrate:fresh --seed` is unaffected. But every demo company
   referenced by an enrollment still needs a login supervisor for later UI edits.
+
+**CORRECTED 2026-09-11 (project owner, found live): `EnrollmentController::options()`'s
+`supervisors[]` used to be every supervisor-role user in the ENTIRE system,
+unfiltered by scope or company.** A brand-new coordinator with zero companies
+of their own saw every other department's supervisors in the "Attach Existing
+Supervisor" dropdown on Partner Companies — the old doc line above ("does not
+filter by is_active") was true but incomplete: it filtered by nothing at all.
+Fixed by splitting what had been one overloaded list into two:
+
+- **The read-only "which supervisor does this company resolve to" preview**
+  (the Enroll form and the Add-Intern roster form) now reads
+  `companies[].login_supervisor` — a field resolved per-company via
+  `Company::loginSupervisor()`, added directly onto the (still deliberately
+  unscoped) `companies[]` array. `enrollResolvedSupervisor`
+  (`CoordinatorInternsPage.vue`) and `addResolvedSupervisor`
+  (`CoordinatorBatchesPage.vue`) both read it this way now, instead of
+  scanning a `supervisors[]` list by a `company_ids` field (removed — see
+  below). This preserves the existing behavior that a company can be shared
+  across departments and its resolved supervisor still shown/required to
+  enroll there, which is why `companies[]` itself stays unscoped.
+- **The "Attach Existing Supervisor" dropdown's `supervisors[]`** is now scoped
+  by a new **`ScopesCoordinatorAccounts::attachableSupervisorIds()`**: a
+  supervisor already on one of the coordinator's own in-scope companies, OR
+  attached to **no** company at all yet (a freshly-created or just-detached
+  "floating" account nobody has claimed). **Deliberately NOT just
+  `scopedSupervisorIds()`** — that method is built entirely from existing
+  `CompanySupervisor` rows, so it can never contain a floating supervisor,
+  and using it alone would have made every freshly-created or freshly-detached
+  supervisor permanently unattachable by anyone. Pinned by
+  `test_the_attach_dropdown_excludes_a_supervisor_exclusive_to_another_department`
+  (`tests/Feature/Coordinator/EnrollmentTest.php`), which is also the
+  regression guard for the `company_ids` removal — the sibling test
+  `test_a_shared_companys_login_supervisor_resolves_even_when_out_of_scope`
+  pins that a shared company's preview still works after the split.
+- **`CoordinatorCompanyController::attachSupervisor()` now independently
+  enforces the same `attachableSupervisorIds()` check server-side (403)** —
+  the dropdown only narrows what is *shown*; `AttachSupervisorRequest`'s own
+  rule (`Rule::exists('users','id')->where('role','supervisor')`) only proves
+  the id names *some* supervisor, not one this coordinator may touch, so a
+  crafted request could otherwise attach an out-of-scope supervisor regardless
+  of what the UI offered. Pinned by
+  `test_attaching_a_supervisor_exclusive_to_another_department_is_refused`.
 
 ## OJT Type — supervisor-supported vs coordinator-centered
 
@@ -610,6 +701,102 @@ is always allowed**, because the batches page PUTs the whole form back including
 fields the coordinator never touched. `BatchController` returns
 `interns_count` so the form can disable the control rather than offer a change
 the server would refuse.
+
+## Working Days — a real day-of-week range, not just a count (2026-09-11)
+
+Built at the project owner's request, after live testing surfaced that the old
+"Working Days / Week" field was just a plain number (1-7) with no notion of
+*which* days — `App\Support\BatchWorkingDays::isWorkingDay()` only ever checked
+1-5 → Mon-Fri, 6 → Mon-Sat, 7 → every day, always anchored to Monday. A batch
+whose real week ran, say, Tuesday-Saturday had no way to say so, and values 1-4
+were indistinguishable from 5 (a pre-existing ambiguity, deliberately preserved
+rather than "fixed" as part of this change — see below).
+
+- **`batches.working_days_start` / `working_days_end`** (tinyInteger, ISO
+  weekday 1=Mon..7=Sun, both NOT NULL) hold the real range now, picked on the
+  coordinator's Create/Edit Batch form via **`WeekdayRangePicker.vue`**
+  (`components/coordinator/`) — seven pill buttons (Mon Tue Wed Thu Fri Sat
+  Sun, three-letter labels for legibility over single letters). **The
+  selection is two points, a START and an optional END, and every tap on a
+  chosen point toggles it OFF** (reworked 2026-09-14 at the project owner's
+  request — the first cut "cancelled back to the previous range", which is
+  not what deselect means): nothing chosen → tap X sets the start; start only
+  → tap the start empties the selection, tap another day sets the end; full
+  range → tap the END drops just the end (so a different one can be picked
+  without starting over), tap the START empties everything, tap any other day
+  starts fresh. **The start and end are deliberately NOT symmetric**: dropping
+  the start empties the selection rather than promoting the end, because the
+  start is the anchor the range hangs off and "I tapped Monday and now only
+  Friday is lit" reads as a glitch. Press-and-drag writes the same two points
+  (release on the end; glide back onto the pressed day and it is start-only),
+  so the tap rules apply to a dragged range exactly as to a tapped one — tap
+  the day you released on and it drops off.
+  - **`end === null` is the ONLY representation of a single day**, never
+    `(d, d)`. `CoordinatorBatchesPage` collapses a null end to the start on
+    save (the columns are NOT NULL) and expands a stored `(d, d)` back to null
+    when it loads a batch for editing — otherwise a tap on that day would be
+    an ambiguous "an end that equals the start".
+  - **`start === null` (nothing chosen) is a real, reachable state and blocks
+    Save** via `workingDaysInvalid` in `hasFieldErrors`, with an inline
+    "Pick at least one working day." — it never reaches the server. The label
+    reads "No days selected" in red.
+  - Both paths go through the shared `formatDayRange`/`isDayInRange` helpers,
+    so neither can disagree with the other about the result.
+  - **The range WRAPS across the week when the end precedes the start** (e.g.
+    Sat then Tue sets Sat/Sun/Mon/Tue) — deliberately not normalized to
+    "whichever direction is shorter", since an ordered two-click range is
+    unambiguous and silently flipping it would sometimes produce a different
+    set of days than the coordinator actually clicked.
+- **`working_days_per_week` STAYS** — every existing consumer (the reminder
+  command, the student dashboard's missing-count, the journal calendar, the
+  reminder-preference defaults) still reads it — but it is now **derived
+  automatically**, never typed directly. `App\Observers\BatchObserver`
+  (`#[ObservedBy]` on `Batch`, the same mechanism `UserObserver` uses) keeps the
+  two in step on every save: picking a range derives the count
+  (`BatchWorkingDays::countFromRange()`, wrap-aware); posting only the legacy
+  count (an older client, or a seeder) derives a Monday-anchored range
+  (`BatchWorkingDays::rangeFromLegacyCount()`) using the **exact** mapping the
+  old count-only logic assumed, so nothing that already existed changes
+  behavior.
+  **Seeders bypass this**, same as `UserObserver`'s username generation —
+  `DatabaseSeeder` uses `WithoutModelEvents`, which mutes `BatchObserver` too,
+  so the three seeders that create a `Batch` directly
+  (`CabmbCoordinatorCenteredDemoSeeder`, `CabmbUsersDemoSeeder`,
+  `StudentDemoEnrollmentSeeder`) now write `working_days_start`/`_end`
+  explicitly alongside `working_days_per_week`.
+- **`BatchWorkingDays::isWorkingDayInRange($date, $start, $end)`** is the real
+  predicate now (wraparound-aware); the old `isWorkingDay($date, $count)` is
+  kept byte-for-byte as-is for any caller that only ever has a count (none
+  exist in `app/` today). The 5 real consumers —
+  `SendMissingJournalEntryReminders`, `StudentDashboardController`,
+  `JournalCalendarController`, `ReminderPreferenceController`,
+  `ReminderSchedule::remindsOn()` — were switched to pass the range instead of
+  the count; this is what makes an arbitrary start+end day *mean* something
+  app-wide, not just look different on the form.
+- **Migration backfill freezes the exact old mapping** for every batch that
+  already existed (7→[1,7], 6→[1,6], else→[1,5]), so nothing already seeded or
+  live changed behavior the moment the migration ran — verified via
+  `php artisan migrate:fresh --seed` and a direct query of the seeded batches
+  afterward.
+- Both `StoreBatchRequest`/`UpdateBatchRequest` (coordinator) accept either
+  shape — `working_days_start`+`working_days_end` (paired via
+  `required_with` both ways) or the bare legacy `working_days_per_week` — so an
+  older caller still works. `Admin\StoreBatchRequest` got the same treatment for
+  parity, though it remains **dead code**: no route or test wires it, and the
+  admin's own Batches page is read-only (view-only modal, no create/edit form).
+- `AdminBatchesPage`'s read-only batch view now shows the range as
+  `"Mon – Fri"` (or the wrapped equivalent, e.g. `"Sat – Tue"`) via the shared
+  `web/src/lib/weekdays.ts` helpers (`formatDayRange`, `isDayInRange`,
+  `WEEKDAY_NAMES`) — the same helpers the picker itself uses, so the two can
+  never describe a range differently.
+
+Coverage: `tests/Unit/Support/BatchWorkingDaysTest.php` pins the
+behavior-preserving mapping, the wraparound math (`isWorkingDayInRange`, both
+directions of `countFromRange`), and the legacy-count round trip. No existing
+test needed a behavior change — the 25+ tests touching
+`working_days_per_week` were re-run and stayed green as-is, since
+`BatchObserver` derives it transparently from whichever field a test/request
+already sends.
 
 ### The coordinator's review surface
 
@@ -1278,6 +1465,66 @@ the one exception to soft-deactivation: it 422s any account carrying OJT history
 (`journal_entries`/`weekly_logs`/`weekly_activity_logs`) and only erases truly
 empty accounts. It can never destroy SIPP records.
 
+### Permanently deleting a supervisor account (2026-09-11)
+
+Built at the project owner's request — the Users → Supervisors tab had no row
+actions at all (no View, no Delete) until now; only `detachSupervisor` existed
+(Partner Companies), and that only removes a company's login attachment, not
+the account. `EnrollmentController::showSupervisor`/`destroySupervisorAccount`
+(routes `coordinator/users/supervisors/{supervisor}`, GET and DELETE) fill both
+gaps, mirroring `showIntern`/`destroyAccount`'s shape but not their guard.
+
+**Why a supervisor delete needed its own guard, not the student one reused:**
+`batch_students.supervisor_id` is a **`cascadeOnDelete`** foreign key — it is
+the authoritative student-to-company/supervisor linkage (see Enrollment above).
+Deleting a supervisor who was ever pinned to an enrollment, active or
+historical, would silently **delete those `batch_students` rows along with
+them** — not merely the supervisor's own login. This is a much larger blast
+radius than the student case (where `journal_entries`/`weekly_logs` are keyed
+by `student_id`+`batch_id`, not by the row being deleted) and is the actual
+reason this feature did not already exist: building it safely meant tracing
+every FK a `users` row carries first.
+
+`destroySupervisorAccount()` therefore blocks (422) on either:
+
+- **Any `batch_students` row, of any status, ever pinned to them** — the
+  cascade-risk case above.
+- **Any `weekly_logs` row they reviewed** (`weekly_logs.supervisor_id` is only
+  `nullOnDelete`, so the review itself survives, but deleting them would strip
+  off WHO gave the verdict).
+
+**Deliberately NOT gated on still being attached to a company.**
+`company_supervisors.user_id` is `cascadeOnDelete` too, but carries no history
+behind it — just "who is currently logged in as this company" — so losing that
+pointer on delete is exactly what a manual detach already does on purpose.
+Requiring a detach-first step would add friction with nothing to show for it,
+and would have made the account briefly **unreachable**: the Supervisors list
+(`supervisors()`) is built entirely from `company_supervisors` rows in scope,
+so a supervisor detached from every company vanishes from it. Both
+`showSupervisor` and `destroySupervisorAccount` are scoped by
+**`attachableSupervisorIds()`** (already defined on `ScopesCoordinatorAccounts`
+for the "Attach Existing Supervisor" dropdown), not `scopedSupervisorIds()`,
+specifically so a detached "floating" supervisor stays viewable and deletable
+rather than 403ing the very account the action exists to reach.
+
+**Frontend**: the Supervisors tab table (and its mobile card list) gained an
+Actions column identical in shape to the Interns tab's — a bordered outline
+**View** button and a red outline **Delete** button. View opens
+`SupervisorDetailModal.vue` (mirrors `InternDetailModal.vue`), showing the
+supervisor's companies (with position) and, new information the row itself
+doesn't show, the actual roster of interns currently or previously assigned to
+them (`SupervisorDetail`'s `interns[]`). Delete reuses the exact same
+`DangerCountdownModal` the intern delete already used — a 7-second hold before
+"Delete permanently" unlocks, `tone: danger`, Cancel always active — rather
+than a second confirmation pattern; a blocked (422) delete surfaces the guard's
+reason as a normal error toast, same as every other guarded action in the app.
+
+Coverage: `tests/Feature/Coordinator/CoordinatorUsersTest.php` — the two 422
+guards (assigned-to-an-enrollment, reviewed-a-weekly-log), a clean delete that
+also cascades the `company_supervisors` attachment away, both 403/404 scope
+checks, and the floating-supervisor case (detached, no history) staying
+reachable through both endpoints.
+
 **Graceful "enrollment inactive" state**: `User::isEnrollmentPaused()` (a student
 past intake with no `active`/`completed` row) surfaces as `student_paused` on
 `/api/user`. The router bounces them to a read-only `/student/paused` page and
@@ -1785,14 +2032,19 @@ application reports.
 ## Exit Interview
 
 Built 2026-08-30 at the project owner's request. Narrows Hard Rule #4: the
-per-student **form** is in scope and built; the aggregate **Summary Report on
-Student Exit Interview** is a different document and is still out.
+per-student **form** is in scope and built. The aggregate **Summary Report on
+Student Exit Interview** followed on 2026-09-10, narrowing Hard Rule #4 a
+second time — see Summary Report below.
 
-The student fills in the official CABM "Internship Program Student Exit
-Interview Form" at the close of their placement; their coordinator reads every
-answer, records the compliance verification the form reserves for them, and
-downloads a measured facsimile to file. Reference:
-`docs/reference/INTERNSHIP PROGRAM STUDENT EXIT INTERVIEW - BUSINESS.pdf`.
+The student fills in **their department's** official exit interview form at
+the close of their placement; their coordinator reads every answer, records
+the compliance verification the form reserves for them, and downloads a
+measured facsimile to file. Two forms exist, both hardcoded — see **One
+template, one hardcoded form per department** below for how a department is
+pointed at one and why they are not editable. References:
+`docs/reference/INTERNSHIP PROGRAM STUDENT EXIT INTERVIEW - BUSINESS.pdf`
+(CABM, the original and the template) and
+`docs/reference/EXIT INTERVIEW OJT CAST DEPARTMENT.pdf` (CAST, 2026-09-15).
 
 - **Student**: `StudentExitInterviewController` (`show`/`store`/`pdf`, routes
   `student/exit-interview*` in the **gated** group), page
@@ -1801,26 +2053,188 @@ downloads a measured facsimile to file. Reference:
   after Student Info Sheet, because that is the order a student meets them:
   intake first, exit last.
 - **Coordinator**: `CoordinatorExitInterviewController`
-  (`index`/`show`/`update`/`pdf`, routes `coordinator/exit-interviews*`), page
-  `CoordinatorExitInterviewsPage.vue` at `/coordinator/exit-interviews`, nav
-  label **"Student Exit Interviews"**.
+  (`index`/`show`/`update`/`pdf`/`summary`, routes `coordinator/exit-interviews*`),
+  page `CoordinatorExitInterviewsPage.vue` at `/coordinator/exit-interviews`, nav
+  label **"Student Exit Interviews"**. The page carries two tabs — **By
+  Student** (the queue below) and **Summary Report** (see below) — rather than
+  a second nav item; see Summary Report for why.
 
-### Schema — one additive table
+### Schema — one additive table, plus two key columns
 
-`student_exit_interviews`: `student_id`, `batch_id`, three JSON payloads
-(`student_info`, `responses`, `coordinator_section`), `submission_status`
-(`draft`/`submitted`/`reviewed`), `submitted_at`, `reviewed_at`, `reviewed_by`,
-and **`UNIQUE(student_id, batch_id)`** — the form is filled once per placement,
+`student_exit_interviews`: `student_id`, `batch_id`, **`form_key`** (2026-09-15,
+see below), three JSON payloads (`student_info`, `responses`,
+`coordinator_section`), `submission_status` (`draft`/`submitted`/`reviewed`),
+`submitted_at`, `reviewed_at`, `reviewed_by`, and
+**`UNIQUE(student_id, batch_id)`** — the form is filled once per placement,
 backstopped in the database the way `batch_students` backstops its own pair
 rather than by the controller alone.
 
 The JSON columns follow `student_information_sheets`' precedent for the same
 reason: **the question set belongs to the paper form, not to the schema**, so
-rewording or adding a question is not a migration. `responses` is keyed
-`q1`..`q14` plus `q2_choice` / `q7_choice` / `q10_choice` / `q11_choice` for the
-four printed ☐ Yes ☐ No pairs. **`StudentExitInterview::QUESTION_KEYS` and
-`CHOICE_KEYS` are the single definition** shared by the Form Request, the API
-payload and the PDF, so the three can never disagree about what question 7 is.
+rewording or adding a question is not a migration. `responses` is keyed by the
+form's own question keys — on CABM `q1`..`q14` plus `q2_choice` / `q7_choice`
+/ `q10_choice` / `q11_choice` for the four printed ☐ Yes ☐ No pairs; on CAST
+`q1`..`q22`, `q28`..`q33`, `q35`..`q37`, with `q33` holding a rating option key.
+**The form definition (`App\Support\ExitInterview\ExitInterviewForm`, one per
+department under `Forms/`) is the single source** shared by the Form Request,
+the API payload, the PDF, the Summary Report, the SPA and the mobile app, so
+none of them can disagree about what question 7 is. The old
+`StudentExitInterview::QUESTION_KEYS` / `CHOICE_KEYS` constants are gone;
+`$interview->form()->questionKeys()` / `choiceKeys()` replace them.
+
+### One template, one hardcoded form per department (2026-09-15)
+
+Built at the project owner's direction: **the forms are hardcoded, not
+editable** — each department's official paper differs and there is no choice
+in that — and the admin **picks which hardcoded form a department uses**.
+
+- **`App\Support\ExitInterview\ExitInterviewForms`** is the catalogue and the
+  ONE resolver: `all()` / `keys()` / `get($key)`, `forDepartment()`,
+  `forBatch()` (batch → program → department), `forInterview()` (the row's
+  own snapshot first). Each form is a class under `Forms/` returning an
+  `ExitInterviewForm` value object — key, label, masthead college line and
+  title lines, optional preamble, the student-info heading, the reference
+  file name, and the sections with their questions. Adding a department's
+  form is one new class and one entry in `all()`; **nothing else in the app
+  names a form key**. An unknown key resolves to `DEFAULT` (`cabm`) rather
+  than throwing, so an old interview stays downloadable if a form is ever
+  removed.
+- **Every form shares the CABM TEMPLATE.** Section A (student information,
+  the same five derived and three typed fields), the draft → submitted →
+  reviewed lifecycle, the compliance block, the two signatories and the
+  measured page geometry are all the template's and identical on every form.
+  **Only the questions and the masthead are a department's own** — the
+  project owner's rule for CAST ("follow the CABM template; only the
+  questions change"), which is what makes one layout, one blade, one
+  controller pair and one Form Request serve every department.
+- **Three answer types**, and the type is what the clients render by:
+  `text` (five ruled lines), `yes_no_text` (a printed ☐ Yes ☐ No pair stored
+  under its `choice` key, then the lines) and `scale` (a row of boxes stored
+  under the question's OWN key, no lines at all — CAST's Q33 "Overall, how
+  would you rate…" ☐ Excellent … ☐ Poor is the only one on either form).
+- **`departments.exit_interview_form`** (string key, NOT NULL, default
+  `cabm`) is the admin's choice, **required on Create Department** (the admin
+  chooses rather than inheriting a default they never saw) and changeable on
+  Edit. `DepartmentProgramSeeder` seeds `CAST → cast`, `CABM-B → cabm`,
+  `CABM-H → cabm` (no hospitality edition exists yet). The migration backfills
+  CAST on a live install. On Admin → Departments the assignment prints
+  **under the department name**, not in a seventh column — the table is
+  already six columns at its measured widths and a seventh collapsed Name to
+  two letters (the Journal Review queue's company-under-batch call).
+- **`student_exit_interviews.form_key`** (string, default `cabm`) is
+  SNAPSHOTTED from the batch's department on every student save, so a
+  finished interview keeps rendering under the questions it actually
+  answered even if the admin re-points the department later — the same
+  principle as a reviewed daily entry being labelled by its log's OWN
+  template. Pinned by
+  `CastExitInterviewTest::test_an_interview_keeps_its_own_form_when_the_department_changes`.
+  Every interview that existed before the column was answered on the CABM
+  form (it was the only one), so the default is the truthful backfill.
+- **The Form Request builds its rules from the resolved form**
+  (`StoreExitInterviewRequest::form()`, the identical resolution the
+  controller then stamps into `form_key`): `scale` → `Rule::in(options)`,
+  `yes_no_text` → the choice key in `yes|no`, everything else the width
+  check. A CABM-shaped payload posted by a CAST student is refused on the
+  CAST questions it lacks, and its `q2_choice` is simply not a rule.
+- **The API serves the form.** `GET student/exit-interview` and the
+  coordinator's `show` carry `form` (`ExitInterviewForm::toArray()`);
+  `StudentExitInterviewPage.vue`, `CoordinatorExitInterviewsPage.vue` and
+  `mobile/app/exit-interview.tsx` render from it and **no longer carry a
+  transcription of the questions** — the five copies that existed (layout,
+  model, two web pages, mobile) are one. `answer_char_limits` is per form; a
+  rating question has no entry.
+- **The Summary Report is ONE FORM PER REPORT**: the coordinator's
+  department's assigned form supplies the questions, only interviews
+  snapshotted under that `form_key` are gathered (CAST q1 ≠ CABM q1), and the
+  rest are reported as `other_form_respondents` rather than silently dropped.
+  A `scale` question tallies each of its options plus `unanswered`, the way a
+  Yes/No pair tallies `yes`/`no`/`unanswered`.
+- **The CABM reference's three pre-filled names (coordinator, dean) fall back
+  ONLY on the CABM form.** `BuildsExitInterviewPdf` used to print them
+  whenever the record lacked a dean; on a CAST form that put the business
+  department's dean under "Reviewed by". Now any other form prints a blank to
+  be signed. Pinned by `test_the_cabm_reference_names_never_print_on_a_cast_form`.
+
+#### Admin → Exit Interview (2026-09-15)
+
+`Admin\ExitInterviewFormController::index` (`GET admin/exit-interview-forms`),
+page `AdminExitInterviewFormsPage.vue` at `/admin/exit-interviews`, nav label
+**"Exit Interview"** under People & Records (`exit` icon, the student
+layout's own). **Read-only**: the catalogue of hardcoded forms — label, key,
+college line and title, question count, printed page count (computed by the
+layout, not stated), the reference file name, which departments currently use
+it, and an expandable list of every question with its answer type. It exists
+so the admin can see what each form asks and who uses it without opening a
+student's copy; the assignment itself is made on the Departments page.
+Coverage: `tests/Feature/Admin/ExitInterviewFormCatalogTest.php`.
+
+#### The CAST form (`Forms/CastForm.php`)
+
+31 questions in six sections A–F, on the CABM template. Three things about the
+paper are carried over as-is rather than tidied, and each is a data edit in
+that one file once the department confirms what it wants:
+
+- **The numbering has gaps — 1–22, 28–33, 35–37.** There is no 23–27 and no
+  34 on the printed page (a Word list artifact). Keys and printed numbers
+  keep the paper's own numbering so the app and the sheet in a coordinator's
+  hand agree; `key` is independent of `n`, so renumbering is a change to `n`
+  alone.
+- **Q33 is a five-point rating** (`excellent` / `very_good` / `good` / `fair`
+  / `poor`), the one non-text question.
+- **The paper's Section A is "OJT Experience"**, so the template's
+  student-information block is headed **"Student Information"** without a
+  letter on this form (`ExitInterviewForm::$studentInfoHeading`), exactly as
+  the CAST page prints it. The masthead reads "College of Arts, Sciences, and
+  Technology (CAST)", then the paper's own title on ONE line — "EXIT
+  INTERVIEW QUESTIONNAIRE FOR ON-THE-JOB (OJT) STUDENTS" (318.6pt at the
+  masthead's 9.4pt) — with its subtitle "On-the-Job Training (OJT) Program"
+  in the template's second title slot (`ExitInterviewForm::$subtitle`, which
+  the layout prints there whenever a title takes only one line); there is no
+  preamble.
+
+##### Verified against the reference (2026-09-15)
+
+Once the CAST PDF was in `docs/reference/`, every text run was read off both
+references' content streams (pdf.js, positions and all) and compared to the
+two form definitions string-for-string: **every section heading, every
+question's number and wording, the section membership, the four CABM
+"Please explain" labels, the five CAST rating options, both mastheads and the
+CABM preamble match — zero differences.** The one CAST deviation that check
+found (the title split across two lines with the subtitle dropped) was fixed
+the same day; the CABM preamble's line BREAK differs from the paper because
+condensed Tahoma fits "The information collected" on line one and Helvetica
+does not — the words are identical, and that is the documented type
+substitution, not a transcription error.
+
+**The verification is now a permanent guard, not a one-off.**
+`tests/Fixtures/exit-interview-references.json` holds the papers' own words
+(generated from the PDFs, not typed from the definitions), and
+`tests/Unit/Support/ExitInterviewFormsTest.php` holds every form in the
+catalogue to it — headings, numbering and wording, section order, labels,
+options, masthead, preamble — plus that each form's `reference` file actually
+exists in `docs/reference/`. Rewording, renumbering or moving a question is
+therefore a conscious edit to the fixture as well, never a silent drift from
+what the department prints. Proven to bite: a one-word change to Q22 and a
+28 → 23 renumbering each fail it.
+
+What the guard deliberately does NOT hold a form to is the **template**, which
+is the CABM one on every form by direction and differs from the CAST paper in
+four ways worth knowing when the department reviews the printout: the paper
+is **US Letter** (612 x 792) where the template is long bond (612 x 936); the
+paper has **no ruled answer lines** (only two stray ones under Q1–2) where
+the template rules five per answer; the paper's student block lists **Year
+Level, OJT Company/Agency, Department/Section, OJT Period and Total Number
+of OJT Hours** where the template prints its own Section A fields (Year Level
+has no template equivalent); and the paper closes with an **attestation line,
+"Student's Name", and "Interviewed by / Reviewed by" signatories** where the
+template prints the student signature row, the coordinator's compliance
+block and the coordinator/dean signatories.
+
+Demo: `CastExitInterviewDemoSeeder` gives `mdcstudent` (submitted),
+`mdcstudent2` (reviewed) and `mdcstudent3` (draft) one CAST form each, so
+`mdccore`'s page, Summary Report (with a Q33 tally) and four-page PDF are
+non-empty on a fresh seed — the CAST counterpart of
+`CabmbExitInterviewDemoSeeder`.
 
 ### The write rule is deliberately NOT the project-wide one
 
@@ -1853,8 +2267,9 @@ typed, the blank prints blank; **hours are never fabricated**.
 
 ### Draft, submit, lock — and the coordinator's own block
 
-- A **draft** validates nothing; a **submit** requires all fourteen answers and
-  all four Yes/No choices. Half an interview handed to a coordinator is worse
+- A **draft** validates nothing; a **submit** requires every answer on the
+  form (all fourteen and all four Yes/No choices on CABM; all thirty-one on
+  CAST, Q33's rating included). Half an interview handed to a coordinator is worse
   than none, but a student must be able to stop typing and come back.
 - **Submitting locks the student's half permanently** — there is no unsubmit.
   It notifies the batch's own coordinator (`batches.coordinator_id`, the single
@@ -1898,8 +2313,20 @@ remark cannot be truncated off the foot of the form either.
 printed copy and the coordinator's filed copy cannot drift.
 
 **THE BLADE HOLDS NO GEOMETRY.** Every position is computed by
-`App\Support\ExitInterviewFormLayout::document()` from one horizontal grid and
-one vertical rhythm; the blade is three loops over the result. That is
+`App\Support\ExitInterviewFormLayout::for($form)->document()` from one
+horizontal grid and one vertical rhythm; the blade is three loops over the
+result. **Since 2026-09-15 the layout is an instance per FORM
+(`Layout::for('cabm')` / `for('cast')`, cached by key) and the questions
+PAGINATE AUTOMATICALLY**: a page breaks before any question whose answer box
+would cross `CONTENT_BOTTOM` (882.5pt, folio less clearance), a section
+heading travels with its first question so it can never sit alone at the
+foot of a page, and the coordinator's block is measured first on scratch
+arrays and moved whole to a fresh page when the last page cannot hold it.
+For the CABM form this reproduces the hand-stated break after question 7 to
+the hundredth of a point (page bottoms 868.85 / 871.37, unchanged); the CAST
+form comes out at four pages, computed rather than stated. The masthead's
+college line and title lines are slots filled from the form; the measured
+baselines, faces and sizes are fixed. That is
 deliberate and is the whole point of the 2026-08-30 rebuild: the first cut
 hand-placed some sixty coordinates in the blade, which is exactly the shape
 that lets spacing drift, one edit at a time, into what the reference itself
@@ -1998,9 +2425,10 @@ The rebuilt form fixes each of those. Load-bearing details:
     (the reference's own page-2 bottom was 882.05, so the envelope is
     unchanged).
 
-The blank form and a fully filled one both come out at **exactly two pages**,
-asserted on both download paths, and **no font is embedded** — a filled
-download is about 6KB.
+The blank CABM form and a fully filled one both come out at **exactly two
+pages**, asserted on both download paths; the CAST form at **exactly four**
+(`CastExitInterviewTest`). **No font is embedded** — a filled download is
+about 6KB (CABM) / 8.5KB (CAST).
 
 ### Coverage
 
@@ -2018,6 +2446,79 @@ lock, the completed/dropped split, the page size) and
 `tests/Feature/Coordinator/CoordinatorExitInterviewTest.php` (program scoping,
 the 403s, the coordinator block never touching `responses`, and the draft that
 cannot be signed off) cover the endpoints.
+
+Since 2026-09-15 the layout test runs its pitch, box and folio cases over
+EVERY form in the catalogue, pins that the CABM form still breaks after
+question 7 onto two pages with its measured bottoms, and adds the CAST cases
+(auto-pagination without an orphaned heading, the rating row, the per-form
+masthead). `tests/Feature/Student/CastExitInterviewTest.php` covers the
+department resolution, CAST validation (the missing-question 422, the rating's
+option set, a CABM `q2_choice` meaning nothing), the `form_key` snapshot
+surviving a re-assignment, the four-page PDF, and the CABM reference names
+never printing on a CAST form; `tests/Feature/Admin/ExitInterviewFormCatalogTest.php`
+covers the admin catalogue and the department assignment (required on create,
+in the catalogue's keys, changeable on edit, unknown key → default).
+
+### Summary Report — every intern's answer gathered per question
+
+Built 2026-09-10 at the project owner's request, narrowing Hard Rule #4 a
+second time. This is the aggregate **Summary Report on Student Exit
+Interview** that Hard Rule #4 used to keep out of scope: instead of one row
+per student, every in-scope intern's answer to question 1 is gathered
+together, then question 2, and so on — `GET coordinator/exit-interviews/summary`
+via `CoordinatorExitInterviewController::summary()`.
+
+**Reached as a "Summary Report" tab on the same `CoordinatorExitInterviewsPage.vue`,
+not a second nav item or route.** The project owner asked for it inside the
+existing Student Exit Interviews page rather than as its own sidebar entry.
+
+- **Scope is `coordinatorProgramIds()`**, exactly like the by-student queue,
+  with the identical optional `program_id` narrowing (403 out of scope). The
+  view is **combined across every in-scope program by default** — not
+  per-program tabs like the Annual SIPP report editor — since the client's ask
+  was framed as "one page gathering all the answers," with the program filter
+  available to narrow it.
+- **Filtered by `academic_year`** (via `batches.academic_year`, the same
+  column the Annual SIPP/HTE reports key on), defaulting to the most recent
+  year that has any batch in scope.
+- **DRAFTS ARE EXCLUDED — only `submitted` and `reviewed` interviews feed
+  it.** A draft can be blank or half-typed, and only a submitted interview is
+  guaranteed to carry every answer (`StoreExitInterviewRequest`
+  enforces that on submit); including drafts would let an in-progress form
+  skew a tally into looking like a completed one. This is the opposite of the
+  by-student queue, which deliberately DOES include drafts (see above) — the
+  two answer different questions ("who has started?" vs. "what did people who
+  finished actually say?").
+- **Deliberately NOT curated, unlike the Annual SIPP / HTE / Group Info Sheet
+  report editors.** Those exist so a coordinator can correct messy real-world
+  source data (a mistyped company name, a missing hire date) before filing an
+  official annex. There is nothing to correct here — every answer is text the
+  student already submitted themselves — so this is a **live read, recomputed
+  on every request, with nothing persisted.** No `manual_rows`, no
+  `deleted_ids`, no override JSON column.
+- **No PDF export.** Unlike the per-student form, there is no reference
+  document for this aggregate — `docs/reference/` has no facsimile to measure
+  it against — so a PDF here would be an unmatched, made-up layout rather than
+  a measured one. Easy to add later against the same query if ever needed.
+- The question catalog (number, section heading, text, type, and a rating's
+  options) is read straight off the coordinator's department's
+  **`ExitInterviewForm`** rather than re-declared — it already backs the PDF
+  and cannot drift from the actual form wording. **One form per report**: only
+  interviews snapshotted under that form's key are gathered; see One
+  template, one hardcoded form per department above.
+- **Choice questions (CABM's q2/q7/q10/q11) carry a `{yes, no, unanswered}` tally**
+  alongside the same per-student answer list; a student who picked Yes/No but
+  left the explanation blank still appears (with `text: ''`), since the choice
+  itself is an answer.
+- **A blank text answer is skipped from that question's list entirely**,
+  matching the app-wide "skip fields whose value is blank" convention — it is
+  not rendered as an empty row.
+
+Coverage: `tests/Feature/Coordinator/ExitInterviewSummaryTest.php` — gathering
+answers under their own question, draft exclusion (and that a `reviewed`
+interview still counts), blank-answer skipping, choice tallies including
+`unanswered`, program scope (403 + filtering), academic-year default/filter,
+and the empty-but-valid shape when nobody has submitted yet.
 
 ### Demo data
 
@@ -3110,52 +3611,749 @@ It is the only **marketing** surface in the app; every other public route
   would put an API round trip in front of every public visitor's first paint.
   **This is not a regression**: `/` already landed a signed-in user on the login
   form, because `LoginPage.vue` has never redirected an authenticated user.
-- **The preview cards are illustrations, not dashboards.** The hero's stat grid
-  and the Daily Time Record panel are static markup. The rule that dashboards
-  render only fields the API returns governs the four REAL dashboards — this
-  page has no session to read from. Both carry `aria-hidden`, so a screen reader
-  is never told these are the visitor's own numbers. **Do not wire either to an
-  endpoint.** The one figure that is real is **486**, the SIPP requirement the
-  seeders write into `batches.required_hours`.
-- **Animation is shared with `LoginPage.vue`, not reimplemented.** `.reveal`,
-  `bg-drift` and `.blob-a/.blob-b` are the same mechanism, including the inline
-  `--d` custom property that lets the sub-`lg` media query halve the stagger (a
-  stylesheet cannot override an inline `transition-delay`, but it can re-derive
-  from a custom property). `.on-scroll` extends the same grammar below the fold
-  via ONE shared `IntersectionObserver` that unobserves on entry, so a section
-  never re-animates on a second pass.
-- **Reduced motion is a single switch**: one `prefers-reduced-motion` block
-  stills every animation, and the observer is skipped entirely rather than being
-  neutralized in CSS after the fact.
-- **Colour follows the existing rules.** Exactly one filled blue button per
-  viewport — the nav CTA and the hero CTA never share one, since the hero's
-  scrolls away before the roles section arrives. Only the four sanctioned
-  accents appear, in the established order (blue neutral, emerald good, amber
-  waiting, rose needs attention).
-- **The three role links in the nav target INDIVIDUAL role cards**
-  (`#role-student`, `#role-supervisor`, `#role-coordinator`), not the `#roles`
-  section. The source design lists four nav links against only three content
-  sections, so pointing them all at `#roles` would ship three controls doing the
-  identical thing. Each card carries its own id plus `scroll-mt-24` (6rem, which
-  clears the `h-19`/76px sticky header).
+- **The three mock-UI cards are DEMONSTRATIONS, not dashboards.** The journal,
+  Daily Time Record and week-bundling panels each perform the rule their heading
+  states when the visitor operates them (see the 2026-09-10 interaction pass
+  below), but every state is a local `ref` — **there is no session, no fetch and
+  no endpoint behind any of them, and none may ever be wired to one.** The rule
+  that dashboards render only fields the API returns governs the four REAL
+  dashboards; this page has nothing to read from.
+  **They are deliberately NOT `aria-hidden` any more** — that was correct while
+  they were inert markup and became wrong the moment they held real `<button>`s,
+  since hiding them would have put working controls out of reach of a screen
+  reader. Each control carries its own `aria-label` naming it as the *sample*
+  it is.
+  The one figure that is real is **486**, the SIPP requirement the seeders write
+  into `batches.required_hours`. The DTR mock opens at `146 / 486 hrs` and
+  reaches `154 / 486 hrs` once the sample day is closed; 146 and the 8h 33m
+  session are illustrative, 486 is not.
+- **The hero's stat strip is GONE (2026-09-16, project owner).** It carried
+  Departments 3 · Programs 7 · Roles 4 — true statements about the
+  institution, but nothing about the product — and the owner called them
+  irrelevant. The `facts` const, the `.hero-plinth`/`.facts`/`.fact` rules and
+  their 640px overrides are all deleted; the hero copy now centres in the
+  space below the header on its own. (An earlier fourth, "Entries per day /
+  1", had already been dropped on 2026-09-10.)
+### Redesign, 2026-09-09 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
 
-Source design: Figma file `IcDGFFr5XSdfR96m1GRKj7`, frame `Landing — Desktop 1440`;
-the translation table from Figma variables to Tailwind tokens is
-`docs/LANDING_PAGE_HANDOFF_1.md`. Gradient stops cannot bind to Figma variables,
-so the hero and closing band carry raw hex in Figma matching `blue-900` /
-`blue-800` / `teal-500` — in code they are the `bg-linear-to-br from-blue-900
-via-blue-800 to-teal-500` class `LoginPage.vue` already ships.
+The page was rewritten end to end against a written specification: a campus
+photograph, a serif display face, and a single gold accent, in place of the
+previous Figma-derived blue/teal gradient treatment. **The entry below records
+what was built and why; it is not a sign-off.** The superseded Figma notes
+(file `IcDGFFr5XSdfR96m1GRKj7`, `docs/LANDING_PAGE_HANDOFF_1.md`) are archived
+in `docs/PROJECT_HISTORY.md` rather than kept here.
 
-**KNOWN DEVIATION from the design: the footer's `Privacy` and `Support` links
-are NOT built**, because neither page exists and a landing page linking to
-nowhere is worse than one that does not offer the link. The footer ships the
-brand block plus a `Sign in` link instead. Add them when there are real
-destinations.
+- **This is the ONE page in the SPA styled entirely by a scoped `<style>`
+  block, with ZERO Tailwind utilities**, and that is deliberate rather than
+  drift. Every other surface follows the Tailwind conventions above; this one
+  is a marketing page with its own type scale, its own colour system and no
+  shared components, so mixing the two methods would have meant maintaining a
+  parallel token set in the config for a single route. One file, one method.
+  **Do not "bring it in line" by converting it to utilities** — the tokens
+  below have no Tailwind equivalents.
+- **Design tokens are CSS custom properties on the page root**: `--ink
+  #06172e`, `--navy #0e2c53`, `--blue #1c56b8`, `--gold #d4a017`, `--paper
+  #f3f5f9`, `--line #d9e0ea`, `--text #16273d`, `--muted #5a6c85`. The dark
+  navy and the gold are sampled from the campus building's own trim and
+  glazing. **Gold is the only accent** — buttons, step numerals, bullets, the
+  eyebrow. `--blue` and a mock-only `--ok` green appear *exclusively* inside
+  the three illustrative mock-UI cards, where a status pill has to read as a
+  status rather than as a call to action.
+- **The serif (`--display`) is a system stack — Iowan Old Style → Palatino →
+  Georgia — and no webfont is loaded.** It is used for headings, the hero and
+  stat numerals, and the step numbers only; body text inherits the app's
+  existing sans. The serif is what keeps this page visually distinct from the
+  slate-and-blue dashboards behind the login.
+- **The campus photo is imported as an ES module**
+  (`@/assets/images/mdc-campus.jpg`) and bound with `:style="{ backgroundImage
+  }"`, NOT written as a `url()` inside the stylesheet — that is what makes Vite
+  fingerprint and emit it (`mdc-campus-<hash>.jpg`). It lands in the entry
+  chunk rather than a page chunk, which is correct and follows from the eager
+  import above.
 
-Two other gaps carried over from the handoff, neither blocking: there is **no
-mobile Figma frame** (responsive behaviour below `lg` follows `LoginPage.vue`'s
-breakpoint as a code-side judgement call), and **`teal-50` is used once** (the
-Geofence chip) without being in the Figma token collection.
+#### The photo was cropped, and that is load-bearing
+
+**The supplied asset had the college's wordmark and seal baked into it** — a
+title graphic reading "Mater Dei College / Tubigon, Bohol" occupying the top
+~29% of the frame. Rendered as-is it produced two real defects, both caught on
+screen and not in theory:
+
+- in the hero, the photo's wordmark sat directly beside the nav's own
+  "InternTrack / Mater Dei College" lockup — two competing wordmarks in one
+  band, with the seal half-hidden behind the nav;
+- in the closing band it was worse: the photo's "Tubigon, Bohol" printed
+  roughly 280px above the section's own "Tubigon, Bohol" subline, so the same
+  three words appeared twice in one viewport.
+
+**The fix was applied to the ASSET, not the CSS** — the top 345px were trimmed,
+taking the source from 2560x1202 to **2560x857**. The alternative considered
+and rejected was a `background-size` zoom (`auto 135%` + `center bottom`),
+which works but is viewport-dependent and would have meant deviating from the
+specified `background-position: center 62%` / `center 55%`. Cropping the
+source keeps both of those values exactly as specified, behaves identically at
+every width, and yields a better hero aspect (2.99:1 against the original
+2.13:1). **The original uncropped file is untouched at its source location** —
+this is reversible.
+
+Worth knowing for anyone replacing the photo: `background-size: cover` on a
+container taller than the image's own aspect has **no vertical excess to
+position against**, so `center 62%` silently does nothing at desktop widths.
+That is why a crop, not a position, was the answer. A replacement photo must
+therefore arrive already free of any baked-in titling.
+
+#### Structure and behaviour
+
+- Nine sections in order: sticky nav · hero · the argument (three mock-UI
+  cards) · roles (2x2, `v-for`) · how it works (a five-step `<ol>`) · the
+  record · everything else · closing band · footer.
+- **Numbering appears in exactly one place — the five how-it-works steps —
+  because that is the only genuine sequence on the page.** Nothing else is
+  numbered.
+- **There are no icons anywhere**, by design. The one piece of vector art is
+  the nav's stroked roof glyph.
+- **The nav swaps at `scrollY > 24`**: transparent over the hero, then `--ink`
+  at 92% with a backdrop blur. Under 960px the links collapse into a
+  toggle-driven panel carrying `aria-expanded`. The scroll listener is
+  `{ passive: true }` and is **removed in `onUnmounted`**.
+- **ALL scroll-triggered entrance animation was removed**, including the shared
+  `IntersectionObserver` the previous version borrowed from `LoginPage.vue`.
+  The only motion left is the nav background transition and button hover/active
+  states, and a `prefers-reduced-motion: reduce` block stills even those. The
+  page therefore schedules no observer work at all.
+- Accessibility: a skip-to-content link, `:focus-visible` outlines in `--gold`,
+  and `role="img"` + `aria-label` on both photo layers (they are background
+  images, so they carry no intrinsic alt text).
+- Verified in a real browser at **375 / 768 / 1440**:
+  `documentElement.scrollWidth === clientWidth` at all three, zero elements
+  overflowing their container, and no console errors.
+
+**KNOWN DEVIATION, carried forward: the footer's `Privacy` and `Support` links
+are still NOT built**, for the original reason — neither page exists, and a
+landing page linking to nowhere is worse than one that does not offer the link.
+The footer ships the brand block and the section links.
+
+#### Refinement pass, 2026-09-10 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
+
+Six corrections to the page above. No section was added, removed, renamed or
+reordered, and no copy was rewritten. **This entry records what changed and why;
+it is not a sign-off.**
+
+- **THREE sign-in buttons, not five** — nav, hero, closing band. The "Sign in to
+  your portal" button in the record band and the `Sign in` entry in the footer
+  link list are gone. Five calls to the same action across one page reads as
+  pestering rather than as an invitation, and the record band's paragraph is a
+  stronger ending than a button. The record band deliberately got **nothing** in
+  its place, not even a text link. Note the nav's desktop and mobile-panel
+  copies are the same button at two breakpoints and are mutually exclusive by
+  media query, so exactly three ever render.
+- **No uppercase anywhere on the page.** The hero eyebrow, the stat labels and
+  the journal mock's field label were all tracked-out caps — the single most
+  generic treatment available, and the thing that made the page look like every
+  other product site. Now sentence case at their own sizes. The only
+  `letter-spacing` left is `-0.01em` on the two serif display headings, which is
+  optical tightening on large type, not tracking.
+- **The hero headline no longer sits on the chapel.** The headline is capped at
+  `clamp(2.4rem, 5vw, 3.9rem)`. *(The `68% 62%` photo position and the `46rem`
+  copy cap recorded here were superseded on 2026-09-10 — see the composition
+  pass below for the current `72% 46%` and `34rem`.)*
+- **The stat plinth is the page's one signature element**, and it fixed a real
+  contrast problem rather than being decoration: the figures previously floated
+  over sunlit grass with nothing behind them. It is a full-bleed strip pinned to
+  the foot of the hero — `rgba(6,23,46,.72)`, `backdrop-filter: blur(6px)`, a 1px
+  top hairline — with its contents on the same `.shell` grid as the headline.
+  *(Its cells gained full-height divider rules on 2026-09-10; the week rail has
+  since taken over as the page's boldest device.)*
+  **"Entries per day / 1" was dropped**; it is a rule, not a statistic. Three
+  facts remain.
+- **Ragged heights fixed by measurement, not by eye.** The three mock cards now
+  flex-column with `min-height: 210px` and `margin-top: auto` on the footer, so
+  all three headings share one baseline (verified: `1419px` for all three at
+  1440). The roles cells stay equal height but top-align their content, with
+  `.role-body` capped at `44ch`. The steps grid went to
+  `3.5rem 18rem 1fr` — 18rem is measured against the longest title, which wrapped
+  at 15rem — and to `align-items: baseline`, so each numeral sits on its title's
+  first baseline instead of floating above it.
+- **The lower half no longer runs out of content.** The record band's
+  `align-items: center` is gone (it floated the shorter column and opened the
+  gap beneath it); `#record` and `#more` drop to `clamp(4rem, 7vw, 6rem)`; the
+  caps grid is `align-content: start` with a `2.25rem` row gap.
+- **The closing band and footer are no longer one slab.** The closing scrim
+  deepens downward to `rgba(6,23,46,.94)` so the photograph fades into the
+  footer's flat `--ink` instead of stopping at a hard edge, and the footer
+  carries a 1px `rgba(255,255,255,.1)` top hairline. The footer is three columns
+  at desktop — wordmark / links / coordinator note — stacking in that order
+  below 960px.
+
+**TWO CSS TRAPS WERE HIT AND BOTH ARE WORTH KNOWING, because each looked
+correct in the source and only failed on screen:**
+
+1. **`color` does not reach the plinth by inheritance.** The plinth is a
+   SIBLING of `.hero-inner`, which is the element carrying `color: #fff`. Moving
+   the facts out of `.hero-inner` therefore dropped the numerals back to the
+   page's own `--text` (`#16273d`) — dark navy on a dark navy strip, invisible —
+   while the labels stayed readable because they set their own colour. The
+   plinth now declares `color: #fff` itself.
+2. **A bare `margin: 0` on an element that also carries `.shell` kills the
+   centering.** `.facts` sits on the same element as `.shell`, so `margin: 0`
+   overrode `margin: 0 auto` and pushed the figures to the viewport edge while
+   the headline stayed on the 1200px grid — a 120px misalignment at 1440. It is
+   `margin: 0 auto` now. The same hazard is why `.hero-copy` exists as a
+   separate wrapper: capping `.hero-inner` at 46rem would have overridden the
+   shell's own max-width and pulled the headline off that grid too.
+
+**THE NAV MARK IS NOT THE COLLEGE SEAL, and that is a deliberate choice.** The
+seal does exist at `web/public/images/mdc-logo.png` (LoginPage renders it at
+144px and 80px) but **not** under `web/src/assets/`. It carries three concentric
+rings of text — "MATER DEI COLLEGE", "SAPIENTIA / CARITAS / ORATIO", "Tubigon,
+Bohol Philippines", "MCMLXXXIII" — plus a beaded border, and is illegible below
+roughly 80px; at the 30px a nav mark wants it is a grey smudge. The inline SVG
+was instead redrawn as the campus chapel's **twin-pitch roofline** — a peaked
+centre with two lower wings, traced from the building in the hero photograph, so
+the mark and the photo behind it are the same building.
+
+**Verified in a real browser at 375 / 768 / 1440**: no page-level horizontal
+scroll and **zero** elements overflowing their container at any of the three,
+three sign-in buttons visible at desktop (three at mobile with the menu open,
+two with it shut), zero elements computing `text-transform: uppercase`, all
+three card headings on one baseline, no step title wrapping, and no console
+errors.
+
+#### Interaction pass, 2026-09-10 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
+
+The page stopped being something you only read. The three mock cards and the
+roles grid became things a visitor operates, the nav tracks where they are, and
+the sign-in count came down again. No section was added, removed, renamed or
+reordered; no copy was rewritten; the palette is untouched. **Every state below
+is a plain `ref` — no store, no animation library, no icon package, no new
+dependency of any kind.** This entry records what changed; it is not a sign-off.
+
+- **TWO sign-in buttons, not four** *(superseded 2026-09-10 by the composition
+  pass below, which cut the closing band's copy and left exactly ONE, in the
+  header)* — the nav (with its mobile-panel twin) and
+  the closing band, which never share a viewport. **The hero's sign-in is
+  gone**: it sat directly under the sticky nav's own gold pill, so the same call
+  appeared twice in one screenful. The hero keeps a single action, "See how it
+  works", promoted from the ghost outline to the gold pill because it is now the
+  only one. `.btn-ghost` had no other caller and was deleted with it.
+- **The journal card locks.** Submit flips the pill Open→Locked (blue→gold),
+  dims the three skeleton bars, and swaps the footer to "Locked Tuesday, 8
+  September" with an **Undo** — the word a coordinator would actually use for
+  reversing a lock, where "Reset" would describe something the real system has
+  no concept of.
+- **The time-record card runs a full day.** `out → in → closed → out` on one
+  button: `Not clocked in` (grey) with an empty Tuesday row, `Clocked in`
+  (green) showing `7:58 — …`, then `Day closed` (grey) showing `7:58 — 16:31 ·
+  8h 33m`. The running total moves `146 → 154 / 486 hrs` as that day banks, so
+  the card demonstrates the sentence under it rather than asserting it.
+- **The week card bundles and then refuses to be edited.** The seven day cells
+  are real `<button>`s that toggle their own entry until **Bundle week** fires;
+  after that every one of them is `disabled` with the hover state gone. That is
+  the entire point the card makes, so it had to be the thing the control
+  actually does — not a caption saying so.
+- **The roles 2x2 grid became a tab set.** It was a tall wall of dark text where
+  most visitors care about exactly one of the four. Now: a `role="tablist"` of
+  four tabs over one `role="tabpanel"`, **roving tabindex** (arrows move and
+  activate with wrap-around, Home/End jump to the ends), `aria-selected` and
+  `aria-controls`/`aria-labelledby` wired both ways. The panel is two columns at
+  desktop — body left, gold-dot list right — so it is wide rather than tall, and
+  carries `min-height: 15rem` so switching tabs never jumps the page under the
+  reader. Below 640px the tab row scrolls **inside its own box** and the panel
+  stacks; deliberately not a second accordion implementation.
+- **The nav tracks the reader.** An `IntersectionObserver` with
+  `rootMargin: '-30% 0px -60% 0px'` lights the matching link with a 2px gold
+  underline. Its callback keeps a **Set of visible ids and picks the first in
+  document order** rather than "last entry wins" — those margins leave a thin
+  band where two sections intersect at once, and document order is what keeps
+  exactly one link lit instead of letting two flicker against each other. Over
+  the hero, none is lit. It is disconnected in `onUnmounted` beside the existing
+  scroll listener. This survives `prefers-reduced-motion` on purpose: it is a
+  state change, not motion.
+- **Anchor links scroll rather than jump**, via `scrollIntoView` with `behavior`
+  switched to `'auto'` when the reader asks for reduced motion. **Every anchor
+  keeps its `href`** so the links still work with no JS, and the handler calls
+  `history.pushState` so the address bar still updates — `preventDefault` alone
+  would have silently stopped that. `scroll-behavior: smooth` was deliberately
+  NOT set on a global selector: this stylesheet is scoped and must not leak into
+  the rest of the app.
+
+**EVERY INTERACTIVE ELEMENT IS A REAL `<button>`** — no click handlers on
+`div`s — which is what makes the whole page operable by keyboard alone. Mock
+controls share one small-type button style (4px radius, 1px `--line`, filling
+with `--paper` on hover); the two "Undo" affordances are borderless `--muted`
+text, underlined on hover, because undoing is a lesser act than doing. `.day`
+keeps its 34px height, clearing the 32px hit-target floor. The gold
+`:focus-visible` outline reaches all of them.
+
+**The mocks must stay the same height in EVERY state**, not just at rest — the
+`min-height: 210px` and `margin-top: auto` on `.mock-foot` are what hold the
+three card headings on one baseline while a visitor is clicking through them.
+Measured at `210 / 210 / 210` with headings at a common top in the initial,
+locked, clocked-in, day-closed and bundled states.
+
+**Verified in a real browser, by mouse and by keyboard alone**: every state in
+all three mocks cycles forward and back; Enter operates a mock button and Space
+toggles a day cell; the tab set answers Arrow/Home/End with correct roving
+`tabindex` and exactly one visible panel; the gold underline moves across all
+four links while scrolling and clears over the hero; a click scrolls the section
+into view and sets `#record` on the URL; leaving the route raises no console or
+page error. At **375 / 768 / 1440** the page itself never scrolls sideways and
+no element overflows its container — the sole element whose content exceeds its
+box is `.tablist`, which is the intended internal scroll.
+
+#### Composition pass, 2026-09-10 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
+
+One real bug and a design pass. No section was added, removed or reordered
+except the new statement band; the palette and typeface are untouched.
+
+**THE HEADER BUG, AND ITS ACTUAL CAUSE.** The header would not stay put, and no
+amount of adjusting its own rules could have fixed it: **`.page` carried
+`overflow-x: hidden`, and any ancestor whose `overflow` is not `visible`
+becomes the scroll container for its descendants** — so `position: sticky`
+resolved against that box rather than the viewport and scrolled away with the
+page. The fix is at the cause: the property is **deleted from `.page`** (with a
+comment saying why it must not come back), and the header is now
+`position: fixed`. Consequences that had to move with it:
+
+- **`.hero`'s `margin-top: -4.4rem` is gone.** It existed to pull the hero up
+  under a sticky header that was still in flow; a fixed header is out of flow,
+  so the hero starts at y=0 and simply pads itself clear.
+- **`scroll-margin-top` on `.band` went 4.5rem → 5.5rem**, clearing the 73px
+  header plus the rail. Measured: a jumped-to section lands at y=88 against a
+  header bottom of 73.
+- **The solid state deepened to `rgba(6,23,46,.96)`** so links never sit on a
+  legible piece of photograph.
+- If horizontal overflow ever reappears, **fix the element that overflows** —
+  `overflow-x: clip` is the only acceptable container-level fallback, because
+  unlike `hidden` it does not create a scroll container.
+
+**A latent bug surfaced while measuring this**: `SECTION_IDS` was in the NAV's
+order (`how, roles, record, more`) but the observer uses it to break ties by
+document order — and `#roles` sits ABOVE `#how` on the page. Whenever the
+observer's band caught both, it lit the lower link. Now in document order
+(`roles, how, record, more`) with a comment saying the two orders differ.
+
+- **The hero is a two-part composition.** The photo sits at
+  **`background-position: 72% 46%`** under a diagonal panel
+  (`linear-gradient(105deg, …)`) that is opaque where the copy is and clear
+  where the building is, so type never lies over architecture. The copy caps at
+  `34rem`; the vertical scrim is confined to the bottom 22% and does one job,
+  seating the plinth. Height dropped to `min(84svh, 720px)` — the old 92svh/820px
+  was what forced the crop. Below 900px the diagonal becomes a flat vertical
+  panel, the photo re-centres to `center 40%` and the copy goes full width.
+- **The stat plinth** is now three cells divided by full-height 1px rules. The
+  plinth's own vertical padding moved ONTO the cells — that is what lets each
+  rule run the full height of the strip instead of stopping at the container's
+  padding box — and the numerals carry `font-variant-numeric: tabular-nums`.
+- **The week rail** is the page's one bold device: seven segments under the
+  fixed header, filling with `--gold` in seven discrete steps as scroll depth
+  goes 0→1. Driven from the **existing** scroll handler (both it and the
+  `is-solid` flag derive from one `scrollY` read, so a second listener would buy
+  nothing), `aria-hidden` because the nav's active link already carries the same
+  information accessibly. Verified 0 filled at the top, 7 at the bottom.
+- **A statement band sits between the roles and `#how`** — one serif line with
+  "signature" in gold, one muted line under it, nothing else. Its job is the
+  pause; the page ran headline-body three times with no change of tempo. **It
+  carries a 1px top hairline**, which is not decoration: the roles band above it
+  is also `--ink`, and without it the two run together into one dark mass and
+  the pause reads as more of the same section.
+- **`#how` is a timeline.** The rule is drawn on `.steps::before` rather than as
+  per-row borders specifically so it can **stop at the centre of the first and
+  last numerals** — this is a sequence with a defined start and end. Each
+  numeral sits in a `--paper` circle on a `--paper` band, so the rule reads as
+  passing behind it. **Three numbers move together** — the step's vertical
+  padding, half the numeral's size, and the rule's `top`/`bottom` offsets;
+  changing the numeral alone detaches the rule from the circles, which is why
+  the 640px override restates all three.
+- **The closing band lost its "Sign in"** and became an identity plate: scrim
+  deepened to `.86 → .97`, `filter: saturate(.55)` on the photo so it reads as a
+  plate rather than a second hero competing with the first, and about a third
+  less height. **"Sign in" now appears exactly ONCE on the page**, in the fixed
+  header — which is the whole payoff of fixing the header properly.
+
+**Verified in a real browser.** The header is `position: fixed` at `top: 0`,
+visible, and its links pass an `elementFromPoint` hit test at every scroll
+position tested — including **scrolled to the very bottom of the footer**
+(scrollY 4388), which was the failure this pass set out to fix. All four nav
+links scroll to their section, land clear of the header, update the hash, and
+light the correct underline; none is lit over the hero. **No horizontal scroll
+at 375 / 768 / 1440 / 1920** with `overflow-x: hidden` gone.
+
+**KNOWN LIMITATION, stated rather than papered over: at 1440px both wings of the
+building cannot BOTH be fully in frame, and no `background-position` can fix
+it** — position pans, it does not zoom. Measured: the photo is 2560x857 and
+`cover` in a 1440x720 box scales it by 0.84 to **2151px wide, 711px wider than
+the frame**; the building occupies ~88% of the source, i.e. ~1890px rendered,
+against 1440px of viewport. Both wings would need the photo area ≤548px tall,
+which contradicts the 84svh/720px height. `72% 46%` is the tuned compromise: it
+clears the chapel peak and cross of the headline and puts the whole right wing
+in the clear half, at the cost of the left wing sitting behind the opaque panel
+— which is consistent with "the building lives in the clear right-hand half".
+At 1920px the full building does fit. Lowering the hero height is the only
+lever that would satisfy it at 1440; that is a call for the project owner.
+
+#### Chrome-removal pass, 2026-09-10 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
+
+Five changes, all subtractive in spirit: the page lost its progress rail, its
+header band and its stat slab, and gained the college's own seal.
+
+- **The week rail is gone entirely** — markup, both CSS rules, the constant, the
+  ref and the progress arithmetic. It read as a stray gold line cutting across
+  the page and reported something nobody had asked for. **Do not replace it with
+  a bar, a dot row, or any other progress indicator.**
+- **The header uses the real college seal**, at 34px in the nav and 28px in the
+  footer, `object-fit: contain`, `alt=""` (the wordmark beside it already names
+  the institution). The inline chevron is gone. **34px is the floor** — the seal
+  carries three concentric rings of type and stops being a mark below it. It is
+  never recoloured, cropped or filtered.
+- **The header has no background band at any scroll position.** `is-solid`, the
+  `backdrop-filter`, the `border-bottom` and the `scrolled` ref are all deleted,
+  and with them **the scroll listener** — it existed solely to drive that band,
+  so the page now registers no scroll handler at all.
+- **The hero is exactly one screen** (`height` AND `min-height: 100svh`), with
+  the copy centred between the header and the stat strip via `flex: 1` on
+  `.hero-inner`. Measured 900px in a 900px viewport with the next band not
+  visible.
+- **The stat strip has no fill and no blur.** The photograph runs unbroken to
+  the foot of the screen and the strip is a caption on it, not a slab in front
+  of it. Legibility comes from the hero's bottom scrim, now `62% → .78`. **If
+  the numerals are ever lost over grass, deepen that scrim — not the strip.**
+
+**THE HEADER'S COLOURS INVERT INSTEAD OF A BAND COMING BACK.** White type on a
+transparent header is unreadable the moment `--paper` scrolls under it, so the
+header carries `.nav--on-light`: wordmark to `--ink`, sub-line to `--muted`,
+links to `--text`, `color` transitioned at 0.2s. The gold pill is deliberately
+NOT inverted — gold with `--ink` text clears contrast on both grounds. A
+`text-shadow: 0 1px 12px rgba(6,23,46,.45)` belongs to the default
+light-on-dark state ONLY and is removed under `--on-light`, where it would read
+as a smudge. **The mobile dropdown panel keeps its opaque background** — a panel
+that overlays content is a different problem from a bar that sits behind it.
+
+**How the band behind the header is detected**, and why this way: every
+top-level band carries `data-tone="light|dark"`, and a second
+`IntersectionObserver` crops the root's top by the header's own height
+(`rootMargin: '-90px 0px 0px 0px'`). A band stops intersecting exactly as it
+passes up behind the header; the callback then takes the **last band in
+document order whose top has already crossed that line**, which is by definition
+the one occupying the strip.
+
+- Chosen over a `rootMargin` derived from `innerHeight`: 90px is an absolute
+  offset from the top of the viewport, so it needs **no recomputation on
+  resize** and there is no window in which a stale margin is live.
+- Chosen over `elementFromPoint` on scroll: the fixed header is itself the
+  topmost element at that coordinate, so the probe would always return the nav.
+- **This is a SECOND observer, and it has to be.** The section spy needs
+  `-30% 0px -60% 0px`; this needs `-90px 0px 0px 0px`. One
+  `IntersectionObserver` instance carries exactly one `rootMargin`, so a single
+  instance cannot answer both questions. Both are disconnected in `onUnmounted`.
+
+**Verified over every ground the header can cross** — hero photograph, the
+`--paper` bands, the `--ink` roles band, the statement band, the `--navy`
+record band, the closing band and the footer position — with the computed link
+colour matching the band's declared tone in all seven cases.
+
+Worth knowing: **at 1440x900 neither the closing band nor the footer can ever
+sit behind the header** — there is not enough document below them to scroll
+them up that far, and the band actually occupying the strip at maximum scroll
+is `#more`. The footer case was therefore verified at a short viewport
+(1440x500) where those bands do reach it. A first attempt to test it by
+scrolling to `footer.top + 40` silently clamped to maximum scroll and "passed"
+without the page moving at all.
+
+**The hero photo is `background-position: 62% 50%`**, tuned on screen at
+1440x900 and 1280x800: it lifts the chapel's peak and cross clear ABOVE the
+headline while keeping the entrance and the long right wing in the open half.
+At 50% the peak lands behind the type; at 70% the chapel vanishes under the
+copy panel and only a wing is left.
+
+**THE SECOND VALUE IS INERT, and that is measured rather than assumed.** The
+photo is 2.99:1 against a viewport nearer 1.6:1, so `cover` scales to fill the
+HEIGHT and the rendered height equals the frame exactly — **`excessY: 0` at both
+1440x900 and 1280x800**. Changing `50%` to any other number moves nothing.
+
+**The full-building limitation got WORSE, not better, and the arithmetic says
+why.** Going to 100svh raises the scale factor, and a taller frame on a very
+wide photo means MORE horizontal crop: excessX went from 711px at the old
+84svh/720px to **1248px at 1440x900** (scale 1.05, rendered 2688x900). The
+building renders **2363px wide against a 1440px frame** — 64% wider than the
+viewport — and 2100px against 1280px. No `background-position` can fix that;
+position pans, it does not zoom. Fitting the whole building needs the photo area
+about **548px tall**, which is what `min-height: 100svh` rules out. The two
+requirements — a full-bleed one-screen hero and the entire building in frame —
+are mutually exclusive on this photograph; only a shorter hero or a
+differently-framed source resolves it.
+
+Nothing clips at **375x667**: the hero is 667px, and the lede and CTA both sit
+above the stat strip, so the `92svh` phone fallback was not needed. No
+horizontal scroll at **375 / 768 / 1440 / 1920**; the only element whose content
+exceeds its box is the tab row's intentional internal scroll.
+
+#### Copy and contact pass, 2026-09-13 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
+
+Eight fixes. Seven are confined to `LandingPage.vue`; the eighth adds the
+landing page's **first backend dependency** — a public contact endpoint.
+
+- **The nav now reads in DOCUMENT order** — Who uses it · How it works · The
+  record · Others. It led with "How it works" while `#roles` sits above `#how`
+  on the page, so the scroll-spy lit the *second* link first and the nav
+  disagreed with the thing it navigates. **`SECTION_IDS` was deliberately NOT
+  touched** — it was already in document order and the observer's tie-break
+  reads it, so "fixing" both would have reintroduced the mismatch from the other
+  side.
+- **"Everything else" → "Others"**, label only; the `#more` id, the section and
+  its "And the rest of the paperwork" heading are unchanged.
+- **The hero lede is one line**: *"The OJT logbook, kept as it happens rather
+  than reconstructed later."* It was three sentences walking through all three
+  roles — a summary of the page rather than an opening for it.
+- **The closing line reads "Cabulijan, Tubigon, Bohol"**, and the three
+  department codes after it became **real `<button>`s** that open a bordered
+  panel inline, directly under the line. Inline and INSIDE the band on purpose:
+  this is a footnote on the line above it, and a modal would make a
+  one-sentence gloss feel like a destination. One open at a time, `aria-expanded`
+  on each, and Escape closes. The panel copies `.role-card`'s border, radius and
+  translucent fill so the page's two translucent-on-dark surfaces are one thing.
+  **The gloss text is `departments.name` as the seeders set it** (see Domain
+  Facts) rather than reworded, so page and database describe the institution
+  identically.
+- **"College website"** points at `https://www.materdeicollege.edu.ph/` with
+  `target="_blank" rel="noopener noreferrer"`; its TODO is gone.
+- **The footer's "Getting in" heading and its "Sign in" row are gone**, and
+  `.footer-signin` with them — sign-in is permanently in the fixed header, so
+  both repeated something already on screen. The two lines the header *cannot*
+  say are kept, and the list's top margin dropped 0.9rem → 0.35rem because the
+  0.9 existed to clear the heading and left the column starting visibly lower
+  than the brand block beside it.
+
+##### The contact form, and why it needed a server
+
+**"Email the OJT coordinator" is a `<button>`, not a `mailto:`** — the whole
+point is that the coordinator's address is never published to the client. It
+opens a modal (name, email, message ≥ 20 chars) that POSTs to a new endpoint.
+
+- **`POST /api/contact`, public and `throttle:5,1`.** Unauthenticated by
+  necessity: the person this exists for is the one who never received their
+  credentials and therefore *cannot* sign in to ask about them. That is also why
+  the throttle is tight — it is an open endpoint that sends real mail.
+- **`App\Http\Requests\ContactCoordinatorRequest`** holds validation. The only
+  non-structural rule is the 20-character floor on the message: a one-word
+  "help" costs the coordinator a round trip to find out what was meant.
+- **`App\Mail\CoordinatorContactMessage`** sends FROM the system address
+  (resolved through the existing `SystemMailFrom`) and sets **`replyTo`** to the
+  visitor. Putting a stranger's address in `From` is what SPF and DKIM exist to
+  reject; `replyTo` is what makes the form useful. **`SystemMailFrom::resolve()`
+  returns `?string`** and null means "fall back to `MAIL_FROM_ADDRESS`" — so the
+  envelope leaves `from` UNSET in that case. Passing the null into
+  `new Address()` throws instead of falling back.
+- **Not queued**, matching every other mail in the project: nothing implements
+  `ShouldQueue` and deployments run `QUEUE_CONNECTION=sync` with no worker, so
+  queueing it would silently never send.
+- **The recipient never reaches the client.** It is read from
+  `config('mail.coordinator_address')` (new `MDC_COORDINATOR_EMAIL`) and handed
+  straight to the transport; the response says only whether the message was
+  accepted, and a delivery exception goes to the log — its text can carry the
+  SMTP conversation, which names the recipient.
+- **Unset, the endpoint answers 503 and says so.** Reporting "sent" when nothing
+  was addressed would leave a student believing somebody had been told, which is
+  the worse of the two failures. `.env.example` carries the key blank.
+
+**ACTION REQUIRED: set `MDC_COORDINATOR_EMAIL` in `.env`.** Until it is set the
+form is reachable and correctly answers 503; `.env` was deliberately left alone.
+
+The modal traps focus (queried live, since the form swaps its fields for a
+success panel), closes on Escape and on backdrop click, returns focus to the
+button that opened it, disables submit in flight, and renders **inline** success
+and error states. Inline rather than the app's toast: `ToastHost` is a
+Tailwind-styled component and this page carries zero Tailwind by design.
+
+**Verified end to end.** Server-side: 503 unconfigured, 200 valid with the mail
+addressed to the coordinator and `replyTo` the sender, 422 on a short message
+and on a bad address, and the Blade rendering without leaking the recipient. In
+a browser: nav order and scroll-spy agree; all three department panels open,
+swap, toggle off and answer Enter; Escape and backdrop close the modal; the 422
+surfaces inline with its own wording and the form stays filled. At **1440 / 960
+/ 375** nothing overflows, the panel and modal both fit, and the location line
+wraps to two lines at 375.
+
+#### Palette alignment and a way back, 2026-09-14 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
+
+The landing and sign-in pages read as a different product from the dashboards
+behind them — a navy-and-gold palette sampled from the campus photograph on
+one side, a blue-900→teal gradient on the other, against an app whose
+sidebar is `blue-600 → indigo-700`, whose content sits on `slate-100` and
+whose one action colour is `blue-600`. This pass moves both onto the app's own
+tokens and adds the one navigation the sign-in page was missing. **This entry
+records what changed and why; it is not a sign-off.** Four files:
+`LandingPage.vue`, `LoginPage.vue`, `components/auth/AuthCardShell.vue`, and
+the two pages that shell frames (`ForgotPasswordPage.vue`,
+`ResetPasswordPage.vue`) for their own buttons and links.
+
+**The landing page's custom properties now POINT AT the Tailwind theme
+variables** rather than holding a parallel set of hexes — `--ink:
+var(--color-slate-900, #0f172a)` and so on. Tailwind v4 emits every used token
+as a `--color-*` variable on `:root`, so the scoped stylesheet reads literally
+the same value `bg-blue-600` does, and the two cannot drift. The hex fallback
+is the token's own sRGB value, there only for the day a token stops being used
+anywhere else and is pruned from the build. The same precedent already exists
+in `style.css` (`var(--color-blue-700, #1d4ed8)`). The mapping:
+
+| property | was | now |
+|---|---|---|
+| `--ink` | `#06172e` | `slate-900` |
+| `--navy` | `#0e2c53` | `indigo-700` (the sidebar's deep end) |
+| `--blue` | `#1c56b8` | `blue-600`, plus `--blue-hover`/`--blue-active` = `blue-700`/`800` |
+| `--gold` | `#d4a017` | `amber-400` |
+| `--paper` | `#f3f5f9` | `slate-100` |
+| `--line` | `#d9e0ea` | `slate-200` |
+| `--text` | `#16273d` | `slate-800` |
+| `--muted` | `#5a6c85` | `slate-600` |
+| `--ok` | `#1f7a4d` | `emerald-700` |
+
+- **Gold is no longer an action colour anywhere.** `.btn-gold` is `.btn-primary`
+  — `blue-600` with white text, `blue-700` on hover — the same pill the
+  dashboard hero CTAs use. The skip link and the step numerals went blue too.
+  **The property is still named `--gold`** and holds amber-400, because the app
+  DOES have a secondary accent and it is amber: the student dashboard's "today"
+  dots and every notice banner. It stays exactly where a spot accent belongs —
+  the hero eyebrow, the roles' lead lines, the bullet dots, the statement
+  band's one word, and the nav's active underline over DARK bands.
+- **Two substitutions were made by contrast, not by role.** `--muted` maps to
+  `slate-600`, not the `slate-500` the app's table labels use: the landing page
+  sets whole paragraphs in it on `slate-100`, where `slate-500` is 4.34:1 and
+  fails AA. `--ok` maps to `emerald-700`, not `600`: on the `emerald-50` pill
+  the 600 is 3.58:1. Both are tokens the app already uses for text.
+- **The focus ring is amber on dark bands and blue on light ones.** The app's
+  ring is `blue-500`, but two of this page's bands are now blue themselves
+  (`--navy` is indigo-700) and a blue ring on a blue band is invisible. Over
+  `.band-paper`, the modal and the inverted header the ring is `--blue`.
+- **The nav's active underline inverts with the header.** `amber-400` is a 2px
+  line at under 2:1 against `slate-100`, so `.nav--on-light` switches it to
+  `--blue`. This replaces the old comment's "the gold underline needs no
+  inversion", which was true of the old gold on the old paper.
+- **A LATENT BUG SURFACED: the nav's Sign in pill was rendering its label at
+  68% white.** `.nav-links a` (0-1-1) outranked the pill's own colour rule
+  (0-1-0), and had done so on the gold pill too — barely noticeable on gold,
+  unreadable on blue. `.nav .nav-links a.btn-primary` (0-3-1) pins it white in
+  every state.
+- Every `rgba(6, 23, 46, …)` — the header surface, the scrims, the shadows, the
+  modal backdrop — became `rgba(15, 23, 42, …)`, `slate-900`'s channels. The
+  contact form's error notice is now the app's own banner (`amber-200` /
+  `amber-50` / `amber-800`), and the mock pills use `blue-50`, `emerald-50` and
+  `amber-100` fills.
+
+**The auth pages moved to the SIDEBAR'S gradient** — `from-blue-600
+to-indigo-700`, two stops, exactly as `*Layout.vue` paints it — in place of
+`from-blue-900 via-blue-800 to-teal-500`. Teal appeared nowhere else in the
+app. The ambient blobs are blue/indigo washes; the submit buttons are solid
+`bg-blue-600 hover:bg-blue-700` rather than a gradient with `brightness`; the
+focus underlines, icon tints and rings are `blue-600` / `blue-500`; links are
+`text-blue-700 hover:text-blue-800`. The frosted card's `/75` is unchanged and
+its arithmetic was redone for the new darkest stop: over `indigo-700` a 60%
+white card composites to ~#b4afea (slate-600 at 3.70:1, fails AA), `/70` scrapes
+4.50:1, `/75` clears 4.94:1. The on-gradient brand copy went `text-blue-100` →
+`text-blue-50` (4.24:1 → 4.68:1 against the blue-600 corner).
+
+**"← Back to InternTrack" is a `RouterLink` to `/`, top-left, on all three
+signed-out pages.** No such control existed before — the only "back" links led
+to `/login`. It is deliberately styled as the sidebar's own inactive nav item
+(`text-blue-50`, `hover:bg-white/10`), never as a pill, so it cannot compete
+with Sign in. A link to the route rather than `history.back()` because the
+login page is also reached from a bookmark, a QR code and the password-reset
+email, where "back" leads elsewhere or nowhere. Below `lg` the stacked layout is
+taller than a phone viewport and starts at its column's own top padding, so
+that padding went `py-10` → `pt-16 pb-10` (login) and the shell's `main` the
+same — measured at 375x667, the seal cleared the link on all three pages only
+after that.
+
+**Verified in a real browser.** Every landing token resolves to its oklch
+Tailwind value; zero `[class*="gold"]` elements; no `teal`, `sky-` or
+`blue-900` class left on any of the four auth files; the nav pill's label is
+`#fff` at rest, on hover and over a light band, where the underline is blue;
+the back link is visible, hittable and routes to `/` at 1440 and 375, with no
+overlap on any of the three pages; no horizontal scroll; no console errors.
+`npm run build` and `vue-tsc` both clean.
+
+#### Motion and headings pass, 2026-09-16 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
+
+Six changes at the project owner's direction, all in `LandingPage.vue`.
+
+- **The nav reads Users · Mechanics · Records · Others**, in that order — the
+  owner's four words, replacing "Who uses it / How it works / Records /
+  Others". The ids (`#roles #how #record #more`) and `SECTION_IDS` are
+  untouched, so the scroll-spy is unaffected. **Each of the four sections now
+  opens with a `.kicker`** carrying the same word above its `h2`, so a reader
+  who arrived by the nav lands on the word they clicked. Gold on dark bands,
+  `--blue` on paper (`.band-paper .kicker`), for the same reason the nav
+  underline inverts. Sentence case — the no-uppercase rule still holds.
+- **Scroll-triggered entrance** (`.reveal` + `hasJs`/`revealObserver`). Every
+  heading, card, step, guarantee and extra starts 26px down at opacity 0 and
+  eases in the first time it crosses the lower 12% of the viewport; siblings
+  stagger off a `--i` custom property at 80ms each. Four rules keep it from
+  costing the reader anything, and each is load-bearing:
+  1. **The hidden state is gated on `.has-js`**, added only in `onMounted`, so
+     a page with no script (or a crawler) sees everything at full opacity.
+  2. **Under `prefers-reduced-motion` the class is never added at all**, and
+     the reduced-motion block ALSO forces `.reveal` visible — the global
+     `transition: none` there would otherwise freeze an element at opacity 0.
+     Same guard under `@media print`, since print has no scroll.
+  3. **Revealed once, then unobserved.** Content that re-hides on the way back
+     up makes scrolling upward feel broken.
+  4. **THE TRANSITION IS DECLARED ON `.is-in` ONLY, not on the base rule.**
+     First cut put it on `.has-js .reveal` and every element visibly faded OUT
+     after first paint — `.has-js` lands a tick after the initial render, so
+     the 1→0 change animated. Measured at opacity 0.04 mid-fade right after
+     load; with the transition on the entered state it starts at 0 outright.
+- **The hero photograph breathes and is colour-graded.** `hero-breathe` is a
+  24s ease-in-out infinite-alternate zoom 1 → 1.07 with a drift of
+  `translate(-1.4%, 0.9%)`, `transform-origin` matching the `62% 50%`
+  background position so it grows out of the chapel; `.hero`'s existing
+  `overflow: hidden` swallows the overscan. 24s is deliberately slower than a
+  reader can consciously track. The grade is `contrast(1.18) saturate(1.2)
+  brightness(0.88)` on the photo plus a flat `rgba(67,56,202,.16)` indigo wash
+  added as a third layer of `.hero-scrim` — the raw file is a hazy midday shot
+  that read as washed out under the copy panel. The reduced-motion block
+  already kills the animation (`animation: none`); the grade stays.
+- **The week mock's day cells are STATIC now** — `<span role="listitem">`s in
+  a `role="list"`, not buttons; `toggleDay` and the `:disabled`/`aria-pressed`
+  wiring are gone and `weekDays` is a plain const. Only "Bundle week" is
+  operable, and bundling dims the cells (`.is-bundled`, opacity .6) to say the
+  week is closed. **Worth knowing: the toggles were WORKING** — verified in a
+  browser before the change (Sat toggled on, Mon toggled off) — the owner's
+  note "the feature is disabled in terms of clicking the days" was read as
+  the instruction, since seven small toggles made the card read as a date
+  picker rather than as the one thing it demonstrates.
+- **The Supervisors card body** is now "Review each intern's weekly journals
+  in one place, approve the weeks that are complete, and return any that need
+  more detail before they count." — the "one notebook instead of loose
+  sheets" line did not land.
+- The stat strip is gone; see the bullet above the Redesign entry.
+
+**Verified in a real browser** at 1440x900 and 375x667: nav labels and the
+four kickers present, `.hero-photo` reports `animation-name: hero-breathe`,
+24s, and the filter; zero `button.day`; every `.reveal` computes opacity 0 on
+the first frame after load and the four role cards stagger to 1 within 1.2s
+of scrolling to `#roles`; Bundle week flips the pill and dims all seven cells;
+`scrollWidth === clientWidth` at both widths, no element overflowing its box,
+no console errors. `npm run build` and `vue-tsc` clean.
+
+#### The nav's Sign-in pill, 2026-09-16 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
+
+Project owner: "the sign in button seems off". **The pill was inheriting the
+LINK rule's underline geometry.** `.nav-links a` (0-1-1) sets
+`padding-bottom: 3px`, a 2px transparent `border-bottom`, a 0.9rem size and a
+text-shadow for the four text links — and every one of those outranked
+`.btn-sm` (0-1-0) on the pill, which is also an `<a>` in that list. Measured:
+8px of padding above the label and 3px below, a 2px border along its foot
+only, and a blurred label. It read as a button whose text had slipped. The
+existing 0-3-1 rule that pins its colour now resets padding
+(`0.55rem 1.15rem`), border, size, line-height and text-shadow too, and the
+pill gained the one hover it lacked — a 1px lift with a deeper shadow, since
+it floats on a photograph with no band and a colour change alone is hard to
+catch at 14px. Measured after: padding `8.8px 18.4px`, 1px border, no
+text-shadow, `translateY(-1px)` on hover.
+
+**A simplification of `LoginPage.vue` (solid card, tilt/sheen/blobs/stagger
+removed) was built and verified the same day and then REVERTED at the project
+owner's request** — the login page and `AuthCardShell.vue` are exactly as
+they were, tilt included. Nothing from that attempt remains in the tree.
 
 ## Role Surfaces
 
@@ -3167,11 +4365,95 @@ programs, companies). `Admin/UserController::index()` **unconditionally excludes
 not the admin account itself. Create Coordinator collects First/Middle/Family
 name and takes a single `department_id`.
 
-Departments carry an optional `dean_name`. The audit log deliberately **does not
+Departments carry an optional `dean_name` and a required
+**`exit_interview_form`** — which hardcoded exit interview their students fill
+in, chosen on Create and changeable on Edit (see Exit Interview → One template,
+one hardcoded form per department). **Admin → Exit Interview** lists those
+forms read-only. The audit log deliberately **does not
 record `Logged In`/`Logged Out`** (routine session noise drowned out real
 events); it does record batch and roster transitions, info-sheet accept/reject,
 enrollment, weekly-journal approve/return, and journal submission via
 `SystemLog::record()`.
+
+#### Programs are admin-managed, not hardcoded (2026-09-08)
+
+`Admin/ProgramController` gained **`store`** and **`update`**
+(`POST admin/programs`, `PUT admin/programs/{program}`) with
+`StoreProgramRequest` / `UpdateProgramRequest`. Until this, the controller was
+read-only and its own docblock said "the 7 programs are fixed at seed time" —
+so a department the admin created had no way to be given a single program, and
+the only route to one was editing `DepartmentProgramSeeder` and re-seeding.
+
+**This RESTORES something that was deliberately removed.** Program CRUD existed
+until commit `23da1f9` (2026-07-12), which stripped it along with the admin's
+batch CRUD. That was a scope decision, not a technical blocker, and it is
+reversed at the project owner's request. `ProgramControllerTest`'s
+`test_store_and_update_routes_no_longer_exist` (which asserted 405 on both) is
+gone with it — it pinned the absence of the feature.
+
+**Two surfaces, and the department one is the primary:**
+
+- **Admin → Departments → View → Programs** carries **"+ Add Program"**. A
+  program is created inside the department it belongs to, so the department is
+  *context* rather than another field to get wrong. Its modal is **`z-60`**, not
+  the app's usual `z-50`, because it opens over the department detail modal.
+  On success it **re-fetches the department detail** rather than pushing the row
+  in by hand — that table carries per-program intern tallies the create response
+  cannot know — and reloads the list behind it, whose rows carry `programs_count`.
+- **Admin → Programs** carries the same action with a department picker, plus a
+  per-row **Edit**. Creating while a department filter is applied seeds the
+  picker with it (a default, not a lock). The Actions column is pinned at
+  **165px**, measured against the two real buttons (View ~59px + 8px gap + Edit
+  ~54px + the cell's own 32px of `px-4`), not against its heading.
+
+**The rules, each deliberate:**
+
+- **`code` is unique WITHIN a department, never globally** — mirroring the
+  table's own `UNIQUE(department_id, code)`. Departments are independent
+  top-level units, so two of them may legitimately run the same code; validating
+  globally would refuse a legal program, and not validating at all would surface
+  the index violation as a 500 instead of a 422.
+- **`code` IS editable, unlike a department's** — a deliberate difference.
+  Nothing in `app/` resolves a program by code (batches, users and templates all
+  key off `program_id`); only the demo seeders do, and they run against a fresh
+  database. A mistyped code must stay fixable, because the alternative is
+  deactivate-and-recreate, which strands every batch pointing at the original row.
+- **`department_id` is NOT accepted by `update`** and is disabled in the form.
+  Re-parenting a program would hand every batch and intern under it to another
+  department's coordinators in one silent write — a migration of live records,
+  not an edit to a reference row.
+- **There is no delete, matching the app's soft-deactivation posture.**
+  `batches.program_id` and `journal_templates.program_id` are `cascadeOnDelete`
+  and `batch_students` cascades from `batches`, so deleting a used program would
+  take its batches, enrollments and journals with it. `is_active` is the control
+  — though note it is **display-only today**: nothing in the app filters on it.
+
+**CACHE INVALIDATION IS THE LOAD-BEARING PART, and the pre-2026-07-12 version
+did not have it** (the caching layer landed after that code was removed).
+`ProgramController::forgetCachesFor()` drops three things on every write:
+`reference:programs`, `reference:departments` (its rows carry `programs_count`),
+and — the one that matters — **`coordinator-program-ids:{id}` for every
+coordinator of that department**. `User::coordinatorProgramIds()` resolves to
+every program in the coordinator's department and caches it for a **DAY**, so
+without this a newly-added program is invisible to the very coordinator who has
+to build a batch for it, with the database perfectly correct the whole time.
+Verified both ways: with the clause removed
+`test_a_new_program_is_immediately_in_its_coordinators_scope` fails reporting
+**0 programs in scope**, and in a browser `mdccore`'s Create Batch picker showed
+a program added seconds earlier.
+
+**`DepartmentProgramSeeder` IS NOW ADDITIVE, and that had to change first.** It
+pruned — deleting every department outside its hardcoded list and, inside each,
+every program outside its list. That was safe only while nothing could create an
+eighth program. With admin-created programs it is unrecoverable data loss on a
+live install, via the cascade above, and the trigger is the *documented* way to
+correct reference data: `db:seed --class=DepartmentProgramSeeder`, exactly what
+was run on 2026-09-08 to fix the department names. Both prunes are gone.
+**`migrate:fresh --seed` was never affected** — it starts from an empty database,
+so the prunes were always no-ops there, which is precisely why the hazard was
+invisible. Pinned by
+`test_an_admin_created_program_survives_a_reference_re_seed`, verified to fail
+against the old seeder.
 
 ### Coordinator
 
@@ -3188,6 +4470,18 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
   coordinator's students **plus companies not yet linked to any enrollment** (no
   creator column exists, so unlinked implies visible, keeping freshly-created
   companies in view). Includes the representatives and supervisor-login panels.
+  **"Department" is a plain informational text field** (2026-09-11, corrected
+  at the project owner's request) bound directly to `companies.industry` — it
+  used to render as a dropdown of business-sector suggestions (with an
+  "Other…" escape hatch) that could read as a constrained choice tied to the
+  college's own Departments, when it is actually free text that gates nothing.
+  Now a plain input mirroring the adjacent "Department Head" field exactly,
+  with a caption stating it is descriptive-only. **Create/Attach Supervisor
+  now toast on success** (they used to succeed silently) — wording matches the
+  Users page's own supervisor-creation flow exactly (echoing the assigned
+  username when one was auto-generated). See "The supervisor is tied to the
+  company" above for the "Attach Existing Supervisor" scoping fix from the
+  same pass.
 - **Student Info Sheets** — the Accept/Reject queue; defaults to **All** statuses.
 - **Journal Review** (`/coordinator/journal-review`) — the coordinator's OWN
   approve/return queue plus each intern's full notebook, for
@@ -3198,9 +4492,12 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
   OJT Type above.
 - **Student Exit Interviews** (`/coordinator/exit-interviews`) — every
   in-scope intern's exit interview, filterable by program / status / name,
-  with a per-row and in-modal **Download PDF**. Read the fourteen answers and
+  with a per-row and in-modal **Download PDF**. Read every answer and
   fill the coordinator's own compliance block; there is **no accept/reject**,
-  because an exit interview gates nothing. See Exit Interview above.
+  because an exit interview gates nothing. A second tab, **Summary Report**,
+  gathers every intern's answer to each question together instead of one row
+  per student — no PDF, no curation, drafts excluded. See Exit Interview
+  above.
 - **Weekly and Time Log Summary** (`/coordinator/weekly-time-logs`) — read-only
   list of every in-scope intern's MDC Weekly Activity Log sheet, with a per-row
   and in-modal **Download PDF**. See Weekly Activity Log above; there is no
@@ -3222,10 +4519,12 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
   attached to any company in the coordinator's company-scope. Header actions are
   tab-contextual. "Create Supervisor" **requires a company first** — a supervisor
   is always a Company Supervisor. The Interns tab also has **"Bulk Import
-  (Excel)"** (see Intake & Enrollment above). Its row actions are **View and
-  Delete only** — the old per-row **"Resend"** moved to the Credential Manager
-  in the profile popover on 2026-09-08 and must not come back here; see
-  Credential Manager under Intake & Enrollment for why.
+  (Excel)"** (see Intake & Enrollment above). Both tabs' row actions are **View
+  and Delete only** — the old per-row **"Resend"** moved to the Credential
+  Manager in the profile popover on 2026-09-08 and must not come back here; see
+  Credential Manager under Intake & Enrollment for why. The Supervisors tab
+  gained its own View/Delete on 2026-09-11 — see Permanently deleting a
+  supervisor account, below.
 - **Batch roster management** is separate from the enroll flow, scoped by batch
   program. Adding a student who is already active in another batch **MOVES** them
   (old row dropped, new active row, behind a wrong-batch-guard confirm).
@@ -3504,6 +4803,12 @@ zero-cost deploy stack. Cached with explicit invalidation at the known write
 points (the TTL is a backstop, not the mechanism):
 `User::coordinatorProgramIds()`, `Admin/ProgramController::index()`,
 `Admin/DepartmentController::index()`, and `SystemSetting::cached()`.
+
+`reference:programs` genuinely had **no** write point to invalidate at until
+2026-09-08 — programs were uncreatable, so the day-long TTL *was* the mechanism.
+Now that the admin creates them, `ProgramController::forgetCachesFor()` is that
+hook, and it drops the per-coordinator scope cache as well as the two reference
+lists. See Admin → Programs above for why that third one is the one that bites.
 
 Dashboard aggregates are deliberately **not** cached — they are per-user, change
 frequently, and were not found to be expensive.
@@ -4113,6 +5418,35 @@ browser. A per-container fix would need its own explicit background color
 matching each context, or a technique that never touches `background`/
 `background-color` (e.g. `mask-image`) — not a single global rule.
 
+### Copy pass from the team's "System-comments" review (2026-09-16)
+
+A teammate's PDF of wording corrections was applied verbatim across the SPA.
+Every item is copy only — no data, route or behaviour changed — except the
+two removals noted last. Student: the dashboard's This Week panel lost its
+"You have no entries for…" / "You're on track" / "Write today's entry →"
+lines and the `start – end` date footer (the `missedMessage` computed and
+`todayPending` field went with them; the week strip and "N of M days logged"
+stay), Recent Activity lost its subtitle; the calendar, My Journals, Weekly
+Journals notices, the Info Sheet approved banner, the Company Location
+caption, the Exit Interview in-progress note and the Reminder Settings intro
+were reworded to the PDF's text; "Weekly Narrative" headings are now
+"Summarize your week"; the Write Daily Journal "Submitted — you can still
+edit…" banner and the Weekly and Time Log "Create one to start…" tail are
+gone; the DTR page's hours caption is "Approved clock-ins at {company}", its
+"This week" heading no longer prints the date range and hour total, and the
+phone-camera hint paragraph is removed. Supervisor: "Review workload", "No
+weekly journals have been reviewed yet.", and the three DTR strings (site
+instructions, empty-sites, needs-attention empty state). Admin: the
+Department edit form's name hint.
+
+**Two things were removed rather than reworded, and are worth knowing:**
+`SupervisorInternsPage.vue`'s search box and button are gone (the PDF's
+"remove the search kanang naas babaw") along with the `search` param — the
+backend's `?search=` on `supervisor/interns` is untouched and simply no
+longer called from this page; and `StudentDtrPage.vue`'s `formatDate` /
+`formatHours` are still used by the session table, so only their heading
+call sites were dropped.
+
 ## Frontend UI conventions
 
 Applies to the Vue SPA in `web/`. These describe what the code already does —
@@ -4208,7 +5542,7 @@ now, so the whole rail read as one undifferentiated list.
 |---|---|---|
 | Coordinator | *(none)* · Monitoring · SIPP Documents · Reports · Setup | 1 · 5 · 3 · 2 · 4 |
 | Student | *(none)* · Journals · Time & Attendance · My Forms | 1 · 4 · 2 · 2 |
-| Admin | *(none)* · Organization · People & Records · System | 1 · 3 · 2 · 2 |
+| Admin | *(none)* · Organization · People & Records · System | 1 · 3 · 3 · 2 |
 | **Supervisor** | **deliberately still FLAT** | 4 items |
 
 - **Supervisor is not an oversight.** At four items (Dashboard, Journals,

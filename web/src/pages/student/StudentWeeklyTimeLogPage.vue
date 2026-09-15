@@ -501,7 +501,7 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <p v-else-if="!showCreate" class="mt-4 text-sm text-slate-500">
-            No log sheets yet. Create one to start filling in the template.
+            No log sheets yet.
           </p>
         </div>
 

@@ -5,15 +5,18 @@ namespace App\Http\Controllers\Concerns;
 use App\Models\BatchStudent;
 use App\Models\StudentExitInterview;
 use App\Services\DtrService;
+use App\Support\ExitInterview\ExitInterviewForm;
+use App\Support\ExitInterview\ExitInterviewForms;
 use App\Support\ExitInterviewFormLayout as Layout;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Carbon;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Shared renderer for the CABM "Internship Program Student Exit Interview
- * Form", so the student's own download and the coordinator's in-scope download
- * produce the identical measured facsimile — the same call already made for
+ * Shared renderer for the exit interview form — whichever department's form
+ * the interview was answered under (StudentExitInterview::form()) — so the
+ * student's own download and the coordinator's in-scope download produce the
+ * identical measured facsimile — the same call already made for
  * the individual Student Information Sheet (BuildsInfoSheetPdf) and the Weekly
  * Activity Log (BuildsWeeklyActivityLogPdf).
  *
@@ -28,6 +31,10 @@ trait BuildsExitInterviewPdf
      * the record has them, because printing the reference's names onto
      * another department's student would be plainly wrong. The same call
      * already made for the Weekly Activity Log's department line.
+     *
+     * And ONLY on the CABM form itself (ExitInterviewForms::DEFAULT): another
+     * department's form with no dean on record prints a blank to be signed,
+     * never the business department's dean.
      */
     private const REFERENCE_COORDINATOR = 'Maria Antonnette B. Gulilat, MABM, LPT';
 
@@ -39,6 +46,7 @@ trait BuildsExitInterviewPdf
     {
         $responses = $interview->responses ?? [];
         $coordinatorSection = $interview->coordinator_section ?? [];
+        $layout = Layout::for($interview->form());
 
         // The coordinator's own free text rides the same wrapper as the
         // student's, so every field on the form is broken onto its printed
@@ -48,10 +56,10 @@ trait BuildsExitInterviewPdf
         $answers['remarks'] = $coordinatorSection['remarks'] ?? null;
 
         $pdf = Pdf::loadView('pdf.exit-interview', [
+            'layout' => $layout,
             'form' => $this->exitInterviewHeader($interview),
-            'choices' => $this->exitInterviewChoices($responses),
-            'compliance' => $this->normalizeCompliance($coordinatorSection['compliance'] ?? null),
-            'lines' => Layout::place($answers),
+            'ticked' => $this->exitInterviewTicked($interview->form(), $responses, $coordinatorSection['compliance'] ?? null),
+            'lines' => $layout->place($answers),
         ])
             // The reference is 612 x 936pt — the Philippine "long bond"
             // (8.5" x 13"), NOT Letter and emphatically not dompdf's A4
@@ -86,6 +94,7 @@ trait BuildsExitInterviewPdf
 
         $coordinator = $enrollment?->batch?->coordinator?->name;
         $dean = $student?->program?->department?->dean_name;
+        $isReferenceForm = $interview->form()->key === ExitInterviewForms::DEFAULT;
 
         $fields = [
             'student_name' => $student?->name ?? '',
@@ -95,10 +104,10 @@ trait BuildsExitInterviewPdf
             'training_period' => $this->exitInterviewTrainingPeriod($enrollment),
             'total_hours' => $this->exitInterviewTotalHours($interview, $enrollment),
             'date_of_interview' => $this->formatFormDate($info['date_of_interview'] ?? null),
-            'coordinator_name' => $coordinator ?: self::REFERENCE_COORDINATOR,
-            'coordinator_signature_name' => mb_strtoupper($coordinator ?: '') ?: self::REFERENCE_COORDINATOR_UPPER,
+            'coordinator_name' => $coordinator ?: ($isReferenceForm ? self::REFERENCE_COORDINATOR : ''),
+            'coordinator_signature_name' => mb_strtoupper($coordinator ?: '') ?: ($isReferenceForm ? self::REFERENCE_COORDINATOR_UPPER : ''),
             'coordinator_reviewed_on' => $this->formatFormDate($interview->reviewed_at?->toDateString()),
-            'dean_name' => mb_strtoupper($dean ?: '') ?: self::REFERENCE_DEAN,
+            'dean_name' => mb_strtoupper($dean ?: '') ?: ($isReferenceForm ? self::REFERENCE_DEAN : ''),
         ];
 
         // Each value is trimmed to its OWN printed blank by the blade, from
@@ -108,24 +117,42 @@ trait BuildsExitInterviewPdf
     }
 
     /**
-     * The four printed ☐ Yes ☐ No pairs, normalised so the blade only ever
-     * sees 'yes', 'no' or null.
+     * Every printed box that should carry a check mark, as the mark keys the
+     * layout itself hands out: `q2_choice:yes` for a ☐ Yes ☐ No pair,
+     * `q33:good` for a rating row, `compliance:pending` for the coordinator's
+     * block. Only a value the form actually offers is ticked, so a stale or
+     * tampered answer prints an empty box rather than a mark on nothing.
      *
      * @param  array<string, mixed>  $responses
-     * @return array<string, string|null>
+     * @return array<string, true>
      */
-    protected function exitInterviewChoices(array $responses): array
+    protected function exitInterviewTicked(ExitInterviewForm $form, array $responses, mixed $compliance): array
     {
-        $choices = [];
+        $ticked = [];
 
-        foreach (StudentExitInterview::CHOICE_KEYS as $key) {
-            $value = $responses[$key] ?? null;
-            $question = str_replace('_choice', '', $key);
+        foreach ($form->questions() as $question) {
+            if ($question['type'] === ExitInterviewForm::TYPE_YES_NO_TEXT) {
+                $value = $responses[$question['choice']] ?? null;
 
-            $choices[$question] = in_array($value, ['yes', 'no'], true) ? $value : null;
+                if (in_array($value, ['yes', 'no'], true)) {
+                    $ticked[$question['choice'].':'.$value] = true;
+                }
+            }
+
+            if ($question['type'] === ExitInterviewForm::TYPE_SCALE) {
+                $value = $responses[$question['key']] ?? null;
+
+                if (is_string($value) && isset($question['options'][$value])) {
+                    $ticked[$question['key'].':'.$value] = true;
+                }
+            }
         }
 
-        return $choices;
+        if ($this->normalizeCompliance($compliance) !== null) {
+            $ticked['compliance:'.$compliance] = true;
+        }
+
+        return $ticked;
     }
 
     /**

@@ -2,7 +2,10 @@
 
 namespace App\Http\Requests\Student;
 
+use App\Models\BatchStudent;
 use App\Models\StudentExitInterview;
+use App\Support\ExitInterview\ExitInterviewForm;
+use App\Support\ExitInterview\ExitInterviewForms;
 use App\Support\ExitInterviewFormLayout;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -11,13 +14,18 @@ use Illuminate\Validation\Validator;
 /**
  * Save (or submit) the student's exit interview.
  *
+ * The rules are BUILT FROM THE FORM the student is answering — resolved the
+ * same way the controller resolves it (their interview's own snapshot, else
+ * their batch's department's assignment) — so a CAST student is held to the
+ * CAST questions and a CABM student to the CABM ones by the same code.
+ *
  * Two rules carry the weight here:
  *
- * 1. Every answer is capped at ExitInterviewFormLayout::ANSWER_CHAR_LIMIT.
- *    The printed form gives each question five ruled lines and the PDF wraps
- *    onto exactly those, so an unbounded answer would be silently truncated
- *    off the bottom of the box. Refusing the save is honest; dropping a
- *    student's words without telling them is not.
+ * 1. Every free-text answer must FIT its printed rules. The form gives each
+ *    question five ruled lines and the PDF wraps onto exactly those, so an
+ *    unbounded answer would be silently truncated off the bottom of the box.
+ *    Refusing the save is honest; dropping a student's words without telling
+ *    them is not.
  *
  * 2. A SUBMIT requires every question answered, a draft requires nothing.
  *    The whole form is one interview: a half-finished one handed to a
@@ -26,6 +34,8 @@ use Illuminate\Validation\Validator;
  */
 class StoreExitInterviewRequest extends FormRequest
 {
+    private ?ExitInterviewForm $form = null;
+
     public function authorize(): bool
     {
         return $this->user()?->role === 'student';
@@ -34,6 +44,7 @@ class StoreExitInterviewRequest extends FormRequest
     public function rules(): array
     {
         $submitting = $this->boolean('submit');
+        $form = $this->form();
 
         $rules = [
             'submit' => ['sometimes', 'boolean'],
@@ -46,21 +57,30 @@ class StoreExitInterviewRequest extends FormRequest
             'responses' => ['required', 'array'],
         ];
 
-        foreach (StudentExitInterview::QUESTION_KEYS as $key) {
-            $rules['responses.'.$key] = [
+        foreach ($form->questions() as $question) {
+            if ($question['type'] === ExitInterviewForm::TYPE_SCALE) {
+                $rules['responses.'.$question['key']] = [
+                    $submitting ? 'required' : 'nullable',
+                    Rule::in(array_keys($question['options'])),
+                ];
+
+                continue;
+            }
+
+            $rules['responses.'.$question['key']] = [
                 $submitting ? 'required' : 'nullable',
                 'string',
                 // A cheap gate only; the binding check is the width
                 // measurement in withValidator() below.
                 'max:'.ExitInterviewFormLayout::HARD_CHAR_CAP,
             ];
-        }
 
-        foreach (StudentExitInterview::CHOICE_KEYS as $key) {
-            $rules['responses.'.$key] = [
-                $submitting ? 'required' : 'nullable',
-                Rule::in(['yes', 'no']),
-            ];
+            if ($question['type'] === ExitInterviewForm::TYPE_YES_NO_TEXT) {
+                $rules['responses.'.$question['choice']] = [
+                    $submitting ? 'required' : 'nullable',
+                    Rule::in(['yes', 'no']),
+                ];
+            }
         }
 
         return $rules;
@@ -84,15 +104,23 @@ class StoreExitInterviewRequest extends FormRequest
                 return;
             }
 
-            foreach (StudentExitInterview::QUESTION_KEYS as $key) {
+            $form = $this->form();
+            $layout = ExitInterviewFormLayout::for($form);
+
+            foreach ($form->questions() as $question) {
+                if ($question['type'] === ExitInterviewForm::TYPE_SCALE) {
+                    continue;
+                }
+
+                $key = $question['key'];
                 $answer = $responses[$key] ?? null;
 
-                if (is_string($answer) && ! ExitInterviewFormLayout::fits($key, $answer)) {
-                    $lines = count(ExitInterviewFormLayout::rules()[$key]);
+                if (is_string($answer) && ! $layout->fits($key, $answer)) {
+                    $lines = count($layout->rules()[$key]);
 
                     $validator->errors()->add(
                         'responses.'.$key,
-                        "This answer is longer than the {$lines} lines the printed form gives question ".ltrim($key, 'q').'. Please shorten it.'
+                        "This answer is longer than the {$lines} lines the printed form gives question ".$form->numberOf($key).'. Please shorten it.'
                     );
                 }
             }
@@ -107,12 +135,12 @@ class StoreExitInterviewRequest extends FormRequest
             'student_info.date_of_interview' => 'Date of Interview',
         ];
 
-        foreach (StudentExitInterview::QUESTION_KEYS as $key) {
-            $labels['responses.'.$key] = 'Question '.ltrim($key, 'q');
-        }
+        foreach ($this->form()->questions() as $question) {
+            $labels['responses.'.$question['key']] = 'Question '.$question['n'];
 
-        foreach (StudentExitInterview::CHOICE_KEYS as $key) {
-            $labels['responses.'.$key] = 'Question '.ltrim(str_replace('_choice', '', $key), 'q').' (Yes/No)';
+            if ($question['type'] === ExitInterviewForm::TYPE_YES_NO_TEXT) {
+                $labels['responses.'.$question['choice']] = 'Question '.$question['n'].' (Yes/No)';
+            }
         }
 
         return $labels;
@@ -133,5 +161,34 @@ class StoreExitInterviewRequest extends FormRequest
                 ),
             ]);
         }
+    }
+
+    /**
+     * The form the student is answering. An interview already started keeps
+     * its own snapshot; otherwise it is the batch's department's current
+     * choice — the identical resolution the controller makes when it writes
+     * the row, so the two cannot validate against one form and store another.
+     */
+    public function form(): ExitInterviewForm
+    {
+        if ($this->form !== null) {
+            return $this->form;
+        }
+
+        $studentId = $this->user()?->id;
+
+        $enrollment = $studentId
+            ? BatchStudent::with('batch.program.department')
+                ->where('student_id', $studentId)
+                ->whereIn('status', ['active', 'completed'])
+                ->latest('enrolled_at')
+                ->first()
+            : null;
+
+        $interview = $enrollment
+            ? StudentExitInterview::where('student_id', $studentId)->where('batch_id', $enrollment->batch_id)->first()
+            : null;
+
+        return $this->form = ExitInterviewForms::forInterview($interview, $enrollment);
     }
 }

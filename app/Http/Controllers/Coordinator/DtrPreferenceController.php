@@ -104,11 +104,29 @@ class DtrPreferenceController extends Controller
         ];
     }
 
+    /**
+     * How many interns this switch actually governs.
+     *
+     * **SUPERVISOR-SUPPORTED BATCHES ONLY, and that clause is the whole point.**
+     * `DtrService::runsForEnrollment()` requires both this preference AND a
+     * supervisor-supported batch, so an intern on a coordinator-centered cohort
+     * can never clock in whatever this switch says. Counting them made the page
+     * overstate its own reach — and worse, the turn-off confirmation reads
+     * "N active intern(s) will stop seeing it, and clocked hours will no longer
+     * count toward their required hours", which was simply untrue of the
+     * difference: those interns never had a Daily Time Record to lose.
+     *
+     * Found 2026-09-08 running a department that hosts BOTH kinds of cohort. It
+     * was not hypothetical — the seeded `mdcbalbero` department reported 16
+     * against 13 who can actually clock in.
+     */
     private function affectedStudentCount(int $coordinatorId): int
     {
         return BatchStudent::where('status', 'active')
             ->whereNull('archived_at')
-            ->whereHas('batch', fn ($query) => $query->where('coordinator_id', $coordinatorId))
+            ->whereHas('batch', fn ($query) => $query
+                ->where('coordinator_id', $coordinatorId)
+                ->where('ojt_type', 'supervisor'))
             ->distinct('student_id')
             ->count('student_id');
     }

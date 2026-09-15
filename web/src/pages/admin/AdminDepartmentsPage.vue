@@ -4,13 +4,21 @@ import axios from 'axios'
 import api from '@/lib/axios'
 import { confirmAction, showToast } from '@/lib/toast'
 import ToastHost from '@/components/ToastHost.vue'
+import { RouterLink } from 'vue-router'
 import TooltipWrap from '@/components/ui/TooltipWrap.vue'
-import type { Department, DepartmentDetail, PaginatedResponse, User } from '@/types/api'
+import type { AdminExitInterviewFormsResponse, Department, DepartmentDetail, PaginatedResponse, User } from '@/types/api'
 
 type DepartmentForm = {
   code: string
   name: string
   dean_name: string
+  exit_interview_form: string
+  is_active: boolean
+}
+
+type ProgramForm = {
+  code: string
+  name: string
   is_active: boolean
 }
 
@@ -33,7 +41,36 @@ const isModalOpen = ref(false)
 const editingDepartmentId = ref<number | null>(null)
 const isSaving = ref(false)
 const modalError = ref('')
-const departmentForm = ref<DepartmentForm>({ code: '', name: '', dean_name: '', is_active: true })
+const departmentForm = ref<DepartmentForm>({ code: '', name: '', dean_name: '', exit_interview_form: '', is_active: true })
+
+/**
+ * The hardcoded exit interview forms a department can be assigned. Loaded
+ * once alongside the coordinator options; the select is REQUIRED on create,
+ * since a department is never left without a form and the admin should
+ * choose rather than inherit a default they never saw.
+ */
+const exitInterviewForms = ref<AdminExitInterviewFormsResponse['forms']>([])
+
+const loadExitInterviewForms = async () => {
+  try {
+    const response = await api.get<AdminExitInterviewFormsResponse>('/api/admin/exit-interview-forms')
+    exitInterviewForms.value = response.data.forms
+  } catch {
+    exitInterviewForms.value = []
+  }
+}
+
+const exitInterviewFormLabel = (key: string): string =>
+  exitInterviewForms.value.find((form) => form.key === key)?.label ?? key
+
+// Adding a program is done from inside the department it belongs to, so the
+// department is context rather than another field to pick. The Programs page
+// carries the same action with a department picker, for the times an admin is
+// already there.
+const isProgramModalOpen = ref(false)
+const isSavingProgram = ref(false)
+const programModalError = ref('')
+const programForm = ref<ProgramForm>({ code: '', name: '', is_active: true })
 
 const loadDepartments = async () => {
   isLoading.value = true
@@ -131,8 +168,69 @@ const removeCoordinator = async (coordinatorId: number, coordinatorName: string)
   }
 }
 
+const openProgramModal = () => {
+  programForm.value = { code: '', name: '', is_active: true }
+  programModalError.value = ''
+  isProgramModalOpen.value = true
+}
+
+const closeProgramModal = () => {
+  isProgramModalOpen.value = false
+}
+
+const saveProgram = async () => {
+  if (!viewedDepartment.value) return
+
+  isSavingProgram.value = true
+  programModalError.value = ''
+
+  const departmentId = viewedDepartment.value.id
+  const code = programForm.value.code
+
+  try {
+    await api.post('/api/admin/programs', {
+      department_id: departmentId,
+      code,
+      name: programForm.value.name,
+      is_active: programForm.value.is_active,
+    })
+  } catch (error) {
+    const data = axios.isAxiosError(error) ? error.response?.data : null
+    const firstFieldError = data?.errors ? Object.values(data.errors as Record<string, string[]>)[0]?.[0] : null
+    programModalError.value = firstFieldError ?? data?.message ?? 'Unable to add program. Please check the fields and try again.'
+    isSavingProgram.value = false
+
+    return
+  }
+
+  // THE CREATE IS COMMITTED FROM HERE ON, so nothing below may report a failure
+  // to create. Refreshing used to sit in the same `try` as the POST, and a blip
+  // on the re-fetch then told the admin "Unable to add program — check the
+  // fields and try again" for a program that HAD been created; the retry answered
+  // "this department already has a program with that code", which is advice that
+  // cannot be followed. Same shape as the bulk import's stranded-row bug.
+  isProgramModalOpen.value = false
+  showToast(`Program ${code} added.`)
+  isSavingProgram.value = false
+
+  try {
+    // Re-fetch the detail rather than pushing the new row in by hand: the
+    // Programs table here carries per-program intern tallies the create response
+    // has no way to know, and the header's Programs count moves with it.
+    const response = await api.get<DepartmentDetail>(`/api/admin/departments/${departmentId}`)
+    viewedDepartment.value = response.data
+
+    // The list behind the modal shows `programs_count`, which just changed.
+    await loadDepartments()
+  } catch {
+    // The program exists; only this view is stale. Say so plainly rather than
+    // implying the save failed.
+    showToast('Program added, but the list could not be refreshed. Reopen the department to see it.', 'error')
+  }
+}
+
 const resetForm = () => {
-  departmentForm.value = { code: '', name: '', dean_name: '', is_active: true }
+  departmentForm.value = { code: '', name: '', dean_name: '', exit_interview_form: '', is_active: true }
   modalError.value = ''
 }
 
@@ -148,6 +246,7 @@ const openEditModal = (department: Department) => {
     code: department.code,
     name: department.name,
     dean_name: department.dean_name ?? '',
+    exit_interview_form: department.exit_interview_form,
     is_active: department.is_active,
   }
   modalError.value = ''
@@ -168,6 +267,7 @@ const saveDepartment = async () => {
       await api.put(`/api/admin/departments/${editingDepartmentId.value}`, {
         name: departmentForm.value.name,
         dean_name: departmentForm.value.dean_name || null,
+        exit_interview_form: departmentForm.value.exit_interview_form,
         is_active: departmentForm.value.is_active,
       })
     } else {
@@ -175,6 +275,7 @@ const saveDepartment = async () => {
         code: departmentForm.value.code,
         name: departmentForm.value.name,
         dean_name: departmentForm.value.dean_name || null,
+        exit_interview_form: departmentForm.value.exit_interview_form,
       })
     }
     closeModal()
@@ -190,6 +291,7 @@ const saveDepartment = async () => {
 onMounted(() => {
   loadDepartments()
   loadCoordinatorOptions()
+  loadExitInterviewForms()
 })
 </script>
 
@@ -253,6 +355,19 @@ onMounted(() => {
                 <TooltipWrap :label="department.name" placement="top" class="max-w-full">
                   <span class="block max-w-full truncate">{{ department.name }}</span>
                 </TooltipWrap>
+                <!-- The assigned exit interview form rides UNDER the name
+                     rather than in a seventh column: the table is already six
+                     columns at its measured widths, and one more collapsed
+                     Name to two letters. Same call the Journal Review queue
+                     makes for a company under its batch. -->
+                <TooltipWrap :label="exitInterviewFormLabel(department.exit_interview_form)" placement="top" class="max-w-full">
+                  <span
+                    class="block max-w-full truncate text-xs font-normal text-slate-400"
+                    :aria-label="exitInterviewFormLabel(department.exit_interview_form)"
+                  >
+                    Exit interview: {{ department.exit_interview_form }}
+                  </span>
+                </TooltipWrap>
               </td>
               <td class="truncate px-4 py-3 text-sm text-slate-500">{{ department.dean_name || '—' }}</td>
               <td class="px-4 py-3 text-sm tabular-nums text-slate-700">{{ department.programs_count ?? 0 }}</td>
@@ -301,6 +416,7 @@ onMounted(() => {
           <p class="mt-1.5 text-sm font-semibold wrap-break-word text-slate-900">{{ department.name }}</p>
           <p class="mt-1 truncate text-xs text-slate-500">
             Dean: {{ department.dean_name || '—' }} · {{ department.programs_count ?? 0 }} program{{ (department.programs_count ?? 0) === 1 ? '' : 's' }}
+            · Exit interview: {{ department.exit_interview_form }}
           </p>
           <div class="mt-3 flex items-center gap-2">
             <button type="button" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50" @click="openViewModal(department)">View</button>
@@ -347,12 +463,34 @@ onMounted(() => {
               class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm"
             />
             <p class="mt-1.5 text-xs text-slate-500">
-              The full department name, written out as it should read to a person. Do not repeat the code here.
+              Enter the department&rsquo;s full name as it should appear. Do not include the department code.
             </p>
           </div>
           <div>
             <label class="mb-1.5 block text-xs font-bold text-slate-600" for="department-dean-name">Dean's Name (optional)</label>
             <input id="department-dean-name" v-model="departmentForm.dean_name" type="text" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm" />
+          </div>
+          <div>
+            <label class="mb-1.5 block text-xs font-bold text-slate-600" for="department-exit-interview-form">Exit Interview Form</label>
+            <select
+              id="department-exit-interview-form"
+              v-model="departmentForm.exit_interview_form"
+              class="h-10 w-full max-w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+            >
+              <option value="" disabled>Choose a form…</option>
+              <option v-for="form in exitInterviewForms" :key="form.key" :value="form.key">
+                {{ form.label }} — {{ form.question_count }} questions
+              </option>
+            </select>
+            <p class="mt-1.5 text-xs text-slate-500">
+              The official exit interview this department's students fill in at the end of their OJT. The forms
+              themselves are fixed — see
+              <RouterLink to="/admin/exit-interviews" class="font-semibold underline">Exit Interview</RouterLink>
+              for what each asks.
+              <template v-if="editingDepartmentId">
+                Changing it affects interviews started from now on; those already begun keep their form.
+              </template>
+            </p>
           </div>
           <div v-if="editingDepartmentId">
             <label class="flex items-center gap-2 text-sm font-medium text-slate-700">
@@ -412,7 +550,16 @@ onMounted(() => {
             </div>
 
             <div>
-              <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Programs</h5>
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <h5 class="text-xs font-bold uppercase tracking-wide text-slate-500">Programs</h5>
+                <button
+                  type="button"
+                  class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  @click="openProgramModal"
+                >
+                  + Add Program
+                </button>
+              </div>
               <template v-if="viewedDepartment.programs.length > 0">
                 <!-- md and up: aligned table. -->
                 <div class="mt-2 hidden overflow-x-auto rounded-lg ring-1 ring-slate-200 md:block">
@@ -562,6 +709,79 @@ onMounted(() => {
             </div>
           </div>
         </div>
+      </section>
+    </div>
+
+    <!--
+      Add Program, opened from inside the department detail above — hence `z-60`
+      rather than the app's usual `z-50`, so it layers over the modal that opened
+      it instead of rendering behind it.
+    -->
+    <div v-if="isProgramModalOpen" class="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/50 p-4">
+      <!-- Three-part flex shell: the body is the only scrolling element. -->
+      <section class="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+        <div class="flex shrink-0 items-center justify-between border-b border-slate-200 px-6 py-4">
+          <div class="min-w-0">
+            <h3 class="text-lg font-semibold text-slate-950">Add Program</h3>
+            <p class="truncate text-xs text-slate-500">{{ viewedDepartment?.name }}</p>
+          </div>
+          <button type="button" class="shrink-0 text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeProgramModal">Close</button>
+        </div>
+
+        <form class="flex min-h-0 flex-1 flex-col" @submit.prevent="saveProgram">
+          <div class="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+            <p v-if="programModalError" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ programModalError }}</p>
+
+            <div>
+              <label for="dept-program-code" class="mb-1 block text-xs font-bold text-slate-600">Code</label>
+              <input
+                id="dept-program-code"
+                v-model="programForm.code"
+                type="text"
+                required
+                maxlength="20"
+                placeholder="BSIT"
+                class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              />
+              <p class="mt-1 text-xs text-slate-500">Short identifier printed on the SIPP forms. Unique within this department.</p>
+            </div>
+
+            <div>
+              <label for="dept-program-name" class="mb-1 block text-xs font-bold text-slate-600">Name</label>
+              <input
+                id="dept-program-name"
+                v-model="programForm.name"
+                type="text"
+                required
+                maxlength="200"
+                placeholder="BS Information Technology"
+                class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
+
+            <label class="flex items-center gap-2 text-sm text-slate-700">
+              <input v-model="programForm.is_active" type="checkbox" class="h-4 w-4 rounded border-slate-300" />
+              Active
+            </label>
+          </div>
+
+          <div class="flex shrink-0 items-center justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
+            <button
+              type="button"
+              class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              @click="closeProgramModal"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              :disabled="isSavingProgram"
+              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {{ isSavingProgram ? 'Saving...' : 'Add Program' }}
+            </button>
+          </div>
+        </form>
       </section>
     </div>
   </section>

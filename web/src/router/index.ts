@@ -122,6 +122,11 @@ const router = createRouter({
           meta: { title: 'Student Info Sheet' },
         },
         {
+          path: 'exit-interviews',
+          component: () => import('@/pages/admin/AdminExitInterviewFormsPage.vue'),
+          meta: { title: 'Exit Interview' },
+        },
+        {
           path: 'annual-sipp',
           component: () => import('@/pages/admin/AdminAnnualSippPage.vue'),
           meta: { title: 'Annual SIPP Report' },

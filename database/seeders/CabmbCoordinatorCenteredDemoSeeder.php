@@ -181,6 +181,10 @@ class CabmbCoordinatorCenteredDemoSeeder extends Seeder
                 'end_date' => Carbon::today()->addMonths(2),
                 'required_hours' => 486,
                 'working_days_per_week' => 5,
+                // DatabaseSeeder runs WithoutModelEvents, which mutes
+                // BatchObserver — write what it would have derived explicitly.
+                'working_days_start' => 1,
+                'working_days_end' => 5,
                 'daily_reminder_time' => '21:00:00',
                 'is_active' => true,
             ]

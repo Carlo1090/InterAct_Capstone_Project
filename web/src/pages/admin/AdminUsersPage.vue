@@ -11,6 +11,7 @@ type UserPayload = {
   first_name: string
   middle_name: string
   last_name: string
+  username: string
   email: string
   password: string
   role: 'coordinator'
@@ -91,6 +92,7 @@ const emptyForm = (): UserPayload => ({
   first_name: '',
   middle_name: '',
   last_name: '',
+  username: '',
   email: '',
   password: '',
   role: 'coordinator',
@@ -161,9 +163,10 @@ const createUser = async () => {
   modalError.value = ''
 
   try {
-    await api.post('/api/admin/users', userForm.value)
+    const { data } = await api.post<User>('/api/admin/users', userForm.value)
     closeModal()
     await loadUsers()
+    showToast(`Coordinator account created. Username: ${data.username}`)
   } catch (error) {
     const data = axios.isAxiosError(error) ? error.response?.data : null
     modalError.value = data?.message ?? 'Unable to create user. Please check the fields and try again.'
@@ -449,9 +452,14 @@ onMounted(() => {
           <section class="mt-5 space-y-4 border-t border-slate-100 pt-5">
             <h4 class="text-xs font-medium uppercase tracking-wide text-slate-400">Login Credentials</h4>
             <div>
-              <label class="mb-1.5 block text-xs font-bold text-slate-600" for="user-email">Email / Username</label>
+              <label class="mb-1.5 block text-xs font-bold text-slate-600" for="user-username">Username (optional)</label>
+              <input id="user-username" v-model="userForm.username" type="text" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm" />
+              <p class="mt-1 text-xs text-slate-400">Leave blank to auto-generate one. This is what the coordinator signs in with.</p>
+            </div>
+            <div>
+              <label class="mb-1.5 block text-xs font-bold text-slate-600" for="user-email">Email (optional)</label>
               <input id="user-email" v-model="userForm.email" type="email" class="h-10 w-full rounded-md border border-slate-300 px-3 text-sm" />
-              <p class="mt-1 text-xs text-slate-400">Coordinators sign in with this. Must be a valid email address.</p>
+              <p class="mt-1 text-xs text-slate-400">Not required to sign in. The coordinator can add and verify one later to enable Google sign-in.</p>
             </div>
             <div>
               <label class="mb-1.5 block text-xs font-bold text-slate-600" for="user-password">Password</label>

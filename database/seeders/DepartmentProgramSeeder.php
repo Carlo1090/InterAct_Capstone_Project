@@ -27,6 +27,7 @@ class DepartmentProgramSeeder extends Seeder
         $departments = [
             'CAST' => [
                 'name' => 'College of Arts, Sciences and Technology',
+                'exit_interview_form' => 'cast',
                 'programs' => [
                     ['code' => 'BSIT', 'name' => 'BSIT'],
                 ],
@@ -44,6 +45,7 @@ class DepartmentProgramSeeder extends Seeder
             // the unit as two separate lines.
             'CABM-B' => [
                 'name' => 'Business Department – College of Accountancy, Business and Management',
+                'exit_interview_form' => 'cabm',
                 'programs' => [
                     ['code' => 'BSBA-FM', 'name' => 'BSBA-FM'],
                     ['code' => 'BSBA-MM', 'name' => 'BSBA-MM'],
@@ -53,6 +55,9 @@ class DepartmentProgramSeeder extends Seeder
             ],
             'CABM-H' => [
                 'name' => 'Hospitality Department – College of Accountancy, Business and Management',
+                // No hospitality edition of the form exists yet; it fills in
+                // the CABM (Business) one until one does.
+                'exit_interview_form' => 'cabm',
                 'programs' => [
                     ['code' => 'BSTM', 'name' => 'BSTM'],
                     ['code' => 'BSHRM', 'name' => 'BSHRM'],
@@ -60,7 +65,25 @@ class DepartmentProgramSeeder extends Seeder
             ],
         ];
 
-        Department::whereNotIn('code', array_keys($departments))->delete();
+        // THIS SEEDER IS ADDITIVE. It seeds the reference data MDC starts with;
+        // it does not own the set. It used to prune — deleting every department
+        // outside this list, and inside each one every program outside its list —
+        // which was safe only while the seven programs were hardcoded and nothing
+        // in the app could create an eighth.
+        //
+        // Both prunes were removed when the admin gained Program create/edit
+        // (2026-09-08). On a live install they are unrecoverable data loss:
+        // `batches.program_id` and `journal_templates.program_id` are
+        // cascadeOnDelete, and `batch_students` cascades from `batches` in turn,
+        // so pruning one admin-created program silently takes its batches, its
+        // enrollments and every journal hanging off them. Re-running this seeder
+        // to correct reference data — the documented way to do it, and exactly
+        // what was done on 2026-09-08 to fix the department names — would have
+        // been enough to trigger it.
+        //
+        // `migrate:fresh --seed` is unaffected either way: it starts from an
+        // empty database, so the prunes were always no-ops there. That is
+        // precisely why the hazard was invisible.
 
         foreach ($departments as $code => $departmentData) {
             $department = Department::firstOrCreate(
@@ -68,13 +91,13 @@ class DepartmentProgramSeeder extends Seeder
                 ['name' => $departmentData['name']]
             );
 
-            $department->update(['name' => $departmentData['name']]);
-
-            $programCodes = array_column($departmentData['programs'], 'code');
-
-            Program::where('department_id', $department->id)
-                ->whereNotIn('code', $programCodes)
-                ->delete();
+            // The exit interview form is the seeded STARTING assignment for the
+            // departments MDC ships with; the admin changes it on the Departments
+            // page, and a re-seed re-asserts it alongside the name.
+            $department->update([
+                'name' => $departmentData['name'],
+                'exit_interview_form' => $departmentData['exit_interview_form'],
+            ]);
 
             foreach ($departmentData['programs'] as $programData) {
                 $program = Program::firstOrCreate(

@@ -5,6 +5,7 @@ use App\Http\Controllers\Auth\MobileAuthController;
 use App\Http\Controllers\Admin\BatchController;
 use App\Http\Controllers\Admin\BatchStudentPurgeController;
 use App\Http\Controllers\Admin\DepartmentController;
+use App\Http\Controllers\Admin\ExitInterviewFormController;
 use App\Http\Controllers\Admin\ProgramController;
 use App\Http\Controllers\Admin\StudentInfoSheetController as AdminStudentInfoSheetController;
 use App\Http\Controllers\Admin\SystemSettingController;
@@ -29,6 +30,7 @@ use App\Http\Controllers\Coordinator\EnrollmentController;
 use App\Http\Controllers\Coordinator\GroupInfoSheetController;
 use App\Http\Controllers\Coordinator\HteReportController;
 use App\Http\Controllers\Coordinator\JournalTemplateController;
+use App\Http\Controllers\ContactController;
 use App\Http\Controllers\CronController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
@@ -71,6 +73,14 @@ Route::match(['get', 'post'], 'cron/run', [CronController::class, 'run'])
 // checks a bearer token before falling back to the stateful-cookie check, so
 // every existing role:student route below works unchanged once a token
 // exists — no other route/middleware change was needed for mobile.
+// The landing page's contact form. Public and unauthenticated by necessity —
+// the person it exists for is the one who never got their credentials and so
+// cannot sign in to ask about them. Throttled tightly because it is an open
+// endpoint that sends real mail; the coordinator's address lives in config and
+// is never returned to the caller.
+Route::post('contact', [ContactController::class, 'store'])
+    ->middleware('throttle:5,1');
+
 Route::post('mobile/login', [MobileAuthController::class, 'store']);
 Route::middleware('auth:sanctum')->post('mobile/logout', [MobileAuthController::class, 'destroy']);
 
@@ -123,8 +133,14 @@ Route::middleware(['auth:sanctum', 'role:admin'])
         Route::post('departments/{department}/coordinators', [DepartmentController::class, 'assignCoordinator']);
         Route::delete('departments/{department}/coordinators/{coordinator}', [DepartmentController::class, 'removeCoordinator']);
 
+        // The hardcoded exit interview forms a department can be assigned —
+        // read-only; the assignment itself is made on the department.
+        Route::get('exit-interview-forms', [ExitInterviewFormController::class, 'index']);
+
         Route::get('programs', [ProgramController::class, 'index']);
         Route::get('programs/{program}', [ProgramController::class, 'show']);
+        Route::post('programs', [ProgramController::class, 'store']);
+        Route::put('programs/{program}', [ProgramController::class, 'update']);
 
         Route::get('batches', [BatchController::class, 'index']);
         Route::get('batches/{batch}', [BatchController::class, 'show']);
@@ -180,6 +196,7 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         // the official form, and fill the coordinator's own block on it.
         // There is no accept/reject: an exit interview gates nothing.
         Route::get('exit-interviews', [CoordinatorExitInterviewController::class, 'index']);
+        Route::get('exit-interviews/summary', [CoordinatorExitInterviewController::class, 'summary']);
         Route::get('exit-interviews/{exitInterview}', [CoordinatorExitInterviewController::class, 'show']);
         Route::put('exit-interviews/{exitInterview}', [CoordinatorExitInterviewController::class, 'update']);
         Route::get('exit-interviews/{exitInterview}/pdf', [CoordinatorExitInterviewController::class, 'pdf']);
@@ -231,6 +248,8 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::get('users/interns/{student}', [EnrollmentController::class, 'showIntern']);
         Route::delete('users/interns/{student}', [EnrollmentController::class, 'destroyAccount']);
         Route::get('users/supervisors', [EnrollmentController::class, 'supervisors']);
+        Route::get('users/supervisors/{supervisor}', [EnrollmentController::class, 'showSupervisor']);
+        Route::delete('users/supervisors/{supervisor}', [EnrollmentController::class, 'destroySupervisorAccount']);
 
         // Credential Manager — reissuing a password moved OFF the Users page
         // and into the profile popover, and now covers supervisors too. See

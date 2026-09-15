@@ -262,9 +262,8 @@ onMounted(loadWeeks)
     <ToastHost />
     <div class="flex items-start justify-between gap-4 rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
       <p>
-        Write a short narrative for each week alongside your daily entries — or press
-        <strong class="font-semibold">Compile from Daily Entries</strong> to build it from what you have already
-        submitted, including entries you filed late. Approval happens with your company supervisor.
+        Use <strong class="font-semibold">Compile from Daily Entries</strong> to build this week from your submitted
+        daily journals.
       </p>
     </div>
 
@@ -347,7 +346,7 @@ onMounted(loadWeeks)
           <div class="mt-5">
             <!-- Submitted/approved weeks are read-only: always the paper document. -->
             <template v-if="!isEditable(week)">
-              <h3 class="text-sm font-bold text-slate-900">Weekly Narrative</h3>
+              <h3 class="text-sm font-bold text-slate-900">Summarize your week</h3>
               <div class="mt-2 rounded-md bg-slate-100 p-4 sm:p-6">
                 <WeeklyJournalPaperView
                   :narrative="details[week.week_start].narrative ?? ''"
@@ -363,7 +362,7 @@ onMounted(loadWeeks)
                  Preview after seeing the rendered document. -->
             <template v-else>
               <div class="flex flex-wrap items-center justify-between gap-3">
-                <h3 class="text-sm font-bold text-slate-900">Weekly Narrative</h3>
+                <h3 class="text-sm font-bold text-slate-900">Summarize your week</h3>
                 <div class="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-sm font-semibold">
                   <button
                     type="button"

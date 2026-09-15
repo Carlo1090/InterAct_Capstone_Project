@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import ToastHost from '@/components/ToastHost.vue'
 import LoadStatus from '@/components/LoadStatus.vue'
 import ValidationErrorList from '@/components/ui/ValidationErrorList.vue'
+import WeekdayRangePicker from '@/components/coordinator/WeekdayRangePicker.vue'
 import type {
   Batch,
   BatchRosterResponse,
@@ -35,7 +36,11 @@ type BatchForm = {
   start_date: string
   end_date: string
   required_hours: number
-  working_days_per_week: number
+  // The picker's two points. `end === null` is "start only" (a single-day
+  // range); `start === null` is "nothing chosen" and blocks Save. The server
+  // column is NOT NULL either way, so save() collapses a null end to the start.
+  working_days_start: number | null
+  working_days_end: number | null
   daily_reminder_time: string
   journal_template_id: number | null
   ojt_type: OjtType
@@ -72,7 +77,8 @@ const emptyForm = (): BatchForm => ({
   start_date: '',
   end_date: '',
   required_hours: 486,
-  working_days_per_week: 5,
+  working_days_start: 1,
+  working_days_end: 5,
   daily_reminder_time: '21:00',
   // Matches the column default: how every batch behaved before the choice
   // existed, so the safe answer is the one already in force.
@@ -107,15 +113,15 @@ const ojtTypeEffects = computed<{ on: boolean; text: string }[]>(() =>
 // before a round trip, not just surfaced as a raw server error afterward.
 const endDateInvalid = computed(() => Boolean(form.start_date && form.end_date && form.end_date <= form.start_date))
 
-// Client-side guards only — the server rules are unchanged and still authoritative.
-// `v-model.number` yields '' for a cleared input, which Number.isInteger rejects,
-// so an emptied field is caught the same way an out-of-range one is.
-const workingDaysInvalid = computed(
-  () => !Number.isInteger(form.working_days_per_week) || form.working_days_per_week < 1 || form.working_days_per_week > 7,
-)
+// Client-side guard only — the server rule is unchanged and still authoritative.
+// `v-model.number` yields '' for a cleared input, which Number.isInteger rejects.
 const requiredHoursInvalid = computed(() => !Number.isInteger(form.required_hours) || form.required_hours < 1)
 
-const hasFieldErrors = computed(() => endDateInvalid.value || workingDaysInvalid.value || requiredHoursInvalid.value)
+// The picker lets a coordinator deselect every day; the batch still needs at
+// least one, so an empty selection blocks Save rather than reaching the server.
+const workingDaysInvalid = computed(() => form.working_days_start === null)
+
+const hasFieldErrors = computed(() => endDateInvalid.value || requiredHoursInvalid.value || workingDaysInvalid.value)
 
 // Templates are many-programs-per-template now — filter on membership, not a
 // single program_id (which no longer exists on the template).
@@ -174,7 +180,11 @@ const openEditModal = (batch: Batch) => {
   form.start_date = batch.start_date?.slice(0, 10) ?? ''
   form.end_date = batch.end_date?.slice(0, 10) ?? ''
   form.required_hours = batch.required_hours
-  form.working_days_per_week = batch.working_days_per_week
+  form.working_days_start = batch.working_days_start
+  // A saved single-day batch is (d, d) in the database; the picker represents
+  // that as start-only so a tap on the day deselects it instead of reading as
+  // an ambiguous "end that equals the start".
+  form.working_days_end = batch.working_days_end === batch.working_days_start ? null : batch.working_days_end
   form.daily_reminder_time = batch.daily_reminder_time.slice(0, 5)
   form.journal_template_id = batch.journal_template_id ?? null
   form.is_active = batch.is_active ?? true
@@ -223,8 +233,11 @@ const save = async () => {
   modalMessage.value = ''
 
   try {
+    // A start-only selection is a one-day range on the wire.
+    const working_days_end = form.working_days_end ?? form.working_days_start
+
     if (editingBatchId.value) {
-      const { name, academic_year, semester, start_date, end_date, required_hours, working_days_per_week, daily_reminder_time, journal_template_id, is_active } = form
+      const { name, academic_year, semester, start_date, end_date, required_hours, working_days_start, daily_reminder_time, journal_template_id, is_active } = form
       await api.put(`/api/coordinator/batches/${editingBatchId.value}`, {
         name,
         academic_year,
@@ -232,13 +245,14 @@ const save = async () => {
         start_date,
         end_date,
         required_hours,
-        working_days_per_week,
+        working_days_start,
+        working_days_end,
         daily_reminder_time,
         journal_template_id,
         is_active,
       })
     } else {
-      await api.post('/api/coordinator/batches', form)
+      await api.post('/api/coordinator/batches', { ...form, working_days_end })
     }
 
     await load()
@@ -285,10 +299,13 @@ const addForm = reactive({
 
 // The supervisor is tied to the company, not a separate choice — this is
 // read-only display of whichever supervisor the selected company resolves
-// to (its one login account), matching what the backend will assign.
+// to (its one login account), matching what the backend will assign. Resolved
+// from the company's own login_supervisor field (not the — now scoped —
+// supervisors list), since the company picker itself is intentionally not
+// scoped to this coordinator (companies can be shared across departments).
 const addResolvedSupervisor = computed(() =>
   addForm.company_id
-    ? rosterOptions.value.supervisors.find((supervisor) => supervisor.company_ids.includes(addForm.company_id as number))
+    ? (rosterOptions.value.companies.find((company) => company.id === addForm.company_id)?.login_supervisor ?? undefined)
     : undefined,
 )
 
@@ -831,20 +848,11 @@ onMounted(load)
                 />
                 <p v-if="requiredHoursInvalid" class="mt-1 text-xs text-red-600">Required hours must be a whole number of 1 or more.</p>
               </div>
-              <div>
-                <label class="mb-2 block text-sm font-medium text-slate-700" for="batch-days">Working Days / Week</label>
-                <input
-                  id="batch-days"
-                  v-model.number="form.working_days_per_week"
-                  type="number"
-                  min="1"
-                  max="7"
-                  step="1"
-                  class="w-full rounded-md border px-3 py-2 text-sm tabular-nums"
-                  :class="workingDaysInvalid ? 'border-red-400' : 'border-slate-300'"
-                />
-                <p v-if="workingDaysInvalid" class="mt-1 text-xs text-red-600">Working days must be a whole number between 1 and 7.</p>
-              </div>
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-medium text-slate-700">Working Days</label>
+              <WeekdayRangePicker v-model:start="form.working_days_start" v-model:end="form.working_days_end" />
+              <p v-if="workingDaysInvalid" class="mt-1 text-xs text-red-600">Pick at least one working day.</p>
             </div>
           </section>
 

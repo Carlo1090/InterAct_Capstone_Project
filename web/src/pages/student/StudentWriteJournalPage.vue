@@ -296,12 +296,6 @@ onMounted(load)
         This date is outside the range you can write in — it is either in the future or outside your OJT period. Pick a
         date within your OJT range using the date picker above.
       </div>
-      <div
-        v-else-if="status === 'submitted'"
-        class="rounded-md border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-800"
-      >
-        Submitted — you can still edit this entry until this week is sent to your supervisor for review.
-      </div>
 
       <!-- EDIT MODE — clean writing surface, no checkboxes inline -->
       <template v-if="!isViewMode">

@@ -367,7 +367,7 @@ onMounted(() => {
 
     <!-- C. Two-column row -->
     <div>
-      <h3 class="mb-3 text-xs font-medium uppercase tracking-wide text-slate-400">Your review workload</h3>
+      <h3 class="mb-3 text-xs font-medium uppercase tracking-wide text-slate-400">Review workload</h3>
       <div class="grid items-stretch gap-6 xl:grid-cols-2">
       <section class="flex h-full flex-col rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
         <h2 class="text-sm font-semibold text-slate-900">Review Status</h2>
@@ -463,7 +463,7 @@ onMounted(() => {
 
       <LoadStatus :loading="isLoading" :error="errorMessage" :retry="load">
         <p v-if="(dashboard?.recently_reviewed.length ?? 0) === 0" class="mt-5 text-sm text-slate-400">
-          You haven't reviewed any weekly journals yet.
+          No weekly journals have been reviewed yet.
         </p>
 
         <!--

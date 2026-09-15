@@ -8,6 +8,8 @@
  * detour someone takes when something has already gone wrong, and animating
  * them would slow down the one thing they came to do.
  */
+import { RouterLink } from 'vue-router'
+
 defineProps<{
   title: string
   subtitle?: string
@@ -16,16 +18,25 @@ defineProps<{
 
 <template>
   <main
-    class="relative flex min-h-dvh w-full items-center justify-center overflow-hidden bg-linear-to-br from-blue-900 via-blue-800 to-teal-500 px-5 py-10"
+    class="relative flex min-h-dvh w-full items-center justify-center overflow-hidden bg-linear-to-br from-blue-600 to-indigo-700 px-5 pt-16 pb-10"
   >
     <div aria-hidden="true" class="pointer-events-none absolute inset-0">
       <span
-        class="absolute top-[-10%] -left-24 h-[28rem] w-[28rem] rounded-full bg-linear-to-br from-teal-300 to-blue-400 opacity-25 blur-3xl"
+        class="absolute top-[-10%] -left-24 h-[28rem] w-[28rem] rounded-full bg-linear-to-br from-blue-300 to-indigo-300 opacity-25 blur-3xl"
       />
       <span
-        class="absolute -right-32 bottom-[-15%] h-[32rem] w-[32rem] rounded-full bg-linear-to-tr from-sky-300 to-teal-200 opacity-25 blur-3xl"
+        class="absolute -right-32 bottom-[-15%] h-[32rem] w-[32rem] rounded-full bg-linear-to-tr from-blue-200 to-indigo-200 opacity-25 blur-3xl"
       />
     </div>
+
+    <!-- Same control, same place as LoginPage's — see the comment there. -->
+    <RouterLink
+      to="/"
+      class="absolute top-5 left-5 z-10 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-blue-50 transition hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none"
+    >
+      <span aria-hidden="true">&larr;</span>
+      Back to InternTrack
+    </RouterLink>
 
     <div class="relative w-full max-w-sm">
       <img
@@ -36,8 +47,8 @@ defineProps<{
 
       <!--
         bg-white/75 rather than a lighter wash, matching LoginPage: over the
-        blue-900 stop a 60% white card composites to roughly #a5b0d0, on which
-        slate-600 body text measures 3.50:1 and misses WCAG AA.
+        indigo-700 stop a 60% white card composites to roughly #b4afea, on which
+        slate-600 body text measures 3.70:1 and misses WCAG AA.
       -->
       <div
         class="frost relative overflow-hidden rounded-2xl border border-white/50 bg-white/75 p-6 shadow-2xl backdrop-blur-2xl sm:p-8"
@@ -51,7 +62,7 @@ defineProps<{
         </div>
       </div>
 
-      <p class="mt-6 text-center text-xs text-blue-200">&copy; Mater Dei College</p>
+      <p class="mt-6 text-center text-xs text-blue-100">&copy; Mater Dei College</p>
     </div>
   </main>
 </template>

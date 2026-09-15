@@ -17,6 +17,7 @@ class Department extends Model
         'code',
         'name',
         'dean_name',
+        'exit_interview_form',
         'is_active',
     ];
 

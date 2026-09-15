@@ -3,6 +3,8 @@ export type Department = {
   code: string
   name: string
   dean_name: string | null
+  /** Key into the hardcoded exit interview catalogue (see ExitInterviewForm). */
+  exit_interview_form: string
   is_active: boolean
   programs_count?: number
 }
@@ -100,7 +102,9 @@ export type Batch = {
   start_date: string
   end_date: string
   required_hours: number
-  working_days_per_week: number
+  /** ISO weekday (1=Mon..7=Sun) of the working-week range, picked via WeekdayRangePicker. */
+  working_days_start: number
+  working_days_end: number
   daily_reminder_time: string
   is_active?: boolean
   journal_template_id?: number | null
@@ -130,13 +134,14 @@ export type EnrollableStudent = {
 export type EnrollmentOptionCompany = {
   id: number
   name: string
+  login_supervisor: { id: number; name: string; username?: string; email: string } | null
 }
 
 export type EnrollmentOptionSupervisor = {
   id: number
   name: string
+  username?: string
   email: string
-  company_ids: number[]
 }
 
 export type EnrollmentOptionProgram = {
@@ -206,10 +211,35 @@ export type BulkImportConfirmResponse = {
 export type CoordinatorSupervisorUser = {
   id: number
   name: string
+  username?: string
   email: string
   is_active: boolean
   companies: { id: number; name: string; position: string | null }[]
   batches: { id: number; name: string }[]
+}
+
+/**
+ * Full detail for one supervisor — backs the Supervisors tab's "View" action,
+ * the same role InternDetail plays for a student. Adds the per-company
+ * position and the actual roster of interns assigned to them (the list row
+ * only shows batch names, not who), which is why View is worth having beyond
+ * the row itself.
+ */
+export type SupervisorDetail = {
+  id: number
+  name: string
+  email: string | null
+  username?: string | null
+  avatar_url: string | null
+  is_active: boolean
+  companies: { id: number; name: string; position: string | null }[]
+  interns: {
+    id: number
+    name: string
+    status: BatchStudentStatus
+    batch: { id: number; name: string } | null
+    company: { id: number; name: string } | null
+  }[]
 }
 
 /**
@@ -820,7 +850,7 @@ export type CompanySupervisorRecord = {
   position: string | null
   display_name: string
   is_login: boolean
-  user: { id: number; name: string; email: string } | null
+  user: { id: number; name: string; username?: string; email: string } | null
 }
 
 export type CoordinatorCompany = {
@@ -1058,9 +1088,58 @@ export type ExitInterviewStatus = 'draft' | 'submitted' | 'reviewed'
 
 export type ExitInterviewComplianceChoice = 'complete' | 'pending'
 
+/**
+ * One question of a department's exit interview form, as the API serves it.
+ * `text` is five ruled lines on paper; `yes_no_text` adds a printed ☐ Yes ☐ No
+ * pair whose answer is stored under `choice`; `scale` is a row of boxes and
+ * nothing else, its answer stored under the question's own key.
+ */
+export type ExitInterviewQuestion = {
+  n: number
+  key: string
+  text: string
+  type: 'text' | 'yes_no_text' | 'scale'
+  choice?: string
+  label?: string | null
+  options?: Record<string, string>
+}
+
+export type ExitInterviewSection = {
+  heading: string
+  questions: ExitInterviewQuestion[]
+}
+
+/**
+ * A department's hardcoded exit interview form — the question set the SPA
+ * renders. Which one a student sees is their batch's department's choice, and
+ * an interview keeps the form it was begun under (`form_key`).
+ */
+export type ExitInterviewForm = {
+  key: string
+  label: string
+  college_line: string
+  title: string
+  /** A line printed under a one-line title (CAST); null where the title itself takes both masthead lines. */
+  subtitle: string | null
+  student_info_heading: string
+  sections: ExitInterviewSection[]
+  question_count: number
+}
+
+/** Admin → Exit Interview: every hardcoded form, with who uses it. */
+export type AdminExitInterviewFormsResponse = {
+  forms: (ExitInterviewForm & {
+    reference: string
+    pages: number
+    departments: { id: number; code: string; name: string }[]
+  })[]
+  default: string
+}
+
 export type StudentExitInterviewResponse = {
   interview: {
     id: number
+    form_key: string
     submission_status: ExitInterviewStatus
     submitted_at: string | null
     reviewed_at: string | null
@@ -1071,6 +1150,8 @@ export type StudentExitInterviewResponse = {
     }
     responses: Record<string, string | null>
   } | null
+  /** The question set to render — the student's department's form. */
+  form: ExitInterviewForm
   header: {
     student_name: string | null
     program: string | null
@@ -1097,6 +1178,7 @@ export type CoordinatorExitInterviewRow = {
   submitted_at: string | null
   reviewed_at: string | null
   compliance: ExitInterviewComplianceChoice | null
+  form_key: string
 }
 
 export type CoordinatorExitInterviewsResponse = {
@@ -1117,9 +1199,50 @@ export type CoordinatorExitInterviewDetail = {
   reviewed_by: string | null
   header: Record<string, string>
   responses: Record<string, string | null>
+  /** The form this interview was answered under. */
+  form: ExitInterviewForm
   coordinator_section: {
     compliance?: ExitInterviewComplianceChoice | null
     pending_detail?: string | null
     remarks?: string | null
   }
+}
+
+/** One in-scope intern's answer to a single question, in the Summary Report. */
+export type ExitInterviewSummaryAnswer = {
+  student_id: number
+  student_name: string
+  student_id_number: string | null
+  program: string
+  /** 'yes' | 'no' for a Yes/No pair, an option key for a rating, else null. */
+  choice: string | null
+  text: string
+}
+
+/** One question's worth of gathered answers — the whole point of the report is
+ *  reading this list per question rather than per student. */
+export type ExitInterviewSummaryQuestion = {
+  key: string
+  number: number
+  section: string
+  text: string
+  type: 'text' | 'yes_no_text' | 'scale'
+  choice_key: string | null
+  /** A rating question's options, in printed order. */
+  options: Record<string, string> | null
+  /** yes/no/unanswered for a Yes/No pair; each option plus unanswered for a rating. */
+  tally: Record<string, number> | null
+  answers: ExitInterviewSummaryAnswer[]
+}
+
+export type CoordinatorExitInterviewSummaryResponse = {
+  programs: { id: number; name: string; code?: string }[]
+  academic_years: string[]
+  academic_year: string | null
+  /** The department's own form — the one the questions below belong to. */
+  form: { key: string; label: string }
+  total_respondents: number
+  /** Submitted interviews answered under a different form, counted but not gathered. */
+  other_form_respondents: number
+  questions: ExitInterviewSummaryQuestion[]
 }
