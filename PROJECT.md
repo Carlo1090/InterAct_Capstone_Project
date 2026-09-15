@@ -388,6 +388,9 @@ card view; `CoordinatorCompaniesPage.vue`'s OJT Supervisor Login panel).
   2026-09-08). The admin creates departments, and since 2026-09-08 creates
   **programs** under them as well — see Admin → Programs below. Treat the seven
   as what a fresh install ships with; a running install may hold any number.
+- **Each department is assigned one hardcoded exit interview form**
+  (`departments.exit_interview_form`, chosen by the admin; seeded CAST → `cast`,
+  both CABM departments → `cabm`). See Exit Interview.
 - **`departments.code` is the identifier; `departments.name` is display only.**
   Every lookup in the project keys off the code
   (`Department::where('code', 'CABM-B')`), it is what fits a narrow column and
@@ -2033,11 +2036,15 @@ per-student **form** is in scope and built. The aggregate **Summary Report on
 Student Exit Interview** followed on 2026-09-10, narrowing Hard Rule #4 a
 second time — see Summary Report below.
 
-The student fills in the official CABM "Internship Program Student Exit
-Interview Form" at the close of their placement; their coordinator reads every
-answer, records the compliance verification the form reserves for them, and
-downloads a measured facsimile to file. Reference:
-`docs/reference/INTERNSHIP PROGRAM STUDENT EXIT INTERVIEW - BUSINESS.pdf`.
+The student fills in **their department's** official exit interview form at
+the close of their placement; their coordinator reads every answer, records
+the compliance verification the form reserves for them, and downloads a
+measured facsimile to file. Two forms exist, both hardcoded — see **One
+template, one hardcoded form per department** below for how a department is
+pointed at one and why they are not editable. References:
+`docs/reference/INTERNSHIP PROGRAM STUDENT EXIT INTERVIEW - BUSINESS.pdf`
+(CABM, the original and the template) and
+`docs/reference/EXIT INTERVIEW OJT CAST DEPARTMENT.pdf` (CAST, 2026-09-15).
 
 - **Student**: `StudentExitInterviewController` (`show`/`store`/`pdf`, routes
   `student/exit-interview*` in the **gated** group), page
@@ -2052,22 +2059,182 @@ downloads a measured facsimile to file. Reference:
   Student** (the queue below) and **Summary Report** (see below) — rather than
   a second nav item; see Summary Report for why.
 
-### Schema — one additive table
+### Schema — one additive table, plus two key columns
 
-`student_exit_interviews`: `student_id`, `batch_id`, three JSON payloads
-(`student_info`, `responses`, `coordinator_section`), `submission_status`
-(`draft`/`submitted`/`reviewed`), `submitted_at`, `reviewed_at`, `reviewed_by`,
-and **`UNIQUE(student_id, batch_id)`** — the form is filled once per placement,
+`student_exit_interviews`: `student_id`, `batch_id`, **`form_key`** (2026-09-15,
+see below), three JSON payloads (`student_info`, `responses`,
+`coordinator_section`), `submission_status` (`draft`/`submitted`/`reviewed`),
+`submitted_at`, `reviewed_at`, `reviewed_by`, and
+**`UNIQUE(student_id, batch_id)`** — the form is filled once per placement,
 backstopped in the database the way `batch_students` backstops its own pair
 rather than by the controller alone.
 
 The JSON columns follow `student_information_sheets`' precedent for the same
 reason: **the question set belongs to the paper form, not to the schema**, so
-rewording or adding a question is not a migration. `responses` is keyed
-`q1`..`q14` plus `q2_choice` / `q7_choice` / `q10_choice` / `q11_choice` for the
-four printed ☐ Yes ☐ No pairs. **`StudentExitInterview::QUESTION_KEYS` and
-`CHOICE_KEYS` are the single definition** shared by the Form Request, the API
-payload and the PDF, so the three can never disagree about what question 7 is.
+rewording or adding a question is not a migration. `responses` is keyed by the
+form's own question keys — on CABM `q1`..`q14` plus `q2_choice` / `q7_choice`
+/ `q10_choice` / `q11_choice` for the four printed ☐ Yes ☐ No pairs; on CAST
+`q1`..`q22`, `q28`..`q33`, `q35`..`q37`, with `q33` holding a rating option key.
+**The form definition (`App\Support\ExitInterview\ExitInterviewForm`, one per
+department under `Forms/`) is the single source** shared by the Form Request,
+the API payload, the PDF, the Summary Report, the SPA and the mobile app, so
+none of them can disagree about what question 7 is. The old
+`StudentExitInterview::QUESTION_KEYS` / `CHOICE_KEYS` constants are gone;
+`$interview->form()->questionKeys()` / `choiceKeys()` replace them.
+
+### One template, one hardcoded form per department (2026-09-15)
+
+Built at the project owner's direction: **the forms are hardcoded, not
+editable** — each department's official paper differs and there is no choice
+in that — and the admin **picks which hardcoded form a department uses**.
+
+- **`App\Support\ExitInterview\ExitInterviewForms`** is the catalogue and the
+  ONE resolver: `all()` / `keys()` / `get($key)`, `forDepartment()`,
+  `forBatch()` (batch → program → department), `forInterview()` (the row's
+  own snapshot first). Each form is a class under `Forms/` returning an
+  `ExitInterviewForm` value object — key, label, masthead college line and
+  title lines, optional preamble, the student-info heading, the reference
+  file name, and the sections with their questions. Adding a department's
+  form is one new class and one entry in `all()`; **nothing else in the app
+  names a form key**. An unknown key resolves to `DEFAULT` (`cabm`) rather
+  than throwing, so an old interview stays downloadable if a form is ever
+  removed.
+- **Every form shares the CABM TEMPLATE.** Section A (student information,
+  the same five derived and three typed fields), the draft → submitted →
+  reviewed lifecycle, the compliance block, the two signatories and the
+  measured page geometry are all the template's and identical on every form.
+  **Only the questions and the masthead are a department's own** — the
+  project owner's rule for CAST ("follow the CABM template; only the
+  questions change"), which is what makes one layout, one blade, one
+  controller pair and one Form Request serve every department.
+- **Three answer types**, and the type is what the clients render by:
+  `text` (five ruled lines), `yes_no_text` (a printed ☐ Yes ☐ No pair stored
+  under its `choice` key, then the lines) and `scale` (a row of boxes stored
+  under the question's OWN key, no lines at all — CAST's Q33 "Overall, how
+  would you rate…" ☐ Excellent … ☐ Poor is the only one on either form).
+- **`departments.exit_interview_form`** (string key, NOT NULL, default
+  `cabm`) is the admin's choice, **required on Create Department** (the admin
+  chooses rather than inheriting a default they never saw) and changeable on
+  Edit. `DepartmentProgramSeeder` seeds `CAST → cast`, `CABM-B → cabm`,
+  `CABM-H → cabm` (no hospitality edition exists yet). The migration backfills
+  CAST on a live install. On Admin → Departments the assignment prints
+  **under the department name**, not in a seventh column — the table is
+  already six columns at its measured widths and a seventh collapsed Name to
+  two letters (the Journal Review queue's company-under-batch call).
+- **`student_exit_interviews.form_key`** (string, default `cabm`) is
+  SNAPSHOTTED from the batch's department on every student save, so a
+  finished interview keeps rendering under the questions it actually
+  answered even if the admin re-points the department later — the same
+  principle as a reviewed daily entry being labelled by its log's OWN
+  template. Pinned by
+  `CastExitInterviewTest::test_an_interview_keeps_its_own_form_when_the_department_changes`.
+  Every interview that existed before the column was answered on the CABM
+  form (it was the only one), so the default is the truthful backfill.
+- **The Form Request builds its rules from the resolved form**
+  (`StoreExitInterviewRequest::form()`, the identical resolution the
+  controller then stamps into `form_key`): `scale` → `Rule::in(options)`,
+  `yes_no_text` → the choice key in `yes|no`, everything else the width
+  check. A CABM-shaped payload posted by a CAST student is refused on the
+  CAST questions it lacks, and its `q2_choice` is simply not a rule.
+- **The API serves the form.** `GET student/exit-interview` and the
+  coordinator's `show` carry `form` (`ExitInterviewForm::toArray()`);
+  `StudentExitInterviewPage.vue`, `CoordinatorExitInterviewsPage.vue` and
+  `mobile/app/exit-interview.tsx` render from it and **no longer carry a
+  transcription of the questions** — the five copies that existed (layout,
+  model, two web pages, mobile) are one. `answer_char_limits` is per form; a
+  rating question has no entry.
+- **The Summary Report is ONE FORM PER REPORT**: the coordinator's
+  department's assigned form supplies the questions, only interviews
+  snapshotted under that `form_key` are gathered (CAST q1 ≠ CABM q1), and the
+  rest are reported as `other_form_respondents` rather than silently dropped.
+  A `scale` question tallies each of its options plus `unanswered`, the way a
+  Yes/No pair tallies `yes`/`no`/`unanswered`.
+- **The CABM reference's three pre-filled names (coordinator, dean) fall back
+  ONLY on the CABM form.** `BuildsExitInterviewPdf` used to print them
+  whenever the record lacked a dean; on a CAST form that put the business
+  department's dean under "Reviewed by". Now any other form prints a blank to
+  be signed. Pinned by `test_the_cabm_reference_names_never_print_on_a_cast_form`.
+
+#### Admin → Exit Interview (2026-09-15)
+
+`Admin\ExitInterviewFormController::index` (`GET admin/exit-interview-forms`),
+page `AdminExitInterviewFormsPage.vue` at `/admin/exit-interviews`, nav label
+**"Exit Interview"** under People & Records (`exit` icon, the student
+layout's own). **Read-only**: the catalogue of hardcoded forms — label, key,
+college line and title, question count, printed page count (computed by the
+layout, not stated), the reference file name, which departments currently use
+it, and an expandable list of every question with its answer type. It exists
+so the admin can see what each form asks and who uses it without opening a
+student's copy; the assignment itself is made on the Departments page.
+Coverage: `tests/Feature/Admin/ExitInterviewFormCatalogTest.php`.
+
+#### The CAST form (`Forms/CastForm.php`)
+
+31 questions in six sections A–F, on the CABM template. Three things about the
+paper are carried over as-is rather than tidied, and each is a data edit in
+that one file once the department confirms what it wants:
+
+- **The numbering has gaps — 1–22, 28–33, 35–37.** There is no 23–27 and no
+  34 on the printed page (a Word list artifact). Keys and printed numbers
+  keep the paper's own numbering so the app and the sheet in a coordinator's
+  hand agree; `key` is independent of `n`, so renumbering is a change to `n`
+  alone.
+- **Q33 is a five-point rating** (`excellent` / `very_good` / `good` / `fair`
+  / `poor`), the one non-text question.
+- **The paper's Section A is "OJT Experience"**, so the template's
+  student-information block is headed **"Student Information"** without a
+  letter on this form (`ExitInterviewForm::$studentInfoHeading`), exactly as
+  the CAST page prints it. The masthead reads "College of Arts, Sciences, and
+  Technology (CAST)", then the paper's own title on ONE line — "EXIT
+  INTERVIEW QUESTIONNAIRE FOR ON-THE-JOB (OJT) STUDENTS" (318.6pt at the
+  masthead's 9.4pt) — with its subtitle "On-the-Job Training (OJT) Program"
+  in the template's second title slot (`ExitInterviewForm::$subtitle`, which
+  the layout prints there whenever a title takes only one line); there is no
+  preamble.
+
+##### Verified against the reference (2026-09-15)
+
+Once the CAST PDF was in `docs/reference/`, every text run was read off both
+references' content streams (pdf.js, positions and all) and compared to the
+two form definitions string-for-string: **every section heading, every
+question's number and wording, the section membership, the four CABM
+"Please explain" labels, the five CAST rating options, both mastheads and the
+CABM preamble match — zero differences.** The one CAST deviation that check
+found (the title split across two lines with the subtitle dropped) was fixed
+the same day; the CABM preamble's line BREAK differs from the paper because
+condensed Tahoma fits "The information collected" on line one and Helvetica
+does not — the words are identical, and that is the documented type
+substitution, not a transcription error.
+
+**The verification is now a permanent guard, not a one-off.**
+`tests/Fixtures/exit-interview-references.json` holds the papers' own words
+(generated from the PDFs, not typed from the definitions), and
+`tests/Unit/Support/ExitInterviewFormsTest.php` holds every form in the
+catalogue to it — headings, numbering and wording, section order, labels,
+options, masthead, preamble — plus that each form's `reference` file actually
+exists in `docs/reference/`. Rewording, renumbering or moving a question is
+therefore a conscious edit to the fixture as well, never a silent drift from
+what the department prints. Proven to bite: a one-word change to Q22 and a
+28 → 23 renumbering each fail it.
+
+What the guard deliberately does NOT hold a form to is the **template**, which
+is the CABM one on every form by direction and differs from the CAST paper in
+four ways worth knowing when the department reviews the printout: the paper
+is **US Letter** (612 x 792) where the template is long bond (612 x 936); the
+paper has **no ruled answer lines** (only two stray ones under Q1–2) where
+the template rules five per answer; the paper's student block lists **Year
+Level, OJT Company/Agency, Department/Section, OJT Period and Total Number
+of OJT Hours** where the template prints its own Section A fields (Year Level
+has no template equivalent); and the paper closes with an **attestation line,
+"Student's Name", and "Interviewed by / Reviewed by" signatories** where the
+template prints the student signature row, the coordinator's compliance
+block and the coordinator/dean signatories.
+
+Demo: `CastExitInterviewDemoSeeder` gives `mdcstudent` (submitted),
+`mdcstudent2` (reviewed) and `mdcstudent3` (draft) one CAST form each, so
+`mdccore`'s page, Summary Report (with a Q33 tally) and four-page PDF are
+non-empty on a fresh seed — the CAST counterpart of
+`CabmbExitInterviewDemoSeeder`.
 
 ### The write rule is deliberately NOT the project-wide one
 
@@ -2100,8 +2267,9 @@ typed, the blank prints blank; **hours are never fabricated**.
 
 ### Draft, submit, lock — and the coordinator's own block
 
-- A **draft** validates nothing; a **submit** requires all fourteen answers and
-  all four Yes/No choices. Half an interview handed to a coordinator is worse
+- A **draft** validates nothing; a **submit** requires every answer on the
+  form (all fourteen and all four Yes/No choices on CABM; all thirty-one on
+  CAST, Q33's rating included). Half an interview handed to a coordinator is worse
   than none, but a student must be able to stop typing and come back.
 - **Submitting locks the student's half permanently** — there is no unsubmit.
   It notifies the batch's own coordinator (`batches.coordinator_id`, the single
@@ -2145,8 +2313,20 @@ remark cannot be truncated off the foot of the form either.
 printed copy and the coordinator's filed copy cannot drift.
 
 **THE BLADE HOLDS NO GEOMETRY.** Every position is computed by
-`App\Support\ExitInterviewFormLayout::document()` from one horizontal grid and
-one vertical rhythm; the blade is three loops over the result. That is
+`App\Support\ExitInterviewFormLayout::for($form)->document()` from one
+horizontal grid and one vertical rhythm; the blade is three loops over the
+result. **Since 2026-09-15 the layout is an instance per FORM
+(`Layout::for('cabm')` / `for('cast')`, cached by key) and the questions
+PAGINATE AUTOMATICALLY**: a page breaks before any question whose answer box
+would cross `CONTENT_BOTTOM` (882.5pt, folio less clearance), a section
+heading travels with its first question so it can never sit alone at the
+foot of a page, and the coordinator's block is measured first on scratch
+arrays and moved whole to a fresh page when the last page cannot hold it.
+For the CABM form this reproduces the hand-stated break after question 7 to
+the hundredth of a point (page bottoms 868.85 / 871.37, unchanged); the CAST
+form comes out at four pages, computed rather than stated. The masthead's
+college line and title lines are slots filled from the form; the measured
+baselines, faces and sizes are fixed. That is
 deliberate and is the whole point of the 2026-08-30 rebuild: the first cut
 hand-placed some sixty coordinates in the blade, which is exactly the shape
 that lets spacing drift, one edit at a time, into what the reference itself
@@ -2245,9 +2425,10 @@ The rebuilt form fixes each of those. Load-bearing details:
     (the reference's own page-2 bottom was 882.05, so the envelope is
     unchanged).
 
-The blank form and a fully filled one both come out at **exactly two pages**,
-asserted on both download paths, and **no font is embedded** — a filled
-download is about 6KB.
+The blank CABM form and a fully filled one both come out at **exactly two
+pages**, asserted on both download paths; the CAST form at **exactly four**
+(`CastExitInterviewTest`). **No font is embedded** — a filled download is
+about 6KB (CABM) / 8.5KB (CAST).
 
 ### Coverage
 
@@ -2265,6 +2446,18 @@ lock, the completed/dropped split, the page size) and
 `tests/Feature/Coordinator/CoordinatorExitInterviewTest.php` (program scoping,
 the 403s, the coordinator block never touching `responses`, and the draft that
 cannot be signed off) cover the endpoints.
+
+Since 2026-09-15 the layout test runs its pitch, box and folio cases over
+EVERY form in the catalogue, pins that the CABM form still breaks after
+question 7 onto two pages with its measured bottoms, and adds the CAST cases
+(auto-pagination without an orphaned heading, the rating row, the per-form
+masthead). `tests/Feature/Student/CastExitInterviewTest.php` covers the
+department resolution, CAST validation (the missing-question 422, the rating's
+option set, a CABM `q2_choice` meaning nothing), the `form_key` snapshot
+surviving a re-assignment, the four-page PDF, and the CABM reference names
+never printing on a CAST form; `tests/Feature/Admin/ExitInterviewFormCatalogTest.php`
+covers the admin catalogue and the department assignment (required on create,
+in the catalogue's keys, changeable on edit, unknown key → default).
 
 ### Summary Report — every intern's answer gathered per question
 
@@ -2290,7 +2483,7 @@ existing Student Exit Interviews page rather than as its own sidebar entry.
   year that has any batch in scope.
 - **DRAFTS ARE EXCLUDED — only `submitted` and `reviewed` interviews feed
   it.** A draft can be blank or half-typed, and only a submitted interview is
-  guaranteed to carry all fourteen answers (`StoreExitInterviewRequest`
+  guaranteed to carry every answer (`StoreExitInterviewRequest`
   enforces that on submit); including drafts would let an in-progress form
   skew a tally into looking like a completed one. This is the opposite of the
   by-student queue, which deliberately DOES include drafts (see above) — the
@@ -2307,11 +2500,13 @@ existing Student Exit Interviews page rather than as its own sidebar entry.
   document for this aggregate — `docs/reference/` has no facsimile to measure
   it against — so a PDF here would be an unmatched, made-up layout rather than
   a measured one. Easy to add later against the same query if ever needed.
-- The 14-question catalog (number, section heading, text, and which four carry
-  a ☐ Yes ☐ No pair) is read straight off **`ExitInterviewFormLayout::SECTIONS`**
-  rather than re-declared a third time — it already backs the PDF and cannot
-  drift from the actual form wording.
-- **Choice questions (q2/q7/q10/q11) carry a `{yes, no, unanswered}` tally**
+- The question catalog (number, section heading, text, type, and a rating's
+  options) is read straight off the coordinator's department's
+  **`ExitInterviewForm`** rather than re-declared — it already backs the PDF
+  and cannot drift from the actual form wording. **One form per report**: only
+  interviews snapshotted under that form's key are gathered; see One
+  template, one hardcoded form per department above.
+- **Choice questions (CABM's q2/q7/q10/q11) carry a `{yes, no, unanswered}` tally**
   alongside the same per-student answer list; a student who picked Yes/No but
   left the explanation blank still appears (with `text: ''`), since the choice
   itself is an answer.
@@ -3432,12 +3627,13 @@ It is the only **marketing** surface in the app; every other public route
   into `batches.required_hours`. The DTR mock opens at `146 / 486 hrs` and
   reaches `154 / 486 hrs` once the sample day is closed; 146 and the 8h 33m
   session are illustrative, 486 is not.
-- **The hero's three facts are NOT part of that rule** — Departments 3, Programs
-  7, Roles 4 are true statements about the institution (see Domain Facts), not a
-  simulated dashboard, so they are read normally rather than hidden. They are
-  hardcoded and will need editing if a department or program is ever added.
-  (A fourth, "Entries per day / 1", was dropped on 2026-09-10 — it is a rule of
-  the system, not a statistic about it.)
+- **The hero's stat strip is GONE (2026-09-16, project owner).** It carried
+  Departments 3 · Programs 7 · Roles 4 — true statements about the
+  institution, but nothing about the product — and the owner called them
+  irrelevant. The `facts` const, the `.hero-plinth`/`.facts`/`.fact` rules and
+  their 640px overrides are all deleted; the hero copy now centres in the
+  space below the header on its own. (An earlier fourth, "Entries per day /
+  1", had already been dropped on 2026-09-10.)
 ### Redesign, 2026-09-09 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
 
 The page was rewritten end to end against a written specification: a campus
@@ -4075,6 +4271,90 @@ the back link is visible, hittable and routes to `/` at 1440 and 375, with no
 overlap on any of the three pages; no horizontal scroll; no console errors.
 `npm run build` and `vue-tsc` both clean.
 
+#### Motion and headings pass, 2026-09-16 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
+
+Six changes at the project owner's direction, all in `LandingPage.vue`.
+
+- **The nav reads Users · Mechanics · Records · Others**, in that order — the
+  owner's four words, replacing "Who uses it / How it works / Records /
+  Others". The ids (`#roles #how #record #more`) and `SECTION_IDS` are
+  untouched, so the scroll-spy is unaffected. **Each of the four sections now
+  opens with a `.kicker`** carrying the same word above its `h2`, so a reader
+  who arrived by the nav lands on the word they clicked. Gold on dark bands,
+  `--blue` on paper (`.band-paper .kicker`), for the same reason the nav
+  underline inverts. Sentence case — the no-uppercase rule still holds.
+- **Scroll-triggered entrance** (`.reveal` + `hasJs`/`revealObserver`). Every
+  heading, card, step, guarantee and extra starts 26px down at opacity 0 and
+  eases in the first time it crosses the lower 12% of the viewport; siblings
+  stagger off a `--i` custom property at 80ms each. Four rules keep it from
+  costing the reader anything, and each is load-bearing:
+  1. **The hidden state is gated on `.has-js`**, added only in `onMounted`, so
+     a page with no script (or a crawler) sees everything at full opacity.
+  2. **Under `prefers-reduced-motion` the class is never added at all**, and
+     the reduced-motion block ALSO forces `.reveal` visible — the global
+     `transition: none` there would otherwise freeze an element at opacity 0.
+     Same guard under `@media print`, since print has no scroll.
+  3. **Revealed once, then unobserved.** Content that re-hides on the way back
+     up makes scrolling upward feel broken.
+  4. **THE TRANSITION IS DECLARED ON `.is-in` ONLY, not on the base rule.**
+     First cut put it on `.has-js .reveal` and every element visibly faded OUT
+     after first paint — `.has-js` lands a tick after the initial render, so
+     the 1→0 change animated. Measured at opacity 0.04 mid-fade right after
+     load; with the transition on the entered state it starts at 0 outright.
+- **The hero photograph breathes and is colour-graded.** `hero-breathe` is a
+  24s ease-in-out infinite-alternate zoom 1 → 1.07 with a drift of
+  `translate(-1.4%, 0.9%)`, `transform-origin` matching the `62% 50%`
+  background position so it grows out of the chapel; `.hero`'s existing
+  `overflow: hidden` swallows the overscan. 24s is deliberately slower than a
+  reader can consciously track. The grade is `contrast(1.18) saturate(1.2)
+  brightness(0.88)` on the photo plus a flat `rgba(67,56,202,.16)` indigo wash
+  added as a third layer of `.hero-scrim` — the raw file is a hazy midday shot
+  that read as washed out under the copy panel. The reduced-motion block
+  already kills the animation (`animation: none`); the grade stays.
+- **The week mock's day cells are STATIC now** — `<span role="listitem">`s in
+  a `role="list"`, not buttons; `toggleDay` and the `:disabled`/`aria-pressed`
+  wiring are gone and `weekDays` is a plain const. Only "Bundle week" is
+  operable, and bundling dims the cells (`.is-bundled`, opacity .6) to say the
+  week is closed. **Worth knowing: the toggles were WORKING** — verified in a
+  browser before the change (Sat toggled on, Mon toggled off) — the owner's
+  note "the feature is disabled in terms of clicking the days" was read as
+  the instruction, since seven small toggles made the card read as a date
+  picker rather than as the one thing it demonstrates.
+- **The Supervisors card body** is now "Review each intern's weekly journals
+  in one place, approve the weeks that are complete, and return any that need
+  more detail before they count." — the "one notebook instead of loose
+  sheets" line did not land.
+- The stat strip is gone; see the bullet above the Redesign entry.
+
+**Verified in a real browser** at 1440x900 and 375x667: nav labels and the
+four kickers present, `.hero-photo` reports `animation-name: hero-breathe`,
+24s, and the filter; zero `button.day`; every `.reveal` computes opacity 0 on
+the first frame after load and the four role cards stagger to 1 within 1.2s
+of scrolling to `#roles`; Bundle week flips the pill and dims all seven cells;
+`scrollWidth === clientWidth` at both widths, no element overflowing its box,
+no console errors. `npm run build` and `vue-tsc` clean.
+
+#### The nav's Sign-in pill, 2026-09-16 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
+
+Project owner: "the sign in button seems off". **The pill was inheriting the
+LINK rule's underline geometry.** `.nav-links a` (0-1-1) sets
+`padding-bottom: 3px`, a 2px transparent `border-bottom`, a 0.9rem size and a
+text-shadow for the four text links — and every one of those outranked
+`.btn-sm` (0-1-0) on the pill, which is also an `<a>` in that list. Measured:
+8px of padding above the label and 3px below, a 2px border along its foot
+only, and a blurred label. It read as a button whose text had slipped. The
+existing 0-3-1 rule that pins its colour now resets padding
+(`0.55rem 1.15rem`), border, size, line-height and text-shadow too, and the
+pill gained the one hover it lacked — a 1px lift with a deeper shadow, since
+it floats on a photograph with no band and a colour change alone is hard to
+catch at 14px. Measured after: padding `8.8px 18.4px`, 1px border, no
+text-shadow, `translateY(-1px)` on hover.
+
+**A simplification of `LoginPage.vue` (solid card, tilt/sheen/blobs/stagger
+removed) was built and verified the same day and then REVERTED at the project
+owner's request** — the login page and `AuthCardShell.vue` are exactly as
+they were, tilt included. Nothing from that attempt remains in the tree.
+
 ## Role Surfaces
 
 ### Admin
@@ -4085,7 +4365,11 @@ programs, companies). `Admin/UserController::index()` **unconditionally excludes
 not the admin account itself. Create Coordinator collects First/Middle/Family
 name and takes a single `department_id`.
 
-Departments carry an optional `dean_name`. The audit log deliberately **does not
+Departments carry an optional `dean_name` and a required
+**`exit_interview_form`** — which hardcoded exit interview their students fill
+in, chosen on Create and changeable on Edit (see Exit Interview → One template,
+one hardcoded form per department). **Admin → Exit Interview** lists those
+forms read-only. The audit log deliberately **does not
 record `Logged In`/`Logged Out`** (routine session noise drowned out real
 events); it does record batch and roster transitions, info-sheet accept/reject,
 enrollment, weekly-journal approve/return, and journal submission via
@@ -4208,7 +4492,7 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
   OJT Type above.
 - **Student Exit Interviews** (`/coordinator/exit-interviews`) — every
   in-scope intern's exit interview, filterable by program / status / name,
-  with a per-row and in-modal **Download PDF**. Read the fourteen answers and
+  with a per-row and in-modal **Download PDF**. Read every answer and
   fill the coordinator's own compliance block; there is **no accept/reject**,
   because an exit interview gates nothing. A second tab, **Summary Report**,
   gathers every intern's answer to each question together instead of one row
@@ -5134,6 +5418,35 @@ browser. A per-container fix would need its own explicit background color
 matching each context, or a technique that never touches `background`/
 `background-color` (e.g. `mask-image`) — not a single global rule.
 
+### Copy pass from the team's "System-comments" review (2026-09-16)
+
+A teammate's PDF of wording corrections was applied verbatim across the SPA.
+Every item is copy only — no data, route or behaviour changed — except the
+two removals noted last. Student: the dashboard's This Week panel lost its
+"You have no entries for…" / "You're on track" / "Write today's entry →"
+lines and the `start – end` date footer (the `missedMessage` computed and
+`todayPending` field went with them; the week strip and "N of M days logged"
+stay), Recent Activity lost its subtitle; the calendar, My Journals, Weekly
+Journals notices, the Info Sheet approved banner, the Company Location
+caption, the Exit Interview in-progress note and the Reminder Settings intro
+were reworded to the PDF's text; "Weekly Narrative" headings are now
+"Summarize your week"; the Write Daily Journal "Submitted — you can still
+edit…" banner and the Weekly and Time Log "Create one to start…" tail are
+gone; the DTR page's hours caption is "Approved clock-ins at {company}", its
+"This week" heading no longer prints the date range and hour total, and the
+phone-camera hint paragraph is removed. Supervisor: "Review workload", "No
+weekly journals have been reviewed yet.", and the three DTR strings (site
+instructions, empty-sites, needs-attention empty state). Admin: the
+Department edit form's name hint.
+
+**Two things were removed rather than reworded, and are worth knowing:**
+`SupervisorInternsPage.vue`'s search box and button are gone (the PDF's
+"remove the search kanang naas babaw") along with the `search` param — the
+backend's `?search=` on `supervisor/interns` is untouched and simply no
+longer called from this page; and `StudentDtrPage.vue`'s `formatDate` /
+`formatHours` are still used by the session table, so only their heading
+call sites were dropped.
+
 ## Frontend UI conventions
 
 Applies to the Vue SPA in `web/`. These describe what the code already does —
@@ -5229,7 +5542,7 @@ now, so the whole rail read as one undifferentiated list.
 |---|---|---|
 | Coordinator | *(none)* · Monitoring · SIPP Documents · Reports · Setup | 1 · 5 · 3 · 2 · 4 |
 | Student | *(none)* · Journals · Time & Attendance · My Forms | 1 · 4 · 2 · 2 |
-| Admin | *(none)* · Organization · People & Records · System | 1 · 3 · 2 · 2 |
+| Admin | *(none)* · Organization · People & Records · System | 1 · 3 · 3 · 2 |
 | **Supervisor** | **deliberately still FLAT** | 4 items |
 
 - **Supervisor is not an oversight.** At four items (Dashboard, Journals,

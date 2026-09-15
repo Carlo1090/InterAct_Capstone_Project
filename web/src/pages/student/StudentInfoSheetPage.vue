@@ -293,7 +293,7 @@ onMounted(loadInfoSheet)
 
     <!-- Status banners -->
     <div v-if="isApproved" class="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-      Your Information Sheet has been <strong>approved</strong>. Your Program, Year, and assigned Company are locked, but you can still update the rest of your details below.
+      Your Information Sheet is <strong>approved</strong>. Program, Year, and assigned Company are locked, while other details can still be updated.
     </div>
     <div v-else-if="isRejected" class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
       <p class="font-semibold">Your Information Sheet was returned for changes.</p>

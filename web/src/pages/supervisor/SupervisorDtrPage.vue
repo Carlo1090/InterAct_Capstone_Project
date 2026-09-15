@@ -437,8 +437,8 @@ onMounted(load)
           </TooltipWrap>
         </div>
         <p class="mt-1 text-sm text-slate-500">
-          Turn on location, stand where your interns arrive, then create the site. Show the QR code to your
-          interns however suits you &mdash; from this page on your own screen, or from a copy you download.
+          Enable location, stand at the interns&rsquo; arrival point, and create the site. Display the QR code on
+          this page or download a copy for the interns.
         </p>
 
         <div class="mt-4 grid gap-3 sm:grid-cols-[1fr_auto_auto]">
@@ -499,7 +499,7 @@ onMounted(load)
             No active clock-in sites. Create one above, or restore a retired site below.
           </template>
           <template v-else>
-            No clock-in sites yet. Create one above so your interns can start recording time.
+            No clock-in sites yet. Create a site above so interns can start recording their time.
           </template>
         </div>
 
@@ -702,7 +702,7 @@ onMounted(load)
                 <td colspan="7" class="px-4 py-8 text-center text-sm text-slate-500">
                   {{
                     sessionFilter === 'needs_attention'
-                      ? 'Nothing needs your attention. Sessions left open overnight and unusually long shifts appear here.'
+                      ? 'Nothing needs your attention. Overnight sessions and unusually long shifts are shown here.'
                       : 'No records match this filter.'
                   }}
                 </td>

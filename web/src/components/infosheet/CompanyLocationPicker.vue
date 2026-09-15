@@ -386,8 +386,8 @@ onBeforeUnmount(() => {
       <div>
         <p class="text-xs font-bold text-slate-600">Company Location</p>
         <p class="mt-1 text-xs text-slate-500">
-          Optional. Pin your company on a map and it prints in the
-          &ldquo;Sketch of Internship Company Location&rdquo; box on your Information Sheet.
+          Optional. Pin the company location on the map to print it in the
+          &lsquo;Sketch of Internship Company Location&rsquo; box on the Information Sheet.
         </p>
       </div>
       <div v-if="!readonly" class="flex flex-wrap items-center gap-2">

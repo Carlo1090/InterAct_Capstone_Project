@@ -51,8 +51,8 @@ let bandObserver: IntersectionObserver | null = null
  * nav read in a different order from the thing it navigates.
  */
 const navLinks = [
-  { href: '#roles', label: 'Who uses it' },
-  { href: '#how', label: 'How it works' },
+  { href: '#roles', label: 'Users' },
+  { href: '#how', label: 'Mechanics' },
   { href: '#record', label: 'Records' },
   { href: '#more', label: 'Others' },
 ]
@@ -69,6 +69,21 @@ const navLinks = [
 const SECTION_IDS = ['roles', 'how', 'record', 'more']
 const activeSection = ref<string | null>(null)
 let sectionObserver: IntersectionObserver | null = null
+
+/*
+ * Scroll-triggered entrance. Every `.reveal` element starts translated down
+ * and faded, and is let in the first time it crosses the lower fifth of the
+ * viewport; siblings stagger off a `--i` custom property set in the template.
+ * Two rules keep it from costing the reader anything:
+ *   - the hidden state is gated on `.has-js`, which is only added here, so a
+ *     page with no script (or a crawler) sees everything at full opacity;
+ *   - each element is revealed ONCE and then unobserved — content that
+ *     re-hides on the way back up makes scrolling upward feel broken.
+ * Under `prefers-reduced-motion` the class is never added at all, so nothing
+ * moves and nothing is ever hidden.
+ */
+const hasJs = ref(false)
+let revealObserver: IntersectionObserver | null = null
 
 const prefersReducedMotion = (): boolean =>
   window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -159,6 +174,26 @@ onMounted(() => {
     const el = document.getElementById(id)
     if (el) sectionObserver.observe(el)
   }
+
+  if (!prefersReducedMotion()) {
+    hasJs.value = true
+    revealObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue
+          entry.target.classList.add('is-in')
+          revealObserver?.unobserve(entry.target)
+        }
+      },
+      /* Fire once the element's top is ~12% up from the bottom edge, so it
+       * is already partly on screen when it starts moving — an element that
+       * animates in from below the fold is motion nobody sees. */
+      { rootMargin: '0px 0px -12% 0px', threshold: 0.08 },
+    )
+    for (const el of document.querySelectorAll<HTMLElement>('.reveal')) {
+      revealObserver.observe(el)
+    }
+  }
 })
 
 onUnmounted(() => {
@@ -167,13 +202,9 @@ onUnmounted(() => {
   sectionObserver = null
   bandObserver?.disconnect()
   bandObserver = null
+  revealObserver?.disconnect()
+  revealObserver = null
 })
-
-const facts = [
-  { label: 'Departments', value: '3' },
-  { label: 'Programs', value: '7' },
-  { label: 'Roles', value: '4' },
-]
 
 /* ---------- B1. The journal mock: submitting locks the entry ---------- */
 
@@ -239,13 +270,14 @@ const DAY_NAMES = [
 ]
 const DAY_INITIALS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 
-const weekDays = ref([true, true, true, true, true, false, false])
+/*
+ * A fixed picture of a Mon–Fri week. The cells used to be toggles, but a row of
+ * seven small buttons made the card read as a date picker rather than as the
+ * one thing it demonstrates — that the week closes on its own. Only "Bundle
+ * week" is operable now.
+ */
+const weekDays = [true, true, true, true, true, false, false]
 const weekBundled = ref(false)
-
-const toggleDay = (index: number): void => {
-  if (weekBundled.value) return
-  weekDays.value[index] = !weekDays.value[index]
-}
 
 /*
  * All four roles, side by side. They were a tablist until it became clear that
@@ -269,7 +301,7 @@ const roles = [
     id: 'supervisors',
     name: 'Supervisors',
     lead: 'Sign off without the paperwork.',
-    body: 'Read your interns’ entries as one notebook instead of loose sheets, and return anything that needs more detail before it counts.',
+    body: 'Review each intern’s weekly journals in one place, approve the weeks that are complete, and return any that need more detail before they count.',
     points: [
       'Company-scoped intern list',
       'Approve or return an entry',
@@ -561,7 +593,7 @@ const extras = [
 </script>
 
 <template>
-  <div class="page">
+  <div class="page" :class="{ 'has-js': hasJs }">
     <a class="skip" href="#main">Skip to content</a>
 
     <header
@@ -651,26 +683,12 @@ const extras = [
           </div>
         </div>
 
-        <!--
-          The stat plinth is full-bleed and pinned to the foot of the hero. It is
-          the page's one signature element, and it also solves a contrast problem:
-          these figures previously floated over sunlit grass with nothing behind
-          them.
-        -->
-        <div class="hero-plinth">
-          <dl class="shell facts">
-            <div v-for="fact in facts" :key="fact.label" class="fact">
-              <dt>{{ fact.label }}</dt>
-              <dd class="display">{{ fact.value }}</dd>
-            </div>
-          </dl>
-        </div>
       </section>
 
       <!-- 3 — The argument -->
       <section class="band band-paper" data-tone="light">
         <div class="shell">
-          <div class="split">
+          <div class="split reveal">
             <h2 class="display h2">
               The logbook was never the problem.<br />Finding it was.
             </h2>
@@ -694,7 +712,7 @@ const extras = [
             hold real controls and have to be reachable by keyboard.
           -->
           <div class="cards">
-            <article class="card">
+            <article class="card reveal" style="--i: 0">
               <div class="mock">
                 <div class="mock-head">
                   <span class="mock-title">Tuesday, 8 September</span>
@@ -740,7 +758,7 @@ const extras = [
               </p>
             </article>
 
-            <article class="card">
+            <article class="card reveal" style="--i: 1">
               <div class="mock">
                 <div class="mock-head">
                   <span class="mock-title">Daily time record</span>
@@ -778,7 +796,7 @@ const extras = [
               </p>
             </article>
 
-            <article class="card">
+            <article class="card reveal" style="--i: 2">
               <div class="mock">
                 <div class="mock-head">
                   <span class="mock-title">Week 6 &middot; 1&ndash;7 September</span>
@@ -786,20 +804,17 @@ const extras = [
                     {{ weekBundled ? 'Bundled' : 'Open' }}
                   </span>
                 </div>
-                <div class="week">
-                  <button
+                <div class="week" role="list" aria-label="Sample week">
+                  <span
                     v-for="(logged, index) in weekDays"
                     :key="index"
-                    type="button"
+                    role="listitem"
                     class="day"
-                    :class="{ 'is-filled': logged }"
-                    :disabled="weekBundled"
+                    :class="{ 'is-filled': logged, 'is-bundled': weekBundled }"
                     :aria-label="`${DAY_NAMES[index]} — ${logged ? 'logged' : 'no entry'}`"
-                    :aria-pressed="logged"
-                    @click="toggleDay(index)"
                   >
-                    {{ DAY_INITIALS[index] }}
-                  </button>
+                    <span aria-hidden="true">{{ DAY_INITIALS[index] }}</span>
+                  </span>
                 </div>
                 <div class="mock-foot">
                   <span>{{ weekBundled ? 'Bundled Monday, 00:00' : 'Bundles Monday, 00:00' }}</span>
@@ -836,7 +851,8 @@ const extras = [
       <!-- 4 — Roles -->
       <section id="roles" class="band band-ink" data-tone="dark">
         <div class="shell">
-          <h2 class="display h2 h2-wide">
+          <p class="kicker reveal">Users</p>
+          <h2 class="display h2 h2-wide reveal" style="--i: 1">
             Four people look at the same OJT. They should not need four systems.
           </h2>
 
@@ -846,7 +862,12 @@ const extras = [
             sentence that describes them.
           -->
           <div class="role-cards">
-            <article v-for="role in roles" :key="role.id" class="role-card">
+            <article
+              v-for="(role, index) in roles"
+              :key="role.id"
+              class="role-card reveal"
+              :style="{ '--i': index }"
+            >
               <h3 class="display role-name">{{ role.name }}</h3>
               <p class="role-lead">{{ role.lead }}</p>
               <p class="role-body">{{ role.body }}</p>
@@ -865,7 +886,7 @@ const extras = [
         would take the rest away.
       -->
       <section class="statement" data-tone="dark">
-        <div class="shell">
+        <div class="shell reveal">
           <p class="display statement-line">
             One day, one entry, one <span class="statement-accent">signature</span>.
           </p>
@@ -878,9 +899,15 @@ const extras = [
       <!-- 5 — How it works -->
       <section id="how" class="band band-paper" data-tone="light">
         <div class="shell">
-          <h2 class="display h2">From information sheet to signed week</h2>
+          <p class="kicker reveal">Mechanics</p>
+          <h2 class="display h2 reveal" style="--i: 1">From information sheet to signed week</h2>
           <ol class="steps">
-            <li v-for="(step, index) in steps" :key="step.title" class="step">
+            <li
+              v-for="(step, index) in steps"
+              :key="step.title"
+              class="step reveal"
+              :style="{ '--i': index }"
+            >
               <span class="display step-num">{{ index + 1 }}</span>
               <div class="step-copy">
                 <h3 class="step-title">{{ step.title }}</h3>
@@ -895,7 +922,8 @@ const extras = [
       <section id="record" class="band band-navy" data-tone="dark">
         <div class="shell">
           <div class="split split-record">
-            <div>
+            <div class="reveal">
+              <p class="kicker">Records</p>
               <h2 class="display h2">Nothing in the record depends on anyone remembering</h2>
               <p class="record-lede">
                 A day is stamped when it is worked. An entry is fixed when it is submitted. A
@@ -904,7 +932,12 @@ const extras = [
               </p>
             </div>
             <dl class="guarantees">
-              <div v-for="item in guarantees" :key="item.term" class="guarantee">
+              <div
+                v-for="(item, index) in guarantees"
+                :key="item.term"
+                class="guarantee reveal"
+                :style="{ '--i': index + 1 }"
+              >
                 <dt>{{ item.term }}</dt>
                 <dd>{{ item.detail }}</dd>
               </div>
@@ -916,9 +949,15 @@ const extras = [
       <!-- 7 — Everything else -->
       <section id="more" class="band band-paper" data-tone="light">
         <div class="shell">
-          <h2 class="display h2">And the rest of the paperwork</h2>
+          <p class="kicker reveal">Others</p>
+          <h2 class="display h2 reveal" style="--i: 1">And the rest of the paperwork</h2>
           <dl class="extras">
-            <div v-for="item in extras" :key="item.term" class="extra">
+            <div
+              v-for="(item, index) in extras"
+              :key="item.term"
+              class="extra reveal"
+              :style="{ '--i': index }"
+            >
               <dt>{{ item.term }}</dt>
               <dd>{{ item.detail }}</dd>
             </div>
@@ -940,7 +979,7 @@ const extras = [
           click away in the fixed header, so a second copy down here was pure
           redundancy.
         -->
-        <div class="shell closing-inner">
+        <div class="shell closing-inner reveal">
           <h2 class="display h2">Built at Mater Dei College, for its own interns.</h2>
           <p class="closing-sub">Cabulijan, Tubigon, Bohol, Philippines</p>
         </div>
@@ -1504,10 +1543,43 @@ const extras = [
  * `.btn-primary` and were painting its label at 68% white — invisible on blue.
  * It is the one element that keeps white text on every ground and in every
  * state, so hover is pinned here as well.
+ *
+ * THE SAME LINK RULE WAS ALSO BLEEDING ITS UNDERLINE GEOMETRY INTO THE PILL
+ * (found 2026-09-16, project owner: "the sign in button seems off"). `.nav-links
+ * a` sets `padding-bottom: 3px`, a 2px transparent `border-bottom`, a 0.9rem
+ * size and a text-shadow — every one of which outranked `.btn-sm` (0-1-0) — so
+ * the pill measured 8px of padding above the label and 3px below, an extra
+ * 2px of border along its foot, and a blurred label. It read as a button whose
+ * text had slipped. Every one of those is reset here at the same 0-3-1.
  */
 .nav .nav-links a.btn-primary,
 .nav .nav-links a.btn-primary:hover {
   color: #fff;
+  padding: 0.55rem 1.15rem;
+  border: 1px solid transparent;
+  font-size: 0.875rem;
+  line-height: 1.2;
+  text-shadow: none;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.25);
+}
+
+/* A lift on hover, and only here: elsewhere `.btn-primary` merely deepens,
+ * but this pill floats on a photograph with no band and needs a state change
+ * the eye can catch at 14px. */
+.nav .nav-links a.btn-primary:hover {
+  background: var(--blue-hover);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.28);
+  transform: translateY(-1px);
+}
+
+.nav .nav-links a.btn-primary:active {
+  background: var(--blue-active);
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.25);
+}
+
+.nav .nav-links a.btn-primary {
+  transition: background-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
 .nav-toggle {
@@ -1529,8 +1601,9 @@ const extras = [
 /* ---------- 2. Hero ---------- */
 
 /*
- * A column with its content pushed to the foot, and NO bottom padding — the
- * stat plinth is the last child and has to sit flush against the band below it.
+ * A column with no bottom padding, so the photograph runs unbroken into the
+ * band below. The stat plinth that used to sit at the foot is gone (2026-09-16):
+ * the three figures it carried said nothing about the product.
  *
  * The old `margin-top: -4.4rem` is gone with the sticky header that needed it:
  * a FIXED header is out of flow, so the hero starts at y=0 and simply pads
@@ -1573,15 +1646,45 @@ const extras = [
  * `excessY: 0` at both sizes. Changing `50%` to any other number moves nothing.
  * It is kept only so the declaration stays readable as a pair.
  */
+/*
+ * The photograph BREATHES: a slow, infinite ease-in-out zoom from 1 to 1.07
+ * that also drifts a little up-left, so the frame is never quite still and
+ * the eye is pulled toward the building rather than the copy panel. The
+ * transform origin matches the background position, so the zoom grows out of
+ * the chapel rather than out of the panel's dead corner; `overflow: hidden`
+ * on `.hero` swallows the overscan. 24s is deliberately slower than anything
+ * a reader could consciously track — it should register as depth, not as
+ * motion. Switched off wholesale by the reduced-motion block at the foot.
+ *
+ * The filter is a colour grade, not a correction: the raw file is a flat,
+ * hazy midday shot and, with a dark copy panel laid over half of it, read as
+ * washed out. Deeper contrast and a touch more saturation give the greens
+ * and the roofline back their weight; the slight darkening is what keeps
+ * white type legible where the panel thins out on the right.
+ */
 .hero-photo {
   background-position: 62% 50%;
+  transform-origin: 62% 50%;
+  filter: contrast(1.18) saturate(1.2) brightness(0.88);
+  animation: hero-breathe 24s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes hero-breathe {
+  from {
+    transform: scale(1) translate(0, 0);
+  }
+  to {
+    transform: scale(1.07) translate(-1.4%, 0.9%);
+  }
 }
 
 /*
  * A diagonal panel, not a pair of flat scrims. It is opaque where the copy sits
  * and clear where the building is, so the type never lies over the architecture
  * — which is the whole composition. The second, vertical gradient is confined
- * to the bottom eighth and does one job: seating the plinth.
+ * to the bottom eighth and does one job: fading the photograph into the band
+ * below, so the hero has a foot rather than a hard cut.
  */
 .hero-scrim {
   position: absolute;
@@ -1592,6 +1695,9 @@ const extras = [
       rgba(15, 23, 42, 0) 62%,
       rgba(15, 23, 42, 0.78) 100%
     ),
+    /* A flat indigo wash (the sidebar's deep stop) over the whole frame, so
+     * the photograph sits in the app's own palette instead of raw daylight. */
+    linear-gradient(rgba(67, 56, 202, 0.16), rgba(67, 56, 202, 0.16)),
     linear-gradient(
       105deg,
       var(--ink) 0%,
@@ -1602,9 +1708,8 @@ const extras = [
 }
 
 /*
- * `flex: 1` is what centres the copy in the space BETWEEN the header and the
- * stat strip, rather than pinning it to the bottom of the hero as before. The
- * strip then falls to the foot on its own.
+ * `flex: 1` is what centres the copy vertically in the space below the
+ * header, rather than pinning it to the bottom of the hero as before.
  */
 .hero-inner {
   position: relative;
@@ -1617,8 +1722,8 @@ const extras = [
 /*
  * The cap sits HERE and not on `.hero-inner`, which also carries `.shell`.
  * Overriding the shell's own max-width would pull the headline's left edge off
- * the 1200px grid the stat plinth below still sits on, and the two would stop
- * lining up at any viewport wider than the shell. Capped in rem rather than ch
+ * the 1200px grid every band below sits on, and the two would stop lining up
+ * at any viewport wider than the shell. Capped in rem rather than ch
  * because it answers to the picture behind it, not to the measure of the text.
  */
 .hero-copy {
@@ -1654,74 +1759,48 @@ const extras = [
   margin-top: 2rem;
 }
 
+
 /*
- * `color: #fff` is load-bearing, not inherited chrome. The plinth is a SIBLING
- * of `.hero-inner`, which is the element carrying white text — so without this
- * the numerals fall back to the page's own `--text` (slate-800) and render dark
- * navy on a dark navy strip, i.e. invisible, while the labels stay readable
- * because they set their own colour. Caught on screen.
+ * The section kicker: the same word the nav link carries — Users, Mechanics,
+ * Records, Others — set small above the heading, so a reader who arrived by
+ * the nav lands on the word they clicked. Gold on the dark bands, blue on
+ * paper, for the same contrast reasons the nav underline inverts.
  */
+.kicker {
+  margin: 0 0 0.9rem;
+  color: var(--gold);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.band-paper .kicker {
+  color: var(--blue);
+}
+
 /*
- * `padding: 0` on the plinth and the vertical padding moved onto the cells: it
- * is what lets each cell's left rule run the FULL height of the strip rather
- * than stopping short at the container's own padding box.
+ * Scroll-triggered entrance. Hidden ONLY under `.has-js` (see the observer in
+ * the script), so a page whose script never ran shows everything. The
+ * stagger is `--i` × 80ms, capped by how many siblings ever share a group
+ * (at most six), so the last card of a row is never more than half a second
+ * behind the first. `transform` and `opacity` only — both composite without
+ * layout, which is what keeps this free on a phone.
  */
-/*
- * NO fill and no blur. The strip used to be a filled slab that cut the
- * photograph off at the bottom and read as a separate component parked there;
- * transparent, the picture runs unbroken to the foot of the screen and this
- * becomes a caption ON it. Legibility comes from the hero's bottom scrim
- * instead — if the numerals ever get lost over grass, deepen THAT, not this.
- */
-.hero-plinth {
-  position: relative;
-  margin-top: auto;
-  padding: 0;
-  color: #fff;
-  background: transparent;
-  border-top: 1px solid rgba(255, 255, 255, 0.22);
+.has-js .reveal {
+  opacity: 0;
+  transform: translateY(26px);
 }
 
-/* `margin: 0 auto`, never a bare `margin: 0` — this element also carries
- * `.shell`, and zeroing the margin outright kills the auto-centering that keeps
- * these figures on the same left edge as the headline above them. */
-.facts {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0;
-  margin: 0 auto;
-}
-
-.fact {
-  padding: 1.1rem 1.5rem;
-}
-
-.fact + .fact {
-  border-left: 1px solid rgba(255, 255, 255, 0.16);
-}
-
-/* The outer cells lose their outer padding so the first label and the last
- * numeral align with the shell grid the headline above them sits on. */
-.fact:first-child {
-  padding-left: 0;
-}
-
-.fact:last-child {
-  padding-right: 0;
-}
-
-.fact dt {
-  font-size: 0.82rem;
-  color: rgba(255, 255, 255, 0.68);
-}
-
-/* `tabular-nums` so the three figures share a column rhythm rather than each
- * setting to its own glyph width. */
-.fact dd {
-  margin: 0.3rem 0 0;
-  font-size: 1.75rem;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
+/* The transition lives on the ENTERED state only. Declared on the base rule
+ * it also ran the other way: `.has-js` lands one tick after first paint, so
+ * every element visibly faded OUT from 1 to 0 before it had a chance to come
+ * in — measured at opacity 0.04 mid-fade right after load. */
+.has-js .reveal.is-in {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 0.65s ease,
+    transform 0.75s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: calc(var(--i, 0) * 80ms);
 }
 
 /* ---------- Bands ---------- */
@@ -1941,6 +2020,7 @@ const extras = [
   margin-top: 0.95rem;
 }
 
+/* Static cells, not controls — see `weekDays` in the script. */
 .day {
   display: flex;
   align-items: center;
@@ -1949,27 +2029,20 @@ const extras = [
   border-radius: 7px;
   border: 1px solid var(--line);
   background: transparent;
-  font: inherit;
   font-size: 0.7rem;
   color: var(--muted);
-  cursor: pointer;
-  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
-}
-
-.day:hover:not(:disabled) {
-  border-color: var(--navy);
-}
-
-/* A bundled week is closed and cannot be edited — which is the entire point the
- * card is making, so the cells must stop behaving like controls. */
-.day:disabled {
-  cursor: default;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, opacity 0.18s ease;
 }
 
 .day.is-filled {
   background: var(--navy);
   border-color: var(--navy);
   color: #fff;
+}
+
+/* Once bundled the week is closed, and the cells dim to say so. */
+.day.is-bundled {
+  opacity: 0.6;
 }
 
 /* `margin-top: auto` is what drops each footer to the floor of its mock, so all
@@ -2745,21 +2818,6 @@ const extras = [
     padding-top: 7rem;
   }
 
-  /* Three short labels still fit three across at 375px, and keeping them on one
-   * line is what preserves the plinth as a single strip. The gap stays 0 — the
-   * separators are borders now, and a gap would detach them from the cells. */
-  .fact {
-    padding: 1.25rem 0.75rem;
-  }
-
-  .fact dt {
-    font-size: 0.75rem;
-  }
-
-  .fact dd {
-    font-size: 1.65rem;
-  }
-
   /* The timeline keeps its structure; only the circle and the indent shrink —
    * and the rule's offsets have to follow the numeral, or it detaches. */
   .step {
@@ -2798,5 +2856,21 @@ const extras = [
     animation: none !important;
     scroll-behavior: auto !important;
   }
+
+  /* Belt and braces: the observer never adds `.has-js` under this
+   * preference, but if the preference flips mid-session nothing may stay
+   * hidden. */
+  .page .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }
+/* Print has no scroll, so nothing may wait for one. */
+@media print {
+  .page .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
 </style>

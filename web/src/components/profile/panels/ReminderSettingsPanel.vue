@@ -95,8 +95,8 @@ onMounted(load)
 
     <template v-else>
       <p class="text-xs text-slate-500">
-        We will nudge you when you have not submitted a daily journal entry. These settings are yours
-        alone — changing them never affects the days your coordinator expects work on.
+        Reminders are sent for missing daily journal entries. Reminder settings do not affect the work days
+        assigned by the coordinator.
       </p>
 
       <label class="mt-4 flex items-start gap-3">

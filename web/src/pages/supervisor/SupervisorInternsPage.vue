@@ -7,7 +7,6 @@ import TooltipWrap from '@/components/ui/TooltipWrap.vue'
 import type { InternDetail, SupervisorInternRow } from '@/types/api'
 
 const interns = ref<SupervisorInternRow[]>([])
-const search = ref('')
 const isLoading = ref(true)
 const errorMessage = ref('')
 
@@ -40,9 +39,7 @@ const load = async () => {
   isLoading.value = true
   errorMessage.value = ''
   try {
-    const params: Record<string, string> = {}
-    if (search.value) params.search = search.value
-    const { data } = await api.get<{ interns: SupervisorInternRow[] }>('/api/supervisor/interns', { params })
+    const { data } = await api.get<{ interns: SupervisorInternRow[] }>('/api/supervisor/interns')
     interns.value = data.interns
   } catch {
     errorMessage.value = 'Unable to load your interns.'
@@ -58,25 +55,6 @@ onMounted(load)
     <div class="rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
       Interns assigned to you (via your company placements). <strong>Journals</strong> opens one intern's full notebook —
       every week they have handed in, front to back — where you can also approve or return a week.
-    </div>
-
-    <div class="flex flex-wrap items-end gap-3">
-      <label class="block w-full sm:w-auto">
-        <span class="mb-1.5 block text-xs font-bold text-slate-600">Search</span>
-        <input
-          v-model="search"
-          class="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm sm:w-auto sm:min-w-72"
-          placeholder="Search students..."
-          @keyup.enter="load"
-        />
-      </label>
-      <button
-        type="button"
-        class="h-10 rounded-md border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-        @click="load"
-      >
-        Search
-      </button>
     </div>
 
     <LoadStatus :loading="isLoading" :error="errorMessage" :retry="load">

@@ -263,29 +263,7 @@ const weekSummary = computed(() => {
     // Days that have counted so far: an entry exists, or one was expected and
     // is now due. Upcoming and non-duty days are excluded from the denominator.
     counted: days.filter((day) => day.state !== 'upcoming' && day.state !== 'neutral').length,
-    missed: days.filter((day) => day.state === 'missed'),
-    todayPending: days.some((day) => day.state === 'today'),
   }
-})
-
-const missedMessage = computed<string | null>(() => {
-  const missed = weekSummary.value.missed
-  if (missed.length === 0) return null
-
-  if (missed.length === 1) {
-    const day = missed[0]
-    const todayMs = parseDateString(dashboard.value?.week.end)
-    const isYesterday = todayMs !== null && day.date === toIsoDate(todayMs - MS_PER_DAY)
-
-    return isYesterday
-      ? `You have no entry for yesterday (${day.weekday}).`
-      : `You have no entry for ${day.weekday}.`
-  }
-
-  const names = missed.map((day) => day.weekday)
-  const last = names.pop()
-
-  return `You have no entries for ${names.join(', ')} and ${last}.`
 })
 
 /**
@@ -901,16 +879,6 @@ onMounted(async () => {
                 </span>
               </div>
 
-              <p v-if="missedMessage" class="mt-4 text-sm text-rose-700">{{ missedMessage }}</p>
-              <p v-else class="mt-4 text-sm text-emerald-700">You're on track this week.</p>
-
-              <p v-if="weekSummary.todayPending" class="mt-1.5 text-sm text-amber-700">
-                Today's entry isn't written yet.
-                <RouterLink :to="WRITE_JOURNAL_ROUTE" class="font-medium underline underline-offset-2 hover:text-amber-900">
-                  Write today's entry →
-                </RouterLink>
-              </p>
-
               <!-- Always all four, in a fixed order; absent ones dim rather than vanish. -->
               <ul class="mt-4 flex flex-wrap gap-x-4 gap-y-1.5">
                 <li
@@ -946,16 +914,12 @@ onMounted(async () => {
               </p>
             </template>
 
-            <p class="mt-3 text-xs text-slate-400">
-              {{ dashboard.week.start }} – {{ dashboard.week.end }}
-            </p>
           </section>
           </div>
         </div>
 
         <section class="rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
           <h2 class="text-sm font-semibold text-slate-900">Recent Activity</h2>
-          <p class="mt-1 text-xs text-slate-400">Your own last five actions in the system.</p>
           <p v-if="dashboard.recent_activity.length === 0" class="mt-4 text-sm text-slate-400">No recent activity yet.</p>
           <ol v-else class="relative mt-5 space-y-5 pl-6">
             <span class="absolute bottom-2 left-[3px] top-2 w-px bg-slate-100" aria-hidden="true" />
