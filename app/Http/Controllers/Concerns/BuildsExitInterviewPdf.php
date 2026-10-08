@@ -25,28 +25,27 @@ use Symfony\Component\HttpFoundation\Response;
 trait BuildsExitInterviewPdf
 {
     /**
-     * The reference form is the CABM edition and prints these three names
-     * pre-filled. They are used ONLY as a fallback: the batch's real
-     * coordinator and the department's real dean print in their place when
-     * the record has them, because printing the reference's names onto
+     * The reference form is the CABM edition and prints these two names
+     * pre-filled. They are the LAST fallback: a name the coordinator typed on
+     * their review wins, then the batch's real coordinator and the
+     * department's real dean, because printing the reference's names onto
      * another department's student would be plainly wrong. The same call
      * already made for the Weekly Activity Log's department line.
      *
      * And ONLY on the CABM form itself (ExitInterviewForms::DEFAULT): another
-     * department's form with no dean on record prints a blank to be signed,
-     * never the business department's dean.
+     * department's form with no dean on record prints a line to be filled in
+     * by hand, never the business department's dean.
      */
     private const REFERENCE_COORDINATOR = 'Maria Antonnette B. Gulilat, MABM, LPT';
 
-    private const REFERENCE_COORDINATOR_UPPER = 'MARIA ANTONNETTE B. GULILAT, MABM, LPT';
-
-    private const REFERENCE_DEAN = 'MA. ANGELICA B. CALUNSAG, MSA, CPA';
+    private const REFERENCE_DEAN = 'Ma. Angelica B. Calunsag, MSA, CPA';
 
     protected function renderExitInterviewPdf(StudentExitInterview $interview, ?string $filename = null): Response
     {
         $responses = $interview->responses ?? [];
         $coordinatorSection = $interview->coordinator_section ?? [];
         $layout = Layout::for($interview->form());
+        $header = $this->exitInterviewHeader($interview);
 
         // The coordinator's own free text rides the same wrapper as the
         // student's, so every field on the form is broken onto its printed
@@ -57,9 +56,10 @@ trait BuildsExitInterviewPdf
 
         $pdf = Pdf::loadView('pdf.exit-interview', [
             'layout' => $layout,
-            'form' => $this->exitInterviewHeader($interview),
+            'form' => $header,
             'ticked' => $this->exitInterviewTicked($interview->form(), $responses, $coordinatorSection['compliance'] ?? null),
             'lines' => $layout->place($answers),
+            'signatories' => $layout->placeSignatories($header),
         ])
             // The reference is 612 x 936pt — the Philippine "long bond"
             // (8.5" x 13"), NOT Letter and emphatically not dompdf's A4
@@ -87,14 +87,8 @@ trait BuildsExitInterviewPdf
         $student = $interview->student;
         $info = $interview->student_info ?? [];
 
-        $enrollment = BatchStudent::where('student_id', $interview->student_id)
-            ->where('batch_id', $interview->batch_id)
-            ->with(['batch.coordinator:id,name', 'company:id,name'])
-            ->first();
-
-        $coordinator = $enrollment?->batch?->coordinator?->name;
-        $dean = $student?->program?->department?->dean_name;
-        $isReferenceForm = $interview->form()->key === ExitInterviewForms::DEFAULT;
+        $enrollment = $this->exitInterviewEnrollment($interview);
+        $names = $this->exitInterviewSignatoryNames($interview, $enrollment);
 
         $fields = [
             'student_name' => $student?->name ?? '',
@@ -104,16 +98,77 @@ trait BuildsExitInterviewPdf
             'training_period' => $this->exitInterviewTrainingPeriod($enrollment),
             'total_hours' => $this->exitInterviewTotalHours($interview, $enrollment),
             'date_of_interview' => $this->formatFormDate($info['date_of_interview'] ?? null),
-            'coordinator_name' => $coordinator ?: ($isReferenceForm ? self::REFERENCE_COORDINATOR : ''),
-            'coordinator_signature_name' => mb_strtoupper($coordinator ?: '') ?: ($isReferenceForm ? self::REFERENCE_COORDINATOR_UPPER : ''),
-            'coordinator_reviewed_on' => $this->formatFormDate($interview->reviewed_at?->toDateString()),
-            'dean_name' => mb_strtoupper($dean ?: '') ?: ($isReferenceForm ? self::REFERENCE_DEAN : ''),
+            // One coordinator name for the whole form: Section A prints it as
+            // written, the signature line in capitals, as the reference does.
+            'coordinator_name' => $names['coordinator_name'],
+            'coordinator_signature_name' => mb_strtoupper($names['coordinator_name']),
+            'dean_name' => mb_strtoupper($names['dean_name']),
+            // Deliberately NO coordinator_reviewed_on / dean_reviewed_on: the
+            // two signature dates print EMPTY, to be dated by hand when each
+            // person actually signs. The coordinator's used to be filled with
+            // the day they saved the review in the app, which is not the day
+            // the paper is signed (project owner, 2026-10-08).
         ];
 
         // Each value is trimmed to its OWN printed blank by the blade, from
         // the width the layout computed for it — nothing is hardcoded here,
         // so moving a column cannot leave a stale clamp behind.
         return $fields;
+    }
+
+    /**
+     * The two signatories' names as they print: what the coordinator TYPED on
+     * their review (coordinator_section.coordinator_name / dean_name) wins,
+     * then the names on record. Typed names are kept as written; the header
+     * capitalises the signature lines.
+     *
+     * @return array{coordinator_name: string, dean_name: string}
+     */
+    protected function exitInterviewSignatoryNames(StudentExitInterview $interview, ?BatchStudent $enrollment = null): array
+    {
+        $typed = $interview->coordinator_section ?? [];
+        $onRecord = $this->exitInterviewNamesOnRecord($interview, $enrollment ?? $this->exitInterviewEnrollment($interview));
+
+        $pick = fn (string $key) => trim((string) ($typed[$key] ?? '')) ?: $onRecord[$key];
+
+        return [
+            'coordinator_name' => $pick('coordinator_name'),
+            'dean_name' => $pick('dean_name'),
+        ];
+    }
+
+    /**
+     * What prints when the coordinator has typed nothing: the batch's own
+     * coordinator and the department's dean (Admin → Departments), with the
+     * reference's printed names as the last resort on the CABM form only.
+     * An empty string means "a line to fill in by hand".
+     *
+     * @return array{coordinator_name: string, dean_name: string}
+     */
+    protected function exitInterviewNamesOnRecord(StudentExitInterview $interview, ?BatchStudent $enrollment): array
+    {
+        $interview->loadMissing('student.program.department');
+
+        $isReferenceForm = $interview->form()->key === ExitInterviewForms::DEFAULT;
+        $coordinator = trim((string) $enrollment?->batch?->coordinator?->name);
+        $dean = trim((string) $interview->student?->program?->department?->dean_name);
+
+        return [
+            'coordinator_name' => $coordinator ?: ($isReferenceForm ? self::REFERENCE_COORDINATOR : ''),
+            'dean_name' => $dean ?: ($isReferenceForm ? self::REFERENCE_DEAN : ''),
+        ];
+    }
+
+    /**
+     * The placement this interview belongs to — its OWN (student_id, batch_id)
+     * pair, not whatever the student is enrolled in now.
+     */
+    private function exitInterviewEnrollment(StudentExitInterview $interview): ?BatchStudent
+    {
+        return BatchStudent::where('student_id', $interview->student_id)
+            ->where('batch_id', $interview->batch_id)
+            ->with(['batch.coordinator:id,name', 'company:id,name'])
+            ->first();
     }
 
     /**

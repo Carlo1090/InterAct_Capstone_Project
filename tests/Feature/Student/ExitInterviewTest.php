@@ -180,6 +180,33 @@ class ExitInterviewTest extends TestCase
     }
 
     /**
+     * Once the coordinator has typed their name on the review, the student's
+     * own page shows that name in Section A — the one their printed form
+     * carries — instead of the bare account name.
+     */
+    public function test_the_student_sees_the_coordinator_name_typed_on_the_review(): void
+    {
+        ['student' => $student, 'coordinator' => $coordinator] = $this->scaffold();
+        Sanctum::actingAs($student);
+
+        $this->getJson('/api/student/exit-interview')->assertOk()->assertJsonPath('header.coordinator_name', 'Prof. Balbero');
+
+        $this->postJson('/api/student/exit-interview', $this->completePayload())->assertOk();
+
+        Sanctum::actingAs($coordinator);
+        $interview = StudentExitInterview::sole();
+        $this->putJson("/api/coordinator/exit-interviews/{$interview->id}", [
+            'compliance' => 'complete',
+            'coordinator_name' => 'Maria Antonnette B. Balbero, MABM, LPT',
+        ])->assertOk();
+
+        Sanctum::actingAs($student);
+        $this->getJson('/api/student/exit-interview')
+            ->assertOk()
+            ->assertJsonPath('header.coordinator_name', 'Maria Antonnette B. Balbero, MABM, LPT');
+    }
+
+    /**
      * The deliberate deviation from the project-wide write rule: every other
      * student write endpoint requires an ACTIVE enrollment, but an exit
      * interview is by definition filed at the end of the placement.

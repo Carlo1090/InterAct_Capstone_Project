@@ -1244,7 +1244,21 @@ export type CoordinatorExitInterviewDetail = {
     compliance?: ExitInterviewComplianceChoice | null
     pending_detail?: string | null
     remarks?: string | null
+    /** Printed on the signature lines; null means "the name on record". */
+    coordinator_name?: string | null
+    dean_name?: string | null
   }
+  signatories: {
+    /** What prints when a field is left blank ('' = a line to sign by hand). */
+    on_record: ExitInterviewSignatoryNames
+    /** Where the fields start: saved here, else last saved by you, else on record. */
+    prefill: ExitInterviewSignatoryNames
+  }
+}
+
+export type ExitInterviewSignatoryNames = {
+  coordinator_name: string
+  dean_name: string
 }
 
 /** One in-scope intern's answer to a single question, in the Summary Report. */

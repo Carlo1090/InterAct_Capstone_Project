@@ -109,10 +109,49 @@ class CoordinatorExitInterviewController extends Controller
             'header' => $this->exitInterviewHeader($exitInterview),
             'responses' => $exitInterview->responses ?? [],
             'coordinator_section' => $exitInterview->coordinator_section ?? [],
+            'signatories' => $this->signatoryFields($request, $exitInterview),
             // The question set this interview was answered under, so the modal
             // renders the right department's form beside the answers.
             'form' => $exitInterview->form()->toArray(),
         ]);
+    }
+
+    /**
+     * The two printed signatory names, for the review modal's fields.
+     *
+     * `on_record` is what prints when a field is left blank (the batch's
+     * coordinator, the department's dean). `prefill` is where the fields
+     * start: the names saved on THIS interview, else the ones this
+     * coordinator last saved on any other — a coordinator signing off a
+     * whole cohort types their full name and post-nominals once, not once per
+     * student — else the names on record.
+     *
+     * @return array{on_record: array{coordinator_name: string, dean_name: string}, prefill: array{coordinator_name: string, dean_name: string}}
+     */
+    private function signatoryFields(Request $request, StudentExitInterview $interview): array
+    {
+        $onRecord = $this->exitInterviewNamesOnRecord($interview, $this->exitInterviewEnrollment($interview));
+        $saved = $interview->coordinator_section ?? [];
+
+        $lastSaved = StudentExitInterview::where('reviewed_by', $request->user()->id)
+            ->whereKeyNot($interview->id)
+            ->whereNotNull('reviewed_at')
+            ->orderByDesc('reviewed_at')
+            ->limit(20)
+            ->get(['id', 'coordinator_section'])
+            ->pluck('coordinator_section');
+
+        $prefill = [];
+
+        foreach (['coordinator_name', 'dean_name'] as $key) {
+            $lastUsed = $lastSaved
+                ->map(fn ($section) => trim((string) ($section[$key] ?? '')))
+                ->first(fn (string $name) => $name !== '');
+
+            $prefill[$key] = trim((string) ($saved[$key] ?? '')) ?: ($lastUsed ?? $onRecord[$key]);
+        }
+
+        return ['on_record' => $onRecord, 'prefill' => $prefill];
     }
 
     /**
@@ -138,6 +177,11 @@ class CoordinatorExitInterviewController extends Controller
                 'compliance' => $validated['compliance'] ?? null,
                 'pending_detail' => $validated['pending_detail'] ?? null,
                 'remarks' => $validated['remarks'] ?? null,
+                // The names printed on the signature lines (and the
+                // coordinator's in Section A). Blank means "the names on
+                // record" — see BuildsExitInterviewPdf.
+                'coordinator_name' => trim((string) ($validated['coordinator_name'] ?? '')) ?: null,
+                'dean_name' => trim((string) ($validated['dean_name'] ?? '')) ?: null,
             ],
             'submission_status' => 'reviewed',
             'reviewed_at' => now(),

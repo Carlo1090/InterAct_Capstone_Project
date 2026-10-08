@@ -22,11 +22,17 @@
 
     $top = fn (array $el) => round($el['baseline'] - ($el['size'] * (L::BASELINE_RATIO[$el['font']] ?? 0.814)), 3);
 
-    // A Section A blank, or a signatory's name — both are values dropped onto
-    // a printed underline, trimmed to what that underline can hold.
+    // A Section A blank or a signatory's date — a value dropped onto a
+    // printed underline, trimmed to what that underline can hold.
     $fit = fn (?string $value, float $width) => L::wrap((string) $value, [$width])[0] ?? '';
 
     $onPage = fn (array $items, int $page) => array_values(array_filter($items, fn ($i) => $i['page'] === $page));
+
+    // The signatories' printed names (and a handwriting line where there is
+    // none on record), already placed by the layout — ExitInterviewFormLayout::
+    // placeSignatories(). They join the form's own runs and rules.
+    $allTexts = array_merge($doc['texts'], $signatories['texts']);
+    $allRules = array_merge($doc['rules'], $signatories['rules']);
 
     // Which boxes carry a check mark: the flat map the controller built from
     // the answers, keyed exactly as the layout keys its marks.
@@ -72,7 +78,7 @@
     <div class="page {{ $page > 1 ? 'page-n' : '' }}">
 
         {{-- Printed rules: answer lines, Section A blanks, signature lines --}}
-        @foreach ($onPage($doc['rules'], $page) as $rule)
+        @foreach ($onPage($allRules, $page) as $rule)
             <div class="r" style="left:{{ $rule['x'] }}pt;top:{{ $rule['y'] }}pt;width:{{ $rule['w'] }}pt"></div>
         @endforeach
 
@@ -91,17 +97,8 @@
             @endif
         @endforeach
 
-        {{-- Every printed word of the form --}}
-        @foreach ($onPage($doc['texts'], $page) as $run)
-            @php
-                // A signatory's name is carried as a {placeholder} so the
-                // layout can position it without knowing whose form this is.
-                $text = $run['text'];
-
-                if (str_starts_with($text, '{') && str_ends_with($text, '}')) {
-                    $text = $form[trim($text, '{}')] ?? '';
-                }
-            @endphp
+        {{-- Every printed word of the form, the signatories' names included --}}
+        @foreach ($onPage($allTexts, $page) as $run)
             <div
                 class="t"
                 style="
@@ -114,7 +111,7 @@
                     @if (in_array($run['font'], ['bold', 'serifBold'], true)) font-weight:bold; @endif
                     @if ($run['color']) color:{{ $run['color'] }}; @endif
                 "
-            >{{ $text }}</div>
+            >{{ $run['text'] }}</div>
         @endforeach
 
         {{-- Section A's filled-in values, each trimmed to its own blank --}}

@@ -2335,6 +2335,8 @@ in that — and the admin **picks which hardcoded form a department uses**.
   whenever the record lacked a dean; on a CAST form that put the business
   department's dean under "Reviewed by". Now any other form prints a blank to
   be signed. Pinned by `test_the_cabm_reference_names_never_print_on_a_cast_form`.
+  Since 2026-10-08 they are the LAST fallback: names the coordinator types on
+  the review win — see Signatories below.
 
 #### Admin → Exit Interview (2026-09-15)
 
@@ -2457,9 +2459,89 @@ typed, the blank prints blank; **hours are never fabricated**.
   unambiguous owner — the same call the info sheet's submission makes) and
   writes a `SystemLog` row.
 - The coordinator then fills **"SECTION FOR OJT/INTERNSHIP COORDINATOR"**
-  (compliance verification, the pending-requirements detail, remarks), which
+  (compliance verification, the pending-requirements detail, remarks, and the
+  two signatory names — see Signatories below), which
   stamps `reviewed`. `update()` never touches `responses` and 422s a `draft`
   interview — there is nothing to verify until it is handed in.
+
+### Signatories — names the coordinator types, set on a grid (2026-10-08)
+
+Project owner, pointing at the reference's signature block: make it clean
+and properly spaced, and give the coordinator fillable fields for the
+coordinator's and the dean's names.
+
+- **The names are fillable.** `coordinator_section.coordinator_name` and
+  `.dean_name` (inside the existing JSON column, **no migration**), typed in a
+  **Signatories** group of the review modal. They print in that order of
+  preference: typed → on record (the batch's coordinator; the department's
+  `dean_name`) → the CABM reference names (CABM form only) → a line to write
+  the name by hand. One coordinator name serves the whole form: Section A
+  prints it as typed, the signature line in capitals. The student's own page
+  shows the typed name in Section A too, so the two never disagree.
+  Resolution lives in `BuildsExitInterviewPdf::exitInterviewSignatoryNames()`
+  / `exitInterviewNamesOnRecord()`.
+- **The fields start from the names this coordinator last saved on another
+  interview** (`CoordinatorExitInterviewController::signatoryFields()` →
+  `signatories.prefill`), else the names on record — a coordinator signing off
+  a cohort types their full name and post-nominals once, not once per
+  student. `signatories.on_record` drives the "Left blank, … prints" hint.
+  Blank on save is stored as null and means "the names on record".
+- **Typed names are refused, not shrunk, when too long for their line**
+  (`ExitInterviewFormLayout::signatoryNameFits()`, measured in the bold
+  capitals they print in; 120-char cheap cap first). A name on record that is
+  longer still is stepped down to `SIGNATORY_MIN_SIZE` (7.5pt) and trimmed at
+  the floor, never allowed off the page.
+- **Each signatory is ONE line — label, NAME, Date — on a grid.** Each Date
+  is horizontally aligned with its own name (same baseline, as on the
+  reference), and both Dates share one column (`signatoryDateLabelX()`,
+  72pt blank). Both names share one column too (`signatoryNameX()` = 186.88),
+  241pt wide up to the Date (`signatoryNameWidth()`). "Dean" is centred under
+  the dean's name. The names are placed by `placeSignatories()`, the
+  counterpart of `place()`. The blade's old `{placeholder}` substitution is
+  gone, so the blade still holds no geometry.
+- **THE COORDINATOR'S LABEL IS SET OVER TWO LINES, and that is arithmetic,
+  not taste.** The reference fits "label NAME Date:___" on one line only
+  because its Tahoma is condensed, and still leaves the coordinator ~25pt to
+  date in. At 9.4pt bold Helvetica the one-line label (183pt) plus the real
+  coordinator's name with post-nominals (210pt) take 400 of the 468pt column
+  before any Date. So the label is "OJT/INTERNSHIP" over "Coordinator
+  Signature:" (widest 103pt), with the name and Date on the second line. The
+  first line sits beside the signing room, so the split costs no height.
+  (A first cut on 2026-10-08 kept the label on one line and put each Date on
+  the line under its name; the project owner asked for the dates to sit beside
+  the names.)
+- **Both signature Dates print EMPTY**, to be dated by hand when each person
+  signs (project owner). The coordinator's used to be filled with
+  `reviewed_at`, the day the review was saved in the app, which is not the day
+  the paper is signed. The header simply carries no `coordinator_reviewed_on` /
+  `dean_reviewed_on`. The layout keeps those blank positions, so a value can
+  print there again by adding the key. Pinned by
+  `test_the_signature_dates_are_left_empty_even_once_reviewed`, which was
+  verified to fail with a value restored.
+- **`SIGNING_ROOM` (26.5pt, ~9mm) of clear space above each printed name.**
+  It is measured from the last Remarks rule down to the coordinator's
+  capitals, and from the coordinator's date rule down to the dean's. Project
+  owner: the coordinator's name sat 11pt under Remarks, with nowhere to sign.
+  The signature then runs onto the printed name in the usual way. Pinned by
+  `test_each_signatory_has_room_to_sign_above_their_name` against a fixed 24pt
+  floor, not the constant, and verified to fail at the old 11pt.
+- **"Remarks:" now rides its first rule** (the inset-label pattern of "If
+  pending, specify:" and "Please explain:"), one row under the pending lines.
+  As a heading on its own line it cost the height the signing room needed.
+  Its first line is narrower by the label, which `fits()` accounts for
+  automatically.
+- **The original defect was a measurement bug.** Every bold label was measured
+  with the REGULAR Helvetica widths (bold sets ~5% wider), so "Compliance
+  Verification:" and both signatory labels printed straight into the text
+  after them, and the coordinator's name ran into "Date:". `textWidth()` now
+  takes `$bold` and reads `Helvetica-Bold.afm.json`.
+  `test_no_bold_label_runs_into_the_text_after_it` was verified to fail with
+  the regular widths restored.
+- The CABM page 2 now ends at **880.67** (was 871.37). It is still two pages,
+  25.9pt clear of the folio and 1.8pt inside `CONTENT_BOTTOM`. **The trailer
+  has almost no vertical slack left on CABM page 2**: anything added to it, a
+  larger `SIGNING_ROOM` included, moves the whole coordinator block to a third
+  page.
 - **There is deliberately NO accept/reject**, unlike the Student Info Sheets
   queue. An exit interview is feedback, not an application: it gates nothing,
   and a coordinator disagreeing with an answer is not grounds to bounce it back.
@@ -2504,7 +2586,8 @@ heading travels with its first question so it can never sit alone at the
 foot of a page, and the coordinator's block is measured first on scratch
 arrays and moved whole to a fresh page when the last page cannot hold it.
 For the CABM form this reproduces the hand-stated break after question 7 to
-the hundredth of a point (page bottoms 868.85 / 871.37, unchanged); the CAST
+the hundredth of a point (page bottoms 868.85 / 871.37 then; page 2 is 880.67
+since the 2026-10-08 signatory grid); the CAST
 form comes out at four pages, computed rather than stated. The masthead's
 college line and title lines are slots filled from the form; the measured
 baselines, faces and sizes are fixed. That is
@@ -2564,7 +2647,8 @@ The rebuilt form fixes each of those. Load-bearing details:
    the widow that appears if it stops fitting.
 6. **"Please explain:" is printed ON the first answer rule**, with the answer
    inset past it — the same treatment the coordinator's "If pending, specify:"
-   already had. One mechanism for all five labelled fields.
+   already had, and (since 2026-10-08) "Remarks:" too. One mechanism for all
+   six labelled fields.
 7. **Answers are wrapped in PHP, not by dompdf**, against the very
    `Helvetica.afm.json` dompdf will use, so the wrap and the render cannot
    disagree. It also sidesteps dompdf's line-height quirk entirely (its line
@@ -2602,9 +2686,9 @@ The rebuilt form fixes each of those. Load-bearing details:
 12. **Nothing may reach the folio.** `document()['bottom']` reports each page's
     lowest ink and a test asserts 20pt of clearance — an answer printing across
     the page number is what an unchecked overrun produces. Currently page 1
-    ends at 868.85 and page 2 at 871.37, against a folio baseline of 906.53
-    (the reference's own page-2 bottom was 882.05, so the envelope is
-    unchanged).
+    ends at 868.85 and page 2 at 880.67 (871.37 before the 2026-10-08
+    signatory grid), against a folio baseline of 906.53 (the reference's own
+    page-2 bottom was 882.05, so the envelope is unchanged).
 
 The blank CABM form and a fully filled one both come out at **exactly two
 pages**, asserted on both download paths; the CAST form at **exactly four**
@@ -2627,6 +2711,15 @@ lock, the completed/dropped split, the page size) and
 `tests/Feature/Coordinator/CoordinatorExitInterviewTest.php` (program scoping,
 the 403s, the coordinator block never touching `responses`, and the draft that
 cannot be signed off) cover the endpoints.
+
+Since 2026-10-08 the signatories: the layout test pins that no bold label runs
+into what follows it, one name column and one date column for both signers
+with each Date on its own name's line, the signing room above each name,
+the handwriting line with "Dean" centred under it, and names measured in bold
+capitals; `CoordinatorExitInterviewTest` pins that typed names are what print,
+that blank falls back to the names on record, the too-long 422, and the
+last-saved prefill; `ExitInterviewTest` that the student's Section A shows the
+typed coordinator name.
 
 Since 2026-09-15 the layout test runs its pitch, box and folio cases over
 EVERY form in the catalogue, pins that the CABM form still breaks after
@@ -4747,7 +4840,8 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
 - **Student Exit Interviews** (`/coordinator/exit-interviews`) — every
   in-scope intern's exit interview, filterable by program / status / name,
   with a per-row and in-modal **Download PDF**. Read every answer and
-  fill the coordinator's own compliance block; there is **no accept/reject**,
+  fill the coordinator's own compliance block, including the coordinator's and
+  dean's names printed on the signature lines; there is **no accept/reject**,
   because an exit interview gates nothing. A second tab, **Summary Report**,
   gathers every intern's answer to each question together instead of one row
   per student — no PDF, no curation, drafts excluded. See Exit Interview

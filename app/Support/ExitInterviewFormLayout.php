@@ -186,9 +186,23 @@ final class ExitInterviewFormLayout
     /** Last answer rule of the questions → the "Student Signature:" row. */
     private const GAP_TO_SIGNATURE = 22.0;
 
-    /** Between the two signatory rows, which need room for a real signature
-     *  to be written by hand between the label and the rule under it. */
-    private const GAP_BETWEEN_SIGNATORIES = 26.0;
+    /**
+     * Clear space above each signatory's printed name for the signature
+     * itself — from the last Remarks rule down to the coordinator's name, and
+     * from the coordinator's line down to the dean's. About 9mm; the
+     * signature then runs onto the printed name in the ordinary way
+     * ("signature over printed name").
+     *
+     * It was 11pt (about 4mm) until 2026-10-08, which left the coordinator
+     * nowhere to sign under Remarks. It is as large as the CABM form's second
+     * page allows: that page carries questions 8-14 and this whole block, and
+     * still has to end clear of the folio.
+     */
+    public const SIGNING_ROOM = 26.5;
+
+    /** Helvetica-Bold's cap height (718/1000 em) at the size names print in —
+     *  what the signing room is measured down to. */
+    private const NAME_CAP_HEIGHT = 0.718 * self::HEADING_SIZE;
 
     /** How far the page number's baseline sits from the page foot; no rule may
      *  reach it, or an answer would print across the folio. */
@@ -282,6 +296,44 @@ final class ExitInterviewFormLayout
 
     public const REMARKS_LINES = 3;
 
+    /**
+     * The two signatories at the foot of the form, in printed order: the
+     * label (one line or two — a two-line label ends on the name's line), the
+     * header key their printed name is read from (the coordinator TYPES both
+     * names on their review; see BuildsExitInterviewPdf), the header key of
+     * the date printed beside them, and the role captioned under the name.
+     *
+     * Each signatory is ONE line, as on the reference — label, NAME, Date —
+     * with both names in one column and both dates in another. The reference
+     * fits that line only because its Tahoma is condensed, and still leaves
+     * the coordinator about 25pt to date in. At this type size the
+     * coordinator's label (183pt bold) and a full name with post-nominals
+     * (210pt) would take 400 of the 468pt column before the date, so the
+     * label is set over two lines: "OJT/INTERNSHIP" above "Coordinator
+     * Signature:". Its first line sits beside the signing room, so the split
+     * costs no height.
+     */
+    public const SIGNATORIES = [
+        'coordinator' => ['label' => ['OJT/INTERNSHIP', 'Coordinator Signature:'], 'name' => 'coordinator_signature_name', 'date' => 'coordinator_reviewed_on', 'caption' => null],
+        'dean' => ['label' => ['Reviewed by:'], 'name' => 'dean_name', 'date' => 'dean_reviewed_on', 'caption' => 'Dean'],
+    ];
+
+    /** The widest signatory label line → the printed-name column. */
+    private const SIGNATORY_NAME_GAP = 12.0;
+
+    /** Each signatory's date blank: room for "Sep 30, 2026" printed (54pt)
+     *  or a date written by hand. */
+    public const SIGNATORY_DATE_BLANK = 72.0;
+
+    /** Clear space kept between a name, a handwriting line or a caption and
+     *  the "Date:" beside it. */
+    private const SIGNATORY_DATE_GAP = 12.0;
+
+    /** Printed names are set at the heading size and stepped down no further
+     *  than this to fit their column — and a typed name is refused before it
+     *  would need to be (signatoryNameFits()). */
+    public const SIGNATORY_MIN_SIZE = 7.5;
+
     // ─────────────────────────────────────────────────────────────────────
     // Answer length. See fits() — the binding check is a width measurement.
     // ─────────────────────────────────────────────────────────────────────
@@ -307,8 +359,8 @@ final class ExitInterviewFormLayout
     /** @var array<string, self> One instance per form key. */
     private static array $instances = [];
 
-    /** @var array<int, int>|null Helvetica advance widths, per 1000 units. */
-    private static ?array $widths = null;
+    /** @var array<string, array<int, int>> Helvetica advance widths, per 1000 units, per face. */
+    private static array $widths = [];
 
     /** @var array<string, mixed>|null */
     private ?array $document = null;
@@ -334,7 +386,7 @@ final class ExitInterviewFormLayout
      * Everything that does not depend on a particular student's answers: every
      * text run, rule, blank and checkbox, already positioned and paginated.
      *
-     * @return array{pages: int, texts: array<int, array<string, mixed>>, rules: array<int, array<string, mixed>>, boxes: array<int, array<string, mixed>>, fields: array<string, array<int, array{page: int, x: float, y: float, w: float}>>, blanks: array<string, array{page: int, x: float, y: float, w: float, baseline: float}>, marks: array<string, array{page: int, x: float, baseline: float}>, bottom: array<int, float>, questions_bottom: float}
+     * @return array{pages: int, texts: array<int, array<string, mixed>>, rules: array<int, array<string, mixed>>, boxes: array<int, array<string, mixed>>, fields: array<string, array<int, array{page: int, x: float, y: float, w: float}>>, blanks: array<string, array{page: int, x: float, y: float, w: float, baseline: float}>, marks: array<string, array{page: int, x: float, baseline: float}>, signatories: array<string, array<string, mixed>>, bottom: array<int, float>, questions_bottom: float}
      */
     public function document(): array
     {
@@ -460,7 +512,7 @@ final class ExitInterviewFormLayout
         // fresh page when the last page of questions cannot hold it — a
         // signature block split across a page break is worse than a page
         // that is mostly blank.
-        $scratch = [[], [], [], [], [], []];
+        $scratch = [[], [], [], [], [], [], []];
         $trailerHeight = $this->placeTrailer(0, 0.0, ...$scratch);
 
         if ($y + $trailerHeight > self::CONTENT_BOTTOM) {
@@ -468,7 +520,8 @@ final class ExitInterviewFormLayout
             $y = self::PAGE_2_TOP - self::GAP_TO_SIGNATURE;
         }
 
-        $signatoryBottom = $this->placeTrailer($page, $y, $texts, $rules, $boxes, $fields, $blanks, $marks);
+        $signatories = [];
+        $signatoryBottom = $this->placeTrailer($page, $y, $texts, $rules, $boxes, $fields, $blanks, $marks, $signatories);
 
         // ── Folio ───────────────────────────────────────────────────────
         for ($folio = 1; $folio <= $page; $folio++) {
@@ -501,6 +554,9 @@ final class ExitInterviewFormLayout
             'fields' => $fields,
             'blanks' => $blanks,
             'marks' => $marks,
+            // Where each signatory's printed name goes; placeSignatories()
+            // sets the actual names onto these.
+            'signatories' => $signatories,
             // The lowest ink on each page, so a test can prove nothing runs
             // into the folio.
             'bottom' => $bottom,
@@ -556,6 +612,90 @@ final class ExitInterviewFormLayout
         }
 
         return $placed;
+    }
+
+    /**
+     * Set the two signatories' printed names onto the form — the
+     * placeSignatories() counterpart of place(), and for the same reason: the
+     * names vary per interview, so the layout positions them here rather than
+     * leaving geometry to the blade.
+     *
+     * A name prints in bold capitals, as the reference's pre-printed names do,
+     * with no rule under it — the person signs over their printed name. With
+     * no name on record a line is drawn instead, for it to be written by hand.
+     * A role caption ("Dean") is centred under whichever it is, and kept clear
+     * of the Date column beside it.
+     *
+     * @param  array<string, string|null>  $names  keyed by SIGNATORIES' `name` keys
+     * @return array{texts: array<int, array<string, mixed>>, rules: array<int, array<string, mixed>>}
+     */
+    public function placeSignatories(array $names): array
+    {
+        $texts = [];
+        $rules = [];
+
+        foreach ($this->document()['signatories'] as $slot) {
+            $name = mb_strtoupper(trim((string) ($names[$slot['name']] ?? '')));
+
+            if ($name === '') {
+                $rules[] = ['page' => $slot['page'], 'x' => $slot['x'], 'y' => $slot['baseline'] + self::BASELINE_LIFT, 'w' => $slot['line_w']];
+                $nameWidth = $slot['line_w'];
+            } else {
+                [$name, $size] = self::fitSignatoryName($name, $slot['w']);
+                $nameWidth = self::textWidth($name, $size, true);
+
+                $texts[] = ['page' => $slot['page'], 'x' => $slot['x'], 'w' => null, 'align' => 'left', 'baseline' => $slot['baseline'], 'font' => 'bold', 'size' => $size, 'text' => $name, 'color' => null];
+            }
+
+            if ($slot['caption'] !== null) {
+                $captionWidth = self::textWidth($slot['caption']);
+                $captionX = $slot['x'] + (($nameWidth - $captionWidth) / 2);
+                $captionX = max($slot['x'], min($captionX, $slot['caption_stop'] - $captionWidth));
+
+                $texts[] = self::run($slot['page'], round($captionX, 2), $slot['baseline'] + self::LINE, $slot['caption']);
+            }
+        }
+
+        return ['texts' => $texts, 'rules' => $rules];
+    }
+
+    /**
+     * Does a typed signatory name fit its printed column at full size? It
+     * prints in bold capitals, so that is what is measured — the same reason
+     * fits() measures an answer rather than counting its characters.
+     */
+    public static function signatoryNameFits(?string $name): bool
+    {
+        $name = mb_strtoupper(trim((string) $name));
+
+        return $name === '' || self::textWidth($name, self::HEADING_SIZE, true) <= self::signatoryNameWidth();
+    }
+
+    /**
+     * The printed-name column: one x for both signatories, just past the
+     * widest label line, so the two names line up.
+     */
+    public static function signatoryNameX(): float
+    {
+        $widest = max(array_map(
+            fn (string $line) => self::textWidth($line, self::HEADING_SIZE, true),
+            array_merge(...array_column(self::SIGNATORIES, 'label'))
+        ));
+
+        return round(self::MARGIN_LEFT + $widest + self::SIGNATORY_NAME_GAP, 2);
+    }
+
+    /** "Date:" for both signatories, on each name's own line: one column,
+     *  its blank running to the right edge. */
+    public static function signatoryDateLabelX(): float
+    {
+        return round(self::RULE_RIGHT - self::SIGNATORY_DATE_BLANK - self::BLANK_GAP - self::textWidth('Date:'), 2);
+    }
+
+    /** How wide a printed name may run before the Date column. */
+    public static function signatoryNameWidth(): float
+    {
+        return round(self::signatoryDateLabelX() - self::SIGNATORY_DATE_GAP - self::signatoryNameX(), 2);
     }
 
     /**
@@ -687,10 +827,15 @@ final class ExitInterviewFormLayout
      * Reading the very AFM the renderer reads is what keeps the wrap and the
      * render in agreement. If the file is ever unreadable, fall back to a mean
      * advance rather than throwing — a slightly ragged form still downloads.
+     *
+     * $bold measures Helvetica-Bold, which sets about 5% wider. Measuring a
+     * bold label with the regular widths is what printed "Compliance
+     * Verification:" and both signatory labels straight into the text after
+     * them.
      */
-    public static function textWidth(string $text, float $size = self::BODY_SIZE): float
+    public static function textWidth(string $text, float $size = self::BODY_SIZE, bool $bold = false): float
     {
-        $widths = self::widths();
+        $widths = self::widths($bold);
 
         $units = 0;
 
@@ -854,8 +999,9 @@ final class ExitInterviewFormLayout
      * @param  array<string, array<int, array<string, mixed>>>  $fields
      * @param  array<string, array<string, mixed>>  $blanks
      * @param  array<string, array<string, mixed>>  $marks
+     * @param  array<string, array<string, mixed>>  $signatories
      */
-    private function placeTrailer(int $page, float $y, array &$texts, array &$rules, array &$boxes, array &$fields, array &$blanks, array &$marks): float
+    private function placeTrailer(int $page, float $y, array &$texts, array &$rules, array &$boxes, array &$fields, array &$blanks, array &$marks, array &$signatories): float
     {
         // ── Student signature ───────────────────────────────────────────
         $y += self::GAP_TO_SIGNATURE;
@@ -874,7 +1020,7 @@ final class ExitInterviewFormLayout
         $texts[] = self::heading($page, $y, 'Compliance Verification:');
         $texts[] = self::run(
             $page,
-            self::MARGIN_LEFT + self::textWidth('Compliance Verification:', self::HEADING_SIZE) + self::BLANK_GAP,
+            self::MARGIN_LEFT + self::textWidth('Compliance Verification:', self::HEADING_SIZE, true) + self::BLANK_GAP,
             $y,
             'Did the student submit all required OJT/INTERNSHIP documents and reports?'
         );
@@ -910,35 +1056,108 @@ final class ExitInterviewFormLayout
         $fields['pending_detail'] = $pending;
         $y += self::LINE;
 
-        // Remarks: a label with clear ruled space under it, on the same
-        // rhythm as every other answer box.
-        $y += self::GAP_RULES_TO_HEADING;
-        $texts[] = self::heading($page, $y, 'Remarks:');
+        // Remarks: the label rides its FIRST rule, the same inset-label
+        // pattern as "If pending, specify:" and "Please explain:", one row
+        // below the field above it. As a heading on a line of its own it cost
+        // a whole extra line of height, and that height is what the
+        // signatories below need to sign in.
+        $y += self::LINE + self::BASELINE_LIFT;
+        $texts[] = self::heading($page, $y - self::BASELINE_LIFT, 'Remarks:');
+        $inset = self::textWidth('Remarks:', self::HEADING_SIZE, true) + self::LABEL_GAP;
 
-        $y += self::GAP_QUESTION_TO_RULES;
         $remarks = [];
 
         for ($i = 0; $i < self::REMARKS_LINES; $i++) {
             $ruleY = $y + ($i * self::LINE);
+            $lineInset = $i === 0 ? $inset : 0.0;
             $rules[] = ['page' => $page, 'x' => self::MARGIN_LEFT, 'y' => $ruleY, 'w' => self::RULE_RIGHT - self::MARGIN_LEFT];
-            $remarks[] = ['page' => $page, 'x' => self::MARGIN_LEFT, 'y' => $ruleY, 'w' => self::RULE_RIGHT - self::MARGIN_LEFT];
+            $remarks[] = ['page' => $page, 'x' => self::MARGIN_LEFT + $lineInset, 'y' => $ruleY, 'w' => self::RULE_RIGHT - self::MARGIN_LEFT - $lineInset];
         }
 
         $fields['remarks'] = $remarks;
         $y += (self::REMARKS_LINES - 1) * self::LINE;
 
         // ── Signatories ─────────────────────────────────────────────────
-        $y += self::GAP_TO_HEADING;
-        [$blanks['coordinator_reviewed_on']] = self::signatory($texts, $rules, $page, $y, 'OJT/INTERNSHIP Coordinator Signature:', 'coordinator_signature_name');
+        // A grid: labels at the margin, both printed names in one column,
+        // and each Date on its own name's line, both in one column at the
+        // right. Above each name, SIGNING_ROOM of clear space for the
+        // signature. The names themselves are set by placeSignatories(); this
+        // places everything that does not depend on whose they are.
+        $nameX = self::signatoryNameX();
+        $dateLabelX = self::signatoryDateLabelX();
+        $dateBlankX = $dateLabelX + self::textWidth('Date:') + self::BLANK_GAP;
 
-        $y += self::GAP_BETWEEN_SIGNATORIES;
-        [$blanks['dean_reviewed_on'], $deanNameX] = self::signatory($texts, $rules, $page, $y, 'Reviewed by:', 'dean_name');
+        // The lowest ink above the signer being placed: the last remarks rule
+        // for the first, then the previous signer's date rule.
+        $above = $y;
+        $caption = null;
 
-        // "Dean" captions the name above it, so it is set at the name's own
-        // left edge rather than at an offset nobody can re-derive.
-        $texts[] = self::run($page, $deanNameX, $y + self::LINE, 'Dean');
+        foreach (self::SIGNATORIES as $key => $signatory) {
+            $y = $above + self::SIGNING_ROOM + self::NAME_CAP_HEIGHT;
 
-        return $y + self::LINE;
+            // A two-line label ends on the name's own line, so its first line
+            // sits beside the signing room rather than costing height of its
+            // own.
+            $labelLines = count($signatory['label']);
+
+            foreach ($signatory['label'] as $index => $line) {
+                $texts[] = self::heading($page, $y - (($labelLines - 1 - $index) * self::LINE), $line);
+            }
+
+            $signatories[$key] = [
+                'page' => $page,
+                'name' => $signatory['name'],
+                'x' => $nameX,
+                'baseline' => $y,
+                // A printed name, a handwriting line and a caption all stop
+                // short of the Date column on the same line.
+                'w' => $dateLabelX - self::SIGNATORY_DATE_GAP - $nameX,
+                'line_w' => $dateLabelX - self::SIGNATORY_DATE_GAP - $nameX,
+                'caption' => $signatory['caption'],
+                'caption_stop' => $dateLabelX - self::SIGNATORY_DATE_GAP,
+            ];
+
+            $texts[] = self::run($page, $dateLabelX, $y, 'Date:');
+            $rules[] = ['page' => $page, 'x' => $dateBlankX, 'y' => $y + self::BASELINE_LIFT, 'w' => self::RULE_RIGHT - $dateBlankX];
+            $blanks[$signatory['date']] = [
+                'page' => $page,
+                'x' => $dateBlankX + 3.0,
+                'y' => $y + self::BASELINE_LIFT,
+                'w' => self::RULE_RIGHT - $dateBlankX - 3.0,
+                'baseline' => $y,
+            ];
+
+            $above = $y + self::BASELINE_LIFT;
+            $caption = $signatory['caption'];
+        }
+
+        // The lowest ink: a caption under the last name ("Dean"), else that
+        // line's date rule.
+        return $caption !== null ? $y + self::LINE : $above;
+    }
+
+    /**
+     * A signatory's printed name at the heading size, stepped down just
+     * enough to fit its column when a name on record is unusually long, and
+     * trimmed at the floor rather than allowed to run off the page. A TYPED
+     * name never needs either — signatoryNameFits() refuses it first.
+     *
+     * @return array{0: string, 1: float}
+     */
+    private static function fitSignatoryName(string $name, float $width): array
+    {
+        $size = self::HEADING_SIZE;
+        $natural = self::textWidth($name, $size, true);
+
+        if ($natural > $width) {
+            $size = max(self::SIGNATORY_MIN_SIZE, floor($size * $width / $natural * 100) / 100);
+        }
+
+        while ($name !== '' && self::textWidth($name, $size, true) > $width) {
+            $name = rtrim(mb_substr($name, 0, -1));
+        }
+
+        return [$name, $size];
     }
 
     /**
@@ -980,30 +1199,6 @@ final class ExitInterviewFormLayout
     }
 
     /**
-     * @param  array<int, array<string, mixed>>  $texts
-     * @param  array<int, array<string, mixed>>  $rules
-     * @return array{0: array{page: int, x: float, y: float, w: float, baseline: float}, 1: float}
-     */
-    private static function signatory(array &$texts, array &$rules, int $page, float $y, string $label, string $nameKey): array
-    {
-        $texts[] = self::heading($page, $y, $label);
-
-        $nameX = self::MARGIN_LEFT + self::textWidth($label, self::HEADING_SIZE) + self::BLANK_GAP;
-
-        $texts[] = ['page' => $page, 'x' => $nameX, 'w' => null, 'align' => 'left', 'baseline' => $y, 'font' => 'bold', 'size' => self::HEADING_SIZE, 'text' => '{'.$nameKey.'}', 'color' => null];
-
-        $texts[] = self::run($page, self::COL2_LABEL_X + 60.0, $y, 'Date:');
-
-        $blankX = self::COL2_LABEL_X + 60.0 + self::textWidth('Date:') + self::BLANK_GAP;
-        $rules[] = ['page' => $page, 'x' => $blankX, 'y' => $y + self::BASELINE_LIFT, 'w' => self::RULE_RIGHT - $blankX];
-
-        return [
-            ['page' => $page, 'x' => $blankX + 3.0, 'y' => $y + self::BASELINE_LIFT, 'w' => self::RULE_RIGHT - $blankX - 3.0, 'baseline' => $y],
-            $nameX,
-        ];
-    }
-
-    /**
      * @return array<string, mixed>
      */
     private static function run(int $page, float $x, float $baseline, string $text): array
@@ -1035,19 +1230,21 @@ final class ExitInterviewFormLayout
     /**
      * @return array<int, int>
      */
-    private static function widths(): array
+    private static function widths(bool $bold = false): array
     {
-        if (self::$widths !== null) {
-            return self::$widths;
+        $face = $bold ? 'Helvetica-Bold' : 'Helvetica';
+
+        if (isset(self::$widths[$face])) {
+            return self::$widths[$face];
         }
 
-        $path = base_path('vendor/dompdf/dompdf/lib/fonts/Helvetica.afm.json');
+        $path = base_path("vendor/dompdf/dompdf/lib/fonts/{$face}.afm.json");
 
         $decoded = is_file($path)
             ? json_decode((string) file_get_contents($path), true)
             : null;
 
-        return self::$widths = is_array($decoded['C'] ?? null)
+        return self::$widths[$face] = is_array($decoded['C'] ?? null)
             ? array_map('intval', $decoded['C'])
             : [];
     }

@@ -20,9 +20,19 @@ use Illuminate\Validation\Validator;
  * The two free-text fields are capped for the same reason the student's are:
  * they print onto a fixed run of ruled lines, and text past the last line
  * would be dropped silently.
+ *
+ * The two signatory names are what print beside "OJT/INTERNSHIP Coordinator
+ * Signature:" and "Reviewed by:" (and the coordinator's in Section A). Both
+ * optional: left blank, the names on record print instead. Measured against
+ * their printed column like everything else, in the bold capitals they print
+ * in.
  */
 class SaveExitInterviewReviewRequest extends FormRequest
 {
+    /** A cheap bound before the width check; no name that fits its printed
+     *  column is anywhere near it. */
+    public const NAME_MAX = 120;
+
     public function authorize(): bool
     {
         return $this->user()?->role === 'coordinator';
@@ -34,6 +44,8 @@ class SaveExitInterviewReviewRequest extends FormRequest
             'compliance' => ['nullable', Rule::in(['complete', 'pending'])],
             'pending_detail' => ['nullable', 'string', 'max:'.ExitInterviewFormLayout::HARD_CHAR_CAP],
             'remarks' => ['nullable', 'string', 'max:'.ExitInterviewFormLayout::HARD_CHAR_CAP],
+            'coordinator_name' => ['nullable', 'string', 'max:'.self::NAME_MAX],
+            'dean_name' => ['nullable', 'string', 'max:'.self::NAME_MAX],
         ];
     }
 
@@ -64,6 +76,17 @@ class SaveExitInterviewReviewRequest extends FormRequest
                     "This is longer than the {$lines} lines the printed form leaves for it. Please shorten it."
                 );
             }
+
+            foreach (['coordinator_name', 'dean_name'] as $field) {
+                if ($validator->errors()->has($field) || ExitInterviewFormLayout::signatoryNameFits($this->input($field))) {
+                    continue;
+                }
+
+                $validator->errors()->add(
+                    $field,
+                    'This name is too long for the line the printed form leaves for it. Please shorten it.'
+                );
+            }
         });
     }
 
@@ -73,6 +96,8 @@ class SaveExitInterviewReviewRequest extends FormRequest
             'compliance' => 'Compliance Verification',
             'pending_detail' => 'Pending requirements',
             'remarks' => 'Remarks',
+            'coordinator_name' => 'Coordinator name',
+            'dean_name' => 'Dean name',
         ];
     }
 }

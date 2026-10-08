@@ -58,7 +58,7 @@ class StudentExitInterviewController extends Controller
         return response()->json([
             'interview' => $interview ? $this->payload($interview) : null,
             'form' => $form->toArray(),
-            'header' => $this->readOnlyHeader($enrollment),
+            'header' => $this->readOnlyHeader($enrollment, $interview),
             'suggested_total_hours' => $this->suggestedTotalHours($enrollment),
             // Per QUESTION, from the printed line count of each. The SPA sizes
             // its counters from this.
@@ -161,7 +161,7 @@ class StudentExitInterviewController extends Controller
      *
      * @return array<string, mixed>
      */
-    private function readOnlyHeader(BatchStudent $enrollment): array
+    private function readOnlyHeader(BatchStudent $enrollment, ?StudentExitInterview $interview = null): array
     {
         $enrollment->loadMissing(['batch.coordinator:id,name', 'company:id,name', 'student.program']);
 
@@ -173,7 +173,10 @@ class StudentExitInterviewController extends Controller
             'program' => $student?->program?->code ?? $student?->program?->name,
             'company' => $enrollment->company?->name,
             'training_period' => $range['start']->format('M j, Y').' - '.$range['end']->format('M j, Y'),
-            'coordinator_name' => $enrollment->batch?->coordinator?->name,
+            // The name the coordinator typed on their review, once they have —
+            // the one the printed form carries — else the batch's coordinator.
+            'coordinator_name' => trim((string) (($interview?->coordinator_section ?? [])['coordinator_name'] ?? ''))
+                ?: $enrollment->batch?->coordinator?->name,
             // A sensible starting point for "Department/Position Assigned":
             // the division the coordinator recorded on the roster. Still
             // typed, since the paper form asks for something more specific.

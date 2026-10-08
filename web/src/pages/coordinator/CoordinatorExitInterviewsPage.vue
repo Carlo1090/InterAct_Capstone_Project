@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import api from '@/lib/axios'
 import ToastHost from '@/components/ToastHost.vue'
+import { categorizeError } from '@/lib/apiError'
 import { showToast } from '@/lib/toast'
 import type {
   CoordinatorExitInterviewDetail,
@@ -104,14 +105,30 @@ const isSavingReview = ref(false)
 const detailError = ref('')
 const detail = ref<CoordinatorExitInterviewDetail | null>(null)
 
-const review = reactive({ compliance: '' as '' | 'complete' | 'pending', pending_detail: '', remarks: '' })
+const emptyReview = () => ({
+  compliance: '' as '' | 'complete' | 'pending',
+  pending_detail: '',
+  remarks: '',
+  coordinator_name: '',
+  dean_name: '',
+})
+
+const review = reactive(emptyReview())
+
+/** Field-level 422s, shown under the field they belong to. */
+const reviewErrors = ref<Record<string, string[]>>({})
+
+/** Matches SaveExitInterviewReviewRequest::NAME_MAX; the binding check is the
+ *  server's width measurement against the printed line. */
+const SIGNATORY_NAME_MAX = 120
 
 const openDetail = async (row: CoordinatorExitInterviewRow) => {
   isDetailOpen.value = true
   isDetailLoading.value = true
   detailError.value = ''
   detail.value = null
-  Object.assign(review, { compliance: '', pending_detail: '', remarks: '' })
+  reviewErrors.value = {}
+  Object.assign(review, emptyReview())
 
   try {
     const { data } = await api.get<CoordinatorExitInterviewDetail>(`/api/coordinator/exit-interviews/${row.id}`)
@@ -120,6 +137,8 @@ const openDetail = async (row: CoordinatorExitInterviewRow) => {
       compliance: data.coordinator_section.compliance ?? '',
       pending_detail: data.coordinator_section.pending_detail ?? '',
       remarks: data.coordinator_section.remarks ?? '',
+      coordinator_name: data.signatories.prefill.coordinator_name,
+      dean_name: data.signatories.prefill.dean_name,
     })
   } catch (error) {
     detailError.value =
@@ -140,30 +159,39 @@ const closeDetail = () => {
 const saveReview = async () => {
   if (!detail.value) return
   isSavingReview.value = true
+  reviewErrors.value = {}
 
   try {
-    const { data } = await api.put<{ submission_status: ExitInterviewStatus; reviewed_at: string | null; message: string }>(
-      `/api/coordinator/exit-interviews/${detail.value.id}`,
-      {
-        compliance: review.compliance || null,
-        pending_detail: review.pending_detail.trim() || null,
-        remarks: review.remarks.trim() || null,
-      },
-    )
+    const { data } = await api.put<{
+      coordinator_section: CoordinatorExitInterviewDetail['coordinator_section']
+      submission_status: ExitInterviewStatus
+      reviewed_at: string | null
+      message: string
+    }>(`/api/coordinator/exit-interviews/${detail.value.id}`, {
+      compliance: review.compliance || null,
+      pending_detail: review.pending_detail.trim() || null,
+      remarks: review.remarks.trim() || null,
+      coordinator_name: review.coordinator_name.trim() || null,
+      dean_name: review.dean_name.trim() || null,
+    })
 
+    detail.value.coordinator_section = data.coordinator_section
     detail.value.submission_status = data.submission_status
     detail.value.reviewed_at = data.reviewed_at
     showToast(data.message, 'success')
     load()
   } catch (error) {
-    showToast(
-      axios.isAxiosError(error) ? (error.response?.data?.message ?? 'Could not save.') : 'Could not save.',
-      'error',
-    )
+    const { message, fieldErrors } = categorizeError(error, 'Could not save.')
+    reviewErrors.value = fieldErrors ?? {}
+    showToast(message, 'error')
   } finally {
     isSavingReview.value = false
   }
 }
+
+/** What prints on a signature line when its field is left blank. */
+const onRecordHint = (name: string): string =>
+  name ? `Left blank, "${name}" prints.` : 'Left blank, a line prints for the name to be written by hand.'
 
 const answerOf = (key: string): string => (detail.value?.responses[key] ?? '').trim()
 
@@ -538,11 +566,11 @@ onMounted(load)
 
           <div v-else-if="detail" class="space-y-6">
             <!-- Student information (the template's Section A) -->
-            <div>
+            <section>
               <h4 class="text-xs font-medium uppercase tracking-wide text-slate-400">
                 {{ detail.form.student_info_heading }}
               </h4>
-              <dl class="mt-2 grid gap-x-6 gap-y-3 sm:grid-cols-2">
+              <dl class="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2">
                 <div>
                   <dt class="text-xs text-slate-400">Department/Position Assigned</dt>
                   <dd class="text-sm text-slate-800">{{ detail.header.department_position || '—' }}</dd>
@@ -560,54 +588,69 @@ onMounted(load)
                   <dd class="text-sm text-slate-800">{{ detail.header.date_of_interview || '—' }}</dd>
                 </div>
               </dl>
-            </div>
+            </section>
 
-            <!-- The student's own answers, in the form's own sections -->
-            <template v-for="section in detail.form.sections" :key="section.heading">
-              <div v-for="(question, index) in section.questions" :key="question.key">
-                <h4 v-if="index === 0" class="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
-                  {{ section.heading }}
-                </h4>
-                <p class="text-sm font-medium text-slate-800">{{ question.n }}. {{ question.text }}</p>
-                <p v-if="isYesNo(question) || isScale(question)" class="mt-1 text-sm font-semibold text-slate-700">
-                  {{ choiceOf(question) }}
-                </p>
-                <p v-if="!isScale(question)" class="mt-1 whitespace-pre-line text-sm text-slate-600">
-                  {{ answerOf(question.key) || '— not answered —' }}
-                </p>
+            <!-- The student's own answers, one block per section of the form -->
+            <section
+              v-for="section in detail.form.sections"
+              :key="section.heading"
+              class="border-t border-slate-100 pt-5"
+            >
+              <h4 class="text-xs font-medium uppercase tracking-wide text-slate-400">{{ section.heading }}</h4>
+              <div class="mt-3 space-y-4">
+                <div v-for="question in section.questions" :key="question.key">
+                  <p class="text-sm font-medium text-slate-800">{{ question.n }}. {{ question.text }}</p>
+                  <p v-if="isYesNo(question) || isScale(question)" class="mt-1.5">
+                    <span
+                      class="inline-flex rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200"
+                    >
+                      {{ choiceOf(question) }}
+                    </span>
+                  </p>
+                  <p
+                    v-if="!isScale(question)"
+                    class="mt-1 whitespace-pre-line text-sm"
+                    :class="answerOf(question.key) ? 'text-slate-600' : 'italic text-slate-400'"
+                  >
+                    {{ answerOf(question.key) || 'Not answered' }}
+                  </p>
+                </div>
               </div>
-            </template>
+            </section>
 
             <!-- The coordinator's own block on the paper form -->
-            <div class="rounded-lg bg-slate-50 p-4 ring-1 ring-slate-200/70">
+            <section class="rounded-lg bg-slate-50 p-4 ring-1 ring-slate-200/70 sm:p-5">
               <h4 class="text-xs font-medium uppercase tracking-wide text-slate-400">
                 Section for OJT/Internship Coordinator
               </h4>
-              <p class="mt-1 text-xs text-slate-500">
-                Did the student submit all required OJT/INTERNSHIP documents and reports? This prints at the foot of
-                the last page.
-              </p>
+              <p class="mt-1 text-xs text-slate-500">This prints at the foot of the last page of the form.</p>
 
               <p
                 v-if="detail.submission_status === 'draft'"
-                class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800"
+                class="mt-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800"
               >
                 This student has not submitted their exit interview yet, so there is nothing to verify.
               </p>
 
-              <template v-else>
-                <div class="mt-3 space-y-2">
-                  <label class="flex items-center gap-2 text-sm text-slate-700">
-                    <input v-model="review.compliance" type="radio" value="complete" class="h-4 w-4" />
-                    Yes, all requirements completed
-                  </label>
-                  <label class="flex items-center gap-2 text-sm text-slate-700">
-                    <input v-model="review.compliance" type="radio" value="pending" class="h-4 w-4" />
-                    With pending requirements
-                  </label>
-                </div>
+              <div v-else class="mt-4 space-y-4">
+                <fieldset>
+                  <legend class="text-xs font-bold text-slate-600">Compliance verification</legend>
+                  <p class="mt-0.5 text-xs text-slate-500">
+                    Did the student submit all required OJT/INTERNSHIP documents and reports?
+                  </p>
+                  <div class="mt-2 space-y-2">
+                    <label class="flex items-center gap-2 text-sm text-slate-700">
+                      <input v-model="review.compliance" type="radio" value="complete" class="h-4 w-4" />
+                      Yes, all requirements completed
+                    </label>
+                    <label class="flex items-center gap-2 text-sm text-slate-700">
+                      <input v-model="review.compliance" type="radio" value="pending" class="h-4 w-4" />
+                      With pending requirements
+                    </label>
+                  </div>
+                </fieldset>
 
-                <label class="mt-3 block">
+                <label class="block">
                   <span class="text-xs font-bold text-slate-600">If pending, specify</span>
                   <textarea
                     v-model="review.pending_detail"
@@ -615,9 +658,12 @@ onMounted(load)
                     maxlength="450"
                     class="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
                   />
+                  <span v-if="reviewErrors.pending_detail" class="mt-1 block text-xs text-red-600">
+                    {{ reviewErrors.pending_detail[0] }}
+                  </span>
                 </label>
 
-                <label class="mt-3 block">
+                <label class="block">
                   <span class="text-xs font-bold text-slate-600">Remarks</span>
                   <textarea
                     v-model="review.remarks"
@@ -625,21 +671,75 @@ onMounted(load)
                     maxlength="450"
                     class="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
                   />
+                  <span v-if="reviewErrors.remarks" class="mt-1 block text-xs text-red-600">
+                    {{ reviewErrors.remarks[0] }}
+                  </span>
                 </label>
 
-                <p v-if="detail.reviewed_at" class="mt-2 text-xs text-slate-400">
+                <!-- The names printed on the form's two signature lines (and
+                     the coordinator's in Section A). Prefilled; see
+                     CoordinatorExitInterviewController::signatoryFields(). -->
+                <fieldset class="border-t border-slate-200 pt-4">
+                  <legend class="sr-only">Signatories</legend>
+                  <p class="text-xs font-bold text-slate-600">Signatories</p>
+                  <p class="mt-0.5 text-xs text-slate-500">
+                    Printed in capitals on the signature lines, exactly as you type them here.
+                  </p>
+                  <div class="mt-3 grid gap-4 sm:grid-cols-2">
+                    <label class="block min-w-0">
+                      <span class="text-xs font-bold text-slate-600">OJT/Internship Coordinator</span>
+                      <input
+                        v-model="review.coordinator_name"
+                        type="text"
+                        autocomplete="off"
+                        :maxlength="SIGNATORY_NAME_MAX"
+                        placeholder="Full name and post-nominals"
+                        class="mt-1 block w-full rounded-md border bg-white px-3 py-2 text-sm"
+                        :class="reviewErrors.coordinator_name ? 'border-red-400' : 'border-slate-300'"
+                      />
+                      <span v-if="reviewErrors.coordinator_name" class="mt-1 block text-xs text-red-600">
+                        {{ reviewErrors.coordinator_name[0] }}
+                      </span>
+                      <span v-else class="mt-1 block text-xs text-slate-400">
+                        {{ onRecordHint(detail.signatories.on_record.coordinator_name) }}
+                      </span>
+                    </label>
+                    <label class="block min-w-0">
+                      <span class="text-xs font-bold text-slate-600">Dean (Reviewed by)</span>
+                      <input
+                        v-model="review.dean_name"
+                        type="text"
+                        autocomplete="off"
+                        :maxlength="SIGNATORY_NAME_MAX"
+                        placeholder="Full name and post-nominals"
+                        class="mt-1 block w-full rounded-md border bg-white px-3 py-2 text-sm"
+                        :class="reviewErrors.dean_name ? 'border-red-400' : 'border-slate-300'"
+                      />
+                      <span v-if="reviewErrors.dean_name" class="mt-1 block text-xs text-red-600">
+                        {{ reviewErrors.dean_name[0] }}
+                      </span>
+                      <span v-else class="mt-1 block text-xs text-slate-400">
+                        {{ onRecordHint(detail.signatories.on_record.dean_name) }}
+                      </span>
+                    </label>
+                  </div>
+                </fieldset>
+
+                <p v-if="detail.reviewed_at" class="text-xs text-slate-400">
                   Last saved {{ formatDate(detail.reviewed_at) }}{{ detail.reviewed_by ? ` by ${detail.reviewed_by}` : '' }}.
                 </p>
-              </template>
-            </div>
+              </div>
+            </section>
           </div>
         </div>
 
         <div class="shrink-0 border-t border-slate-200 bg-white px-6 py-4">
-          <div class="flex items-center justify-end gap-3">
+          <!-- Stacked full-width on a phone (primary action on top), one row
+               from sm up — three labelled buttons do not fit 343px side by side. -->
+          <div class="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
             <button
               type="button"
-              class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              class="whitespace-nowrap rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
               @click="closeDetail"
             >
               Close
@@ -647,7 +747,7 @@ onMounted(load)
             <button
               v-if="detail"
               type="button"
-              class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              class="whitespace-nowrap rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
               @click="downloadPdf(detail.id)"
             >
               Download PDF
@@ -655,7 +755,7 @@ onMounted(load)
             <button
               v-if="detail && detail.submission_status !== 'draft'"
               type="button"
-              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              class="whitespace-nowrap rounded-md border border-blue-600 bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:border-blue-700 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               :disabled="isSavingReview"
               @click="saveReview"
             >
