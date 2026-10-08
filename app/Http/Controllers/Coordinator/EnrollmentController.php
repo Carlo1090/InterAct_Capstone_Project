@@ -6,7 +6,6 @@ use App\Http\Controllers\Concerns\ScopesCoordinatorAccounts;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Coordinator\CreateAccountRequest;
 use App\Http\Requests\Coordinator\StoreEnrollmentRequest;
-use App\Http\Requests\Coordinator\UpdateEnrollmentRequest;
 use App\Models\Batch;
 use App\Models\BatchStudent;
 use App\Models\Company;
@@ -22,6 +21,7 @@ use App\Services\EnrollmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 class EnrollmentController extends Controller
@@ -83,12 +83,23 @@ class EnrollmentController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'code']);
 
-        // The coordinator's own batches (the set they may enroll into), carrying
-        // program_id so the Create-Account form can filter the Batch dropdown by
-        // the selected program.
-        $batches = $request->user()->batchesCoordinated()
+        // Every batch in the coordinator's department (the set Create Account,
+        // Bulk Import and Enroll accept — User::placeableBatchIds()), carrying
+        // program_id so each form can filter the Batch dropdown by program.
+        // coordinator_name is set only on a COLLEAGUE'S batch, so the dropdown
+        // can tell two same-named cohorts apart without cluttering the
+        // coordinator's own.
+        $coordinatorId = $request->user()->id;
+        $batches = Batch::whereIn('id', $request->user()->placeableBatchIds())
+            ->with('coordinator:id,name')
             ->orderByDesc('start_date')
-            ->get(['id', 'name', 'program_id']);
+            ->get(['id', 'name', 'program_id', 'coordinator_id'])
+            ->map(fn (Batch $batch) => [
+                'id' => $batch->id,
+                'name' => $batch->name,
+                'program_id' => $batch->program_id,
+                'coordinator_name' => (int) $batch->coordinator_id === (int) $coordinatorId ? null : $batch->coordinator?->name,
+            ]);
 
         return response()->json([
             'companies' => $companies,
@@ -422,7 +433,7 @@ class EnrollmentController extends Controller
             );
 
             // The intended batch must belong to the pre-set program (it is
-            // already constrained to the coordinator's own batches by the request).
+            // already constrained to the coordinator's department by the request).
             $intendedBatch = Batch::where('id', $validated['batch_id'])
                 ->where('program_id', $validated['program_id'])
                 ->first();
@@ -436,32 +447,53 @@ class EnrollmentController extends Controller
             ->filter()
             ->implode(' ');
 
-        $user = User::create([
-            'name' => $name,
-            'username' => $validated['username'] ?? null,
-            'password' => Hash::make($validated['password']),
-            'role' => $validated['role'],
-            'program_id' => $validated['role'] === 'student' ? ($validated['program_id'] ?? null) : null,
-            'student_id_number' => $validated['role'] === 'student' ? ($validated['student_id_number'] ?? null) : null,
-            'is_active' => true,
-        ]);
-
-        if ($user->isStudent()) {
-            // The UserObserver already auto-created the profile on user create,
-            // so set middle_name explicitly (firstOrCreate would no-op on the
-            // existing row and never persist it).
-            $profile = StudentProfile::firstOrCreate(
-                ['user_id' => $user->id],
-                ['student_id_number' => $user->student_id_number],
-            );
-            $profile->update(['middle_name' => $validated['middle_name'] ?? null]);
-
-            $enrollments->scaffoldIntendedSheet($user, $intendedBatch, [
-                'first_name' => $validated['first_name'],
-                'middle_name' => $validated['middle_name'] ?? null,
-                'last_name' => $validated['last_name'],
+        // One transaction for the account, its profile and its draft sheet —
+        // the same guarantee bulk import's createOne() already gives. Without
+        // it, a failure after User::create left a login with no draft sheet
+        // (so no intended batch for Accept to enroll into), and a retry then
+        // failed on "username already taken".
+        $user = DB::transaction(function () use ($validated, $name, $intendedBatch, $enrollments) {
+            $user = User::create([
+                'name' => $name,
+                'username' => $validated['username'] ?? null,
+                'password' => Hash::make($validated['password']),
+                'role' => $validated['role'],
+                'program_id' => $validated['role'] === 'student' ? ($validated['program_id'] ?? null) : null,
+                'student_id_number' => $validated['role'] === 'student' ? ($validated['student_id_number'] ?? null) : null,
+                'is_active' => true,
+                // The coordinator chose this password and has read it out or
+                // handed it over — for a student it is the predictable
+                // {first three letters}_{student ID} suggestion unless edited —
+                // so it must be replaced on first sign-in, exactly as bulk
+                // import, the Credential Manager and the admin's Create User
+                // already require.
+                'must_change_password' => true,
             ]);
-        }
+
+            if ($user->isStudent()) {
+                // The UserObserver already auto-created the profile on user create,
+                // so set middle_name explicitly (firstOrCreate would no-op on the
+                // existing row and never persist it).
+                $profile = StudentProfile::firstOrCreate(
+                    ['user_id' => $user->id],
+                    ['student_id_number' => $user->student_id_number],
+                );
+                $profile->update(['middle_name' => $validated['middle_name'] ?? null]);
+
+                $enrollments->scaffoldIntendedSheet($user, $intendedBatch, [
+                    'first_name' => $validated['first_name'],
+                    'middle_name' => $validated['middle_name'] ?? null,
+                    'last_name' => $validated['last_name'],
+                ]);
+            }
+
+            return $user;
+        });
+
+        SystemLog::record(
+            'Account Created',
+            "Created {$user->role} account {$user->name} ({$user->username})".($intendedBatch ? " for {$intendedBatch->name}" : '')
+        );
 
         return response()->json($user->only(['id', 'name', 'username', 'role', 'is_active']), 201);
     }
@@ -475,6 +507,26 @@ class EnrollmentController extends Controller
     public function store(StoreEnrollmentRequest $request, EnrollmentService $enrollments): JsonResponse
     {
         $validated = $request->validated();
+
+        // The same two checks the roster's Add Intern makes. The request only
+        // proved the id names SOME student; without these a coordinator could
+        // enroll another department's student, or a BSBA student into a BSIT
+        // batch, and nothing downstream would notice.
+        $student = User::findOrFail($validated['student_id']);
+        $batch = Batch::findOrFail($validated['batch_id']);
+
+        abort_unless(
+            $request->user()->coordinatorProgramIds()->contains($student->program_id),
+            403,
+            'That student is outside your assigned department(s).'
+        );
+
+        if ((int) $student->program_id !== (int) $batch->program_id) {
+            return response()->json([
+                'message' => "This student's program does not match this batch's program.",
+                'errors' => ['student_id' => ["This student's program does not match this batch's program."]],
+            ], 422);
+        }
 
         // Reused-in-place (any prior row for the pair — dropped, completed,
         // or active) responds 200; a brand-new enrollment row responds 201.
@@ -528,27 +580,12 @@ class EnrollmentController extends Controller
         ]);
     }
 
-    public function update(UpdateEnrollmentRequest $request, BatchStudent $batchStudent): JsonResponse
-    {
-        $validated = $request->validated();
-
-        // The supervisor is tied to the company, never a manual pick — a
-        // company change re-derives supervisor_id from the new company's
-        // login supervisor (and company_supervisor_id along with it), the
-        // same rule EnrollmentService centralizes for every other path.
-        if (array_key_exists('company_id', $validated)) {
-            $company = Company::findOrFail($validated['company_id']);
-            $supervisorId = $company->loginSupervisor?->user_id;
-            abort_if($supervisorId === null, 422, 'This company has no supervisor account yet. Add one to the company before assigning it.');
-
-            $validated['supervisor_id'] = $supervisorId;
-            $validated['company_supervisor_id'] = CompanySupervisor::where('company_id', $company->id)
-                ->where('user_id', $supervisorId)
-                ->value('id');
-        }
-
-        $batchStudent->update($validated);
-
-        return response()->json($batchStudent->fresh(['batch.program', 'company', 'supervisor', 'student']));
-    }
+    // There is deliberately no update() here any more. PUT enrollments/{id}
+    // was called by nothing in the SPA or the mobile app, and it was the one
+    // placement path that did NOT go through EnrollmentService: it re-derived
+    // a supervisor by hand without the OJT-type branch (so it attached a
+    // supervisor to a coordinator-centered enrollment, and 422'd a company
+    // that needs no login), and it could set status=active while the student
+    // was active in another batch. Status changes belong to the roster
+    // (complete / reopen / remove / reactivate), which guards each one.
 }

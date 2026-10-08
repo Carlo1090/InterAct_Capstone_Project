@@ -123,6 +123,39 @@ class BatchRosterTest extends TestCase
         $this->assertSame(1, BatchStudent::where('student_id', $student->id)->where('status', 'active')->count());
     }
 
+    /**
+     * The drop and the new placement are ONE transaction. They used to be two
+     * writes, so when the new placement was refused (here: a company with no
+     * supervisor login) the coordinator saw the 422 but the drop had already
+     * committed — and the student was left enrolled nowhere.
+     */
+    public function test_a_refused_move_leaves_the_student_where_they_were(): void
+    {
+        $program = $this->program('CABM-B', 'BSA');
+        $coordinator = $this->coordinatorFor($program->department_id);
+        $oldBatch = $this->batchFor($program, $coordinator, 'Old');
+        $newBatch = $this->batchFor($program, $coordinator, 'New');
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+
+        $oldRow = BatchStudent::create([
+            'batch_id' => $oldBatch->id,
+            'student_id' => $student->id,
+            'company_id' => $this->company()->id,
+            'supervisor_id' => User::factory()->create(['role' => 'supervisor'])->id,
+            'status' => 'active',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson("/api/coordinator/batches/{$newBatch->id}/roster", [
+            'student_id' => $student->id,
+            'company_id' => $this->company()->id, // no login supervisor → 422
+        ])->assertStatus(422);
+
+        $this->assertSame('active', $oldRow->fresh()->status);
+        $this->assertDatabaseMissing('batch_students', ['batch_id' => $newBatch->id, 'student_id' => $student->id]);
+    }
+
     public function test_cross_program_add_is_rejected(): void
     {
         $bsa = $this->program('CABM-B', 'BSA');

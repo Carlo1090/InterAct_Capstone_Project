@@ -160,6 +160,9 @@ class CoordinatorCompanyTest extends TestCase
         $this->assertNotNull($supervisor);
         $this->assertSame('supervisor', $supervisor->role);
         $this->assertTrue($supervisor->is_active);
+        // The coordinator typed this password and hands it to the company,
+        // so whoever signs in first must replace it.
+        $this->assertTrue($supervisor->must_change_password);
         $this->assertDatabaseHas('company_supervisors', [
             'company_id' => $company->id,
             'user_id' => $supervisor->id,

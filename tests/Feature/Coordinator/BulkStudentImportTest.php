@@ -85,13 +85,13 @@ class BulkStudentImportTest extends TestCase
         User::factory()->create(['student_id_number' => 'EXIST-001']);
 
         $file = $this->csvUpload([
-            ['First Name' => 'Ana', 'Middle Name' => '', 'Family Name' => 'Cruz', 'Sex' => 'Female', 'Student ID Number' => '2026-001', 'Email' => 'ana@example.com'],
-            ['First Name' => '', 'Middle Name' => '', 'Family Name' => 'NoFirstName', 'Sex' => '', 'Student ID Number' => '2026-002', 'Email' => 'noname@example.com'],
+            ['First Name' => 'Ana', 'Middle Name' => '', 'Family Name' => 'Cruz', 'Sex' => 'Female', 'Student ID Number' => '2026-001', 'Email' => 'ana@students.test'],
+            ['First Name' => '', 'Middle Name' => '', 'Family Name' => 'NoFirstName', 'Sex' => '', 'Student ID Number' => '2026-002', 'Email' => 'noname@students.test'],
             ['First Name' => 'Bad', 'Middle Name' => '', 'Family Name' => 'Email', 'Sex' => 'Male', 'Student ID Number' => '2026-003', 'Email' => 'not-an-email'],
-            ['First Name' => 'Already', 'Middle Name' => '', 'Family Name' => 'Exists', 'Sex' => 'Male', 'Student ID Number' => 'EXIST-001', 'Email' => 'already@example.com'],
-            ['First Name' => 'Dup1', 'Middle Name' => '', 'Family Name' => 'One', 'Sex' => 'Male', 'Student ID Number' => 'DUPE-1', 'Email' => 'dup1@example.com'],
-            ['First Name' => 'Dup2', 'Middle Name' => '', 'Family Name' => 'Two', 'Sex' => 'Female', 'Student ID Number' => 'DUPE-1', 'Email' => 'dup2@example.com'],
-            ['First Name' => 'Weird', 'Middle Name' => '', 'Family Name' => 'Sex', 'Sex' => 'Other', 'Student ID Number' => '2026-007', 'Email' => 'weird@example.com'],
+            ['First Name' => 'Already', 'Middle Name' => '', 'Family Name' => 'Exists', 'Sex' => 'Male', 'Student ID Number' => 'EXIST-001', 'Email' => 'already@students.test'],
+            ['First Name' => 'Dup1', 'Middle Name' => '', 'Family Name' => 'One', 'Sex' => 'Male', 'Student ID Number' => 'DUPE-1', 'Email' => 'dup1@students.test'],
+            ['First Name' => 'Dup2', 'Middle Name' => '', 'Family Name' => 'Two', 'Sex' => 'Female', 'Student ID Number' => 'DUPE-1', 'Email' => 'dup2@students.test'],
+            ['First Name' => 'Weird', 'Middle Name' => '', 'Family Name' => 'Sex', 'Sex' => 'Other', 'Student ID Number' => '2026-007', 'Email' => 'weird@students.test'],
         ]);
 
         Sanctum::actingAs($coordinator, ['*']);
@@ -136,7 +136,7 @@ class BulkStudentImportTest extends TestCase
         $batch = $this->batchFor($bsit, $coordinator);
 
         $file = $this->csvUpload([
-            ['First Name' => 'Ana', 'Middle Name' => 'Reyes', 'Family Name' => 'Cruz', 'Sex' => 'Female', 'Student ID Number' => '2026-001', 'Email' => 'ana@example.com'],
+            ['First Name' => 'Ana', 'Middle Name' => 'Reyes', 'Family Name' => 'Cruz', 'Sex' => 'Female', 'Student ID Number' => '2026-001', 'Email' => 'ana@students.test'],
         ]);
 
         Sanctum::actingAs($coordinator, ['*']);
@@ -153,7 +153,7 @@ class BulkStudentImportTest extends TestCase
         $student = User::where('student_id_number', '2026-001')->first();
         $this->assertNotNull($student);
         $this->assertSame('2026-001', $student->username);
-        $this->assertSame('ana@example.com', $student->email);
+        $this->assertSame('ana@students.test', $student->email);
         $this->assertSame('Ana Reyes Cruz', $student->name);
         $this->assertTrue($student->must_change_password);
         $this->assertSame('student', $student->role);
@@ -185,8 +185,8 @@ class BulkStudentImportTest extends TestCase
         $batch = $this->batchFor($bsit, $coordinator);
 
         $file = $this->csvUpload([
-            ['First Name' => 'Good', 'Middle Name' => '', 'Family Name' => 'Row', 'Sex' => 'Male', 'Student ID Number' => '2026-010', 'Email' => 'good@example.com'],
-            ['First Name' => '', 'Middle Name' => '', 'Family Name' => 'Bad', 'Sex' => '', 'Student ID Number' => '2026-011', 'Email' => 'bad@example.com'],
+            ['First Name' => 'Good', 'Middle Name' => '', 'Family Name' => 'Row', 'Sex' => 'Male', 'Student ID Number' => '2026-010', 'Email' => 'good@students.test'],
+            ['First Name' => '', 'Middle Name' => '', 'Family Name' => 'Bad', 'Sex' => '', 'Student ID Number' => '2026-011', 'Email' => 'bad@students.test'],
         ]);
 
         Sanctum::actingAs($coordinator, ['*']);
@@ -215,7 +215,7 @@ class BulkStudentImportTest extends TestCase
 
         $rows = [];
         for ($i = 1; $i <= 101; $i++) {
-            $rows[] = ['First Name' => "S{$i}", 'Middle Name' => '', 'Family Name' => 'Test', 'Sex' => 'Male', 'Student ID Number' => "2026-{$i}", 'Email' => "s{$i}@example.com"];
+            $rows[] = ['First Name' => "S{$i}", 'Middle Name' => '', 'Family Name' => 'Test', 'Sex' => 'Male', 'Student ID Number' => "2026-{$i}", 'Email' => "s{$i}@students.test"];
         }
         $file = $this->csvUpload($rows);
 
@@ -239,7 +239,7 @@ class BulkStudentImportTest extends TestCase
         $bsit = $this->programFor('BSIT');
         $coordinator = $this->coordinatorFor($bsit);
         $batch = $this->batchFor($bsit, $coordinator);
-        $rowData = [['First Name' => 'Once', 'Middle Name' => '', 'Family Name' => 'Only', 'Sex' => 'Male', 'Student ID Number' => '2026-020', 'Email' => 'once@example.com']];
+        $rowData = [['First Name' => 'Once', 'Middle Name' => '', 'Family Name' => 'Only', 'Sex' => 'Male', 'Student ID Number' => '2026-020', 'Email' => 'once@students.test']];
 
         Sanctum::actingAs($coordinator, ['*']);
 
@@ -264,21 +264,173 @@ class BulkStudentImportTest extends TestCase
         $this->assertSame(1, User::where('student_id_number', '2026-020')->count());
     }
 
-    public function test_coordinator_cannot_bulk_import_into_a_batch_they_do_not_coordinate(): void
+    public function test_coordinator_cannot_bulk_import_into_another_departments_batch(): void
     {
-        $bsit = $this->programFor('BSIT');
+        $bsit = $this->programFor('BSIT', 'CAST');
         $coordinator = $this->coordinatorFor($bsit);
 
-        $otherCoordinator = $this->coordinatorFor($bsit);
-        $foreignBatch = $this->batchFor($bsit, $otherCoordinator);
+        $bsba = $this->programFor('BSBA-FM', 'CABM-B');
+        $foreignBatch = $this->batchFor($bsba, $this->coordinatorFor($bsba));
 
         Sanctum::actingAs($coordinator, ['*']);
 
         $this->post('/api/coordinator/accounts/bulk-import/preview', [
-            'file' => $this->csvUpload([['First Name' => 'X', 'Middle Name' => '', 'Family Name' => 'Y', 'Sex' => 'Male', 'Student ID Number' => '2026-030', 'Email' => 'x@example.com']]),
-            'program_id' => $bsit->id,
+            'file' => $this->csvUpload([['First Name' => 'X', 'Middle Name' => '', 'Family Name' => 'Y', 'Sex' => 'Male', 'Student ID Number' => '2026-030', 'Email' => 'x@students.test']]),
+            'program_id' => $bsba->id,
             'batch_id' => $foreignBatch->id,
         ])->assertStatus(422)->assertJsonValidationErrors('batch_id');
+    }
+
+    /**
+     * A colleague's batch in the SAME department is allowed — the scope every
+     * other placement path (info-sheet Accept, the batch roster) already used.
+     * Bulk import was the odd one out: a coordinator covering for an absent
+     * colleague could Accept and roster students into that colleague's batch,
+     * but not create their accounts.
+     */
+    public function test_coordinator_can_bulk_import_into_a_department_colleagues_batch(): void
+    {
+        Notification::fake();
+        $bsit = $this->programFor('BSIT');
+        $coordinator = $this->coordinatorFor($bsit);
+        $colleaguesBatch = $this->batchFor($bsit, $this->coordinatorFor($bsit));
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->post('/api/coordinator/accounts/bulk-import/confirm', [
+            'file' => $this->csvUpload([['First Name' => 'X', 'Middle Name' => '', 'Family Name' => 'Y', 'Sex' => 'Male', 'Student ID Number' => '2026-031', 'Email' => 'x31@students.test']]),
+            'program_id' => $bsit->id,
+            'batch_id' => $colleaguesBatch->id,
+        ])->assertOk()->assertJsonPath('created_count', 1);
+
+        $this->assertSame(
+            $colleaguesBatch->id,
+            User::where('student_id_number', '2026-031')->firstOrFail()->studentInformationSheets()->value('batch_id')
+        );
+    }
+
+    /**
+     * The SPA walks a file slice by slice so no request outlives the proxy's
+     * 120s limit. The whole file is still validated on each call (a duplicate
+     * ID across two slices is still caught), but only the slice is created.
+     */
+    public function test_confirm_creates_only_the_requested_slice_and_reports_where_to_continue(): void
+    {
+        Notification::fake();
+        $bsit = $this->programFor('BSIT');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $rows = [];
+        foreach (range(1, 5) as $i) {
+            $rows[] = ['First Name' => "S{$i}", 'Middle Name' => '', 'Family Name' => 'Slice', 'Sex' => 'Male', 'Student ID Number' => "2026-50{$i}", 'Email' => "s{$i}@students.test"];
+        }
+        $send = fn (int $offset) => $this->post('/api/coordinator/accounts/bulk-import/confirm', [
+            'file' => $this->csvUpload($rows),
+            'program_id' => $bsit->id,
+            'batch_id' => $batch->id,
+            'offset' => $offset,
+            'limit' => 2,
+        ], ['Accept' => 'application/json']);
+
+        $first = $send(0)->assertOk();
+        $this->assertSame(2, $first->json('created_count'));
+        $this->assertSame(5, $first->json('total_rows'));
+        $this->assertSame(2, $first->json('next_offset'));
+        $this->assertSame(['2026-501', '2026-502'], array_column($first->json('results'), 'student_id_number'));
+        $this->assertSame(2, User::where('student_id_number', 'like', '2026-50%')->count());
+
+        $send(2)->assertOk()->assertJsonPath('next_offset', 4);
+
+        $last = $send(4)->assertOk();
+        $this->assertNull($last->json('next_offset'));
+        $this->assertSame(['2026-505'], array_column($last->json('results'), 'student_id_number'));
+        $this->assertSame(5, User::where('student_id_number', 'like', '2026-50%')->count());
+    }
+
+    /** Letters and digits only — the password is read out and typed on a phone. */
+    public function test_temporary_passwords_carry_no_symbols(): void
+    {
+        Notification::fake();
+        $bsit = $this->programFor('BSIT');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $rows = [];
+        foreach (range(1, 8) as $i) {
+            $rows[] = ['First Name' => "P{$i}", 'Middle Name' => '', 'Family Name' => 'Pw', 'Sex' => 'Male', 'Student ID Number' => "2026-60{$i}", 'Email' => "p{$i}@students.test"];
+        }
+
+        $results = $this->post('/api/coordinator/accounts/bulk-import/confirm', [
+            'file' => $this->csvUpload($rows),
+            'program_id' => $bsit->id,
+            'batch_id' => $batch->id,
+        ], ['Accept' => 'application/json'])->assertOk()->json('results');
+
+        foreach ($results as $row) {
+            $this->assertMatchesRegularExpression('/^[A-Za-z0-9]{12}$/', $row['temporary_password']);
+        }
+    }
+
+    /**
+     * Values the database cannot hold are refused at PREVIEW with a reason.
+     * They used to preview "Ready" and then fail at confirm on MySQL with
+     * "Could not be created — please retry", which no retry could fix.
+     */
+    public function test_preview_refuses_values_longer_than_their_columns(): void
+    {
+        $bsit = $this->programFor('BSIT');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $rows = $this->post('/api/coordinator/accounts/bulk-import/preview', [
+            'file' => $this->csvUpload([
+                ['First Name' => 'Ana', 'Middle Name' => '', 'Family Name' => 'Cruz', 'Sex' => '', 'Student ID Number' => str_repeat('9', 31), 'Email' => 'long.id@students.test'],
+                ['First Name' => str_repeat('N', 80), 'Middle Name' => str_repeat('M', 40), 'Family Name' => str_repeat('F', 40), 'Sex' => '', 'Student ID Number' => '2026-701', 'Email' => 'long.name@students.test'],
+                ['First Name' => str_repeat('N', 101), 'Middle Name' => '', 'Family Name' => 'Cruz', 'Sex' => '', 'Student ID Number' => '2026-702', 'Email' => 'long.part@students.test'],
+            ]),
+            'program_id' => $bsit->id,
+            'batch_id' => $batch->id,
+        ], ['Accept' => 'application/json'])->assertOk()->json('rows');
+
+        $this->assertFalse($rows[0]['valid']);
+        $this->assertStringContainsString('Student ID Number may not be longer than 30', $rows[0]['errors'][0]);
+        $this->assertFalse($rows[1]['valid']);
+        $this->assertStringContainsString('full name may not be longer than 150', implode(' ', $rows[1]['errors']));
+        $this->assertFalse($rows[2]['valid']);
+        $this->assertStringContainsString('First Name may not be longer than 100', implode(' ', $rows[2]['errors']));
+    }
+
+    /**
+     * The template ships with a sample row (Juan Dela Cruz,
+     * juan.delacruz@example.com). Left in by mistake it created a real
+     * account and consumed the sample ID; example.com cannot receive mail, so
+     * any address there is refused.
+     */
+    public function test_the_templates_placeholder_address_is_refused(): void
+    {
+        $bsit = $this->programFor('BSIT');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $rows = $this->post('/api/coordinator/accounts/bulk-import/preview', [
+            'file' => $this->csvUpload([
+                ['First Name' => 'Juan', 'Middle Name' => 'Santos', 'Family Name' => 'Dela Cruz', 'Sex' => 'Male', 'Student ID Number' => '2026-00123', 'Email' => 'juan.delacruz@example.com'],
+                ['First Name' => 'Ana', 'Middle Name' => '', 'Family Name' => 'Cruz', 'Sex' => 'Female', 'Student ID Number' => '2026-801', 'Email' => 'ana@mail.example.org'],
+                ['First Name' => 'Ben', 'Middle Name' => '', 'Family Name' => 'Lim', 'Sex' => 'Male', 'Student ID Number' => '2026-802', 'Email' => 'ben@notexample.com'],
+            ]),
+            'program_id' => $bsit->id,
+            'batch_id' => $batch->id,
+        ], ['Accept' => 'application/json'])->assertOk()->json('rows');
+
+        $this->assertFalse($rows[0]['valid']);
+        $this->assertStringContainsString('placeholder address', $rows[0]['errors'][0]);
+        $this->assertFalse($rows[1]['valid'], 'a subdomain of example.org is just as undeliverable');
+        $this->assertTrue($rows[2]['valid'], 'a real domain that merely contains the word is fine');
     }
 
     // Reissuing a bulk-imported student's credentials moved off this page and

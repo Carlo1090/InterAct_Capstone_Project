@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\EnrollmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Batch roster management for coordinators: view a batch's interns and
@@ -79,22 +80,27 @@ class BatchRosterController extends Controller
             ], 422);
         }
 
-        $moved = false;
+        $moved = $currentActive !== null;
 
-        if ($currentActive) {
-            $currentActive->update(['status' => 'dropped']);
-            $moved = true;
-        }
+        // ONE transaction for the drop and the new placement. They used to be
+        // two separate writes, so when the new placement was refused (a company
+        // with no supervisor login, say) the 422 reached the coordinator but
+        // the drop had already committed — the student was left enrolled
+        // nowhere, with nothing on screen saying so. abort() throws, which
+        // rolls the drop back with it.
+        $enrollment = DB::transaction(function () use ($currentActive, $enrollments, $batch, $student, $request) {
+            $currentActive?->update(['status' => 'dropped']);
 
-        // Through the shared service so a prior dropped/completed row for
-        // this exact (batch, student) pair is reconciled in place, never
-        // duplicated (the DB unique index would reject a second row).
-        $enrollment = $enrollments->enrollOrReactivate(
-            $batch->id,
-            $student->id,
-            $request->integer('company_id'),
-            $request->input('assigned_division'),
-        );
+            // Through the shared service so a prior dropped/completed row for
+            // this exact (batch, student) pair is reconciled in place, never
+            // duplicated (the DB unique index would reject a second row).
+            return $enrollments->enrollOrReactivate(
+                $batch->id,
+                $student->id,
+                $request->integer('company_id'),
+                $request->input('assigned_division'),
+            );
+        });
 
         SystemLog::record(
             $moved ? 'Student Moved to Batch' : 'Student Added to Batch',

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Coordinator;
 
+use App\Services\StudentBulkImportService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -24,7 +25,9 @@ class BulkImportStudentsRequest extends FormRequest
 
     public function rules(): array
     {
-        $batchIds = $this->user()->batchesCoordinated()->pluck('id')->all();
+        // Any batch in the coordinator's department — the same set Create
+        // Account and Enroll accept (see User::placeableBatchIds()).
+        $batchIds = $this->user()->placeableBatchIds()->all();
 
         return [
             // 'txt' is deliberate, not a typo: PHP's fileinfo sniffs a SMALL
@@ -36,13 +39,19 @@ class BulkImportStudentsRequest extends FormRequest
             'file' => ['required', 'file', 'mimes:xlsx,xls,csv,txt', 'max:2048'],
             'program_id' => ['required', 'integer', 'exists:programs,id'],
             'batch_id' => ['required', 'integer', 'exists:batches,id', Rule::in($batchIds)],
+            // confirm() only: which rows of the file this request creates. The
+            // SPA walks the file in slices so no single request runs long
+            // enough to be cut off by the proxy in front of the API (see
+            // BulkStudentImportController::confirm). Omitted = the whole file.
+            'offset' => ['sometimes', 'integer', 'min:0'],
+            'limit' => ['sometimes', 'integer', 'min:1', 'max:'.StudentBulkImportService::MAX_ROWS_PER_REQUEST],
         ];
     }
 
     public function messages(): array
     {
         return [
-            'batch_id.in' => 'The selected batch is not one you coordinate.',
+            'batch_id.in' => 'The selected batch is outside your department.',
             'file.mimes' => 'The file must be an Excel (.xlsx, .xls) or CSV file.',
             'file.max' => 'The file may not be larger than 2MB.',
         ];

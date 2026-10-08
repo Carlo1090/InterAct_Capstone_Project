@@ -4,9 +4,13 @@ namespace App\Http\Requests\Coordinator;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class CreateAccountRequest extends FormRequest
 {
+    /** users.name is a VARCHAR(150) and holds the three name parts joined. */
+    public const MAX_FULL_NAME = 150;
+
     public function authorize(): bool
     {
         return $this->user()?->role === 'coordinator';
@@ -14,9 +18,10 @@ class CreateAccountRequest extends FormRequest
 
     public function rules(): array
     {
-        // A student's intended batch must be one this coordinator owns — the
-        // same set they may enroll into (mirrors StoreEnrollmentRequest).
-        $batchIds = $this->user()->batchesCoordinated()->pluck('id')->all();
+        // A student's intended batch may be any batch in the coordinator's
+        // department — the same set they may enroll into (mirrors
+        // StoreEnrollmentRequest and bulk import).
+        $batchIds = $this->user()->placeableBatchIds()->all();
 
         return [
             'first_name' => ['required', 'string', 'max:100'],
@@ -41,7 +46,28 @@ class CreateAccountRequest extends FormRequest
     {
         return [
             'username.regex' => 'Username may only contain letters, numbers, dots, dashes and underscores.',
-            'batch_id.in' => 'The selected batch is not one you coordinate.',
+            'batch_id.in' => 'The selected batch is outside your department.',
         ];
+    }
+
+    /**
+     * The three parts are each capped at 100 (they mirror the info sheet's own
+     * fields), but they are stored JOINED in users.name, which holds 150. Three
+     * legal parts could therefore add up to a name the column cannot take:
+     * SQLite accepts it silently, and MySQL's strict mode answered with a 500
+     * instead of a message the coordinator could act on.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+            $full = collect([$this->input('first_name'), $this->input('middle_name'), $this->input('last_name')])
+                ->map(fn ($part) => trim((string) $part))
+                ->filter()
+                ->implode(' ');
+
+            if (mb_strlen($full) > self::MAX_FULL_NAME) {
+                $validator->errors()->add('last_name', 'The full name may not be longer than '.self::MAX_FULL_NAME.' characters altogether.');
+            }
+        });
     }
 }

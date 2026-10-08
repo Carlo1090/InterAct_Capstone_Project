@@ -116,7 +116,7 @@ netstat -ano | grep ':8000' | grep LISTENING   # note the PID in the last column
 cd .claude/skills/run-interntrack
 node driver.mjs --base http://localhost:5173 --session smoke <<'EOF'
 nav /login
-wait-for text=Welcome Back
+wait-for text=Welcome to InternTrack
 screenshot login-page
 login mdcstudent password
 wait-for text=Hello
@@ -129,7 +129,7 @@ Verified this session — output was:
 
 ```
 > nav /login
-> wait-for text=Welcome Back
+> wait-for text=Welcome to InternTrack
 > screenshot login-page
 saved screenshots\smoke\login-page.png
 > login mdcstudent password

@@ -264,7 +264,6 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::post('accounts/bulk-import/confirm', [BulkStudentImportController::class, 'confirm']);
         Route::get('roster', [EnrollmentController::class, 'roster']);
         Route::post('enrollments', [EnrollmentController::class, 'store']);
-        Route::put('enrollments/{batchStudent}', [EnrollmentController::class, 'update']);
 
         Route::get('annual-sipp', [AnnualSippReportController::class, 'index']);
         Route::get('annual-sipp/{program}', [AnnualSippReportController::class, 'show']);

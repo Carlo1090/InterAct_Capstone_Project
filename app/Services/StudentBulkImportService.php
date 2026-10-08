@@ -28,6 +28,38 @@ class StudentBulkImportService
     public const MAX_ROWS = 100;
 
     /**
+     * The most rows one confirm request may create. A full file is walked in
+     * slices because every row sends its welcome email inline, and the proxy in
+     * front of the deployed API (Vercel's rewrite) cuts a request off at 120s
+     * whatever PHP's own limit says — see BulkStudentImportController::confirm.
+     */
+    public const MAX_ROWS_PER_REQUEST = 25;
+
+    /**
+     * Column limits, so a value the database cannot hold is refused at PREVIEW
+     * with a reason, instead of previewing "Ready" and then failing at confirm
+     * with "Could not be created" — which, under MySQL's strict mode, no retry
+     * could ever fix. Each name part matches the info sheet's own field; the
+     * joined name is users.name (150); the ID is student_profiles'
+     * student_id_number (30).
+     */
+    private const MAX_NAME_PART = 100;
+
+    private const MAX_FULL_NAME = 150;
+
+    private const MAX_ID_NUMBER = 30;
+
+    private const MAX_EMAIL = 255;
+
+    /**
+     * RFC 2606 reserves these for documentation; nothing at them can receive
+     * the credentials email. In practice the only way one reaches an upload is
+     * the template's own sample row left in by mistake — which, unflagged,
+     * created a real account for "Juan Dela Cruz" and consumed his sample ID.
+     */
+    private const PLACEHOLDER_EMAIL_DOMAIN = '/(^|\.)example\.(com|net|org)$/';
+
+    /**
      * Slugged header keys the file MUST carry. Middle Name and Sex are
      * deliberately absent — they are the two optional columns.
      *
@@ -168,8 +200,22 @@ class StudentBulkImportService
             $errors[] = 'Family Name is required.';
         }
 
+        foreach (['first_name' => 'First Name', 'middle_name' => 'Middle Name', 'last_name' => 'Family Name'] as $field => $label) {
+            if (mb_strlen((string) $data[$field]) > self::MAX_NAME_PART) {
+                $errors[] = "{$label} may not be longer than ".self::MAX_NAME_PART.' characters.';
+            }
+        }
+
+        $fullName = collect([$data['first_name'], $data['middle_name'], $data['last_name']])->filter()->implode(' ');
+
+        if (mb_strlen($fullName) > self::MAX_FULL_NAME) {
+            $errors[] = 'The full name may not be longer than '.self::MAX_FULL_NAME.' characters altogether.';
+        }
+
         if ($data['student_id_number'] === '') {
             $errors[] = 'Student ID Number is required.';
+        } elseif (mb_strlen($data['student_id_number']) > self::MAX_ID_NUMBER) {
+            $errors[] = 'Student ID Number may not be longer than '.self::MAX_ID_NUMBER.' characters.';
         } elseif ($idCounts->get($data['student_id_number'], 0) > 1) {
             $errors[] = 'This Student ID Number appears more than once in this file.';
         } elseif (
@@ -183,8 +229,12 @@ class StudentBulkImportService
 
         if ($data['email'] === '') {
             $errors[] = 'Email is required.';
+        } elseif (mb_strlen($data['email']) > self::MAX_EMAIL) {
+            $errors[] = 'Email may not be longer than '.self::MAX_EMAIL.' characters.';
         } elseif (! filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
             $errors[] = 'Email format is invalid.';
+        } elseif (preg_match(self::PLACEHOLDER_EMAIL_DOMAIN, mb_substr($emailKey, mb_strrpos($emailKey, '@') + 1))) {
+            $errors[] = "This is a placeholder address (example.com) that cannot receive email — if this is the template's sample row, delete it.";
         } elseif ($emailCounts->get($emailKey, 0) > 1) {
             $errors[] = 'This Email appears more than once in this file.';
         } elseif (User::whereRaw('LOWER(email) = ?', [$emailKey])->exists()) {

@@ -132,6 +132,10 @@ class CoordinatorCompanyController extends Controller
             'password' => Hash::make($request->input('password')),
             'role' => 'supervisor',
             'is_active' => true,
+            // The coordinator typed this password and hands it to the company,
+            // so the first person to sign in replaces it — the same rule as
+            // every other coordinator-provisioned account.
+            'must_change_password' => true,
         ]);
 
         CompanySupervisor::create([

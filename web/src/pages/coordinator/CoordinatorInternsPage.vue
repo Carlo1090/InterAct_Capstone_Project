@@ -20,6 +20,7 @@ import type {
   CoordinatorInternUser,
   CoordinatorSupervisorUser,
   EnrollableStudent,
+  EnrollmentOptionBatch,
   EnrollmentOptions,
   InternDetail,
   SupervisorDetail,
@@ -247,9 +248,20 @@ const isSaving = ref(false)
 const modalErrors = ref<Record<string, string[]>>({})
 const modalMessage = ref('')
 
-const enrollBatches = ref<{ id: number; name: string }[]>([])
 const enrollableStudents = ref<EnrollableStudent[]>([])
 const enrollmentOptions = ref<EnrollmentOptions>({ companies: [], supervisors: [] })
+
+/**
+ * Every batch in the coordinator's department — the same set Create Account
+ * and Bulk Import offer, and what the server accepts on all three. It used to
+ * come from the roster endpoint, which lists only the coordinator's OWN
+ * batches, while info-sheet Accept and the batch roster were department-wide.
+ */
+const enrollBatches = computed(() => enrollmentOptions.value.batches ?? [])
+
+/** A colleague's batch carries their name, so same-named cohorts stay distinct. */
+const batchLabel = (batch: EnrollmentOptionBatch): string =>
+  batch.coordinator_name ? `${batch.name} (${batch.coordinator_name})` : batch.name
 
 const enrollForm = reactive({
   batch_id: null as number | null,
@@ -257,6 +269,22 @@ const enrollForm = reactive({
   company_id: null as number | null,
   assigned_division: '',
 })
+
+// The server refuses a student whose program differs from the batch's (the
+// same rule as the roster's Add Intern), so offer only the ones that fit.
+const enrollStudentOptions = computed(() => {
+  const programId = enrollBatches.value.find((batch) => batch.id === enrollForm.batch_id)?.program_id
+  return programId ? enrollableStudents.value.filter((student) => student.program_id === programId) : enrollableStudents.value
+})
+
+watch(
+  () => enrollForm.batch_id,
+  () => {
+    if (!enrollStudentOptions.value.some((student) => student.id === enrollForm.student_id)) {
+      enrollForm.student_id = null
+    }
+  },
+)
 
 // The supervisor is tied to the company, not a separate choice — this is
 // read-only display of whichever supervisor the selected company resolves
@@ -332,8 +360,21 @@ const bulkInvalidCount = ref(0)
 const bulkResults = ref<BulkImportResultRow[]>([])
 const bulkCreatedCount = ref(0)
 
+/**
+ * Rows per confirm request. Every row sends its welcome email inline, and the
+ * deployed API sits behind a proxy that gives up at 120s — a whole 100-row file
+ * in one request outlived it, the credentials table never arrived, and a retry
+ * said every row was "already in use". Fifteen rows at Gmail's 1-4s per message
+ * stays well inside that. The server caps a slice at 25.
+ */
+const BULK_SLICE_SIZE = 15
+const bulkProgress = ref<{ done: number; total: number } | null>(null)
+/** Where to pick up after a slice failed mid-file; null when nothing is pending. */
+const bulkResumeOffset = ref<number | null>(null)
+const bulkCredentialsDownloaded = ref(false)
+
 // Same scoping as the manual Create Student Account form: batch is filtered
-// to the chosen program, from the coordinator's own batches.
+// to the chosen program, from every batch in the coordinator's department.
 const bulkBatchOptions = computed(() =>
   bulkForm.program_id
     ? (enrollmentOptions.value.batches ?? []).filter((batch) => batch.program_id === bulkForm.program_id)
@@ -359,11 +400,35 @@ const openBulkModal = async () => {
   bulkMessage.value = ''
   bulkPreviewRows.value = []
   bulkResults.value = []
+  bulkResumeOffset.value = null
+  bulkCredentialsDownloaded.value = false
   isBulkModalOpen.value = true
   await loadEnrollmentData()
 }
 
-const closeBulkModal = () => {
+/**
+ * Students whose welcome email failed have no copy of their password except
+ * the one on this screen — closing it unread used to be a single click.
+ */
+const bulkHasUndeliveredPasswords = computed(
+  () => !bulkCredentialsDownloaded.value && bulkResults.value.some((row) => row.outcome === 'created_email_failed'),
+)
+
+const closeBulkModal = async () => {
+  if (isBulkConfirming.value) return
+
+  if (bulkHasUndeliveredPasswords.value) {
+    const proceed = await confirmAction({
+      title: 'Close without downloading the passwords?',
+      message:
+        'Some students were not emailed, and these passwords are not shown again. Download the credentials first, or reissue each password later from the Credential Manager.',
+      confirmLabel: 'Close Anyway',
+      cancelLabel: 'Go Back',
+      tone: 'danger',
+    })
+    if (!proceed) return
+  }
+
   isBulkModalOpen.value = false
 }
 
@@ -412,22 +477,61 @@ const confirmBulkImport = async () => {
   })
   if (!proceed) return
 
+  bulkResults.value = []
+  bulkCreatedCount.value = 0
+  bulkCredentialsDownloaded.value = false
+  await runBulkSlices(0)
+}
+
+/**
+ * Walks the file one slice at a time from `startOffset`, merging each slice's
+ * results, until the server reports there is nothing left. A failed slice
+ * stops the walk but keeps every result already received — those passwords
+ * are real and are not shown anywhere else.
+ */
+const runBulkSlices = async (startOffset: number) => {
   isBulkConfirming.value = true
   bulkMessage.value = ''
+  bulkResumeOffset.value = null
+  let offset: number | null = startOffset
 
   try {
-    const { data } = await api.post<BulkImportConfirmResponse>('/api/coordinator/accounts/bulk-import/confirm', bulkFormData())
-    bulkResults.value = data.results
-    bulkCreatedCount.value = data.created_count
+    while (offset !== null) {
+      const formData = bulkFormData()
+      formData.append('offset', String(offset))
+      formData.append('limit', String(BULK_SLICE_SIZE))
+
+      const { data }: { data: BulkImportConfirmResponse } = await api.post<BulkImportConfirmResponse>(
+        '/api/coordinator/accounts/bulk-import/confirm',
+        formData,
+      )
+      bulkResults.value.push(...data.results)
+      bulkCreatedCount.value += data.created_count
+      bulkProgress.value = { done: data.next_offset ?? data.total_rows, total: data.total_rows }
+      offset = data.next_offset
+    }
+
     bulkStep.value = 'results'
-    await loadInterns()
-    showToast(`Created ${data.created_count} student account${data.created_count === 1 ? '' : 's'}.`)
+    showToast(`Created ${bulkCreatedCount.value} student account${bulkCreatedCount.value === 1 ? '' : 's'}.`)
   } catch (error) {
-    const { message } = categorizeError(error, 'Unable to create these accounts.')
-    bulkMessage.value = message
+    const { message } = categorizeError(error, 'The connection dropped while creating these accounts.')
+    bulkResumeOffset.value = offset
+    bulkMessage.value =
+      `${message} Some rows in the unfinished part may already have been created — their passwords were not received. ` +
+      'Continue to finish the file (those rows will show as already in use), then reissue their passwords from the Credential Manager.'
+    if (bulkResults.value.length > 0) bulkStep.value = 'results'
   } finally {
     isBulkConfirming.value = false
+    bulkProgress.value = null
+    // Always, not only on success: when a response is lost the server may
+    // still have created accounts, and the list behind the modal should say so.
+    await loadInterns().catch(() => {})
   }
+}
+
+const resumeBulkImport = async () => {
+  if (bulkResumeOffset.value === null) return
+  await runBulkSlices(bulkResumeOffset.value)
 }
 
 const bulkOutcomeLabel = (outcome: BulkImportResultRow['outcome']): string => {
@@ -451,7 +555,13 @@ const downloadBulkCredentials = () => {
   const rows = bulkResults.value.filter((row) => row.temporary_password)
   if (rows.length === 0) return
 
-  const escape = (value: string) => `"${value.replace(/"/g, '""')}"`
+  // Excel and Sheets run a cell that begins with = + - @ (or a tab / carriage
+  // return) as a formula, and every value here came from an uploaded file, so
+  // such a cell is prefixed with an apostrophe to keep it plain text.
+  const escape = (value: string) => {
+    const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value
+    return `"${safe.replace(/"/g, '""')}"`
+  }
   const header = ['Student ID Number', 'Name', 'Email', 'Temporary Password', 'Status']
   const lines = [header.join(',')]
 
@@ -471,6 +581,7 @@ const downloadBulkCredentials = () => {
   link.download = `bulk-import-credentials-${Date.now()}.csv`
   link.click()
   URL.revokeObjectURL(url)
+  bulkCredentialsDownloaded.value = true
 }
 
 // --- Create Supervisor (Supervisors tab only — REQUIRES a company) ----------
@@ -528,15 +639,12 @@ const loadProgramOptions = async () => {
 
 const loadEnrollmentData = async () => {
   try {
-    const [enrollableResponse, optionsResponse, rosterResponse] = await Promise.all([
+    const [enrollableResponse, optionsResponse] = await Promise.all([
       api.get<EnrollableStudent[]>('/api/coordinator/students/enrollable'),
       api.get<EnrollmentOptions>('/api/coordinator/enrollment-options'),
-      // filters.batches = only batches this coordinator owns (valid to enrol into).
-      api.get<{ filters: { batches: { id: number; name: string }[] } }>('/api/coordinator/roster'),
     ])
     enrollableStudents.value = enrollableResponse.data
     enrollmentOptions.value = optionsResponse.data
-    enrollBatches.value = rosterResponse.data.filters.batches
   } catch {
     modalMessage.value = 'Unable to load enrollable students, companies, or supervisors.'
   }
@@ -1204,14 +1312,14 @@ onMounted(() => {
             <label class="mb-2 block text-sm font-medium text-slate-700" for="enroll-batch">Batch</label>
             <select id="enroll-batch" v-model.number="enrollForm.batch_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
               <option :value="null">Select Batch</option>
-              <option v-for="batch in enrollBatches" :key="batch.id" :value="batch.id">{{ batch.name }}</option>
+              <option v-for="batch in enrollBatches" :key="batch.id" :value="batch.id">{{ batchLabel(batch) }}</option>
             </select>
           </div>
           <div>
             <label class="mb-2 block text-sm font-medium text-slate-700" for="enroll-student">Student</label>
             <select id="enroll-student" v-model.number="enrollForm.student_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
               <option :value="null">Select Student</option>
-              <option v-for="student in enrollableStudents" :key="student.id" :value="student.id">
+              <option v-for="student in enrollStudentOptions" :key="student.id" :value="student.id">
                 {{ student.name }} ({{ student.student_id_number ?? student.email }})
               </option>
             </select>
@@ -1292,6 +1400,7 @@ onMounted(() => {
                   id="acct-first-name"
                   v-model="accountForm.first_name"
                   type="text"
+                  maxlength="100"
                   class="w-full rounded-md border px-3 py-2 text-sm"
                   :class="accountFieldError('first_name') ? 'border-red-400' : 'border-slate-300'"
                 />
@@ -1303,6 +1412,7 @@ onMounted(() => {
                   id="acct-middle-name"
                   v-model="accountForm.middle_name"
                   type="text"
+                  maxlength="100"
                   class="w-full rounded-md border px-3 py-2 text-sm"
                   :class="accountFieldError('middle_name') ? 'border-red-400' : 'border-slate-300'"
                 />
@@ -1314,6 +1424,7 @@ onMounted(() => {
                   id="acct-last-name"
                   v-model="accountForm.last_name"
                   type="text"
+                  maxlength="100"
                   class="w-full rounded-md border px-3 py-2 text-sm"
                   :class="accountFieldError('last_name') ? 'border-red-400' : 'border-slate-300'"
                 />
@@ -1358,12 +1469,12 @@ onMounted(() => {
                     :disabled="!accountForm.program_id"
                   >
                     <option :value="null">Select Batch</option>
-                    <option v-for="batch in accountBatchOptions" :key="batch.id" :value="batch.id">{{ batch.name }}</option>
+                    <option v-for="batch in accountBatchOptions" :key="batch.id" :value="batch.id">{{ batchLabel(batch) }}</option>
                   </select>
                   <p v-if="accountFieldError('batch_id')" class="mt-1 text-xs text-red-600">{{ accountFieldError('batch_id') }}</p>
                   <p v-else-if="!accountForm.program_id" class="mt-1 text-xs text-slate-500">Select a program first.</p>
                   <p v-else-if="accountBatchOptions.length === 0" class="mt-1 text-xs text-amber-600">
-                    You have no batches for this program yet. Create one on the Batches page first.
+                    Your department has no batches for this program yet. Create one on the Batches page first.
                   </p>
                 </div>
               </div>
@@ -1377,6 +1488,7 @@ onMounted(() => {
               id="acct-sid"
               v-model="accountForm.student_id_number"
               type="text"
+              maxlength="30"
               class="w-full rounded-md border px-3 py-2 text-sm"
               :class="accountFieldError('student_id_number') ? 'border-red-400' : 'border-slate-300'"
             />
@@ -1473,6 +1585,7 @@ onMounted(() => {
               <p v-if="passwordTooShort" class="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 This password is under the 8-character minimum. Use <strong>Edit</strong> to set a longer one before creating the account.
               </p>
+              <p class="text-xs text-slate-500">This is a temporary password. The student must choose their own the first time they sign in.</p>
             </div>
           </div>
         </div>
@@ -1506,7 +1619,14 @@ onMounted(() => {
               Creates login accounts from a spreadsheet — the ID number becomes the username, and each student is emailed a temporary password. Same as Create Student Account, this does not enroll them: they still submit their Info Sheet and you Accept it.
             </p>
           </div>
-          <button type="button" class="shrink-0 text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeBulkModal">Close</button>
+          <button
+            type="button"
+            class="shrink-0 text-sm font-medium text-slate-500 hover:text-slate-900 disabled:cursor-not-allowed disabled:text-slate-300"
+            :disabled="isBulkConfirming"
+            @click="closeBulkModal"
+          >
+            Close
+          </button>
         </div>
 
         <div class="flex-1 overflow-y-auto px-6 py-5">
@@ -1531,7 +1651,7 @@ onMounted(() => {
                   :disabled="!bulkForm.program_id"
                 >
                   <option :value="null">Select Batch</option>
-                  <option v-for="batch in bulkBatchOptions" :key="batch.id" :value="batch.id">{{ batch.name }}</option>
+                  <option v-for="batch in bulkBatchOptions" :key="batch.id" :value="batch.id">{{ batchLabel(batch) }}</option>
                 </select>
                 <p v-if="!bulkForm.program_id" class="mt-1 text-xs text-slate-500">Select a program first.</p>
               </div>
@@ -1549,7 +1669,8 @@ onMounted(() => {
               />
               <p class="mt-1 text-xs text-slate-500">
                 Columns: First Name, Middle Name (optional), Family Name, Sex, Student ID Number, Email. Put the roster on
-                the first sheet, with the headings in row 1. Up to 100 rows per file.
+                the first sheet, with the headings in row 1. Up to 100 rows per file. Delete the template's sample row before
+                uploading.
                 <a href="/templates/student-bulk-import-template.csv" download class="font-semibold text-blue-600 hover:text-blue-700">Download template</a>
               </p>
             </div>
@@ -1593,6 +1714,17 @@ onMounted(() => {
 
           <!-- Step 3: Results -->
           <div v-else class="space-y-4">
+            <div v-if="bulkResumeOffset !== null" class="space-y-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+              <p>{{ bulkMessage }}</p>
+              <button
+                type="button"
+                class="rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="isBulkConfirming"
+                @click="resumeBulkImport"
+              >
+                {{ isBulkConfirming ? 'Continuing...' : 'Continue with the remaining rows' }}
+              </button>
+            </div>
             <div class="flex items-center justify-between gap-3">
               <p class="text-sm text-slate-600">
                 Created <span class="font-semibold text-green-700">{{ bulkCreatedCount }}</span> account{{ bulkCreatedCount === 1 ? '' : 's' }}.
@@ -1625,6 +1757,8 @@ onMounted(() => {
                     <td class="px-3 py-2 font-mono text-xs text-slate-900">{{ row.temporary_password ?? '—' }}</td>
                     <td class="px-3 py-2">
                       <span class="rounded-full px-2 py-1 text-xs font-bold" :class="bulkOutcomeClass(row.outcome)">{{ bulkOutcomeLabel(row.outcome) }}</span>
+                      <!-- Why a row was skipped — the preview showed it, the results used to drop it. -->
+                      <p v-if="row.outcome === 'skipped_invalid' && row.errors.length" class="mt-1 text-xs text-red-700">{{ row.errors.join(' ') }}</p>
                     </td>
                   </tr>
                 </tbody>
@@ -1653,11 +1787,24 @@ onMounted(() => {
               :disabled="bulkValidCount === 0 || isBulkConfirming"
               @click="confirmBulkImport"
             >
-              {{ isBulkConfirming ? 'Creating...' : `Create ${bulkValidCount} Account${bulkValidCount === 1 ? '' : 's'}` }}
+              {{
+                isBulkConfirming
+                  ? bulkProgress
+                    ? `Creating... ${bulkProgress.done} of ${bulkProgress.total} rows`
+                    : 'Creating...'
+                  : `Create ${bulkValidCount} Account${bulkValidCount === 1 ? '' : 's'}`
+              }}
             </button>
           </template>
           <template v-else>
-            <button type="button" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white" @click="closeBulkModal">Done</button>
+            <button
+              type="button"
+              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-blue-300"
+              :disabled="isBulkConfirming"
+              @click="closeBulkModal"
+            >
+              Done
+            </button>
           </template>
         </div>
       </section>

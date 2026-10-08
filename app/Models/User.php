@@ -290,6 +290,20 @@ class User extends Authenticatable
         return collect($ids);
     }
 
+    /**
+     * Every batch this coordinator may place a student into: any batch whose
+     * program is in their department scope, not only the ones they run. This
+     * is the set Create Account, Bulk Import and Enroll validate against, and
+     * it matches what info-sheet Accept and the batch roster already allowed —
+     * a department's coordinators cover for each other everywhere else, and
+     * those three were the only placement paths still limited to the
+     * coordinator's own batches.
+     */
+    public function placeableBatchIds(): Collection
+    {
+        return Batch::whereIn('program_id', $this->coordinatorProgramIds())->pluck('id');
+    }
+
     public function companySupervisorAssignments(): HasMany
     {
         return $this->hasMany(CompanySupervisor::class);

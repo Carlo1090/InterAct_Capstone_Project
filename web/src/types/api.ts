@@ -154,6 +154,8 @@ export type EnrollmentOptionBatch = {
   id: number
   name: string
   program_id: number
+  /** Set only on a department colleague's batch (null on the coordinator's own), so two same-named cohorts can be told apart. */
+  coordinator_name?: string | null
 }
 
 export type EnrollmentOptions = {
@@ -206,6 +208,10 @@ export type BulkImportPreviewResponse = {
 export type BulkImportConfirmResponse = {
   results: BulkImportResultRow[]
   created_count: number
+  /** Rows in the whole file; one confirm call creates only the requested slice. */
+  total_rows: number
+  /** Where the next slice starts, or null once the file is done. */
+  next_offset: number | null
 }
 
 export type CoordinatorSupervisorUser = {

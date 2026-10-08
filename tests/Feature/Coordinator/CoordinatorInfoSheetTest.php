@@ -7,6 +7,7 @@ use App\Models\BatchStudent;
 use App\Models\Company;
 use App\Models\CompanySupervisor;
 use App\Models\Department;
+use App\Models\Notification;
 use App\Models\Program;
 use App\Models\StudentInformationSheet;
 use App\Models\User;
@@ -513,5 +514,95 @@ class CoordinatorInfoSheetTest extends TestCase
             'supervisor_id' => $loginLink->user_id,
             'company_supervisor_id' => $loginLink->id,
         ]);
+    }
+
+    /**
+     * A student the coordinator had already placed directly (Enroll, or the
+     * roster) still carries the draft sheet their account came with. Accepting
+     * it once submitted used to create a SECOND active enrollment; the one-
+     * active rule now lives in EnrollmentService, so every path enforces it.
+     */
+    public function test_accept_refuses_a_student_already_active_in_another_batch(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $intended = $this->batchFor($bsit, $coordinator);
+        $elsewhere = $this->batchFor($bsit, $coordinator);
+        [$student] = $this->submittedSheetStudent($intended);
+
+        BatchStudent::create([
+            'batch_id' => $elsewhere->id,
+            'student_id' => $student->id,
+            'company_id' => Company::create(['name' => 'Direct Co', 'address' => 'A', 'is_active' => true])->id,
+            'supervisor_id' => User::factory()->create(['role' => 'supervisor'])->id,
+            'status' => 'active',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson("/api/coordinator/info-sheets/{$student->id}/accept")
+            ->assertStatus(422)
+            ->assertJsonFragment(['message' => "This student is already active in \"{$elsewhere->name}\". Drop or complete that enrollment first."]);
+
+        $this->assertSame(1, BatchStudent::where('student_id', $student->id)->where('status', 'active')->count());
+        $this->assertSame('submitted', StudentInformationSheet::where('student_id', $student->id)->value('submission_status'));
+    }
+
+    /** The verdict reaches the student's bell, both ways. */
+    public function test_accept_and_return_each_notify_the_student(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        [$accepted, $company] = $this->submittedSheetStudent($batch);
+        [$returned] = $this->submittedSheetStudent($batch);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson("/api/coordinator/info-sheets/{$accepted->id}/accept")->assertOk();
+        $this->postJson("/api/coordinator/info-sheets/{$returned->id}/reject", ['reason' => 'Company address is missing.'])->assertOk();
+
+        $this->assertDatabaseHas('notifications', [
+            'user_id' => $accepted->id,
+            'title' => 'Information Sheet Accepted',
+            'type' => 'in_app',
+            'is_read' => false,
+        ]);
+        $this->assertStringContainsString($company->name, Notification::where('user_id', $accepted->id)->value('message'));
+
+        $this->assertDatabaseHas('notifications', ['user_id' => $returned->id, 'title' => 'Information Sheet Returned']);
+        $this->assertStringContainsString('Company address is missing.', Notification::where('user_id', $returned->id)->value('message'));
+    }
+
+    /**
+     * A coordinator-centered batch has no company supervisor, so the typed
+     * name is never linked to the enrollment — resolving it only left an
+     * orphan named-only row on the company for every intern accepted.
+     */
+    public function test_accept_on_a_coordinator_centered_batch_files_no_named_supervisor(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        $batch->update(['ojt_type' => 'coordinator']);
+        $company = Company::create(['name' => 'Field Site', 'address' => 'Tagbilaran', 'is_active' => true]);
+
+        $student = User::factory()->create(['role' => 'student']);
+        StudentInformationSheet::create([
+            'student_id' => $student->id,
+            'batch_id' => $batch->id,
+            'personal_info' => ['first_name' => 'Ana', 'last_name' => 'Cruz'],
+            'academic_info' => ['program_course' => 'BSIT'],
+            'ojt_info' => ['company_id' => $company->id, 'host_company' => $company->name, 'supervisor_name' => 'Mr. Typed Name'],
+            'submission_status' => 'submitted',
+            'submitted_at' => now(),
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson("/api/coordinator/info-sheets/{$student->id}/accept")->assertOk();
+
+        $this->assertSame(0, CompanySupervisor::where('company_id', $company->id)->count());
+        $this->assertNull(BatchStudent::where('student_id', $student->id)->value('company_supervisor_id'));
     }
 }

@@ -174,13 +174,14 @@ class InfoSheetGateTest extends TestCase
     {
         [$student, , $sheet] = $this->studentWithSheet('rejected');
         $sheet->update(['rejection_reason' => 'Company address missing.']);
+        $company = Company::create(['name' => 'Pick Me Corp', 'address' => 'Tagbilaran', 'is_active' => true]);
         Sanctum::actingAs($student, ['*']);
 
         $response = $this->postJson('/api/student/info-sheet', [
             'status' => 'submitted',
             'personal_info' => ['last_name' => 'Cruz', 'first_name' => 'Ana', 'parent_guardian_name' => 'Rosa Cruz'],
-            'academic_info' => [],
-            'ojt_info' => ['company_address' => 'Now provided'],
+            'academic_info' => ['year_level' => '4th-year'],
+            'ojt_info' => ['company_id' => $company->id, 'company_address' => 'Now provided'],
         ]);
 
         $response->assertOk()->assertJsonPath('submission_status', 'submitted');

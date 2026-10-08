@@ -137,6 +137,13 @@ class StudentInfoSheetController extends Controller
             // (address, signatory, supervisor, schedule, dates) stays editable.
             $validated['ojt_info']['company_id'] = $sheet->ojt_info['company_id'] ?? null;
             $validated['ojt_info']['host_company'] = $sheet->ojt_info['host_company'] ?? null;
+        } elseif (! empty($validated['ojt_info']['company_id'])) {
+            // The NAME is derived from the id, never taken from the client.
+            // company_id is what Accept enrolls into while host_company is what
+            // the coordinator's queue and the PDF print, so a client-sent name
+            // let the queue say one company while Accept placed the student at
+            // another.
+            $validated['ojt_info']['host_company'] = Company::whereKey($validated['ojt_info']['company_id'])->value('name');
         }
 
         $sheet->fill([

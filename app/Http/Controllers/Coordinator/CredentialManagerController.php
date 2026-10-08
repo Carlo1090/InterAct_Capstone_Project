@@ -90,7 +90,7 @@ class CredentialManagerController extends Controller
     {
         $this->authorizeManagedAccount($request->user(), $user);
 
-        $temporaryPassword = Str::password(12);
+        $temporaryPassword = Str::password(12, symbols: false);
 
         $user->update([
             'password' => $temporaryPassword,

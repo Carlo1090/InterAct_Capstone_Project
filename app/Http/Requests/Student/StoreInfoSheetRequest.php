@@ -2,8 +2,10 @@
 
 namespace App\Http\Requests\Student;
 
+use App\Models\StudentInformationSheet;
 use App\Services\StaticMapService;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreInfoSheetRequest extends FormRequest
 {
@@ -14,6 +16,8 @@ class StoreInfoSheetRequest extends FormRequest
 
     public function rules(): array
     {
+        $submitting = $this->isSubmittingForReview();
+
         return [
             'status' => ['required', 'in:draft,submitted'],
 
@@ -38,7 +42,11 @@ class StoreInfoSheetRequest extends FormRequest
 
             'academic_info' => ['present', 'array'],
             'academic_info.program_course' => ['nullable', 'string', 'max:255'],
-            'academic_info.year_level' => ['nullable', 'in:1st-year,2nd-year,3rd-year,4th-year'],
+            // Year and Company are required to SUBMIT (never to draft). Both
+            // clients already insisted on them, but only the clients did — a
+            // direct request could hand the coordinator a sheet with no company
+            // at all, which Accept then had no choice but to refuse.
+            'academic_info.year_level' => [Rule::requiredIf($submitting), 'nullable', 'in:1st-year,2nd-year,3rd-year,4th-year'],
             'academic_info.department' => ['nullable', 'string', 'max:150'],
             'academic_info.internship_coordinator' => ['nullable', 'string', 'max:150'],
             'academic_info.coordinator_contact_no' => ['nullable', 'string', 'max:30'],
@@ -46,8 +54,16 @@ class StoreInfoSheetRequest extends FormRequest
             'ojt_info' => ['present', 'array'],
             // The one constrained field: the chosen company is picked from the
             // coordinator-curated dropdown. company_id drives the Accept step;
-            // host_company keeps the name for display/PDF.
-            'ojt_info.company_id' => ['nullable', 'integer', 'exists:companies,id'],
+            // host_company keeps the name for display/PDF, and is re-derived
+            // from company_id server-side (StudentInfoSheetController::store).
+            // On submit the company must also still be ACTIVE — the dropdown
+            // only offers active ones, and Accept places the student there.
+            'ojt_info.company_id' => [
+                Rule::requiredIf($submitting),
+                'nullable',
+                'integer',
+                $submitting ? Rule::exists('companies', 'id')->where('is_active', true) : Rule::exists('companies', 'id'),
+            ],
             'ojt_info.host_company' => ['nullable', 'string', 'max:200'],
             'ojt_info.company_address' => ['nullable', 'string', 'max:255'],
             'ojt_info.company_signatory_moa' => ['nullable', 'string', 'max:150'],
@@ -76,6 +92,35 @@ class StoreInfoSheetRequest extends FormRequest
             'ojt_info.location_label' => ['nullable', 'string', 'max:255'],
 
             'emergency_contact' => ['nullable', 'array'],
+        ];
+    }
+
+    /**
+     * A submission FOR REVIEW — the step that hands the sheet to the coordinator
+     * to Accept. Re-saving an already-approved sheet is not one: its year and
+     * company are locked and re-derived from the stored sheet by the
+     * controller, so requiring them here would only block the routine profile
+     * edits that remain open after enrollment.
+     */
+    private function isSubmittingForReview(): bool
+    {
+        if ($this->input('status') !== 'submitted') {
+            return false;
+        }
+
+        $current = StudentInformationSheet::where('student_id', $this->user()?->id)
+            ->latest('id')
+            ->value('submission_status');
+
+        return $current !== 'approved';
+    }
+
+    public function messages(): array
+    {
+        return [
+            'academic_info.year_level.required' => 'Choose your year level before submitting.',
+            'ojt_info.company_id.required' => 'Choose your company from the list before submitting.',
+            'ojt_info.company_id.exists' => 'That company is no longer available. Choose another from the list.',
         ];
     }
 

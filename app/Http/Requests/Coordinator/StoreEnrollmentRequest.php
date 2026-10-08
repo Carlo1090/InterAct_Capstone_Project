@@ -14,7 +14,9 @@ class StoreEnrollmentRequest extends FormRequest
 
     public function rules(): array
     {
-        $batchIds = $this->user()->batchesCoordinated()->pluck('id')->all();
+        // Any batch in the coordinator's department, matching info-sheet Accept
+        // and the batch roster (see User::placeableBatchIds()).
+        $batchIds = $this->user()->placeableBatchIds()->all();
 
         return [
             'batch_id' => ['required', 'integer', Rule::exists('batches', 'id'), Rule::in($batchIds)],
@@ -33,6 +35,7 @@ class StoreEnrollmentRequest extends FormRequest
     {
         return [
             'student_id.unique' => 'This student already has an active OJT enrollment.',
+            'batch_id.in' => 'The selected batch is outside your department.',
         ];
     }
 }

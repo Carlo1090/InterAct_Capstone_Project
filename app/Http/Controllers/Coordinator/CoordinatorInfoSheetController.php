@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Coordinator;
 use App\Http\Controllers\Concerns\BuildsInfoSheetPdf;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Coordinator\RejectInfoSheetRequest;
+use App\Models\Batch;
 use App\Models\BatchStudent;
 use App\Models\Company;
 use App\Models\CompanySupervisor;
+use App\Models\Notification;
 use App\Models\Program;
 use App\Models\StudentInformationSheet;
 use App\Models\SystemLog;
@@ -138,7 +140,14 @@ class CoordinatorInfoSheetController extends Controller
         // Find-or-create the named individual the student actually typed, so
         // it's durably recorded against this enrollment even though the
         // login used to review logs stays the company's shared account.
-        $companySupervisorId = $this->resolveNamedSupervisor(
+        //
+        // Skipped on a coordinator-centered batch: EnrollmentService writes
+        // company_supervisor_id as null there anyway, so resolving it only
+        // left a named-only company_supervisors row behind that nothing
+        // pointed at — one more stray "supervisor" on the company's record
+        // for every intern accepted into such a cohort.
+        $batch = Batch::find($sheet->batch_id);
+        $companySupervisorId = $batch?->isCoordinatorCentered() ? null : $this->resolveNamedSupervisor(
             $company,
             $sheet->ojt_info['supervisor_name'] ?? null,
             $sheet->ojt_info['office_designation'] ?? null,
@@ -160,6 +169,16 @@ class CoordinatorInfoSheetController extends Controller
         $sheet->update(['submission_status' => 'approved', 'rejection_reason' => null]);
 
         SystemLog::record('Info Sheet Accepted', "Enrolled {$student->name} at {$company->name}");
+
+        // Submitting already tells the coordinator; until now the verdict told
+        // the student nothing, so they found out only by noticing the app had
+        // unlocked (or that it hadn't).
+        $this->notifyStudent(
+            $student,
+            'Information Sheet Accepted',
+            // rtrim: company names often end in "Inc." — never print "Inc..".
+            'Your Student Information Sheet was accepted. You are now enrolled at '.rtrim($company->name, '.').'.'
+        );
 
         return response()->json([
             'message' => 'Student enrolled.',
@@ -187,7 +206,25 @@ class CoordinatorInfoSheetController extends Controller
 
         SystemLog::record('Info Sheet Rejected', "Rejected {$student->name}'s info sheet");
 
+        $this->notifyStudent(
+            $student,
+            'Information Sheet Returned',
+            'Your coordinator returned your Student Information Sheet: '.$request->validated()['reason'].' Edit it and submit it again.'
+        );
+
         return response()->json(['message' => 'Sheet returned to the student.', 'sheet' => $sheet->fresh()]);
+    }
+
+    /** An in-app bell row — the same shape the submission notice uses. */
+    private function notifyStudent(User $student, string $title, string $message): void
+    {
+        Notification::create([
+            'user_id' => $student->id,
+            'title' => $title,
+            'message' => $message,
+            'type' => 'in_app',
+            'is_read' => false,
+        ]);
     }
 
     /**

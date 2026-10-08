@@ -45,7 +45,11 @@ return [
             'port' => env('MAIL_PORT', 2525),
             'username' => env('MAIL_USERNAME'),
             'password' => env('MAIL_PASSWORD'),
-            'timeout' => null,
+            // Seconds to wait on a silent mail server. Null fell back to PHP's
+            // default_socket_timeout (60s) PER MESSAGE, and every send is inline
+            // — so one unreachable SMTP host could hold a bulk import, or a
+            // coordinator's Credential Manager click, for minutes.
+            'timeout' => (int) env('MAIL_TIMEOUT', 10),
             'local_domain' => env('MAIL_EHLO_DOMAIN', parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST)),
         ],
 

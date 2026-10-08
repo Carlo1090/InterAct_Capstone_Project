@@ -128,8 +128,8 @@ class BulkStudentImportFileFormatTest extends TestCase
             $roster->setTitle('Roster');
             $roster->fromArray([
                 ['First Name', 'Middle Name', 'Family Name', 'Sex', 'Student ID Number', 'Email'],
-                ['Ana', 'Reyes', 'Cruz', 'Female', '2026-100', 'ana@example.com'],
-                ['Ben', '', 'Lim', 'Male', '2026-101', 'ben@example.com'],
+                ['Ana', 'Reyes', 'Cruz', 'Female', '2026-100', 'ana@students.test'],
+                ['Ben', '', 'Lim', 'Male', '2026-101', 'ben@students.test'],
             ], null, 'A1');
 
             // Deliberately blank, the way a stock Excel workbook ships.
@@ -166,7 +166,7 @@ class BulkStudentImportFileFormatTest extends TestCase
             $roster->setTitle('Roster');
             $roster->fromArray([
                 ['First Name', 'Middle Name', 'Family Name', 'Sex', 'Student ID Number', 'Email'],
-                ['Cara', '', 'Diaz', 'Female', '2026-102', 'cara@example.com'],
+                ['Cara', '', 'Diaz', 'Female', '2026-102', 'cara@students.test'],
             ], null, 'A1');
         });
 
@@ -236,7 +236,7 @@ class BulkStudentImportFileFormatTest extends TestCase
 
         $file = $this->rawCsvUpload([
             'First Name,Middle Name,Family Name,Sex,Student ID Number,E-mail',
-            'Ana,Reyes,Cruz,Female,2026-110,ana@example.com',
+            'Ana,Reyes,Cruz,Female,2026-110,ana@students.test',
         ]);
 
         $response = $this->preview($coordinator, $bsit, $batch, $file);
@@ -268,8 +268,8 @@ class BulkStudentImportFileFormatTest extends TestCase
 
         $file = $this->rawCsvUpload([
             'First Name,Middle Name,Family Name,Sex,Student ID Number,Email',
-            'Ana,,Cruz,F,2026-120,ana120@example.com',
-            'Ben,,Lim,m,2026-121,ben121@example.com',
+            'Ana,,Cruz,F,2026-120,ana120@students.test',
+            'Ben,,Lim,m,2026-121,ben121@students.test',
         ]);
 
         $response = $this->preview($coordinator, $bsit, $batch, $file);
@@ -291,11 +291,11 @@ class BulkStudentImportFileFormatTest extends TestCase
         $coordinator = $this->coordinatorFor($bsit);
         $batch = $this->batchFor($bsit, $coordinator);
 
-        User::factory()->create(['role' => 'student', 'email' => 'taken@example.com', 'username' => 'taken-user']);
+        User::factory()->create(['role' => 'student', 'email' => 'taken@students.test', 'username' => 'taken-user']);
 
         $file = $this->rawCsvUpload([
             'First Name,Middle Name,Family Name,Sex,Student ID Number,Email',
-            'Ana,,Cruz,Female,2026-130,TAKEN@example.com',
+            'Ana,,Cruz,Female,2026-130,TAKEN@students.test',
         ]);
 
         $response = $this->preview($coordinator, $bsit, $batch, $file);
@@ -328,7 +328,7 @@ class BulkStudentImportFileFormatTest extends TestCase
 
         $file = $this->rawCsvUpload([
             'First Name,Middle Name,Family Name,Sex,Student ID Number,Email',
-            'Ana,,Cruz,Female,2026-140,ana140@example.com',
+            'Ana,,Cruz,Female,2026-140,ana140@students.test',
         ]);
 
         Sanctum::actingAs($coordinator, ['*']);

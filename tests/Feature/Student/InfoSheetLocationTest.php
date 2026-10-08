@@ -3,6 +3,7 @@
 namespace Tests\Feature\Student;
 
 use App\Models\Batch;
+use App\Models\Company;
 use App\Models\Department;
 use App\Models\Program;
 use App\Models\StudentInformationSheet;
@@ -129,6 +130,7 @@ class InfoSheetLocationTest extends TestCase
     public function test_the_sheet_still_submits_with_no_pin_at_all(): void
     {
         [$student] = $this->studentWithSheet();
+        $company = Company::create(['name' => 'Bohol Quality Corporation', 'address' => 'Tagbilaran', 'is_active' => true]);
         Sanctum::actingAs($student);
 
         // The map is never a gate: the paper form's box has always been
@@ -141,8 +143,8 @@ class InfoSheetLocationTest extends TestCase
                 'first_name' => 'Marlon',
                 'parent_guardian_name' => 'Nenita Pabalan',
             ],
-            'academic_info' => [],
-            'ojt_info' => ['host_company' => 'Bohol Quality Corporation'],
+            'academic_info' => ['year_level' => '4th-year'],
+            'ojt_info' => ['company_id' => $company->id],
         ])->assertOk();
 
         $this->assertSame(

@@ -36,6 +36,13 @@ use App\Models\User;
  * supervisor-supported batch behaves exactly as it always has. The branch is
  * read off the batch, never off a parameter, so no caller can opt a placement
  * out of the gate by forgetting to pass something.
+ *
+ * ONE ACTIVE ENROLLMENT PER STUDENT is enforced here too, for the same reason.
+ * It used to live only in StoreEnrollmentRequest, so info-sheet Accept could
+ * enroll a student the coordinator had already placed directly elsewhere —
+ * leaving two active rows, and every student endpoint resolving whichever it
+ * found first. The roster's Move drops the old row before calling in, inside
+ * one transaction, so it passes this check by construction.
  */
 class EnrollmentService
 {
@@ -56,6 +63,20 @@ class EnrollmentService
         // roster's Add-Intern flow and info-sheet Accept from drifting — the
         // same reason the supervisor is derived here rather than passed in.
         $batch = Batch::findOrFail($batchId);
+
+        // A row for THIS pair is reconciled in place below (a re-accept after a
+        // revised sheet), so only an active row in a DIFFERENT batch blocks.
+        $activeElsewhere = BatchStudent::where('student_id', $studentId)
+            ->where('status', 'active')
+            ->where('batch_id', '!=', $batchId)
+            ->with('batch:id,name')
+            ->first();
+
+        abort_if(
+            $activeElsewhere !== null,
+            422,
+            'This student is already active in "'.($activeElsewhere?->batch?->name ?? 'another batch').'". Drop or complete that enrollment first.'
+        );
 
         if ($batch->isCoordinatorCentered()) {
             $supervisorId = null;

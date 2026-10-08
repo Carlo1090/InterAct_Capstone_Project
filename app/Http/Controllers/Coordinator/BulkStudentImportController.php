@@ -40,6 +40,18 @@ class BulkStudentImportController extends Controller
     /** Fixed overhead for parsing the spreadsheet before the loop starts. */
     private const BASE_SECONDS = 60;
 
+    /**
+     * A send that FAILS after at least this long is a mail server that is not
+     * answering (a timeout), not a refused recipient — which fails in well
+     * under a second. Once one has been seen, the rest of the request stops
+     * trying: every further send would burn the same timeout, and twenty of
+     * them would push the request past the proxy's limit on their own.
+     */
+    private const UNREACHABLE_MAIL_SECONDS = 5;
+
+    /** Tripped by the first slow mail failure in this request; see above. */
+    private bool $mailUnreachable = false;
+
     public function __construct(
         private readonly StudentBulkImportService $importer,
         private readonly EnrollmentService $enrollments,
@@ -79,6 +91,19 @@ class BulkStudentImportController extends Controller
      * create + profile update + notify), so one row failing can't roll back
      * or block rows already created before it, and a mail failure doesn't
      * undo the account it belongs to.
+     *
+     * ONE REQUEST CREATES ONE SLICE (`offset` + `limit`), and the SPA walks
+     * the file slice by slice. The whole file in one request was a real
+     * failure, not a theoretical one: every row sends its email inline, a
+     * full file at Gmail's pace runs past two minutes, and Vercel's rewrite
+     * proxy gives up at 120s regardless of PHP's own limit. PHP then kept
+     * creating accounts with nobody listening, the one-time credentials table
+     * never arrived, and a retry reported every row "already in use". The
+     * whole file is still parsed and validated on every slice — that is what
+     * catches a duplicate ID between two rows in different slices — but only
+     * the slice's rows are acted on. Rows an earlier slice created read as
+     * "already in use" on later parses, which is harmless: they are outside
+     * this slice. Omitting both parameters processes the whole file, as before.
      */
     public function confirm(BulkImportStudentsRequest $request): JsonResponse
     {
@@ -100,19 +125,21 @@ class BulkStudentImportController extends Controller
             return $this->tooManyResponse($result['count']);
         }
 
-        // Sized to the work actually in front of us, not a flat 120s. A full
-        // 100-row file sends 100 messages inline; at Gmail's pace that alone
-        // can pass two minutes, and PHP then killed the request MID-LOOP —
-        // leaving the accounts already created but returning no response, so
-        // the one-time credentials table was lost for every student in the
-        // file and each one needed an individual Resend. Note this governs
-        // PHP only: a reverse proxy in front of the app keeps its own timeout.
-        set_time_limit(self::BASE_SECONDS + (count($result['rows']) * self::SECONDS_PER_ROW));
+        $total = count($result['rows']);
+        $offset = (int) ($validated['offset'] ?? 0);
+        $limit = isset($validated['limit']) ? (int) $validated['limit'] : $total;
+        $slice = array_slice($result['rows'], $offset, $limit);
+
+        // Sized to the work actually in front of us, not a flat 120s, so PHP
+        // never kills a slice MID-LOOP (which left accounts created and no
+        // response carrying their passwords). This governs PHP only — the
+        // proxy's own limit is what the slicing above exists for.
+        set_time_limit(self::BASE_SECONDS + (count($slice) * self::SECONDS_PER_ROW));
 
         $outcomes = [];
         $createdCount = 0;
 
-        foreach ($result['rows'] as $row) {
+        foreach ($slice as $row) {
             if (! $row['valid']) {
                 $outcomes[] = [...$row, 'outcome' => 'skipped_invalid', 'temporary_password' => null];
 
@@ -141,6 +168,9 @@ class BulkStudentImportController extends Controller
         return response()->json([
             'results' => $outcomes,
             'created_count' => $createdCount,
+            'total_rows' => $total,
+            // null once this slice reached the end of the file.
+            'next_offset' => $offset + $limit < $total ? $offset + $limit : null,
         ]);
     }
 
@@ -154,7 +184,11 @@ class BulkStudentImportController extends Controller
     private function createOne(array $row, Batch $batch, int $programId): array
     {
         $name = collect([$row['first_name'], $row['middle_name'], $row['last_name']])->filter()->implode(' ');
-        $temporaryPassword = Str::password(12);
+        // Letters and digits only: this password is read off a printout or a
+        // screen and typed on a phone, and `^\c5jW52#FQ*` was the kind of thing
+        // the default symbol set produced. Twelve alphanumerics are still ~71
+        // bits, and the student must replace it on first sign-in anyway.
+        $temporaryPassword = Str::password(12, symbols: false);
 
         // ONE ROW IS ONE TRANSACTION, and the row's own catch block above is
         // what keeps that from becoming a whole-file transaction. Without it a
@@ -205,13 +239,18 @@ class BulkStudentImportController extends Controller
         // never roll back an account that is otherwise complete. The row
         // reports created_email_failed and the password is handed back in the
         // one-time credentials table instead.
-        $emailed = true;
+        $emailed = false;
 
-        try {
-            $user->notify(new NewAccountCredentials($user->username, $temporaryPassword));
-        } catch (Throwable $e) {
-            report($e);
-            $emailed = false;
+        if (! $this->mailUnreachable) {
+            $startedAt = microtime(true);
+
+            try {
+                $user->notify(new NewAccountCredentials($user->username, $temporaryPassword));
+                $emailed = true;
+            } catch (Throwable $e) {
+                report($e);
+                $this->mailUnreachable = microtime(true) - $startedAt >= self::UNREACHABLE_MAIL_SECONDS;
+            }
         }
 
         return [

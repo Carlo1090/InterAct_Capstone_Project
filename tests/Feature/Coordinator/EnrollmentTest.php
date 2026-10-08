@@ -80,8 +80,11 @@ class EnrollmentTest extends TestCase
         $infoSheetResponse->assertOk()->assertJsonPath('ojt_info.host_company', 'TechPH Inc.');
     }
 
-    public function test_coordinator_cannot_enroll_into_another_coordinators_batch(): void
+    public function test_coordinator_cannot_enroll_into_a_batch_outside_their_scope(): void
     {
+        // The intruder has no department and no batches of their own, so the
+        // owner's batch is outside their scope entirely. (A colleague in the
+        // SAME department may enroll into it — see the department test below.)
         $program = $this->programFor('BSIT');
         $owner = User::factory()->create(['role' => 'coordinator', 'program_id' => $program->id]);
         $intruder = User::factory()->create(['role' => 'coordinator', 'program_id' => $program->id]);
@@ -99,6 +102,94 @@ class EnrollmentTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['batch_id']);
+    }
+
+    private function companyWithLogin(): Company
+    {
+        $company = Company::create(['name' => 'Co '.uniqid(), 'address' => 'Tagbilaran', 'is_active' => true]);
+        CompanySupervisor::create(['company_id' => $company->id, 'user_id' => User::factory()->create(['role' => 'supervisor'])->id]);
+
+        return $company;
+    }
+
+    private function departmentCoordinator(Program $program): User
+    {
+        $coordinator = User::factory()->create(['role' => 'coordinator']);
+        $coordinator->departmentsCoordinated()->attach($program->department_id);
+
+        return $coordinator;
+    }
+
+    /**
+     * The request only proved the id names SOME student. Enroll now makes the
+     * two checks the roster's Add Intern always made: the student is in the
+     * coordinator's department, and their program matches the batch's.
+     */
+    public function test_enroll_refuses_another_departments_student_and_a_program_mismatch(): void
+    {
+        $bsit = $this->programFor('BSIT');
+        $coordinator = $this->departmentCoordinator($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        $company = $this->companyWithLogin();
+
+        $otherDepartment = Department::create(['code' => 'CABM-B', 'name' => 'Business', 'is_active' => true]);
+        $bsba = Program::create(['department_id' => $otherDepartment->id, 'code' => 'BSBA-FM', 'name' => 'BSBA-FM', 'is_active' => true]);
+        $foreign = User::factory()->create(['role' => 'student', 'program_id' => $bsba->id]);
+
+        $sameDepartmentOtherProgram = $this->programFor('BSCS');
+        $mismatched = User::factory()->create(['role' => 'student', 'program_id' => $sameDepartmentOtherProgram->id]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson('/api/coordinator/enrollments', ['batch_id' => $batch->id, 'student_id' => $foreign->id, 'company_id' => $company->id])
+            ->assertForbidden();
+
+        $this->postJson('/api/coordinator/enrollments', ['batch_id' => $batch->id, 'student_id' => $mismatched->id, 'company_id' => $company->id])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('student_id');
+
+        $this->assertSame(0, BatchStudent::count());
+    }
+
+    public function test_coordinator_may_enroll_into_a_department_colleagues_batch(): void
+    {
+        $bsit = $this->programFor('BSIT');
+        $coordinator = $this->departmentCoordinator($bsit);
+        $colleaguesBatch = $this->batchFor($bsit, $this->departmentCoordinator($bsit));
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $bsit->id]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson('/api/coordinator/enrollments', [
+            'batch_id' => $colleaguesBatch->id,
+            'student_id' => $student->id,
+            'company_id' => $this->companyWithLogin()->id,
+        ])->assertCreated();
+    }
+
+    /**
+     * PUT enrollments/{id} was called by nothing, and was the one placement
+     * path outside EnrollmentService — it attached supervisors to
+     * coordinator-centered enrollments and could reactivate a row while the
+     * student was active elsewhere. It is gone; the roster owns status changes.
+     */
+    public function test_the_old_enrollment_update_route_no_longer_exists(): void
+    {
+        $program = $this->programFor('BSIT');
+        $coordinator = $this->departmentCoordinator($program);
+        $batch = $this->batchFor($program, $coordinator);
+        $student = User::factory()->create(['role' => 'student', 'program_id' => $program->id]);
+        $row = BatchStudent::create([
+            'batch_id' => $batch->id, 'student_id' => $student->id, 'company_id' => $this->companyWithLogin()->id,
+            'supervisor_id' => User::factory()->create(['role' => 'supervisor'])->id, 'status' => 'dropped',
+        ]);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $status = $this->putJson("/api/coordinator/enrollments/{$row->id}", ['status' => 'active'])->status();
+
+        $this->assertContains($status, [404, 405]);
+        $this->assertSame('dropped', $row->fresh()->status);
     }
 
     public function test_duplicate_active_enrollment_is_rejected(): void

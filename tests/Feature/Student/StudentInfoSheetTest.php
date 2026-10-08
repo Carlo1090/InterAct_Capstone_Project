@@ -3,6 +3,7 @@
 namespace Tests\Feature\Student;
 
 use App\Models\BatchStudent;
+use App\Models\Company;
 use App\Models\Notification;
 use App\Models\StudentInformationSheet;
 use App\Models\User;
@@ -50,6 +51,69 @@ class StudentInfoSheetTest extends TestCase
         ]);
     }
 
+    private function enrolledCompanyId(User $student): int
+    {
+        return (int) BatchStudent::where('student_id', $student->id)->value('company_id');
+    }
+
+    /**
+     * Both clients refused to submit without a company and a year, but only
+     * the clients did — a direct request handed the coordinator a sheet that
+     * Accept then had to refuse. A draft must still save half-finished.
+     */
+    public function test_a_sheet_cannot_be_submitted_without_a_company_or_year_but_a_draft_can(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $payload = [
+            'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan', 'parent_guardian_name' => 'Pedro Dela Cruz'],
+            'academic_info' => [],
+            'ojt_info' => [],
+        ];
+
+        $this->postJson('/api/student/info-sheet', [...$payload, 'status' => 'draft'])->assertOk();
+
+        $this->postJson('/api/student/info-sheet', [...$payload, 'status' => 'submitted'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['academic_info.year_level', 'ojt_info.company_id']);
+
+        // A company that has since been switched off is not offered by the
+        // dropdown, and Accept would place the student there — refused too.
+        $retired = Company::create(['name' => 'Closed Branch', 'address' => 'Tagbilaran', 'is_active' => false]);
+
+        $this->postJson('/api/student/info-sheet', [
+            ...$payload,
+            'status' => 'submitted',
+            'academic_info' => ['year_level' => '4th-year'],
+            'ojt_info' => ['company_id' => $retired->id],
+        ])->assertStatus(422)->assertJsonValidationErrors(['ojt_info.company_id']);
+    }
+
+    /**
+     * company_id is what Accept enrolls into; host_company is what the
+     * coordinator's queue and the PDF print. Taking the name from the client
+     * let the two disagree, so it is derived from the id.
+     */
+    public function test_the_company_name_comes_from_the_chosen_company_not_the_client(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+        $companyId = $this->enrolledCompanyId($student);
+
+        $this->postJson('/api/student/info-sheet', [
+            'status' => 'submitted',
+            'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan', 'parent_guardian_name' => 'Pedro Dela Cruz'],
+            'academic_info' => ['year_level' => '4th-year'],
+            'ojt_info' => ['company_id' => $companyId, 'host_company' => 'Somewhere Else Inc.'],
+        ])->assertOk();
+
+        $this->assertSame(
+            Company::find($companyId)->name,
+            StudentInformationSheet::where('student_id', $student->id)->first()->ojt_info['host_company']
+        );
+    }
+
     public function test_student_can_store_an_info_sheet(): void
     {
         $student = $this->enrolledStudent();
@@ -64,8 +128,10 @@ class StudentInfoSheetTest extends TestCase
             ],
             'academic_info' => [
                 'program_course' => 'BS Information Technology',
+                'year_level' => '4th-year',
             ],
             'ojt_info' => [
+                'company_id' => $this->enrolledCompanyId($student),
                 'host_company' => 'TechPH Inc.',
                 'ojt_start_date' => now()->subMonth()->toDateString(),
                 'ojt_end_date' => now()->addMonth()->toDateString(),
@@ -91,8 +157,8 @@ class StudentInfoSheetTest extends TestCase
         $this->postJson('/api/student/info-sheet', [
             'status' => 'submitted',
             'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan', 'parent_guardian_name' => 'Pedro Dela Cruz'],
-            'academic_info' => [],
-            'ojt_info' => ['host_company' => 'TechPH Inc.'],
+            'academic_info' => ['year_level' => '4th-year'],
+            'ojt_info' => ['company_id' => $this->enrolledCompanyId($student)],
         ])->assertOk();
 
         $this->assertDatabaseHas('notifications', [
@@ -125,8 +191,8 @@ class StudentInfoSheetTest extends TestCase
         $payload = [
             'status' => 'submitted',
             'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan', 'parent_guardian_name' => 'Pedro Dela Cruz'],
-            'academic_info' => [],
-            'ojt_info' => ['host_company' => 'TechPH Inc.'],
+            'academic_info' => ['year_level' => '4th-year'],
+            'ojt_info' => ['company_id' => $this->enrolledCompanyId($student)],
         ];
 
         $this->postJson('/api/student/info-sheet', $payload)->assertOk();
@@ -202,8 +268,8 @@ class StudentInfoSheetTest extends TestCase
 
         $payload = [
             'personal_info' => ['last_name' => 'Dela Cruz', 'first_name' => 'Juan'],
-            'academic_info' => [],
-            'ojt_info' => [],
+            'academic_info' => ['year_level' => '4th-year'],
+            'ojt_info' => ['company_id' => $this->enrolledCompanyId($student)],
         ];
 
         $this->postJson('/api/student/info-sheet', [...$payload, 'status' => 'draft'])->assertOk();

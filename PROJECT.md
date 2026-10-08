@@ -570,8 +570,11 @@ Callers supply only a `$companyId`, and the service derives `supervisor_id` from
 `Company::loginSupervisor()->user_id`, aborting 422 if the company has none.
 Centralizing this in one service is what stops the rule drifting between the
 manual Enroll form, the roster Add-Intern flow, and info-sheet Accept.
-`EnrollmentController::update()` re-derives on a company change. There is **no
-Supervisor select element in any form** — the resolved supervisor is read-only.
+There is **no Supervisor select element in any form** — the resolved supervisor
+is read-only. **`EnrollmentController::update()` (`PUT enrollments/{id}`) was
+REMOVED on 2026-10-08** — it was the one placement path that re-derived the
+supervisor by hand outside this service (see Intake & Enrollment → Enrollment
+validation fixes).
 
 Consequences, all deliberate:
 
@@ -991,7 +994,10 @@ enrollment.
    recorded as a **draft `student_information_sheets` row whose `batch_id` is
    the intended batch** — the single home for "intended batch before Accept".
    Username is **optional**; blank auto-generates, and the success toast echoes
-   the final username back.
+   the final username back. Since 2026-10-08 the account is created with
+   **`must_change_password = true`** (both student and supervisor), inside one
+   transaction with its profile and draft sheet, and writes an `Account Created`
+   audit row.
 2. **The student is GATED** until their sheet is `approved`.
    `EnsureInfoSheetApproved` (alias `infosheet.approved`) wraps a gated student
    route subgroup; only `student/info-sheet` (show/store), its PDF, and
@@ -1005,7 +1011,13 @@ enrollment.
    Program/Coordinator from the intended batch (anti-spoof).
    - **Name of Company is the one constrained field** — a dropdown from
      `GET student/companies`, storing both `ojt_info.company_id` (which drives
-     Accept) and `host_company` (the name).
+     Accept) and `host_company` (the name). **`host_company` is re-derived from
+     `company_id` on the server** (2026-10-08) — it used to be taken from the
+     client, so the queue could print one company while Accept enrolled into
+     another. **Company and Year are REQUIRED TO SUBMIT** (never to draft), and
+     the company must still be active; until 2026-10-08 only the two clients
+     insisted, so a direct request could submit a sheet Accept then refused.
+     Re-saving an already-approved sheet is exempt (both fields are locked there).
    - **Year Level** is a constrained dropdown, values `1st-year` to `4th-year`.
      See the KNOWN ISSUE below — several seeders write `'4th Year'` into this
      field, which the rule rejects.
@@ -1055,7 +1067,10 @@ enrollment.
    the sheet `approved`, lifting the gate. Only a `submitted` sheet is
    acceptable (re-accept 422s, never double-enrolls). **Reject** sets `rejected`
    with a required reason shown to the student, who edits and resubmits. The UI
-   labels `rejected` as **"Returned"**.
+   labels `rejected` as **"Returned"**. **Both verdicts notify the student**
+   (in-app, since 2026-10-08), and **Accept 422s a student already active in a
+   different batch** — the one-active-enrollment rule now lives in
+   `EnrollmentService`, so it binds every path.
 5. **Individual Info Sheet PDF** (`pdf.info-sheet` via the shared
    `BuildsInfoSheetPdf` trait) — MDC logo as a base64 data URI from
    `public/images/mdc-logo.png`, the two labeled sections, plus the
@@ -1256,14 +1271,13 @@ synchronously and needs a bound on worst-case duration.
 Two things distinguish a bulk-imported account from a manually-created one:
 
 - **`username` is always the Student ID Number**, and the temporary password
-  is a genuinely random `Str::password(12)` — a deliberate security choice.
-  The pre-existing manual Create Student Account form
-  (`CoordinatorInternsPage.vue`'s `derivedPassword`) still suggests
-  `{first 3 letters of first name}_{student ID number}`, which is
-  predictable from public-ish information. Left as-is for now since changing
-  it wasn't part of this feature's scope, but it's the same "first 3
-  letters" pattern this feature was deliberately built to move away from —
-  worth revisiting for consistency.
+  is a genuinely random `Str::password(12, symbols: false)` — letters and
+  digits only since 2026-10-08, because it is read off a printout and typed on
+  a phone (`^\c5jW52#FQ*` was typical before). The manual Create Student
+  Account form (`CoordinatorInternsPage.vue`'s `derivedPassword`) still
+  suggests the predictable `{first 3 letters of first name}_{student ID
+  number}`; what makes that acceptable now is that the account is created with
+  `must_change_password = true`, so the suggestion only ever works once.
 - **The student is emailed their credentials immediately**
   (`App\Notifications\NewAccountCredentials`: username, temp password, and a
   link to the SPA login page), which is a deliberate, scoped exception to
@@ -1350,7 +1364,81 @@ pace passes two minutes — and PHP then killed the request MID-LOOP, leaving th
 accounts created but returning no response, so **the one-time credentials table
 was lost for every student in the file** and each needed reissuing one at a time
 (then the per-row Resend; today the Credential Manager).
-This governs PHP only; a reverse proxy keeps its own timeout.
+This governs PHP only; a reverse proxy keeps its own timeout — which is why
+confirm is now SLICED (below).
+
+#### Enrollment validation fixes, 2026-10-08
+
+From a full validation pass over intake and enrollment (code review, probe
+tests on SQLite and MySQL, and a browser walkthrough on an isolated stack). Each
+item below was a confirmed defect; each has a regression test.
+
+- **Bulk confirm runs one SLICE per request.** `BulkImportStudentsRequest` takes
+  optional `offset` + `limit` (max `StudentBulkImportService::MAX_ROWS_PER_REQUEST`
+  = 25), and `confirm()` returns `total_rows` and `next_offset` (null when done);
+  the SPA walks the file 15 rows at a time (`BULK_SLICE_SIZE`). The reason is the
+  deployed proxy: **Vercel's rewrite gives up after 120s whatever PHP's limit
+  says**, and a full file of inline emails ran past it — PHP kept creating
+  accounts with nobody listening, the credentials table never arrived, and a
+  retry reported every row "already in use". The WHOLE file is still parsed and
+  validated on every slice (so a duplicate ID across two slices is still
+  caught); only the slice's rows are acted on. Omitting both params processes
+  the whole file, as before. If a slice fails, the SPA keeps every result
+  already received, reloads the Interns list, and offers **"Continue with the
+  remaining rows"**; rows the lost response had already created come back as
+  "already in use", and their passwords are reissued from the Credential Manager.
+- **Mail has a timeout, and a dead mail server stops being retried.**
+  `config/mail.php`'s smtp `timeout` was null — PHP's 60s
+  `default_socket_timeout` PER MESSAGE. It is now `MAIL_TIMEOUT` (default 10).
+  Inside one confirm request, a send that fails after ≥5s
+  (`UNREACHABLE_MAIL_SECONDS` — a hang, not a refused recipient) stops further
+  sends; the remaining rows are created and reported `created_email_failed`.
+  Measured against a blackhole SMTP host: 19 accounts in two slices in 24.6s,
+  where the old path needed ~190s.
+- **One active enrollment per student is enforced in `EnrollmentService`**, not
+  only in `StoreEnrollmentRequest`. Accept could enroll a student the
+  coordinator had already placed directly, leaving two active rows.
+- **The roster's Move is one transaction** (drop + new placement). A refused
+  placement (a company with no supervisor login) used to leave the old row
+  dropped and the student enrolled nowhere.
+- **Manual Create Account and Create Supervisor set `must_change_password`**,
+  like bulk import, the Credential Manager and the admin path already did.
+- **Enroll (`POST enrollments`) checks the student's department and program**
+  — the same two checks the roster's Add Intern makes. It accepted any student id.
+- **`PUT enrollments/{id}` is removed** (route, `update()`, `UpdateEnrollmentRequest`).
+  Nothing called it; it attached a supervisor to coordinator-centered
+  enrollments, 422'd a company that needs no login, and could set
+  `status=active` while the student was active elsewhere. The roster owns
+  status changes.
+- **Length limits are checked before the database sees them.** Bulk preview
+  refuses a name part over 100, a joined name over 150 (`users.name`), an ID
+  over 30 and an email over 255 — they used to preview "Ready" and then fail at
+  confirm on MySQL with an unfixable "please retry". `CreateAccountRequest`
+  adds the same joined-name check (three legal 100-char parts were a MySQL 500),
+  and the form inputs carry `maxlength`.
+- **Placeholder addresses are refused**: any address at `example.com`/`.net`/`.org`
+  (or a subdomain). The template's sample row (Juan Dela Cruz) used to be
+  imported as a real account. The bulk tests therefore use `@students.test`.
+- **Coordinator placement scope is DEPARTMENT-WIDE everywhere**
+  (`User::placeableBatchIds()`): Create Account, Bulk Import and Enroll accept
+  any batch in the coordinator's department, matching info-sheet Accept and the
+  batch roster, which already did. They were the only three limited to the
+  coordinator's own batches, so a coordinator covering for a colleague could
+  enroll into that colleague's batch but not create the student's account.
+  `enrollment-options` now lists department batches, with `coordinator_name`
+  set on a colleague's batch so same-named cohorts stay distinct, and the Enroll
+  modal reads that list instead of the own-batches-only `roster` filter.
+  **This was a judgment call made during the fixes; reversing it is
+  `placeableBatchIds()` → `batchesCoordinated()` in the three requests.**
+- **Accept on a coordinator-centered batch no longer files a named-only
+  `company_supervisors` row** — the enrollment never links it, so it was an
+  orphan on the company record.
+- **Results window**: skipped rows show their reason; Done/Close asks first when
+  any welcome email failed and the CSV was not downloaded; Close is disabled
+  while slices run; the CSV prefixes a cell starting with `= + - @` (or a
+  tab/CR) with an apostrophe so a spreadsheet cannot run it as a formula.
+- **Temporary passwords are letters and digits only** on every generator
+  (bulk import, Credential Manager, the admin's two).
 
 **"A student never got their welcome email" now has THREE answers, and the
 student can reach the first one themselves.** In order of who has to act:
@@ -1447,7 +1535,8 @@ carried over here.
 
 MOBILE NOTE (Phase 7): a bulk-imported or credentials-resent account has
 `must_change_password = true` on first login, exactly like every other
-coordinator-provisioned account. The mobile app's future auth flow needs to
+coordinator-provisioned account (since 2026-10-08 that genuinely is every one —
+manual Create Account and Create Supervisor used to leave it false). The mobile app's future auth flow needs to
 force a password change the same way the web popover does (no dismissal, no
 back navigation) rather than treating it as an edge case.
 
@@ -4354,6 +4443,79 @@ text-shadow, `translateY(-1px)` on hover.
 removed) was built and verified the same day and then REVERTED at the project
 owner's request** — the login page and `AuthCardShell.vue` are exactly as
 they were, tilt included. Nothing from that attempt remains in the tree.
+*(The layout half of that reversal is superseded by the 2026-10-08 rebuild
+below, which the project owner asked for against their own reference; its
+motion was kept.)*
+
+#### Login page rebuilt to the project owner's reference, 2026-10-08
+
+The project owner supplied two screenshots (desktop and phone) and the page
+was rebuilt to them. **Template and styles only — the `<script>` is
+byte-identical**, so sign-in, `?redirect=`, the wrong-role/reset notices, the
+sessionStorage credential carry-over and the press-and-hold eye all behave
+exactly as before.
+
+- **One centred white card at every width**, replacing the two-column desktop
+  layout (brand panel left, frosted `bg-white/75` card right reading "Welcome
+  Back!") and the separate stacked brand block below `lg`. The card carries the
+  brand itself, so there is one markup path for desktop and phone. Copy is the
+  reference's: "Welcome to InternTrack" (now the page's only `h1`), the system
+  name under it, a "Student ID or email" placeholder, **"Log in"** (was
+  "Login"), and "Google sign-in works once you've verified your email in Edit
+  Profile."
+- **The seal sits on a badge straddling the card's top edge** — 96px, 112px
+  from `sm` — centred by translating half its own size, and placed INSIDE the
+  card so it shakes with it on a failed sign-in. The card therefore must NOT carry
+  `overflow-hidden` (it would cut the seal in half), and its top padding is
+  half the badge plus 16px at each size.
+- **Filled inputs, not underlines**: `h-12 rounded-xl border-slate-200
+  bg-slate-50`, a blue border and `ring-4 ring-blue-500/15` on focus, no
+  person/lock icons. They are `text-base` (16px) because iOS Safari zooms the
+  page into any focused input smaller than that. The autofill inset shadow was
+  retinted to the same slate-50 so an autofilled field looks like any other.
+- **"Forgot password?" is drawn in the Password label row but written AFTER the
+  field in the DOM** (absolutely positioned), so Tab runs username → password →
+  eye → Forgot password? → Log in instead of stopping on the link between the
+  two fields. Verified by tabbing in a browser.
+- **The Google button is Google's own sign-in shape**: white, a `slate-300`
+  outline, a faint shadow, and the four-colour G mark before the label. The
+  reference drew it text-only, and the project owner found that too plain the
+  same day. The outline (against Log in's solid blue) still ranks it second.
+  The mark is `aria-hidden` so a screen reader does not hear "Google" twice.
+- **The page is a flex column** (header · centred card · footer), not
+  absolutely positioned chrome, so on a short phone the page scrolls rather than
+  overlapping. "© Mater Dei College, Tubigon, Bohol" is the footer; the back
+  link became a chevron and shares the landing header's `max-w-7xl` column.
+- **The app-wide `scrollbar-gutter: stable` is released on this page only**, via
+  `:global(html:has(.login-root))`. The page never scrolls on a desktop, so the
+  reserved gutter painted as a 15px white band down the right of the
+  full-bleed gradient — on the old layout too. `:has()` stops matching the
+  moment the page unmounts; verified `stable` again on `/forgot-password`.
+- **NOTHING MOVES UNDER THE POINTER** (project owner, same day: "remove the
+  animation effect when we hover the mouse. Keep it simple"). The card's
+  pointer-tracked tilt (`handleTilt`/`cardStyle`, ±4°) and the Log in button's
+  hover sheen are deleted, along with Log in's `active:scale` press-shrink. Hover
+  now changes colour only: Log in blue-600 → blue-700, Google white → slate-50
+  with a darker outline. Verified with a real mouse sweep in Playwright — the
+  card, Log in and Google all stay `transform: none`. **Do not reintroduce a
+  hover transform here.** This partly reverses the 2026-09-16 decision to keep
+  the tilt.
+- **Motion that does NOT depend on the pointer is kept**: the entrance stagger,
+  the error shake, and the drifting gradient and blobs, all still stilled under
+  `prefers-reduced-motion`. `logo-float` was removed — a seal bobbing 8px would
+  visibly detach from the edge it is meant to sit on.
+
+Measured against the reference at 1440x897 (the desktop screenshot is that
+viewport at 0.485x): card 416 wide at 197–783 (reference ≈417 at 198–780),
+badge top 141 (144), username / password / Log in / Google at 377 / 463 /
+535 / 647 (375 / 466 / 538 / 652). At 375x812 and 375x667 nothing scrolls
+sideways, the subtitle wraps to two lines as in the phone mock, and the badge
+clears the back link by 18px and 8px. A wrong password shows the server's own
+message in the card; a real sign-in lands on `/student/dashboard`.
+
+**NOT changed: `AuthCardShell.vue`** (the forgot- and reset-password pages)
+still draws the old frosted card, so those two pages no longer match the login
+page they link from. Bringing them onto this card is the obvious follow-up.
 
 ## Role Surfaces
 
@@ -4621,7 +4783,11 @@ identical for all four roles — exposing `PUT /api/profile`,
 **`notifications.type` is a strict DB enum: `email` / `push` / `in_app`.** An
 in-app business event uses `'in_app'`.
 
-Business triggers so far: the missing-journal reminder; the **DTR auto
+Business triggers so far: the missing-journal reminder; **Info Sheet Accept
+and Return**, which tell the STUDENT the verdict (`Information Sheet Accepted` /
+`Information Sheet Returned`, the latter carrying the coordinator's reason —
+added 2026-10-08; before it a student learned the outcome only by noticing the
+app had unlocked, or had not); the **DTR auto
 time-out**, which tells the student their session was closed with no clock-out
 and does not yet count (see Daily Time Record — the supervisor is deliberately
 NOT notified, since their Needs Attention queue already lists it); and **Info

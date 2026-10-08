@@ -148,6 +148,7 @@ class CoordinatorCreateAccountTest extends TestCase
         $supervisor = User::where('username', 'new.supervisor')->first();
         $this->assertSame('supervisor', $supervisor->role);
         $this->assertTrue($supervisor->is_active);
+        $this->assertTrue($supervisor->must_change_password);
         $this->assertDatabaseMissing('student_profiles', ['user_id' => $supervisor->id]);
     }
 
@@ -171,11 +172,12 @@ class CoordinatorCreateAccountTest extends TestCase
         $this->assertSame(0, User::where('role', 'admin')->where('username', 'like', 'nope.%')->count());
     }
 
-    public function test_student_batch_must_be_one_the_coordinator_owns(): void
+    public function test_student_batch_must_be_inside_the_coordinators_department(): void
     {
-        // The batch is the real scope boundary for a student: it must be one
-        // this coordinator coordinates. A batch owned by another coordinator
-        // (even in a program outside this coordinator's department) is rejected.
+        // The batch is the real scope boundary for a student: it must belong to
+        // this coordinator's department. A batch in another department is
+        // rejected (a colleague's batch in the SAME department is allowed — see
+        // the next test).
         $bsit = $this->programFor('BSIT', 'CAST');
         $coordinator = $this->coordinatorFor($bsit);
 
@@ -196,6 +198,89 @@ class CoordinatorCreateAccountTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors('batch_id');
 
         $this->assertNull(User::where('username', 'foreign.batch')->first());
+    }
+
+    /**
+     * Create Account, Bulk Import and Enroll used to be limited to the
+     * coordinator's OWN batches while Accept and the batch roster were
+     * department-wide — so a coordinator covering for a colleague could enroll
+     * a student into that colleague's batch but not create their account.
+     */
+    public function test_a_department_colleagues_batch_is_accepted(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $colleaguesBatch = $this->batchFor($bsit, $this->coordinatorFor($bsit));
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson('/api/coordinator/accounts', [
+            'role' => 'student',
+            'first_name' => 'Covered',
+            'last_name' => 'Student',
+            'password' => 'password123',
+            'program_id' => $bsit->id,
+            'batch_id' => $colleaguesBatch->id,
+        ])->assertCreated();
+
+        // The options endpoint offers it too, labelled with whose batch it is.
+        $offered = collect($this->getJson('/api/coordinator/enrollment-options')->assertOk()->json('batches'))
+            ->firstWhere('id', $colleaguesBatch->id);
+        $this->assertNotNull($offered);
+        $this->assertSame($colleaguesBatch->coordinator->name, $offered['coordinator_name']);
+    }
+
+    /**
+     * The coordinator chose this password and handed it over — for a student
+     * it is the predictable {first three letters}_{ID} suggestion unless
+     * edited — so it must be replaced on first sign-in, as bulk import, the
+     * Credential Manager and the admin's Create User already required.
+     */
+    public function test_a_created_account_must_change_its_password_and_is_audited(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $id = $this->postJson('/api/coordinator/accounts', [
+            'role' => 'student',
+            'first_name' => 'Ana',
+            'last_name' => 'Cruz',
+            'password' => 'ANA_2026-001',
+            'program_id' => $bsit->id,
+            'batch_id' => $batch->id,
+            'student_id_number' => '2026-001',
+        ])->assertCreated()->json('id');
+
+        $this->assertTrue(User::find($id)->must_change_password);
+        $this->assertDatabaseHas('system_logs', ['user_id' => $coordinator->id, 'action' => 'Account Created']);
+    }
+
+    /**
+     * Each part may be 100 characters, but users.name holds the JOINED name
+     * in 150 — MySQL's strict mode answered three long parts with a 500.
+     */
+    public function test_a_full_name_longer_than_the_column_is_refused_with_a_message(): void
+    {
+        $bsit = $this->programFor('BSIT', 'CAST');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $this->postJson('/api/coordinator/accounts', [
+            'role' => 'student',
+            'first_name' => str_repeat('A', 60),
+            'middle_name' => str_repeat('B', 60),
+            'last_name' => str_repeat('C', 60),
+            'password' => 'password123',
+            'program_id' => $bsit->id,
+            'batch_id' => $batch->id,
+        ])->assertStatus(422)->assertJsonValidationErrors('last_name');
+
+        $this->assertSame(0, User::where('role', 'student')->count());
     }
 
     public function test_username_is_auto_generated_from_name_when_omitted(): void

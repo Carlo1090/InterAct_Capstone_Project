@@ -155,7 +155,7 @@ class UserController extends Controller
 
     public function issueTemporaryPassword(User $user): JsonResponse
     {
-        $temporaryPassword = Str::password(10);
+        $temporaryPassword = Str::password(10, symbols: false);
 
         $user->update([
             'password' => $temporaryPassword,
@@ -182,7 +182,7 @@ class UserController extends Controller
     {
         abort_if($user->email === null, 422, 'This account has no email on file to send credentials to.');
 
-        $temporaryPassword = Str::password(10);
+        $temporaryPassword = Str::password(10, symbols: false);
 
         $user->update([
             'password' => $temporaryPassword,
