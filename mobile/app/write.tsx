@@ -185,6 +185,19 @@ export default function Write() {
     return keys;
   }, [requiredSections, optionalKeysShown, sippEnabled, sippSections]);
 
+  /**
+   * Whether this day is ALREADY submitted, read from whichever source is
+   * newest: a copy still waiting in the offline queue outranks the server's
+   * last known status, and with no queued copy the server's own answer stands.
+   *
+   * ONLINE was the case this was missing. Only `queuedStatus` was consulted,
+   * so a day the SERVER already holds as submitted still offered "Submit" and
+   * asked "Submit this entry?" — so every correction read as filing a second
+   * entry for the same day, and the API logged one each time. There is only
+   * ever one entry per date; re-saving it is an update.
+   */
+  const alreadySubmitted = (queuedStatus ?? entry?.status) === 'submitted';
+
   const charLimit = entry?.char_limit ?? 1500;
   const charCount = activeKeys.reduce((sum, key) => sum + (content[key]?.length ?? 0), 0);
   const overLimit = charCount > charLimit;
@@ -259,13 +272,14 @@ export default function Write() {
   async function confirmSubmit() {
     if (!canSubmit) return;
 
-    // Already submitted offline: this is an EDIT of the copy waiting to send,
-    // not a second submission. Saying "Submit this entry?" again is what made
-    // it feel like filing a duplicate.
-    if (queuedStatus === 'submitted') {
+    // Already submitted — online or offline, it makes no difference here: this
+    // is an EDIT of the one entry that exists for this day, not a second
+    // submission. Asking "Submit this entry?" again is what made it feel like
+    // filing a duplicate, and on the server it genuinely logged one.
+    if (alreadySubmitted) {
       const ok = await confirmAction({
         title: 'Update this entry?',
-        message: 'This replaces what you already sent for this day. It does not add a second entry.',
+        message: 'This updates the entry you already submitted for this day — it does not add a second one.',
         confirmLabel: 'Update',
       });
       if (ok) persist('submitted');
@@ -329,12 +343,20 @@ export default function Write() {
         </Text>
         {editable ? (
           <>
-            <Button label="Save Draft" variant="secondary" size="sm" disabled={saving} onPress={saveDraft} />
+            {/* Save Draft disappears once the day is submitted. Posting
+                status=draft over a submitted entry sends it BACK to draft,
+                which silently drops it out of weekly bundling and makes the
+                day count as missing on the student's own dashboard — a
+                destructive, unconfirmed action sitting beside the one they
+                actually want. A submitted entry's only write is an update. */}
+            {alreadySubmitted ? null : (
+              <Button label="Save Draft" variant="secondary" size="sm" disabled={saving} onPress={saveDraft} />
+            )}
             <Button
-              // "Update" once a submitted copy is already queued — the button
-              // has to say what it will actually do, or it reads as filing a
-              // second entry for the same day.
-              label={queuedStatus === 'submitted' ? 'Update' : 'Submit'}
+              // "Update" once the day is already submitted — the button has to
+              // say what it will actually do, or it reads as filing a second
+              // entry for the same day.
+              label={alreadySubmitted ? 'Update' : 'Submit'}
               icon="checkmark"
               size="sm"
               disabled={saving || !canSubmit}
@@ -382,7 +404,10 @@ export default function Write() {
           <Banner variant={editable ? 'info' : 'warn'}>
             {editable
               ? entry.status === 'submitted'
-                ? 'Submitted entries remain editable until the week is compiled every Monday at 12:00 AM.'
+                ? // Says plainly that saving again UPDATES this entry. Without
+                  // that line the student had nothing telling them the second
+                  // save was not a second submission.
+                  'You already submitted this day. It stays editable until your week is compiled every Monday at 12:00 AM — saving again updates this entry rather than adding another.'
                 : 'This entry stays editable until the week is compiled every Monday at 12:00 AM.'
               : LOCKED_REASON_COPY[entry.locked_reason ?? ''] ?? 'This entry is read-only.'}
           </Banner>

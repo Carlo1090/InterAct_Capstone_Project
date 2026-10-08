@@ -19,6 +19,13 @@
     </source>
     <php>
         <env name="APP_ENV" value="testing"/>
+        <!-- Pinned, NOT inherited: config/app.php defaults to Asia/Manila so a
+             missing APP_TIMEZONE cannot put the app a day behind (see its
+             comment). The suite travels through fixed dates with
+             Carbon::setTestNow and was written against UTC, so it keeps its own
+             baseline here. Removing this line reinterprets every one of those
+             dates as Manila time. -->
+        <env name="APP_TIMEZONE" value="UTC"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>

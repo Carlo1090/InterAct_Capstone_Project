@@ -102,11 +102,29 @@ class JournalEntryController extends Controller
             ->whereDate('entry_date', $entryDate)
             ->first();
 
+        // Whether this day is ALREADY submitted, which is the difference between
+        // a submission and an edit of one. `journal_entries` holds at most one
+        // row per (student, date), and a submitted entry is deliberately left
+        // writable until its week reaches the supervisor — so a second POST
+        // carrying status=submitted is the student correcting the entry they
+        // already filed, never a second entry for the same day.
+        $alreadySubmitted = $existing !== null
+            && $existing->status === 'submitted'
+            && $existing->submitted_at !== null;
+
         $attributes = [
             'batch_id' => $enrollment->batch_id,
             'content' => $validated['content'],
             'status' => $validated['status'],
-            'submitted_at' => $validated['status'] === 'submitted' ? now() : null,
+            // Stamped on the transition INTO submitted, then left alone. It used
+            // to be restamped with now() on every save, so an entry filed on
+            // Monday and corrected on Friday reported FRIDAY as its submission
+            // time on the coordinator's Journal Activities page — the one place
+            // that column is read. Reverting to draft still clears it, so a
+            // genuine re-submission after that stamps afresh.
+            'submitted_at' => $validated['status'] === 'submitted'
+                ? ($alreadySubmitted ? $existing->submitted_at : now())
+                : null,
         ];
 
         // updateOrCreate()'s match array is a plain equality check, which can
@@ -124,7 +142,13 @@ class JournalEntryController extends Controller
             ]);
         }
 
-        if ($validated['status'] === 'submitted') {
+        // Recorded on the TRANSITION into submitted only, the same rule the info
+        // sheet and the exit interview already follow. Logging every save wrote
+        // a fresh "Daily Journal Submitted" row on each correction to an entry
+        // the student had already filed, so one journal appeared in the audit
+        // log — and in the student's own Recent Activity, which reads the last
+        // five rows — as many times as they touched it.
+        if ($validated['status'] === 'submitted' && ! $alreadySubmitted) {
             SystemLog::record('Daily Journal Submitted', "{$user->name} submitted their journal for {$entryDate->toDateString()}");
         }
 
