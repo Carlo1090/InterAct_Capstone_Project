@@ -84,13 +84,27 @@ return [
     | server, anything before 08:00 Manila still reads as YESTERDAY — so a
     | student writing a journal at 7am is offered the wrong date.
     |
-    | The DEFAULT stays UTC on purpose so the test suite (which travels through
-    | fixed dates with Carbon::setTestNow) keeps behaving exactly as it always
-    | has. Deployments set APP_TIMEZONE=Asia/Manila.
+    | THE DEFAULT IS Asia/Manila, CHANGED 2026-10-08 after that symptom was
+    | reported for real: the write screen offered YESTERDAY and refused today.
+    | It used to default to UTC, on the reasoning that deployments set
+    | APP_TIMEZONE explicitly and the test suite wants a fixed UTC baseline. The
+    | first half of that is the problem — it makes correctness depend on an
+    | environment variable REMEMBERED in two places (the local .env, which did
+    | not have it, and the Render dashboard, where a Blueprint value only lands
+    | if the blueprint was actually synced). A missing variable then produces a
+    | silent, eight-hours-a-day wrong answer rather than a loud failure, which
+    | is the same trap documented for the mobile app's API_BASE_URL fallback: a
+    | default that degrades to the CORRECT value for every real user beats one
+    | that degrades to a plausible-looking outage.
+    |
+    | The test suite's UTC baseline is preserved exactly, by pinning
+    | APP_TIMEZONE=UTC in phpunit.xml instead of relying on this default. Both
+    | halves must move together — dropping that pin silently reinterprets every
+    | Carbon::setTestNow date in the suite as Manila time.
     |
     */
 
-    'timezone' => env('APP_TIMEZONE', 'UTC'),
+    'timezone' => env('APP_TIMEZONE', 'Asia/Manila'),
 
     /*
     |--------------------------------------------------------------------------

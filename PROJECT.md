@@ -1783,6 +1783,60 @@ untouched by archiving.
   `missing`/`overdue` are **derived on read** (absence of a submitted entry on a
   working day), never queried against the column. Querying the column for them
   silently returns zero.
+- **RE-SAVING A SUBMITTED ENTRY IS AN UPDATE, NOT A SECOND SUBMISSION**
+  (2026-10-08, reported from the mobile app in ONLINE mode: "the submit journal
+  is enable submission again even though it's already submitted and not use the
+  update logic instead… the activity logs show's journal submitted everytime I
+  click the submit button"). A submitted entry is deliberately left writable
+  until its week reaches the supervisor, and `journal_entries` holds at most one
+  row per (student, date) — so a second POST carrying `status=submitted` has
+  always been the student correcting the entry they already filed. The row was
+  updated correctly; what did not know that was everything *around* the write:
+  - **`store()` logged on every save, not on the TRANSITION into submitted.**
+    Three corrections to one day wrote three `Daily Journal Submitted` rows.
+    That is not merely audit noise: `StudentDashboardController` surfaces the
+    student's last **five** `SystemLog` rows as Recent Activity, so one journal
+    touched a few times filled the whole feed with identical submissions of the
+    same date. Now gated on `! $alreadySubmitted`, matching the rule the info
+    sheet and the exit interview already follow (fire only on a transition
+    **into** `submitted`).
+  - **`submitted_at` was restamped with `now()` on every save**, so an entry
+    filed at 9am and corrected at 5pm reported 5pm as its submission time on
+    `CoordinatorJournalActivityController`'s page — the one place that column is
+    read. It is now stamped on entry to `submitted` and then left alone.
+    **Reverting to draft still clears it**, so a genuine re-submission after
+    that stamps afresh and logs afresh; that boundary is the point, not an
+    oversight.
+  - **Mobile `write.tsx` consulted only the OFFLINE queue.** The queued-copy
+    case was already handled (button reads "Update", confirm says it replaces
+    rather than adds), but `entry.status` — the server's own answer, i.e. the
+    whole online path — was never checked, so a day the API already held as
+    submitted still offered **Submit** and asked "Submit this entry?". One
+    derived `alreadySubmitted = (queuedStatus ?? entry?.status) === 'submitted'`
+    now drives the label, the confirm and the banner; the queued status
+    deliberately outranks the server's, since a queued copy is newer.
+  - **"Save Draft" is HIDDEN once the day is submitted.** Posting
+    `status=draft` over a submitted entry sends it back to draft, which drops it
+    out of `WeeklyBundlingService` (it compiles **submitted** entries only) and
+    makes the day count as missing on the student's own dashboard — an
+    unconfirmed, self-harming action sitting immediately beside the one they
+    want. A submitted entry's only write is an update. The endpoint stays
+    permissive, because the web page still relies on it.
+  - **STILL OPEN, deliberately:** `StudentWriteJournalPage.vue` has the same
+    *wording* gap — it still says "Submit this journal entry?" / "Submit Entry"
+    on an already-submitted entry, and still offers Save Draft there. The
+    server-side half above fixes the log spam and the timestamp for the web
+    too; only the copy and the hidden-button treatment were left, since that
+    page's Review-&-Submit → view-mode flow is a different shape and was not
+    part of the reported bug.
+  - Pinned by three tests in `JournalEntryTest`, two of which were **verified to
+    genuinely fail** against the old code (it logged 3 submissions for one day's
+    three saves, and moved `submitted_at`):
+    `test_re_saving_a_submitted_entry_does_not_log_a_second_submission`,
+    `test_editing_a_submitted_entry_keeps_its_original_submission_time`, and
+    `test_reverting_to_draft_and_submitting_again_records_a_fresh_submission`,
+    which exists to fail if the transition rule is ever collapsed into "never
+    log twice for a date".
 
 ### Journal templates
 
@@ -5161,12 +5215,53 @@ Four load-bearing consequences:
 `SESSION_SAME_SITE=lax` is correct here (not `none`), because the requests are
 first-party. Lax still rides the top-level GET redirect back from Google.
 
-**`config('app.timezone')` is `env('APP_TIMEZONE', 'UTC')` and deployments set
-`Asia/Manila`.** Every user is UTC+8, and on a UTC server anything before 08:00
-Manila still reads as **yesterday** — so the journal calendar offers the wrong
-date, "this week" counts are off, and reminder hours fire 8 hours early. **The
-default stays UTC on purpose** so the test suite's `Carbon::setTestNow` travel
-behaves exactly as before.
+**`config('app.timezone')` DEFAULTS TO `Asia/Manila`** (changed 2026-10-08 —
+it was `env('APP_TIMEZONE', 'UTC')`), and the test suite keeps its UTC baseline
+by **pinning `APP_TIMEZONE=UTC` in `phpunit.xml`** instead. Every user is UTC+8,
+and on a UTC server anything before 08:00 Manila still reads as **yesterday** —
+so the journal calendar offers the wrong date, "this week" counts are off,
+reminder hours fire 8 hours early, and a 07:00 DTR punch lands on the previous
+date. **The two halves must move together:** dropping the `phpunit.xml` pin
+silently reinterprets every `Carbon::setTestNow` date in the suite as Manila
+time.
+
+**THIS WAS A REAL REPORTED BUG, NOT A PRECAUTION** — "when i write journal the
+date it allow me is yesterday not the current date", seen on BOTH the installed
+mobile app and locally. `JournalEntryController::lockedReason()` rejects a date
+`isAfter(today())`, so with the server's `today()` a day behind, Manila-today
+422'd as `'range'` and the newest writable date genuinely WAS yesterday.
+Reproduced exactly, at 07:38 Manila / 23:38 UTC: `today()` returned `2026-10-07`
+while Manila was `2026-10-08`, and the guard reported `LOCKED` for today and
+`allowed` for yesterday.
+
+**The default was the whole problem, and the old reasoning is what to avoid
+repeating.** `APP_TIMEZONE` was documented here, declared with a committed
+`value:` in `render.yaml`, and described in `config/app.php`'s own comment —
+which already spelled out the exact symptom ("a student writing a journal at 7am
+is offered the wrong date") — and it was still **absent from the local `.env`**
+and unverifiable on the live service (a Blueprint `value:` only reaches the
+service if the blueprint was actually synced; a hand-created service never gets
+it). Correctness depended on a human remembering one variable in two separate
+places, and forgetting it produced a **silent** wrong answer for eight hours out
+of twenty-four that then healed itself at 08:00 — which is why it took a
+student's report rather than a test to find. Same trap, same resolution as the
+mobile app's `API_BASE_URL` fallback: **a default that degrades to the correct
+value for every real user beats one that degrades to a plausible-looking
+outage.** `APP_TIMEZONE=Asia/Manila` is now stated explicitly in `.env.example`
+too (it had **no** timezone line at all, so every fresh clone started wrong).
+
+Six `today()` call sites rode on this, all student-facing:
+`JournalEntryController::lockedReason()` (the reported bug),
+`ResolvesStudentEnrollment::ojtRange()`'s rolling end,
+`JournalCalendarController`, `StudentDashboardController`'s "this week",
+`WeeklyLogController`'s week-has-started guard, and
+`BuildsExitInterviewPdf`'s training-period end — plus every `now()`-derived
+`dtr_sessions.work_date`.
+
+Pinned by `tests/Unit/Support/AppTimezoneTest`, which reloads `config/app.php`
+with the variable genuinely absent (asserting `config('app.timezone')` would
+only re-read phpunit's own pin and prove nothing). **Verified to genuinely
+fail** when the default is put back to UTC.
 
 ### Scheduled work runs over HTTP, because the deployed app has no cron
 
@@ -6175,15 +6270,21 @@ assumed 8h that counts zero) so Needs attention is non-empty, and one `void`.
 
 **Both seeders write timestamps anchored to `Asia/Manila`, never
 `->setTime()`.** This is a real bug that was found and fixed on screen, not a
-precaution. `setTime(8, 0)` writes 08:00 in the APP's timezone, and
-`config('app.timezone')` defaults to **UTC** while deployments set Asia/Manila —
-so on a normal dev box an 08:00 seed is 08:00Z, which the SPA renders in the
-viewer's own timezone as **4:00 PM**: a morning shift reading as an afternoon
-one. The same shift moved every `submitted_at` a day later in the review queue
-(a 21:00Z submission is 5am the next day in Manila). Each seeder carries a
-`manila()` helper that builds the instant in Asia/Manila and converts — correct
-under both configurations, because it describes the moment rather than a number
-on a clock. This does NOT apply to real punches, which `DtrService` stamps with
+precaution. `setTime(8, 0)` writes 08:00 in the APP's timezone,
+whatever that happens to be — so when `config('app.timezone')` was UTC (its
+default until 2026-10-08, see Deployment) an 08:00 seed was 08:00Z, which the
+SPA renders in the viewer's own timezone as **4:00 PM**: a morning shift reading
+as an afternoon one. The same shift moved every `submitted_at` a day later in
+the review queue (a 21:00Z submission is 5am the next day in Manila). Each
+seeder carries a `manila()` helper that builds the instant in Asia/Manila and
+converts.
+
+**The default is Asia/Manila now, and that is NOT a reason to drop the helper.**
+It stays correct under any configuration precisely because it describes the
+moment rather than a number on a clock — and `APP_TIMEZONE` is still an
+overridable env var, so a box that sets it to anything else (or the test suite,
+which pins UTC on purpose) would reintroduce the exact skew the moment a
+`->setTime()` crept back in. This does NOT apply to real punches, which `DtrService` stamps with
 `now()` at the actual instant and which therefore always displayed correctly.
 
 Both are re-runnable: weekly logs are located by (student, batch, `week_start`)

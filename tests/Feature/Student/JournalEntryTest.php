@@ -4,6 +4,7 @@ namespace Tests\Feature\Student;
 
 use App\Models\BatchStudent;
 use App\Models\JournalEntry;
+use App\Models\SystemLog;
 use App\Models\WeeklyLog;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -506,5 +507,139 @@ class JournalEntryTest extends TestCase
         $this->assertSame('Deployment pipeline was flaky.', $response->json('content.issues_concerns'));
         $this->assertSame('Rolled back and patched the config.', $response->json('content.solutions'));
         $this->assertSame('Add a staging smoke test.', $response->json('content.recommendations'));
+    }
+
+    /**
+     * The bug this pins, reported from the mobile app in ONLINE mode: a
+     * submitted daily entry stays editable on purpose, and every re-save of it
+     * wrote another "Daily Journal Submitted" row. The student's own Recent
+     * Activity reads the last five SystemLog rows, so correcting one typo three
+     * times filled it with three identical submissions of the same day.
+     */
+    public function test_re_saving_a_submitted_entry_does_not_log_a_second_submission(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $entryDate = now()->toDateString();
+
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'First submission.'],
+        ])->assertOk();
+
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'Corrected a typo.'],
+        ])->assertOk();
+
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'Corrected it again.'],
+        ])->assertOk();
+
+        $this->assertSame(
+            1,
+            SystemLog::where('user_id', $student->id)->where('action', 'Daily Journal Submitted')->count(),
+            'Editing an already-submitted entry must not record another submission.'
+        );
+
+        // Still exactly one entry for the day, carrying the latest text.
+        $this->assertSame(1, JournalEntry::where('student_id', $student->id)->whereDate('entry_date', $entryDate)->count());
+        $this->assertDatabaseHas('journal_entries', [
+            'student_id' => $student->id,
+            'content->task_performed' => 'Corrected it again.',
+        ]);
+    }
+
+    /**
+     * `submitted_at` is the only column recording WHEN a day was handed in, and
+     * the coordinator's Journal Activities page is where it is read. Restamping
+     * it on every save reported the last edit as the submission time.
+     */
+    public function test_editing_a_submitted_entry_keeps_its_original_submission_time(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $entryDate = now()->toDateString();
+
+        Carbon::setTestNow(now()->startOfDay()->setTime(9, 0));
+
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'Filed first thing in the morning.'],
+        ])->assertOk();
+
+        $firstSubmittedAt = JournalEntry::where('student_id', $student->id)
+            ->whereDate('entry_date', $entryDate)
+            ->value('submitted_at');
+
+        Carbon::setTestNow(now()->setTime(17, 30));
+
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'Corrected at the end of the day.'],
+        ])->assertOk();
+
+        $afterEdit = JournalEntry::where('student_id', $student->id)
+            ->whereDate('entry_date', $entryDate)
+            ->value('submitted_at');
+
+        $this->assertNotNull($afterEdit);
+        $this->assertTrue(
+            $firstSubmittedAt->equalTo($afterEdit),
+            'An edit must not move the submission time.'
+        );
+
+        Carbon::setTestNow();
+    }
+
+    /**
+     * The other side of that boundary: reverting to draft genuinely un-submits
+     * the day, so submitting it again IS a new submission and must both stamp a
+     * fresh time and record itself.
+     */
+    public function test_reverting_to_draft_and_submitting_again_records_a_fresh_submission(): void
+    {
+        $student = $this->enrolledStudent();
+        Sanctum::actingAs($student, ['*']);
+
+        $entryDate = now()->toDateString();
+
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'Submitted.'],
+        ])->assertOk();
+
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'draft',
+            'content' => ['task_performed' => 'Pulled back to a draft.'],
+        ])->assertOk();
+
+        $this->assertNull(
+            JournalEntry::where('student_id', $student->id)->whereDate('entry_date', $entryDate)->value('submitted_at')
+        );
+
+        $this->postJson('/api/student/journal-entries', [
+            'entry_date' => $entryDate,
+            'status' => 'submitted',
+            'content' => ['task_performed' => 'Submitted again for real.'],
+        ])->assertOk();
+
+        $this->assertNotNull(
+            JournalEntry::where('student_id', $student->id)->whereDate('entry_date', $entryDate)->value('submitted_at')
+        );
+        $this->assertSame(
+            2,
+            SystemLog::where('user_id', $student->id)->where('action', 'Daily Journal Submitted')->count()
+        );
     }
 }
