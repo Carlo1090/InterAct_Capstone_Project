@@ -8,14 +8,13 @@ import { categorizeError } from '@/lib/apiError'
 import ToastHost from '@/components/ToastHost.vue'
 import InternDetailModal from '@/components/interns/InternDetailModal.vue'
 import SupervisorDetailModal from '@/components/interns/SupervisorDetailModal.vue'
+import BulkImportModal from '@/components/interns/BulkImportModal.vue'
 import DangerCountdownModal from '@/components/ui/DangerCountdownModal.vue'
+import ValidationErrorList from '@/components/ui/ValidationErrorList.vue'
+import TooltipWrap from '@/components/ui/TooltipWrap.vue'
 import LoadStatus from '@/components/LoadStatus.vue'
 import TableSkeleton from '@/components/ui/skeletons/TableSkeleton.vue'
 import type {
-  BulkImportConfirmResponse,
-  BulkImportPreviewResponse,
-  BulkImportResultRow,
-  BulkImportRow,
   CoordinatorCompany,
   CoordinatorInternUser,
   CoordinatorSupervisorUser,
@@ -23,12 +22,13 @@ import type {
   EnrollmentOptionBatch,
   EnrollmentOptions,
   InternDetail,
+  InternIntakeStage,
   SupervisorDetail,
 } from '@/types/api'
 
 type UsersTab = 'interns' | 'supervisors'
 
-const INTERN_TABLE_HEADERS = ['Student', 'Program', 'Enrollment', 'Batch', 'Company', 'Supervisor', 'Action']
+const INTERN_TABLE_HEADERS = ['Student', 'Program', 'Stage', 'Batch', 'Company', 'Supervisor', 'Action']
 
 const activeTab = ref<UsersTab>('interns')
 
@@ -37,8 +37,88 @@ const supervisors = ref<CoordinatorSupervisorUser[]>([])
 const isLoading = ref(true)
 const errorMessage = ref('')
 
-const enrolledCount = computed(() => interns.value.filter((student) => student.enrolled).length)
-const notEnrolledCount = computed(() => interns.value.length - enrolledCount.value)
+/**
+ * Where each student stands between account creation and placement. This
+ * replaced a single ENROLLED / NOT ENROLLED pill, under which a student who
+ * had never signed in, one whose sheet was waiting on the coordinator, one
+ * whose sheet had been returned, and one who had already FINISHED (no active
+ * row) all looked the same. Listed in chip order: what needs the coordinator
+ * first, then what is waiting on the student, then settled placements.
+ */
+const STAGES: Record<InternIntakeStage, { label: string; hint: string; pill: string }> = {
+  submitted: {
+    label: 'Awaiting your review',
+    hint: 'Submitted their information sheet. Review it on Student Info Sheets and Accept it to enroll them.',
+    pill: 'bg-amber-50 text-amber-800',
+  },
+  returned: {
+    label: 'Returned to student',
+    hint: 'You sent their information sheet back with a reason. They need to fix it and submit it again.',
+    pill: 'bg-rose-50 text-rose-700',
+  },
+  not_signed_in: {
+    label: "Hasn't signed in",
+    hint: 'Still on their temporary password. If they never received it, issue a new one from the Credential Manager in your profile menu.',
+    pill: 'bg-slate-100 text-slate-600',
+  },
+  drafting: {
+    label: 'Filling in info sheet',
+    hint: 'Signed in, but has not submitted their information sheet yet.',
+    pill: 'bg-slate-100 text-slate-600',
+  },
+  enrolled: { label: 'Enrolled', hint: 'Placed in an active batch.', pill: 'bg-green-50 text-green-700' },
+  completed: { label: 'Completed', hint: 'Finished their placement.', pill: 'bg-blue-50 text-blue-700' },
+  dropped: {
+    label: 'Dropped',
+    hint: 'Removed from their batch and not placed anywhere now. Add them back from the batch roster if needed.',
+    pill: 'bg-slate-100 text-slate-500',
+  },
+}
+
+const STAGE_ORDER = Object.keys(STAGES) as InternIntakeStage[]
+
+/** Stages that come before placement, where the batch shown is the INTENDED one. */
+const PRE_PLACEMENT_STAGES: InternIntakeStage[] = ['submitted', 'returned', 'not_signed_in', 'drafting']
+
+const stageFilter = ref<InternIntakeStage | null>(null)
+
+const stageCounts = computed(() => {
+  const counts = Object.fromEntries(STAGE_ORDER.map((stage) => [stage, 0])) as Record<InternIntakeStage, number>
+  interns.value.forEach((student) => {
+    counts[student.stage] = (counts[student.stage] ?? 0) + 1
+  })
+  return counts
+})
+
+/** Only stages someone is actually in, so the chip row never offers an empty filter. */
+const stageChips = computed(() =>
+  STAGE_ORDER.filter((stage) => stageCounts.value[stage] > 0).map((stage) => ({
+    stage,
+    ...STAGES[stage],
+    count: stageCounts.value[stage],
+  })),
+)
+
+const visibleInterns = computed(() =>
+  stageFilter.value ? interns.value.filter((student) => student.stage === stageFilter.value) : interns.value,
+)
+
+const toggleStageFilter = (stage: InternIntakeStage) => {
+  stageFilter.value = stageFilter.value === stage ? null : stage
+}
+
+/** The batch column: the active placement, or the batch the stage is about (intended, finished or dropped). */
+const internBatchName = (student: CoordinatorInternUser): string =>
+  student.enrollment?.batch?.name ?? student.stage_batch?.name ?? '—'
+
+const isIntendedBatch = (student: CoordinatorInternUser): boolean =>
+  !student.enrollment && student.stage_batch !== null && PRE_PLACEMENT_STAGES.includes(student.stage)
+
+const internSupervisorName = (student: CoordinatorInternUser): string => {
+  if (!student.enrollment) return '—'
+  if (student.enrollment.supervisor?.name) return student.enrollment.supervisor.name
+  return student.enrollment.batch?.ojt_type === 'coordinator' ? 'You (coordinator-centered)' : '—'
+}
 
 // --- Intern detail modal (View action) ---------------------------------------
 const isInternModalOpen = ref(false)
@@ -198,9 +278,10 @@ watch(internsProgramFilter, () => {
 
 // An empty table means either "no students in scope" or "the filter hid them
 // all", and only the second one has a way out.
-const hasInternsFilter = computed(() => internsProgramFilter.value !== null)
+const hasInternsFilter = computed(() => internsProgramFilter.value !== null || stageFilter.value !== null)
 const clearInternsFilter = () => {
   internsProgramFilter.value = null
+  stageFilter.value = null
 }
 
 // --- Supervisors tab: company + batch filters (client-side) -----------------
@@ -270,12 +351,58 @@ const enrollForm = reactive({
   assigned_division: '',
 })
 
+const enrollStudentSearch = ref('')
+
+const enrollSelectedBatch = computed(() => enrollBatches.value.find((batch) => batch.id === enrollForm.batch_id) ?? null)
+
 // The server refuses a student whose program differs from the batch's (the
 // same rule as the roster's Add Intern), so offer only the ones that fit.
-const enrollStudentOptions = computed(() => {
-  const programId = enrollBatches.value.find((batch) => batch.id === enrollForm.batch_id)?.program_id
+const enrollProgramStudents = computed(() => {
+  const programId = enrollSelectedBatch.value?.program_id
   return programId ? enrollableStudents.value.filter((student) => student.program_id === programId) : enrollableStudents.value
 })
+
+/**
+ * Narrowed by the search box (name, ID number or email). The chosen student
+ * always stays in the list, so typing a new search never silently blanks the
+ * selection the coordinator already made.
+ */
+const enrollStudentOptions = computed(() => {
+  const needle = enrollStudentSearch.value.trim().toLowerCase()
+  if (needle === '') return enrollProgramStudents.value
+
+  return enrollProgramStudents.value.filter(
+    (student) =>
+      student.id === enrollForm.student_id ||
+      [student.name, student.student_id_number, student.email].some((value) => value?.toLowerCase().includes(needle)),
+  )
+})
+
+/** A coordinator-centered batch has no company supervisor, so a company without a login is fine there. */
+const enrollIsCoordinatorCentered = computed(() => enrollSelectedBatch.value?.ojt_type === 'coordinator')
+
+/** The same refusal EnrollmentService would give, shown before the click instead of after it. */
+const enrollCompanyBlocked = computed(
+  () => !enrollIsCoordinatorCentered.value && enrollForm.company_id !== null && !enrollResolvedSupervisor.value,
+)
+
+const canSubmitEnrollment = computed(
+  () =>
+    enrollForm.batch_id !== null &&
+    enrollForm.student_id !== null &&
+    enrollForm.company_id !== null &&
+    !enrollCompanyBlocked.value,
+)
+
+/**
+ * A student whose information sheet is waiting on the coordinator is normally
+ * enrolled by accepting it — that places them at the company THEY chose and
+ * records the supervisor they named. Enrolling here skips the sheet, so the
+ * form says so rather than letting the two paths quietly diverge.
+ */
+const enrollSelectedStage = computed(
+  () => interns.value.find((student) => student.id === enrollForm.student_id)?.stage ?? null,
+)
 
 watch(
   () => enrollForm.batch_id,
@@ -340,248 +467,13 @@ watch(
   },
 )
 
-// --- Bulk Import Students (Excel/CSV) — replaces typing accounts one at a time,
-// but is still ACCOUNT CREATION ONLY: each row goes through the same DRAFT
-// info-sheet scaffold as the manual flow above and stays NOT-ENROLLED until
-// the student submits their sheet and a coordinator Accepts it. -------------
-type BulkStep = 'upload' | 'preview' | 'results'
-
+// --- Bulk Import Students — the whole flow lives in BulkImportModal ----------
 const isBulkModalOpen = ref(false)
-const bulkStep = ref<BulkStep>('upload')
-const bulkFile = ref<File | null>(null)
-const bulkFileInput = ref<HTMLInputElement | null>(null)
-const bulkForm = reactive({ program_id: null as number | null, batch_id: null as number | null })
-const isBulkPreviewing = ref(false)
-const isBulkConfirming = ref(false)
-const bulkMessage = ref('')
-const bulkPreviewRows = ref<BulkImportRow[]>([])
-const bulkValidCount = ref(0)
-const bulkInvalidCount = ref(0)
-const bulkResults = ref<BulkImportResultRow[]>([])
-const bulkCreatedCount = ref(0)
-
-/**
- * Rows per confirm request. Every row sends its welcome email inline, and the
- * deployed API sits behind a proxy that gives up at 120s — a whole 100-row file
- * in one request outlived it, the credentials table never arrived, and a retry
- * said every row was "already in use". Fifteen rows at Gmail's 1-4s per message
- * stays well inside that. The server caps a slice at 25.
- */
-const BULK_SLICE_SIZE = 15
-const bulkProgress = ref<{ done: number; total: number } | null>(null)
-/** Where to pick up after a slice failed mid-file; null when nothing is pending. */
-const bulkResumeOffset = ref<number | null>(null)
-const bulkCredentialsDownloaded = ref(false)
-
-// Same scoping as the manual Create Student Account form: batch is filtered
-// to the chosen program, from every batch in the coordinator's department.
-const bulkBatchOptions = computed(() =>
-  bulkForm.program_id
-    ? (enrollmentOptions.value.batches ?? []).filter((batch) => batch.program_id === bulkForm.program_id)
-    : [],
-)
-
-watch(
-  () => bulkForm.program_id,
-  () => {
-    if (!bulkBatchOptions.value.some((batch) => batch.id === bulkForm.batch_id)) {
-      bulkForm.batch_id = null
-    }
-  },
-)
-
-const canPreviewBulk = computed(() => bulkFile.value !== null && bulkForm.program_id !== null && bulkForm.batch_id !== null)
 
 const openBulkModal = async () => {
-  bulkStep.value = 'upload'
-  bulkFile.value = null
-  bulkForm.program_id = null
-  bulkForm.batch_id = null
-  bulkMessage.value = ''
-  bulkPreviewRows.value = []
-  bulkResults.value = []
-  bulkResumeOffset.value = null
-  bulkCredentialsDownloaded.value = false
-  isBulkModalOpen.value = true
+  // Programs and batches first, so the modal opens with its dropdowns filled.
   await loadEnrollmentData()
-}
-
-/**
- * Students whose welcome email failed have no copy of their password except
- * the one on this screen — closing it unread used to be a single click.
- */
-const bulkHasUndeliveredPasswords = computed(
-  () => !bulkCredentialsDownloaded.value && bulkResults.value.some((row) => row.outcome === 'created_email_failed'),
-)
-
-const closeBulkModal = async () => {
-  if (isBulkConfirming.value) return
-
-  if (bulkHasUndeliveredPasswords.value) {
-    const proceed = await confirmAction({
-      title: 'Close without downloading the passwords?',
-      message:
-        'Some students were not emailed, and these passwords are not shown again. Download the credentials first, or reissue each password later from the Credential Manager.',
-      confirmLabel: 'Close Anyway',
-      cancelLabel: 'Go Back',
-      tone: 'danger',
-    })
-    if (!proceed) return
-  }
-
-  isBulkModalOpen.value = false
-}
-
-const onBulkFileChange = (event: Event) => {
-  bulkFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
-}
-
-const bulkFormData = (): FormData => {
-  const formData = new FormData()
-  formData.append('file', bulkFile.value as File)
-  formData.append('program_id', String(bulkForm.program_id))
-  formData.append('batch_id', String(bulkForm.batch_id))
-  return formData
-}
-
-const previewBulkImport = async () => {
-  if (!canPreviewBulk.value) return
-  isBulkPreviewing.value = true
-  bulkMessage.value = ''
-
-  try {
-    const { data } = await api.post<BulkImportPreviewResponse>('/api/coordinator/accounts/bulk-import/preview', bulkFormData())
-    bulkPreviewRows.value = data.rows
-    bulkValidCount.value = data.valid_count
-    bulkInvalidCount.value = data.invalid_count
-    bulkStep.value = 'preview'
-  } catch (error) {
-    const { message } = categorizeError(error, 'Unable to read this file. Check that it matches the template and try again.')
-    bulkMessage.value = message
-  } finally {
-    isBulkPreviewing.value = false
-  }
-}
-
-const backToBulkUpload = () => {
-  bulkStep.value = 'upload'
-}
-
-const confirmBulkImport = async () => {
-  if (bulkValidCount.value === 0) return
-
-  const proceed = await confirmAction({
-    title: `Create ${bulkValidCount.value} student account${bulkValidCount.value === 1 ? '' : 's'}?`,
-    message: `This creates ${bulkValidCount.value} student account(s) and emails each student their username and a temporary password. Rows still marked invalid are skipped, not created.`,
-    confirmLabel: 'Create Accounts',
-  })
-  if (!proceed) return
-
-  bulkResults.value = []
-  bulkCreatedCount.value = 0
-  bulkCredentialsDownloaded.value = false
-  await runBulkSlices(0)
-}
-
-/**
- * Walks the file one slice at a time from `startOffset`, merging each slice's
- * results, until the server reports there is nothing left. A failed slice
- * stops the walk but keeps every result already received — those passwords
- * are real and are not shown anywhere else.
- */
-const runBulkSlices = async (startOffset: number) => {
-  isBulkConfirming.value = true
-  bulkMessage.value = ''
-  bulkResumeOffset.value = null
-  let offset: number | null = startOffset
-
-  try {
-    while (offset !== null) {
-      const formData = bulkFormData()
-      formData.append('offset', String(offset))
-      formData.append('limit', String(BULK_SLICE_SIZE))
-
-      const { data }: { data: BulkImportConfirmResponse } = await api.post<BulkImportConfirmResponse>(
-        '/api/coordinator/accounts/bulk-import/confirm',
-        formData,
-      )
-      bulkResults.value.push(...data.results)
-      bulkCreatedCount.value += data.created_count
-      bulkProgress.value = { done: data.next_offset ?? data.total_rows, total: data.total_rows }
-      offset = data.next_offset
-    }
-
-    bulkStep.value = 'results'
-    showToast(`Created ${bulkCreatedCount.value} student account${bulkCreatedCount.value === 1 ? '' : 's'}.`)
-  } catch (error) {
-    const { message } = categorizeError(error, 'The connection dropped while creating these accounts.')
-    bulkResumeOffset.value = offset
-    bulkMessage.value =
-      `${message} Some rows in the unfinished part may already have been created — their passwords were not received. ` +
-      'Continue to finish the file (those rows will show as already in use), then reissue their passwords from the Credential Manager.'
-    if (bulkResults.value.length > 0) bulkStep.value = 'results'
-  } finally {
-    isBulkConfirming.value = false
-    bulkProgress.value = null
-    // Always, not only on success: when a response is lost the server may
-    // still have created accounts, and the list behind the modal should say so.
-    await loadInterns().catch(() => {})
-  }
-}
-
-const resumeBulkImport = async () => {
-  if (bulkResumeOffset.value === null) return
-  await runBulkSlices(bulkResumeOffset.value)
-}
-
-const bulkOutcomeLabel = (outcome: BulkImportResultRow['outcome']): string => {
-  if (outcome === 'created_and_emailed') return 'Created — emailed'
-  if (outcome === 'created_email_failed') return 'Created — email failed'
-  return 'Skipped'
-}
-
-const bulkOutcomeClass = (outcome: BulkImportResultRow['outcome']): string => {
-  if (outcome === 'created_and_emailed') return 'bg-green-50 text-green-700'
-  if (outcome === 'created_email_failed') return 'bg-amber-50 text-amber-700'
-  return 'bg-red-50 text-red-700'
-}
-
-/**
- * The one-time credentials backup for this import — never persisted (no
- * sessionStorage, no logging), generated and downloaded entirely client-side
- * from the confirm response, gone once the modal is closed.
- */
-const downloadBulkCredentials = () => {
-  const rows = bulkResults.value.filter((row) => row.temporary_password)
-  if (rows.length === 0) return
-
-  // Excel and Sheets run a cell that begins with = + - @ (or a tab / carriage
-  // return) as a formula, and every value here came from an uploaded file, so
-  // such a cell is prefixed with an apostrophe to keep it plain text.
-  const escape = (value: string) => {
-    const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value
-    return `"${safe.replace(/"/g, '""')}"`
-  }
-  const header = ['Student ID Number', 'Name', 'Email', 'Temporary Password', 'Status']
-  const lines = [header.join(',')]
-
-  rows.forEach((row) => {
-    const name = [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' ')
-    lines.push(
-      [row.student_id_number, name, row.email, row.temporary_password ?? '', bulkOutcomeLabel(row.outcome)]
-        .map((value) => escape(String(value)))
-        .join(','),
-    )
-  })
-
-  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `bulk-import-credentials-${Date.now()}.csv`
-  link.click()
-  URL.revokeObjectURL(url)
-  bulkCredentialsDownloaded.value = true
+  isBulkModalOpen.value = true
 }
 
 // --- Create Supervisor (Supervisors tab only — REQUIRES a company) ----------
@@ -655,6 +547,7 @@ const openEnrollModal = async () => {
   enrollForm.student_id = null
   enrollForm.company_id = null
   enrollForm.assigned_division = ''
+  enrollStudentSearch.value = ''
   modalErrors.value = {}
   modalMessage.value = ''
   isModalOpen.value = true
@@ -667,19 +560,28 @@ const closeModal = () => {
 }
 
 const submitEnrollment = async () => {
+  if (!canSubmitEnrollment.value) return
   isSaving.value = true
   modalErrors.value = {}
   modalMessage.value = ''
+
+  const studentName = enrollableStudents.value.find((student) => student.id === enrollForm.student_id)?.name
+  const batchName = enrollSelectedBatch.value?.name
 
   try {
     await api.post('/api/coordinator/enrollments', enrollForm)
     await loadInterns()
     closeModal()
-    showToast('Student enrolled.')
+    showToast(studentName && batchName ? `${studentName} enrolled in ${batchName}.` : 'Student enrolled.')
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 422) {
       modalErrors.value = error.response.data.errors ?? {}
-      modalMessage.value = error.response.data.message ?? 'Please fix the errors below.'
+      // Field errors are listed with readable labels below; Laravel's summary
+      // ("The student id field is required. (and 1 more error)") would only
+      // repeat them in raw form. A refusal with no field (a company with no
+      // supervisor login) carries its reason in the message alone.
+      modalMessage.value =
+        Object.keys(modalErrors.value).length > 0 ? '' : (error.response.data.message ?? 'Unable to enroll this student.')
     } else if (axios.isAxiosError(error) && error.response?.status === 403) {
       modalMessage.value = 'You are not allowed to enroll into this batch.'
     } else {
@@ -998,16 +900,41 @@ onMounted(() => {
 
     <!-- Interns tab -->
     <template v-if="activeTab === 'interns'">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <p class="text-xs text-slate-500">
-          <span class="font-semibold text-green-700">{{ enrolledCount }}</span> enrolled ·
-          <span class="font-semibold text-amber-700">{{ notEnrolledCount }}</span> not yet enrolled
-        </p>
-        <select v-model.number="internsProgramFilter" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <!-- Stage chips double as the filter; only stages someone is in are offered. -->
+        <div class="flex min-w-0 flex-wrap gap-2" role="group" aria-label="Filter by stage">
+          <button
+            v-for="chip in stageChips"
+            :key="chip.stage"
+            type="button"
+            class="rounded-full border px-3 py-1 text-xs font-semibold transition"
+            :class="
+              stageFilter === chip.stage
+                ? 'border-blue-600 bg-blue-50 text-blue-700'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+            "
+            :aria-pressed="stageFilter === chip.stage"
+            :title="chip.hint"
+            @click="toggleStageFilter(chip.stage)"
+          >
+            {{ chip.label }} <span class="ml-0.5 tabular-nums text-slate-500">{{ chip.count }}</span>
+          </button>
+        </div>
+        <select
+          v-model.number="internsProgramFilter"
+          class="w-full max-w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm sm:w-auto"
+          aria-label="Filter by program"
+        >
           <option :value="null">All Programs</option>
           <option v-for="program in programOptions" :key="program.id" :value="program.id">{{ program.code ?? program.name }}</option>
         </select>
       </div>
+      <p v-if="stageCounts.submitted > 0" class="rounded-md bg-amber-50 px-4 py-2 text-sm text-amber-900">
+        {{ stageCounts.submitted }} information sheet{{ stageCounts.submitted === 1 ? ' is' : 's are' }} waiting for your review.
+        <RouterLink to="/coordinator/info-sheets" class="font-semibold text-amber-900 underline underline-offset-2 hover:text-amber-950">
+          Open Student Info Sheets
+        </RouterLink>
+      </p>
       <!-- md and up: aligned table. -->
       <div class="hidden overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200 md:block">
         <table class="min-w-full divide-y divide-slate-200">
@@ -1015,7 +942,7 @@ onMounted(() => {
             <tr>
               <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Student</th>
               <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Program</th>
-              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Enrollment</th>
+              <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Stage</th>
               <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Batch</th>
               <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Company</th>
               <th class="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Supervisor</th>
@@ -1023,7 +950,7 @@ onMounted(() => {
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
-            <tr v-if="interns.length === 0">
+            <tr v-if="visibleInterns.length === 0">
               <td class="px-4 py-6 text-center text-sm text-slate-500" colspan="7">
                 {{
                   hasInternsFilter
@@ -1040,23 +967,25 @@ onMounted(() => {
                 </button>
               </td>
             </tr>
-            <tr v-for="student in interns" :key="student.id">
+            <tr v-for="student in visibleInterns" :key="student.id">
               <td class="px-4 py-3">
                 <p class="text-sm font-semibold text-slate-900">{{ student.name }}</p>
                 <p class="font-mono text-xs text-slate-400">{{ student.student_id_number ?? '—' }}</p>
               </td>
-              <td class="px-4 py-3 text-sm text-slate-700">{{ student.program?.code ?? student.program?.name ?? '—' }}</td>
+              <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-700">{{ student.program?.code ?? student.program?.name ?? '—' }}</td>
               <td class="px-4 py-3">
-                <span
-                  class="rounded-full px-3 py-1 text-xs font-bold"
-                  :class="student.enrolled ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'"
-                >
-                  {{ student.enrolled ? 'ENROLLED' : 'NOT ENROLLED' }}
-                </span>
+                <TooltipWrap :label="STAGES[student.stage].hint" placement="top">
+                  <span class="whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold" :class="STAGES[student.stage].pill">
+                    {{ STAGES[student.stage].label }}
+                  </span>
+                </TooltipWrap>
               </td>
-              <td class="px-4 py-3 text-sm text-slate-500">{{ student.enrollment?.batch?.name ?? '—' }}</td>
+              <td class="px-4 py-3 text-sm text-slate-500">
+                {{ internBatchName(student) }}
+                <span v-if="isIntendedBatch(student)" class="block text-xs text-slate-400">intended batch</span>
+              </td>
               <td class="px-4 py-3 text-sm text-slate-500">{{ student.enrollment?.company?.name ?? '—' }}</td>
-              <td class="px-4 py-3 text-sm text-slate-500">{{ student.enrollment?.supervisor?.name ?? '—' }}</td>
+              <td class="px-4 py-3 text-sm text-slate-500">{{ internSupervisorName(student) }}</td>
               <td class="px-4 py-3">
                 <div class="flex items-center justify-end gap-2 whitespace-nowrap">
                   <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="viewIntern(student.id)">
@@ -1078,7 +1007,7 @@ onMounted(() => {
 
       <!-- Below md: one stacked card per intern, so nothing scrolls sideways. -->
       <ul class="divide-y divide-slate-100 rounded-lg bg-white px-4 shadow-sm ring-1 ring-slate-200 md:hidden">
-        <li v-if="interns.length === 0" class="py-6 text-center text-sm text-slate-500">
+        <li v-if="visibleInterns.length === 0" class="py-6 text-center text-sm text-slate-500">
           {{
             hasInternsFilter
               ? 'No students match this filter.'
@@ -1093,26 +1022,25 @@ onMounted(() => {
             Clear filter
           </button>
         </li>
-        <li v-for="student in interns" :key="student.id" class="py-4">
+        <li v-for="student in visibleInterns" :key="student.id" class="py-4">
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
               <p class="truncate text-sm font-semibold text-slate-900">{{ student.name }}</p>
               <p class="font-mono text-xs text-slate-400">{{ student.student_id_number ?? '—' }}</p>
             </div>
-            <span
-              class="shrink-0 rounded-full px-3 py-1 text-xs font-bold"
-              :class="student.enrolled ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'"
-            >
-              {{ student.enrolled ? 'ENROLLED' : 'NOT ENROLLED' }}
+            <span class="shrink-0 rounded-full px-3 py-1 text-xs font-bold" :class="STAGES[student.stage].pill">
+              {{ STAGES[student.stage].label }}
             </span>
           </div>
           <p class="mt-1 truncate text-xs text-slate-500">{{ student.program?.code ?? student.program?.name ?? '—' }}</p>
           <p class="mt-1 truncate text-xs text-slate-500">
-            {{ student.enrollment?.batch?.name ?? '—' }} · {{ student.enrollment?.company?.name ?? '—' }}
+            {{ internBatchName(student) }}<template v-if="isIntendedBatch(student)"> (intended)</template> ·
+            {{ student.enrollment?.company?.name ?? '—' }}
           </p>
-          <p v-if="student.enrollment?.supervisor?.name" class="mt-0.5 truncate text-xs text-slate-400">
-            Supervisor: {{ student.enrollment.supervisor.name }}
+          <p v-if="student.enrollment" class="mt-0.5 truncate text-xs text-slate-400">
+            Supervisor: {{ internSupervisorName(student) }}
           </p>
+          <p class="mt-1 text-xs text-slate-500">{{ STAGES[student.stage].hint }}</p>
           <div class="mt-3 flex flex-wrap items-center gap-2">
             <button type="button" class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700" @click="viewIntern(student.id)">
               View
@@ -1300,70 +1228,117 @@ onMounted(() => {
     </LoadStatus>
 
     <!-- Enroll modal -->
-    <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">
-      <section class="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
-        <div class="flex items-center justify-between">
-          <h3 class="text-lg font-semibold text-slate-950">Enroll Student</h3>
-          <button type="button" class="text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeModal">Cancel</button>
+    <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+      <section
+        class="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="enroll-modal-title"
+      >
+        <div class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-6 py-4">
+          <div>
+            <h3 id="enroll-modal-title" class="text-lg font-semibold text-slate-950">Enroll Student</h3>
+            <p class="mt-0.5 text-xs text-slate-500">Places a student in a batch directly, without waiting for their information sheet.</p>
+          </div>
+          <button type="button" class="shrink-0 text-sm font-medium text-slate-500 hover:text-slate-900" @click="closeModal">Cancel</button>
         </div>
 
-        <div class="mt-5 space-y-4">
+        <div class="flex-1 space-y-4 overflow-y-auto px-6 py-5">
           <div>
             <label class="mb-2 block text-sm font-medium text-slate-700" for="enroll-batch">Batch</label>
-            <select id="enroll-batch" v-model.number="enrollForm.batch_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+            <select id="enroll-batch" v-model.number="enrollForm.batch_id" class="w-full max-w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
               <option :value="null">Select Batch</option>
               <option v-for="batch in enrollBatches" :key="batch.id" :value="batch.id">{{ batchLabel(batch) }}</option>
             </select>
+            <p v-if="enrollIsCoordinatorCentered" class="mt-1 text-xs text-slate-500">
+              Coordinator-centered: no company supervisor. You review these interns' weekly journals yourself.
+            </p>
           </div>
           <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700" for="enroll-student">Student</label>
-            <select id="enroll-student" v-model.number="enrollForm.student_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
-              <option :value="null">Select Student</option>
+            <label class="mb-2 block text-sm font-medium text-slate-700" for="enroll-student-search">Student</label>
+            <input
+              id="enroll-student-search"
+              v-model="enrollStudentSearch"
+              type="search"
+              placeholder="Search by name, ID number or email"
+              class="mb-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              autocomplete="off"
+            />
+            <select
+              id="enroll-student"
+              v-model.number="enrollForm.student_id"
+              class="w-full max-w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              aria-label="Student"
+            >
+              <option :value="null">
+                {{
+                  enrollStudentOptions.length === 0
+                    ? enrollStudentSearch.trim()
+                      ? 'No student matches this search'
+                      : 'No unplaced students in this program'
+                    : `Select Student (${enrollStudentOptions.length})`
+                }}
+              </option>
               <option v-for="student in enrollStudentOptions" :key="student.id" :value="student.id">
                 {{ student.name }} ({{ student.student_id_number ?? student.email }})
               </option>
             </select>
+            <p class="mt-1 text-xs text-slate-500">Only students in the batch's program who are not active in another batch are listed.</p>
+            <p v-if="enrollSelectedStage === 'submitted'" class="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              This student has submitted their information sheet. Accepting it on
+              <RouterLink to="/coordinator/info-sheets" class="font-semibold underline underline-offset-2">Student Info Sheets</RouterLink>
+              enrolls them at the company they chose and records the supervisor they named.
+            </p>
           </div>
           <div>
             <label class="mb-2 block text-sm font-medium text-slate-700" for="enroll-company">Company</label>
-            <select id="enroll-company" v-model.number="enrollForm.company_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
+            <select id="enroll-company" v-model.number="enrollForm.company_id" class="w-full max-w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
               <option :value="null">Select Company</option>
               <option v-for="company in enrollmentOptions.companies" :key="company.id" :value="company.id">{{ company.name }}</option>
             </select>
           </div>
           <div>
-            <label class="mb-2 block text-sm font-medium text-slate-700">Supervisor</label>
-            <p class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-              <template v-if="!enrollForm.company_id">Select a company first.</template>
-              <template v-else-if="enrollResolvedSupervisor"
-                >{{ enrollResolvedSupervisor.name }} ({{ enrollResolvedSupervisor.email || `@${enrollResolvedSupervisor.username}` }})</template
-              >
-              <template v-else
-                ><span class="text-amber-600"
-                  >This company has no supervisor account yet. Attach one on Partner Companies before enrolling interns
-                  here.</span
-                ></template
-              >
+            <span class="mb-2 block text-sm font-medium text-slate-700">Supervisor</span>
+            <p
+              class="rounded-md border px-3 py-2 text-sm"
+              :class="enrollCompanyBlocked ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-slate-200 bg-slate-50 text-slate-700'"
+            >
+              <template v-if="enrollIsCoordinatorCentered">None needed for a coordinator-centered batch.</template>
+              <template v-else-if="!enrollForm.company_id">Select a company first.</template>
+              <template v-else-if="enrollResolvedSupervisor">
+                {{ enrollResolvedSupervisor.name }} ({{ enrollResolvedSupervisor.email || `@${enrollResolvedSupervisor.username}` }})
+              </template>
+              <template v-else>
+                This company has no supervisor account yet. Attach one on
+                <RouterLink to="/coordinator/companies" class="font-semibold underline underline-offset-2">Partner Companies</RouterLink>
+                before enrolling interns here.
+              </template>
             </p>
-            <p class="mt-1 text-xs text-slate-500">Assigned automatically from the company — every supervisor is a Company Supervisor.</p>
+            <p v-if="!enrollIsCoordinatorCentered" class="mt-1 text-xs text-slate-500">
+              Assigned automatically from the company. Every supervisor is a Company Supervisor.
+            </p>
           </div>
           <div>
             <label class="mb-2 block text-sm font-medium text-slate-700" for="enroll-division">Assigned Division (optional)</label>
-            <input id="enroll-division" v-model="enrollForm.assigned_division" type="text" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <input
+              id="enroll-division"
+              v-model="enrollForm.assigned_division"
+              type="text"
+              maxlength="150"
+              class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
           </div>
+
+          <ValidationErrorList :errors="modalErrors" />
+          <p v-if="modalMessage" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{{ modalMessage }}</p>
         </div>
 
-        <div v-if="Object.keys(modalErrors).length > 0" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
-          <p v-for="(messages, field) in modalErrors" :key="field">{{ field }}: {{ messages.join(' ') }}</p>
-        </div>
-        <p v-if="modalMessage" class="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ modalMessage }}</p>
-
-        <div class="mt-6 flex justify-end gap-3">
+        <div class="flex shrink-0 justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
           <button type="button" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" @click="closeModal">Cancel</button>
           <button
             type="button"
-            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-blue-300"
-            :disabled="isSaving"
+            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-blue-300"
+            :disabled="isSaving || !canSubmitEnrollment"
             @click="submitEnrollment"
           >
             {{ isSaving ? 'Enrolling...' : 'Enroll' }}
@@ -1609,206 +1584,14 @@ onMounted(() => {
       </section>
     </div>
 
-    <!-- Bulk Import Students modal — upload → preview → results, three steps in one shell -->
-    <div v-if="isBulkModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-      <section class="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
-        <div class="flex shrink-0 items-center justify-between border-b border-slate-200 px-6 py-4">
-          <div>
-            <h3 class="text-lg font-semibold text-slate-950">Bulk Import Students</h3>
-            <p class="mt-0.5 text-xs text-slate-500">
-              Creates login accounts from a spreadsheet — the ID number becomes the username, and each student is emailed a temporary password. Same as Create Student Account, this does not enroll them: they still submit their Info Sheet and you Accept it.
-            </p>
-          </div>
-          <button
-            type="button"
-            class="shrink-0 text-sm font-medium text-slate-500 hover:text-slate-900 disabled:cursor-not-allowed disabled:text-slate-300"
-            :disabled="isBulkConfirming"
-            @click="closeBulkModal"
-          >
-            Close
-          </button>
-        </div>
-
-        <div class="flex-1 overflow-y-auto px-6 py-5">
-          <!-- Step 1: Upload -->
-          <div v-if="bulkStep === 'upload'" class="space-y-5">
-            <div class="grid gap-4 md:grid-cols-2">
-              <div>
-                <label class="mb-2 block text-sm font-medium text-slate-700" for="bulk-program">Program</label>
-                <select id="bulk-program" v-model.number="bulkForm.program_id" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
-                  <option :value="null">Select Program</option>
-                  <option v-for="program in enrollmentOptions.programs ?? []" :key="program.id" :value="program.id">
-                    {{ program.code ?? program.name }}
-                  </option>
-                </select>
-              </div>
-              <div>
-                <label class="mb-2 block text-sm font-medium text-slate-700" for="bulk-batch">Batch</label>
-                <select
-                  id="bulk-batch"
-                  v-model.number="bulkForm.batch_id"
-                  class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
-                  :disabled="!bulkForm.program_id"
-                >
-                  <option :value="null">Select Batch</option>
-                  <option v-for="batch in bulkBatchOptions" :key="batch.id" :value="batch.id">{{ batchLabel(batch) }}</option>
-                </select>
-                <p v-if="!bulkForm.program_id" class="mt-1 text-xs text-slate-500">Select a program first.</p>
-              </div>
-            </div>
-
-            <div>
-              <label class="mb-2 block text-sm font-medium text-slate-700" for="bulk-file">Spreadsheet (.xlsx, .xls or .csv)</label>
-              <input
-                id="bulk-file"
-                ref="bulkFileInput"
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                class="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold"
-                @change="onBulkFileChange"
-              />
-              <p class="mt-1 text-xs text-slate-500">
-                Columns: First Name, Middle Name (optional), Family Name, Sex, Student ID Number, Email. Put the roster on
-                the first sheet, with the headings in row 1. Up to 100 rows per file. Delete the template's sample row before
-                uploading.
-                <a href="/templates/student-bulk-import-template.csv" download class="font-semibold text-blue-600 hover:text-blue-700">Download template</a>
-              </p>
-            </div>
-
-            <p v-if="bulkMessage" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ bulkMessage }}</p>
-          </div>
-
-          <!-- Step 2: Preview -->
-          <div v-else-if="bulkStep === 'preview'" class="space-y-4">
-            <p class="text-sm text-slate-600">
-              <span class="font-semibold text-green-700">{{ bulkValidCount }}</span> ready to create ·
-              <span class="font-semibold text-red-700">{{ bulkInvalidCount }}</span> will be skipped
-            </p>
-            <div class="overflow-x-auto rounded-lg ring-1 ring-slate-200">
-              <table class="min-w-full divide-y divide-slate-200 text-sm">
-                <thead class="bg-slate-50">
-                  <tr>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Row</th>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">ID Number</th>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Email</th>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100">
-                  <tr v-for="row in bulkPreviewRows" :key="row.row">
-                    <td class="px-3 py-2 text-slate-500">{{ row.row }}</td>
-                    <td class="px-3 py-2 text-slate-900">{{ [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' ') || '—' }}</td>
-                    <td class="px-3 py-2 font-mono text-xs text-slate-700">{{ row.student_id_number || '—' }}</td>
-                    <td class="px-3 py-2 text-slate-700">{{ row.email || '—' }}</td>
-                    <td class="px-3 py-2">
-                      <span v-if="row.valid" class="rounded-full bg-green-50 px-2 py-1 text-xs font-bold text-green-700">Ready</span>
-                      <span v-else class="text-xs text-red-700">{{ row.errors.join(' ') }}</span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <p v-if="bulkMessage" class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ bulkMessage }}</p>
-          </div>
-
-          <!-- Step 3: Results -->
-          <div v-else class="space-y-4">
-            <div v-if="bulkResumeOffset !== null" class="space-y-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-              <p>{{ bulkMessage }}</p>
-              <button
-                type="button"
-                class="rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="isBulkConfirming"
-                @click="resumeBulkImport"
-              >
-                {{ isBulkConfirming ? 'Continuing...' : 'Continue with the remaining rows' }}
-              </button>
-            </div>
-            <div class="flex items-center justify-between gap-3">
-              <p class="text-sm text-slate-600">
-                Created <span class="font-semibold text-green-700">{{ bulkCreatedCount }}</span> account{{ bulkCreatedCount === 1 ? '' : 's' }}.
-              </p>
-              <button
-                type="button"
-                class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                @click="downloadBulkCredentials"
-              >
-                Download credentials (.csv)
-              </button>
-            </div>
-            <p class="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              This is the only time these passwords are shown. Download the backup now if you need one — closing this window discards it.
-            </p>
-            <div class="overflow-x-auto rounded-lg ring-1 ring-slate-200">
-              <table class="min-w-full divide-y divide-slate-200 text-sm">
-                <thead class="bg-slate-50">
-                  <tr>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Name</th>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">ID Number</th>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Temporary Password</th>
-                    <th class="px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Status</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100">
-                  <tr v-for="row in bulkResults" :key="row.row">
-                    <td class="px-3 py-2 text-slate-900">{{ [row.first_name, row.middle_name, row.last_name].filter(Boolean).join(' ') || '—' }}</td>
-                    <td class="px-3 py-2 font-mono text-xs text-slate-700">{{ row.student_id_number || '—' }}</td>
-                    <td class="px-3 py-2 font-mono text-xs text-slate-900">{{ row.temporary_password ?? '—' }}</td>
-                    <td class="px-3 py-2">
-                      <span class="rounded-full px-2 py-1 text-xs font-bold" :class="bulkOutcomeClass(row.outcome)">{{ bulkOutcomeLabel(row.outcome) }}</span>
-                      <!-- Why a row was skipped — the preview showed it, the results used to drop it. -->
-                      <p v-if="row.outcome === 'skipped_invalid' && row.errors.length" class="mt-1 text-xs text-red-700">{{ row.errors.join(' ') }}</p>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <div class="flex shrink-0 justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
-          <template v-if="bulkStep === 'upload'">
-            <button type="button" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" @click="closeBulkModal">Cancel</button>
-            <button
-              type="button"
-              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-blue-300"
-              :disabled="!canPreviewBulk || isBulkPreviewing"
-              @click="previewBulkImport"
-            >
-              {{ isBulkPreviewing ? 'Reading file...' : 'Preview' }}
-            </button>
-          </template>
-          <template v-else-if="bulkStep === 'preview'">
-            <button type="button" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" @click="backToBulkUpload">Back</button>
-            <button
-              type="button"
-              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-blue-300"
-              :disabled="bulkValidCount === 0 || isBulkConfirming"
-              @click="confirmBulkImport"
-            >
-              {{
-                isBulkConfirming
-                  ? bulkProgress
-                    ? `Creating... ${bulkProgress.done} of ${bulkProgress.total} rows`
-                    : 'Creating...'
-                  : `Create ${bulkValidCount} Account${bulkValidCount === 1 ? '' : 's'}`
-              }}
-            </button>
-          </template>
-          <template v-else>
-            <button
-              type="button"
-              class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-blue-300"
-              :disabled="isBulkConfirming"
-              @click="closeBulkModal"
-            >
-              Done
-            </button>
-          </template>
-        </div>
-      </section>
-    </div>
+    <!-- Bulk Import Students — upload, review, results. Mounted on open so nothing (above all the one-time passwords) outlives the window. -->
+    <BulkImportModal
+      v-if="isBulkModalOpen"
+      :programs="enrollmentOptions.programs ?? []"
+      :batches="enrollmentOptions.batches ?? []"
+      @close="isBulkModalOpen = false"
+      @changed="loadInterns().catch(() => {})"
+    />
 
     <!-- Create Supervisor modal — Supervisors tab only, REQUIRES a company (a supervisor is a Company Supervisor) -->
     <div v-if="isSupervisorModalOpen" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 px-4 py-8">

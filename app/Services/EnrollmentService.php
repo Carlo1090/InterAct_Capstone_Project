@@ -64,26 +64,14 @@ class EnrollmentService
         // same reason the supervisor is derived here rather than passed in.
         $batch = Batch::findOrFail($batchId);
 
-        // A row for THIS pair is reconciled in place below (a re-accept after a
-        // revised sheet), so only an active row in a DIFFERENT batch blocks.
-        $activeElsewhere = BatchStudent::where('student_id', $studentId)
-            ->where('status', 'active')
-            ->where('batch_id', '!=', $batchId)
-            ->with('batch:id,name')
-            ->first();
-
-        abort_if(
-            $activeElsewhere !== null,
-            422,
-            'This student is already active in "'.($activeElsewhere?->batch?->name ?? 'another batch').'". Drop or complete that enrollment first.'
-        );
+        $blocker = $this->placementBlocker($batch, $company, $studentId);
+        abort_if($blocker !== null, 422, (string) $blocker);
 
         if ($batch->isCoordinatorCentered()) {
             $supervisorId = null;
             $companySupervisorId = null;
         } else {
             $supervisorId = $company->loginSupervisor?->user_id;
-            abort_if($supervisorId === null, 422, 'This company has no supervisor account yet. Add one to the company before enrolling a student.');
 
             // Callers that only know the company (not which specific
             // company_supervisors row is the named individual) get it resolved
@@ -116,6 +104,38 @@ class EnrollmentService
             'student_id' => $studentId,
             ...$attributes,
         ]);
+    }
+
+    /**
+     * Why this placement would be refused, in the words enrollOrReactivate()
+     * refuses it with, or null when it would go through. The one source for
+     * both the refusal and the info-sheet review's "On Accept" preview, so the
+     * coordinator is warned before clicking with exactly the message clicking
+     * would have produced.
+     *
+     * Order matters and matches the old inline checks: a student already
+     * active elsewhere is reported before a company missing its login.
+     */
+    public function placementBlocker(Batch $batch, Company $company, int $studentId): ?string
+    {
+        // A row for THIS pair is reconciled in place (a re-accept after a
+        // revised sheet), so only an active row in a DIFFERENT batch blocks.
+        $activeElsewhere = BatchStudent::where('student_id', $studentId)
+            ->where('status', 'active')
+            ->where('batch_id', '!=', $batch->id)
+            ->with('batch:id,name')
+            ->first();
+
+        if ($activeElsewhere !== null) {
+            return 'This student is already active in "'.($activeElsewhere->batch?->name ?? 'another batch').'". Drop or complete that enrollment first.';
+        }
+
+        // A coordinator-centered batch has no company supervisor to resolve.
+        if (! $batch->isCoordinatorCentered() && $company->loginSupervisor?->user_id === null) {
+            return 'This company has no supervisor account yet. Add one to the company before enrolling a student.';
+        }
+
+        return null;
     }
 
     /**

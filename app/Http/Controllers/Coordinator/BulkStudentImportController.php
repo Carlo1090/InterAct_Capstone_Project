@@ -78,8 +78,11 @@ class BulkStudentImportController extends Controller
 
         return response()->json([
             'rows' => $rows->values(),
-            'valid_count' => $rows->where('valid', true)->count(),
-            'invalid_count' => $rows->where('valid', false)->count(),
+            'valid_count' => $rows->where('status', StudentBulkImportService::STATUS_READY)->count(),
+            'invalid_count' => $rows->where('status', StudentBulkImportService::STATUS_INVALID)->count(),
+            // Students already imported (same ID and email) — skipped, but not
+            // something to fix. Counted apart so a re-upload reads calmly.
+            'existing_count' => $rows->where('status', StudentBulkImportService::STATUS_EXISTING)->count(),
         ]);
     }
 
@@ -140,6 +143,12 @@ class BulkStudentImportController extends Controller
         $createdCount = 0;
 
         foreach ($slice as $row) {
+            if ($row['status'] === StudentBulkImportService::STATUS_EXISTING) {
+                $outcomes[] = [...$row, 'outcome' => 'already_exists', 'temporary_password' => null];
+
+                continue;
+            }
+
             if (! $row['valid']) {
                 $outcomes[] = [...$row, 'outcome' => 'skipped_invalid', 'temporary_password' => null];
 
@@ -153,6 +162,7 @@ class BulkStudentImportController extends Controller
                 report($e);
                 $outcomes[] = [
                     ...$row,
+                    'status' => StudentBulkImportService::STATUS_INVALID,
                     'valid' => false,
                     'errors' => ['Could not be created — please retry this row in a new upload.'],
                     'outcome' => 'skipped_invalid',

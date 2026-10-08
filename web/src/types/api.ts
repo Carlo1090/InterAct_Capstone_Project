@@ -156,6 +156,8 @@ export type EnrollmentOptionBatch = {
   program_id: number
   /** Set only on a department colleague's batch (null on the coordinator's own), so two same-named cohorts can be told apart. */
   coordinator_name?: string | null
+  /** A coordinator-centered batch needs no company supervisor login to enroll into. */
+  ojt_type?: OjtType
 }
 
 export type EnrollmentOptions = {
@@ -165,6 +167,19 @@ export type EnrollmentOptions = {
   batches?: EnrollmentOptionBatch[]
 }
 
+/**
+ * Where a student stands between account creation and placement — see
+ * EnrollmentController::intakeStage() for the precedence.
+ */
+export type InternIntakeStage =
+  | 'enrolled'
+  | 'completed'
+  | 'submitted'
+  | 'returned'
+  | 'dropped'
+  | 'not_signed_in'
+  | 'drafting'
+
 export type CoordinatorInternUser = {
   id: number
   name: string
@@ -172,15 +187,21 @@ export type CoordinatorInternUser = {
   student_id_number: string | null
   program: { id: number; code?: string; name: string } | null
   enrolled: boolean
+  stage: InternIntakeStage
+  /** The batch the stage is about: active, finished or dropped — or the intended batch before placement. */
+  stage_batch: { id: number; name: string } | null
   enrollment: {
     id: number
-    batch: { id: number; name: string; program_id: number }
+    batch: { id: number; name: string; program_id: number; ojt_type?: OjtType }
     company: { id: number; name: string } | null
     supervisor: { id: number; name: string; email: string } | null
   } | null
 }
 
-export type BulkImportOutcome = 'created_and_emailed' | 'created_email_failed' | 'skipped_invalid'
+export type BulkImportOutcome = 'created_and_emailed' | 'created_email_failed' | 'skipped_invalid' | 'already_exists'
+
+/** ready = will be created · invalid = something to fix · existing = this student already has an account. */
+export type BulkImportRowStatus = 'ready' | 'invalid' | 'existing'
 
 export type BulkImportRow = {
   row: number
@@ -188,8 +209,11 @@ export type BulkImportRow = {
   middle_name: string | null
   last_name: string
   sex: 'male' | 'female' | null
+  /** The Sex cell exactly as typed, for handing a rejected value back in the rows-to-fix download. */
+  sex_input?: string
   student_id_number: string
   email: string
+  status: BulkImportRowStatus
   valid: boolean
   errors: string[]
 }
@@ -203,6 +227,7 @@ export type BulkImportPreviewResponse = {
   rows: BulkImportRow[]
   valid_count: number
   invalid_count: number
+  existing_count: number
 }
 
 export type BulkImportConfirmResponse = {
@@ -897,6 +922,14 @@ export type CoordinatorInfoSheetDetail = {
     personal_info: Record<string, unknown> | null
     academic_info: Record<string, unknown> | null
     ojt_info: Record<string, unknown> | null
+  } | null
+  /** What Accept would create, and why it would be refused (null when it would go through). */
+  placement: {
+    batch: { id: number; name: string; program: string | null } | null
+    company: { id: number; name: string } | null
+    supervisor: { id: number; name: string; username?: string; email: string | null } | null
+    coordinator_centered: boolean
+    blocker: string | null
   } | null
 }
 

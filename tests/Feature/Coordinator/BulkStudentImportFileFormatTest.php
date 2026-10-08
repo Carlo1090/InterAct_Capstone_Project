@@ -285,6 +285,32 @@ class BulkStudentImportFileFormatTest extends TestCase
      * the generic "Could not be created". SQLite's `=` on text is
      * case-sensitive, so the plain where() this replaced missed it entirely.
      */
+    /**
+     * The preview's "Download rows to fix" file (web/src/lib/csv.ts) is meant
+     * to be corrected in Excel and uploaded straight back. It begins with a
+     * UTF-8 byte-order mark, so Excel reads names like "Niño" correctly, and
+     * carries an extra Problem column. Either could break the heading match —
+     * a BOM glued to "First Name" would read as a missing column.
+     */
+    public function test_the_rows_to_fix_download_can_be_uploaded_back_as_is(): void
+    {
+        $bsit = $this->programFor('BSIT');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+
+        $file = $this->rawCsvUpload([
+            "\u{FEFF}".'"First Name","Middle Name","Family Name","Sex","Student ID Number","Email","Problem"',
+            '"Niño","","Cruz","Male","2026-160","nino160@students.test","Row 4: Sex must be Male or Female."',
+        ]);
+
+        $response = $this->preview($coordinator, $bsit, $batch, $file);
+
+        $response->assertOk();
+        $this->assertSame(1, $response->json('valid_count'));
+        $this->assertSame('Niño', $response->json('rows.0.first_name'));
+        $this->assertSame('ready', $response->json('rows.0.status'));
+    }
+
     public function test_an_email_differing_only_in_case_is_flagged_as_already_in_use(): void
     {
         $bsit = $this->programFor('BSIT');

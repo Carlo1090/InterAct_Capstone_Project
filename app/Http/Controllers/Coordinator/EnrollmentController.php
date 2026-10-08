@@ -12,6 +12,7 @@ use App\Models\Company;
 use App\Models\CompanySupervisor;
 use App\Models\JournalEntry;
 use App\Models\Program;
+use App\Models\StudentInformationSheet;
 use App\Models\StudentProfile;
 use App\Models\SystemLog;
 use App\Models\User;
@@ -93,12 +94,16 @@ class EnrollmentController extends Controller
         $batches = Batch::whereIn('id', $request->user()->placeableBatchIds())
             ->with('coordinator:id,name')
             ->orderByDesc('start_date')
-            ->get(['id', 'name', 'program_id', 'coordinator_id'])
+            ->get(['id', 'name', 'program_id', 'coordinator_id', 'ojt_type'])
             ->map(fn (Batch $batch) => [
                 'id' => $batch->id,
                 'name' => $batch->name,
                 'program_id' => $batch->program_id,
                 'coordinator_name' => (int) $batch->coordinator_id === (int) $coordinatorId ? null : $batch->coordinator?->name,
+                // So the Enroll form can say "no company supervisor — you
+                // review this cohort" instead of warning that the company
+                // lacks a login, which on this kind of batch is expected.
+                'ojt_type' => $batch->ojt_type ?? Batch::OJT_TYPE_SUPERVISOR,
             ]);
 
         return response()->json([
@@ -130,16 +135,44 @@ class EnrollmentController extends Controller
             ->whereIn('program_id', $programIds)
             ->with('program:id,code,name')
             ->orderBy('name')
-            ->get(['id', 'name', 'email', 'student_id_number', 'program_id']);
+            ->get(['id', 'name', 'email', 'student_id_number', 'program_id', 'must_change_password']);
+
+        $studentIds = $students->pluck('id');
 
         $activeByStudent = BatchStudent::where('status', 'active')
-            ->whereIn('student_id', $students->pluck('id'))
-            ->with(['batch:id,name,program_id', 'company:id,name', 'supervisor:id,name,email'])
+            ->whereIn('student_id', $studentIds)
+            ->with(['batch:id,name,program_id,ojt_type', 'company:id,name', 'supervisor:id,name,email'])
             ->get()
             ->keyBy('student_id');
 
-        $rows = $students->map(function (User $student) use ($activeByStudent) {
+        // Finished and dropped placements, newest first, for the stage of a
+        // student with no active row. Ordered by id: batch_students has no
+        // timestamps (enrolled_at only), and a select naming a column that does
+        // not exist passes under SQLite and 500s under MySQL.
+        $pastByStudent = BatchStudent::whereIn('status', ['completed', 'dropped'])
+            ->whereIn('student_id', $studentIds)
+            ->with('batch:id,name')
+            ->orderByDesc('id')
+            ->get(['id', 'student_id', 'batch_id', 'status'])
+            ->groupBy('student_id');
+
+        // Each student's latest information sheet, which carries the intended
+        // batch from account creation and where they are in intake.
+        $sheetByStudent = StudentInformationSheet::whereIn('student_id', $studentIds)
+            ->with('batch:id,name')
+            ->orderByDesc('id')
+            ->get(['id', 'student_id', 'batch_id', 'submission_status'])
+            ->unique('student_id')
+            ->keyBy('student_id');
+
+        $rows = $students->map(function (User $student) use ($activeByStudent, $pastByStudent, $sheetByStudent) {
             $enrollment = $activeByStudent->get($student->id);
+            [$stage, $stageBatch] = $this->intakeStage(
+                $student,
+                $enrollment,
+                $pastByStudent->get($student->id, collect()),
+                $sheetByStudent->get($student->id),
+            );
 
             return [
                 'id' => $student->id,
@@ -148,6 +181,8 @@ class EnrollmentController extends Controller
                 'student_id_number' => $student->student_id_number,
                 'program' => $student->program,
                 'enrolled' => (bool) $enrollment,
+                'stage' => $stage,
+                'stage_batch' => $stageBatch?->only(['id', 'name']),
                 'enrollment' => $enrollment ? [
                     'id' => $enrollment->id,
                     'batch' => $enrollment->batch,
@@ -158,6 +193,63 @@ class EnrollmentController extends Controller
         });
 
         return response()->json($rows->values());
+    }
+
+    /**
+     * Where a student stands between account creation and placement — what
+     * the Interns tab's single ENROLLED / NOT ENROLLED pill used to flatten.
+     * "Not enrolled" covered a student who had never signed in, one whose
+     * sheet was waiting on the coordinator, one whose sheet was returned to
+     * them, and one who had already FINISHED (a completed placement has no
+     * active row), and those need four different things done about them.
+     *
+     * First match wins, most decisive first:
+     *   enrolled       an active placement
+     *   completed      a finished placement and nothing active
+     *   submitted      sheet waiting on the coordinator's Accept
+     *   returned       sheet sent back to the student with a reason
+     *   dropped        removed from a batch, or cleared intake with no placement
+     *   not_signed_in  still on the temporary password (must_change_password)
+     *   drafting       signed in, info sheet not yet submitted
+     *
+     * The returned batch is the one the stage is about: the active, finished
+     * or dropped batch, or the INTENDED batch on the sheet before placement.
+     *
+     * @return array{0: string, 1: ?Batch}
+     */
+    private function intakeStage(User $student, ?BatchStudent $active, Collection $past, ?StudentInformationSheet $sheet): array
+    {
+        if ($active !== null) {
+            return ['enrolled', $active->batch];
+        }
+
+        $completed = $past->firstWhere('status', 'completed');
+
+        if ($completed !== null) {
+            return ['completed', $completed->batch];
+        }
+
+        if ($sheet?->submission_status === 'submitted') {
+            return ['submitted', $sheet->batch];
+        }
+
+        if ($sheet?->submission_status === 'rejected') {
+            return ['returned', $sheet->batch];
+        }
+
+        $dropped = $past->firstWhere('status', 'dropped');
+
+        if ($dropped !== null) {
+            return ['dropped', $dropped->batch];
+        }
+
+        // Cleared intake but holds no placement at all (the purge can remove
+        // an archived row) — the "enrollment paused" state of User.
+        if ($sheet?->submission_status === 'approved') {
+            return ['dropped', $sheet->batch];
+        }
+
+        return [$student->must_change_password ? 'not_signed_in' : 'drafting', $sheet?->batch];
     }
 
     /**

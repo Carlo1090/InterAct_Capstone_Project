@@ -309,6 +309,20 @@ const addResolvedSupervisor = computed(() =>
     : undefined,
 )
 
+/**
+ * A coordinator-centered batch has no company supervisor at all —
+ * EnrollmentService writes a null supervisor and never asks for a login. Add
+ * Intern used to require a resolved supervisor regardless, so on such a batch
+ * (whose host company typically has no login, by design) the button could
+ * never be pressed, though the server would have accepted the placement.
+ */
+const rosterIsCoordinatorCentered = computed(() => (rosterBatch.value?.ojt_type ?? 'supervisor') === 'coordinator')
+
+/** The same refusal EnrollmentService gives, applied only where it applies. */
+const addCompanyBlocked = computed(
+  () => !rosterIsCoordinatorCentered.value && addForm.company_id !== null && !addResolvedSupervisor.value,
+)
+
 const activeRoster = computed(() => rosterRows.value.filter((row) => row.status === 'active'))
 const completedRoster = computed(() => rosterRows.value.filter((row) => row.status === 'completed' && !row.archived_at))
 const droppedRoster = computed(() => rosterRows.value.filter((row) => row.status === 'dropped' && !row.archived_at))
@@ -954,18 +968,23 @@ onMounted(load)
               </select>
             </div>
             <div>
-              <label class="mb-1 block text-xs font-medium text-slate-600">Supervisor</label>
-              <p class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                <template v-if="!addForm.company_id">Select a company first.</template>
+              <span class="mb-1 block text-xs font-medium text-slate-600">Supervisor</span>
+              <p
+                class="rounded-md border px-3 py-2 text-sm"
+                :class="addCompanyBlocked ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-slate-200 bg-slate-50 text-slate-700'"
+              >
+                <template v-if="rosterIsCoordinatorCentered">None needed. You review this cohort's journals yourself.</template>
+                <template v-else-if="!addForm.company_id">Select a company first.</template>
                 <template v-else-if="addResolvedSupervisor">{{ addResolvedSupervisor.name }}</template>
-                <template v-else
-                  ><span class="text-amber-600"
-                    >This company has no supervisor account yet. Attach one on Partner Companies before enrolling interns
-                    here.</span
-                  ></template
-                >
+                <template v-else>
+                  This company has no supervisor account yet. Attach one on
+                  <RouterLink to="/coordinator/companies" class="font-semibold underline underline-offset-2">Partner Companies</RouterLink>
+                  before enrolling interns here.
+                </template>
               </p>
-              <p class="mt-1 text-xs text-slate-500">Assigned automatically from the company.</p>
+              <p class="mt-1 text-xs text-slate-500">
+                {{ rosterIsCoordinatorCentered ? 'This is a coordinator-centered batch.' : 'Assigned automatically from the company.' }}
+              </p>
             </div>
             <div>
               <label class="mb-1 block text-xs font-medium text-slate-600" for="roster-division">Assigned Division (optional)</label>
@@ -976,7 +995,7 @@ onMounted(load)
             <button
               type="button"
               class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-blue-300"
-              :disabled="isAddingIntern || !addForm.student_id || !addForm.company_id || !addResolvedSupervisor"
+              :disabled="isAddingIntern || !addForm.student_id || !addForm.company_id || addCompanyBlocked"
               @click="addIntern"
             >
               {{ isAddingIntern ? 'Adding...' : 'Add Intern' }}

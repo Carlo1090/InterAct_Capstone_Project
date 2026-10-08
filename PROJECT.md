@@ -1386,7 +1386,9 @@ item below was a confirmed defect; each has a regression test.
   the whole file, as before. If a slice fails, the SPA keeps every result
   already received, reloads the Interns list, and offers **"Continue with the
   remaining rows"**; rows the lost response had already created come back as
-  "already in use", and their passwords are reissued from the Credential Manager.
+  **"Already has an account"** (since the 2026-10-08 experience pass below; it
+  was a red "already in use" error before), and their passwords are reissued
+  from the Credential Manager.
 - **Mail has a timeout, and a dead mail server stops being retried.**
   `config/mail.php`'s smtp `timeout` was null — PHP's 60s
   `default_socket_timeout` PER MESSAGE. It is now `MAIL_TIMEOUT` (default 10).
@@ -1439,6 +1441,96 @@ item below was a confirmed defect; each has a regression test.
   tab/CR) with an apostrophe so a spreadsheet cannot run it as a formula.
 - **Temporary passwords are letters and digits only** on every generator
   (bulk import, Credential Manager, the admin's two).
+
+#### Bulk import and enrollment experience pass, 2026-10-08
+
+At the project owner's request ("enhance the overall experience of the bulk
+import function and the enrolling logic"), scoped by them to every item below
+and explicitly NOT to bulk-accepting info sheets — **Accept stays a per-sheet
+review gate**. No schema change.
+
+**Bulk import** — the modal moved out of `CoordinatorInternsPage.vue` into
+**`components/interns/BulkImportModal.vue`**, mounted with `v-if` so each open
+starts clean and no one-time password outlives the window.
+
+- **A row can be `ready`, `invalid` or `existing`** (`StudentBulkImportService::STATUS_*`,
+  returned as `status` beside the old `valid` boolean). `existing` means a
+  **student** account already holds this ID number (as `student_id_number` or
+  `username`) **and** this email (case-insensitive): the same student, already
+  imported. It used to be a red "already in use" error, so re-uploading a roster
+  after a dropped connection, or a file overlapping an earlier one, read as a
+  file full of problems when there was nothing to do. It needs **both halves and
+  the student role** — an ID or email held by anyone else is still a clash — and
+  loses to any other error on the row (a duplicate inside the file still needs
+  fixing). Preview returns `existing_count`; `invalid_count` no longer includes
+  these; confirm reports them as outcome **`already_exists`**, never creating.
+- **Existing accounts are read in two queries per file**
+  (`takenIdentifiers()`), not three per row. The file is re-parsed on EVERY
+  confirm slice, so the per-row lookups cost a whole file's queries each time.
+- **Rows carry `sex_input`** (the Sex cell as typed), so the rows-to-fix
+  download hands back "Other" rather than the normalised null.
+- **Upload**: a drop zone that keeps the chosen file through Back, rejects a
+  wrong type or a file over 2 MB before uploading, and auto-selects the batch
+  when the program has exactly one. A file edited on disk after it was chosen
+  can no longer be read by the browser; that surfaces as a network error, so the
+  message says to choose the file again.
+- **Review**: step indicator, the target `program · batch` named in the review,
+  the confirm dialog and the results; filter chips (All / Ready / Needs fixing /
+  Already has an account); and **"Download rows to fix (.csv)"** — only the
+  invalid rows, in the template's columns plus a Problem column, to fix in Excel
+  and upload straight back. The importer ignores unknown columns, so Problem can
+  stay; pinned by `test_the_rows_to_fix_download_can_be_uploaded_back_as_is`.
+- **CSV downloads share `web/src/lib/csv.ts`** (cell escaping against formula
+  injection, and a **UTF-8 BOM** so Excel reads "Niño" correctly). PhpSpreadsheet
+  skips the BOM on re-import — that same test feeds one in.
+- **Progress**: a real bar ("N of M rows") while slices run, plus a
+  `beforeunload` warning — closing the tab mid-import loses every password
+  created so far.
+- **Results**: chips per outcome, a per-row Copy for each password, an amber
+  callout when any email failed (defaulting the filter to those rows), a
+  "Username" column in the credentials CSV, and a **"What happens next"** panel
+  (sign in → submit info sheet → you Accept) linking to Student Info Sheets.
+
+**Enrollment**
+
+- **FIXED: roster Add Intern was unusable on a coordinator-centered batch.**
+  The button required a resolved company supervisor regardless of OJT type, and
+  such a batch's company normally has no login — the seeded *BSBA-OM 2026 Field
+  Placement* could never take an intern from the roster, though the server would
+  have accepted it. `CoordinatorBatchesPage` now requires a login only on a
+  supervisor-supported batch (`rosterIsCoordinatorCentered` /
+  `addCompanyBlocked`). Verified in a browser: 3 → 4 active.
+- **`EnrollmentService::placementBlocker()`** is the ONE source of "why would
+  this placement be refused" (active elsewhere, then a company with no login on
+  a supervisor-supported batch). `enrollOrReactivate()` aborts with it, and the
+  info-sheet review previews it — same text, same order.
+- **Info sheet review shows "On Accept"**: batch, company, and the supervisor
+  login (or "coordinator-centered"), from `show()`'s new `placement` payload.
+  A `blocker` is shown before the click and disables Accept; it used to surface
+  only as an error toast after the confirm dialog. Pinned by
+  `EnrollmentPipelineTest`, which asserts the preview's text equals Accept's
+  own 422 message.
+- **Users → Interns shows the intake STAGE**, not ENROLLED / NOT ENROLLED.
+  `interns()` returns `stage` + `stage_batch` (additive; `enrolled` and
+  `enrollment` unchanged for the batch roster that reads them). Precedence, first
+  match wins: `enrolled` → `completed` → `submitted` (awaiting your review) →
+  `returned` → `dropped` (incl. an approved sheet with no placement left) →
+  `not_signed_in` (`must_change_password` still true) → `drafting`. **A
+  completed intern used to read NOT ENROLLED** (no active row). `stage_batch` is
+  the INTENDED batch before placement, which the Batch column now shows instead
+  of "—". Stage chips filter the list; an amber line links to Student Info
+  Sheets when any sheet awaits review.
+- **Enroll modal**: type-to-search students (the chosen one never drops out of
+  the list), `options()` batches carry **`ojt_type`** so a coordinator-centered
+  batch says "no supervisor needed" instead of warning, Enroll is disabled where
+  the server would refuse, a note when the student's sheet is already submitted
+  (Accept would place them at the company they chose), field errors through
+  `ValidationErrorList`, and the documented three-part modal shell.
+
+**`batch_students` has no timestamps** (only `enrolled_at`) — `intakeStage()`'s
+query orders by `id`. Ordering by `updated_at` passed every SQLite test and would
+have 500'd on MySQL; caught in review, and the affected suites were then run on
+MySQL 8.4 (116/116).
 
 **"A student never got their welcome email" now has THREE answers, and the
 student can reach the first one themselves.** In order of who has to act:
@@ -4675,8 +4767,10 @@ All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scop
   dashboard. That is the OPPOSITE condition to Journal Review's, not the same
   one; see OJT Type above.
 - **Users page** (`/coordinator/users`) — a secondary nav with an **Interns** tab
-  (every in-scope student regardless of enrollment, each badged ENROLLED /
-  NOT ENROLLED) and a **Supervisors** tab. With **no `created_by` column** on
+  (every in-scope student regardless of enrollment, each badged with their
+  intake STAGE — Awaiting your review, Returned, Hasn't signed in, Filling in
+  info sheet, Enrolled, Completed, Dropped — with stage filter chips; see the
+  2026-10-08 experience pass under Intake & Enrollment) and a **Supervisors** tab. With **no `created_by` column** on
   `users`, "supervisors the coordinator created" is realized as supervisors
   attached to any company in the coordinator's company-scope. Header actions are
   tab-contextual. "Create Supervisor" **requires a company first** — a supervisor

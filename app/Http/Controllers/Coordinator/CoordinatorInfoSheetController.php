@@ -105,7 +105,7 @@ class CoordinatorInfoSheetController extends Controller
     /**
      * One in-scope student's latest info sheet (full read-only document view).
      */
-    public function show(Request $request, User $student): JsonResponse
+    public function show(Request $request, User $student, EnrollmentService $enrollments): JsonResponse
     {
         abort_unless($student->role === 'student', 404);
         $this->assertInScope($request->user(), $student);
@@ -115,7 +115,47 @@ class CoordinatorInfoSheetController extends Controller
         return response()->json([
             'student' => $student->only(['id', 'name', 'email']),
             'sheet' => $sheet,
+            'placement' => $sheet ? $this->placementPreview($student, $sheet, $enrollments) : null,
         ]);
+    }
+
+    /**
+     * What Accept would create, and whether it would be refused — shown in the
+     * review modal before the coordinator clicks. Accept used to be the only
+     * way to find out a company had no supervisor login: the click failed with
+     * a toast after the confirm dialog, and nothing on the sheet had said so.
+     *
+     * The refusal text comes from the same places Accept's does (its own
+     * company check, then EnrollmentService::placementBlocker), so the warning
+     * and the eventual 422 cannot disagree.
+     *
+     * @return array{batch: ?array, company: ?array, supervisor: ?array, coordinator_centered: bool, blocker: ?string}
+     */
+    private function placementPreview(User $student, StudentInformationSheet $sheet, EnrollmentService $enrollments): array
+    {
+        $batch = $sheet->batch_id ? Batch::with('program:id,code,name')->find($sheet->batch_id) : null;
+        $companyId = $sheet->ojt_info['company_id'] ?? null;
+        $company = $companyId ? Company::with('loginSupervisor.user:id,name,username,email')->find($companyId) : null;
+        $coordinatorCentered = (bool) $batch?->isCoordinatorCentered();
+        $login = $coordinatorCentered ? null : $company?->loginSupervisor?->user;
+
+        $blocker = match (true) {
+            $batch === null => 'This sheet is not linked to a batch.',
+            $company === null => 'The student has not selected a valid company on their sheet.',
+            default => $enrollments->placementBlocker($batch, $company, $student->id),
+        };
+
+        return [
+            'batch' => $batch ? [
+                'id' => $batch->id,
+                'name' => $batch->name,
+                'program' => $batch->program?->code ?? $batch->program?->name,
+            ] : null,
+            'company' => $company?->only(['id', 'name']),
+            'supervisor' => $login?->only(['id', 'name', 'username', 'email']),
+            'coordinator_centered' => $coordinatorCentered,
+            'blocker' => $blocker,
+        ];
     }
 
     /**

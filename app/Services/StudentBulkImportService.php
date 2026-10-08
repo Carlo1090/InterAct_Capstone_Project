@@ -7,6 +7,7 @@ use App\Imports\StudentBulkImport;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
 use Throwable;
 
@@ -34,6 +35,15 @@ class StudentBulkImportService
      * whatever PHP's own limit says — see BulkStudentImportController::confirm.
      */
     public const MAX_ROWS_PER_REQUEST = 25;
+
+    /** A row that will become a new account on confirm. */
+    public const STATUS_READY = 'ready';
+
+    /** A row with something to fix; skipped on confirm. */
+    public const STATUS_INVALID = 'invalid';
+
+    /** A student who already has an account with this ID and email; skipped on confirm, nothing to fix. */
+    public const STATUS_EXISTING = 'existing';
 
     /**
      * Column limits, so a value the database cannot hold is refused at PREVIEW
@@ -131,9 +141,66 @@ class StudentBulkImportService
         $idCounts = $parsed->countBy('student_id_number');
         $emailCounts = $parsed->countBy(fn (array $row) => mb_strtolower($row['email']));
 
-        $rows = $parsed->map(fn (array $row) => $this->validateRow($row, $idCounts, $emailCounts))->values()->all();
+        $taken = $this->takenIdentifiers($parsed);
+
+        $rows = $parsed->map(fn (array $row) => $this->validateRow($row, $idCounts, $emailCounts, $taken))->values()->all();
 
         return ['rows' => $rows, 'tooMany' => false, 'count' => count($rows)];
+    }
+
+    /**
+     * Every ID number and email in the file that already belongs to an account,
+     * read in two queries for the whole file rather than three per row. The
+     * file is re-parsed on EVERY confirm slice, so per-row lookups cost a full
+     * file's worth of queries on each one.
+     *
+     * `owners` maps an ID number to the account holding it (as its
+     * student_id_number or its username — bulk import uses the ID as both), so
+     * validateRow() can tell "this student was already imported" from "this
+     * ID belongs to somebody else".
+     *
+     * @return array{owners: Collection<string, array{role: string, email: ?string}>, emails: Collection<string, true>}
+     */
+    private function takenIdentifiers(Collection $parsed): array
+    {
+        $ids = $parsed->pluck('student_id_number')->filter()->unique()->values()->all();
+        $emails = $parsed->pluck('email')->filter()->map(fn (string $email) => mb_strtolower($email))->unique()->values()->all();
+
+        $owners = collect();
+
+        if ($ids !== []) {
+            User::query()
+                ->where(fn ($query) => $query->whereIn('student_id_number', $ids)->orWhereIn('username', $ids))
+                ->get(['id', 'role', 'username', 'student_id_number', 'email'])
+                // A student_id_number match is the stronger claim, so it wins
+                // over an account that merely has that string as a username.
+                ->sortBy(fn (User $user) => in_array($user->student_id_number, $ids, true) ? 0 : 1)
+                ->each(function (User $user) use ($owners, $ids) {
+                    foreach ([$user->student_id_number, $user->username] as $key) {
+                        if ($key !== null && in_array($key, $ids, true) && ! $owners->has($key)) {
+                            $owners->put($key, [
+                                'role' => $user->role,
+                                'email' => $user->email !== null ? mb_strtolower($user->email) : null,
+                            ]);
+                        }
+                    }
+                });
+        }
+
+        // Compared case-INSENSITIVELY, matching the in-file duplicate check. A
+        // plain where() is case-sensitive under SQLite, so an address differing
+        // only in case slipped past validation and died on the unique index
+        // instead, surfacing as the generic "Could not be created" rather than
+        // naming the real clash.
+        $takenEmails = $emails === []
+            ? collect()
+            : User::query()
+                ->whereIn(DB::raw('LOWER(email)'), $emails)
+                ->selectRaw('LOWER(email) as email_key')
+                ->pluck('email_key')
+                ->mapWithKeys(fn (string $email) => [$email => true]);
+
+        return ['owners' => $owners, 'emails' => $takenEmails];
     }
 
     /**
@@ -188,9 +255,25 @@ class StudentBulkImportService
         ];
     }
 
-    private function validateRow(array $data, Collection $idCounts, Collection $emailCounts): array
+    /**
+     * @param  array{owners: Collection, emails: Collection}  $taken
+     */
+    private function validateRow(array $data, Collection $idCounts, Collection $emailCounts, array $taken): array
     {
         $errors = [];
+        $emailKey = mb_strtolower($data['email']);
+
+        // The SAME student, already imported: a student account holds this ID
+        // AND carries this email. Re-uploading a roster after a dropped
+        // connection, or a file that overlaps last week's, is routine — those
+        // rows used to come back as red "already in use" errors, which read as
+        // something to fix when there was nothing to do. An ID held by any
+        // other account (or with a different email) is still a real clash.
+        $owner = $data['student_id_number'] !== '' ? $taken['owners']->get($data['student_id_number']) : null;
+        $alreadyImported = $owner !== null
+            && $owner['role'] === 'student'
+            && $emailKey !== ''
+            && $owner['email'] === $emailKey;
 
         if ($data['first_name'] === '') {
             $errors[] = 'First Name is required.';
@@ -218,14 +301,9 @@ class StudentBulkImportService
             $errors[] = 'Student ID Number may not be longer than '.self::MAX_ID_NUMBER.' characters.';
         } elseif ($idCounts->get($data['student_id_number'], 0) > 1) {
             $errors[] = 'This Student ID Number appears more than once in this file.';
-        } elseif (
-            User::where('student_id_number', $data['student_id_number'])->exists()
-            || User::where('username', $data['student_id_number'])->exists()
-        ) {
+        } elseif ($owner !== null && ! $alreadyImported) {
             $errors[] = 'This Student ID Number is already in use.';
         }
-
-        $emailKey = mb_strtolower($data['email']);
 
         if ($data['email'] === '') {
             $errors[] = 'Email is required.';
@@ -237,12 +315,7 @@ class StudentBulkImportService
             $errors[] = "This is a placeholder address (example.com) that cannot receive email — if this is the template's sample row, delete it.";
         } elseif ($emailCounts->get($emailKey, 0) > 1) {
             $errors[] = 'This Email appears more than once in this file.';
-        } elseif (User::whereRaw('LOWER(email) = ?', [$emailKey])->exists()) {
-            // Compared case-INSENSITIVELY, matching the in-file duplicate check
-            // above. A plain where() is case-sensitive under SQLite, so an
-            // address differing only in case slipped past validation and died
-            // on the unique index instead, surfacing as the generic "Could not
-            // be created" rather than naming the real clash.
+        } elseif ($taken['emails']->has($emailKey) && ! $alreadyImported) {
             $errors[] = 'This Email is already in use.';
         }
 
@@ -263,10 +336,24 @@ class StudentBulkImportService
             }
         }
 
+        // An already-imported row creates nothing, so it is never `valid` — but
+        // it is not a problem either, and gets its own status rather than an
+        // error. Only when the row is otherwise clean: a duplicate inside the
+        // file still needs fixing whoever owns the ID.
+        $status = match (true) {
+            $errors !== [] => self::STATUS_INVALID,
+            $alreadyImported => self::STATUS_EXISTING,
+            default => self::STATUS_READY,
+        };
+
         return [
             ...$data,
+            // As typed, so a "rows to fix" download hands the coordinator back
+            // their own value ("Other") rather than the normalised null.
+            'sex_input' => $data['sex'],
             'sex' => $sex,
-            'valid' => $errors === [],
+            'status' => $status,
+            'valid' => $status === self::STATUS_READY,
             'errors' => $errors,
         ];
     }

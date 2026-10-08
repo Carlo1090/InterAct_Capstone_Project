@@ -98,12 +98,23 @@ const downloadPdf = () => {
   window.open(`/api/coordinator/info-sheets/${detail.value.student.id}/pdf`, '_blank')
 }
 
+/**
+ * What Accept would create, from the server's own preview. A `blocker` is the
+ * exact refusal Accept would answer with — shown before the click, instead of
+ * as an error toast after the confirm dialog.
+ */
+const placement = computed(() => detail.value?.placement ?? null)
+const acceptBlocked = computed(() => Boolean(placement.value?.blocker))
+
 const accept = async () => {
   const student = detail.value?.student
-  if (!student) return
+  if (!student || acceptBlocked.value) return
+  const where = placement.value?.batch && placement.value.company
+    ? ` into ${placement.value.batch.name} at ${placement.value.company.name}`
+    : ' into their batch'
   const confirmed = await confirmAction({
     title: 'Accept and enroll this student?',
-    message: `Accept ${student.name}'s information sheet? This enrolls them into their batch and gives them full access.`,
+    message: `Accept ${student.name}'s information sheet? This enrolls them${where} and gives them full access.`,
     confirmLabel: 'Accept & Enroll',
   })
   if (!confirmed) return
@@ -300,6 +311,42 @@ onMounted(load)
         </p>
 
         <div v-else class="mt-5 space-y-5">
+          <!-- What Accept will create — only while there is a decision to make. -->
+          <div
+            v-if="canActOnDetail && placement"
+            class="rounded-md border px-4 py-3 text-sm"
+            :class="acceptBlocked ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'"
+          >
+            <p class="text-xs font-bold uppercase tracking-wide text-slate-500">On Accept</p>
+            <dl class="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-[auto_1fr]">
+              <dt class="text-slate-500">Batch</dt>
+              <dd class="font-medium text-slate-900">
+                {{ placement.batch ? [placement.batch.program, placement.batch.name].filter(Boolean).join(' · ') : '—' }}
+              </dd>
+              <dt class="text-slate-500">Company</dt>
+              <dd class="font-medium text-slate-900">{{ placement.company?.name ?? '—' }}</dd>
+              <dt class="text-slate-500">Supervisor</dt>
+              <dd class="text-slate-900">
+                <template v-if="placement.coordinator_centered">None. Coordinator-centered batch: you review the journals.</template>
+                <template v-else-if="placement.supervisor">
+                  {{ placement.supervisor.name }}
+                  <span class="text-slate-500">({{ placement.supervisor.email || `@${placement.supervisor.username}` }})</span>
+                </template>
+                <template v-else>—</template>
+              </dd>
+            </dl>
+            <p v-if="placement.blocker" class="mt-3 text-sm font-medium text-amber-900" role="alert">
+              {{ placement.blocker }}
+              <RouterLink
+                v-if="placement.company && !placement.coordinator_centered && !placement.supervisor"
+                to="/coordinator/companies"
+                class="font-semibold underline underline-offset-2"
+              >
+                Open Partner Companies
+              </RouterLink>
+            </p>
+          </div>
+
           <div v-if="detail.sheet.rejection_reason" class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             Last returned with reason: {{ detail.sheet.rejection_reason }}
           </div>
@@ -327,7 +374,8 @@ onMounted(load)
           <button
             type="button"
             class="rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:grayscale disabled:cursor-not-allowed"
-            :disabled="isActing"
+            :disabled="isActing || acceptBlocked"
+            :title="acceptBlocked ? (placement?.blocker ?? undefined) : undefined"
             @click="accept"
           >
             {{ isActing ? 'Working...' : 'Accept & Enroll' }}

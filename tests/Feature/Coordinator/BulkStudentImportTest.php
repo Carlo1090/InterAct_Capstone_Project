@@ -232,6 +232,13 @@ class BulkStudentImportTest extends TestCase
         $this->assertSame(1, User::count());
     }
 
+    /**
+     * Re-uploading a roster (after a dropped connection, or a file that
+     * overlaps an earlier one) is routine. A student already imported under the
+     * same ID AND email is reported as `existing` — skipped, but not an error
+     * to fix. It used to come back as a red "already in use", which read as a
+     * problem with the file when there was nothing to do.
+     */
     public function test_reuploading_the_same_file_flags_already_created_rows_instead_of_duplicating(): void
     {
         Notification::fake();
@@ -260,8 +267,126 @@ class BulkStudentImportTest extends TestCase
 
         $second->assertOk();
         $this->assertSame(0, $second->json('valid_count'));
-        $this->assertStringContainsString('already in use', $second->json('rows')[0]['errors'][0]);
+        $this->assertSame(0, $second->json('invalid_count'));
+        $this->assertSame(1, $second->json('existing_count'));
+        $this->assertSame('existing', $second->json('rows.0.status'));
+        $this->assertSame([], $second->json('rows.0.errors'));
+
+        // Confirming the same file creates nothing and says why.
+        $third = $this->post('/api/coordinator/accounts/bulk-import/confirm', [
+            'file' => $this->csvUpload($rowData),
+            'program_id' => $bsit->id,
+            'batch_id' => $batch->id,
+        ]);
+
+        $third->assertOk();
+        $this->assertSame(0, $third->json('created_count'));
+        $this->assertSame('already_exists', $third->json('results.0.outcome'));
+        $this->assertNull($third->json('results.0.temporary_password'));
         $this->assertSame(1, User::where('student_id_number', '2026-020')->count());
+    }
+
+    /**
+     * The calm `existing` status needs BOTH halves to match. An ID held by an
+     * account with a different email, or an email held under a different ID,
+     * is a genuine clash and stays an error.
+     */
+    public function test_an_id_or_email_held_by_someone_else_is_still_an_error(): void
+    {
+        $bsit = $this->programFor('BSIT');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+
+        User::factory()->create(['role' => 'student', 'student_id_number' => '2026-030', 'username' => '2026-030', 'email' => 'owner@students.test']);
+        User::factory()->create(['role' => 'student', 'student_id_number' => '2026-031', 'username' => '2026-031', 'email' => 'other@students.test']);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->post('/api/coordinator/accounts/bulk-import/preview', [
+            'file' => $this->csvUpload([
+                // Same ID as the first account, different email.
+                ['First Name' => 'Ana', 'Middle Name' => '', 'Family Name' => 'Cruz', 'Sex' => 'Female', 'Student ID Number' => '2026-030', 'Email' => 'someone.else@students.test'],
+                // Same email as the second account (in another case), different ID.
+                ['First Name' => 'Ben', 'Middle Name' => '', 'Family Name' => 'Reyes', 'Sex' => 'Male', 'Student ID Number' => '2026-099', 'Email' => 'OTHER@students.test'],
+            ]),
+            'program_id' => $bsit->id,
+            'batch_id' => $batch->id,
+        ]);
+
+        $response->assertOk();
+        $this->assertSame(2, $response->json('invalid_count'));
+        $this->assertSame(0, $response->json('existing_count'));
+        $this->assertContains('This Student ID Number is already in use.', $response->json('rows.0.errors'));
+        $this->assertContains('This Email is already in use.', $response->json('rows.1.errors'));
+
+        // Both halves matching the first account (email in another case) is
+        // the same student, already imported.
+        $same = $this->post('/api/coordinator/accounts/bulk-import/preview', [
+            'file' => $this->csvUpload([
+                ['First Name' => 'Cara', 'Middle Name' => '', 'Family Name' => 'Diaz', 'Sex' => 'Female', 'Student ID Number' => '2026-030', 'Email' => 'Owner@Students.test'],
+            ]),
+            'program_id' => $bsit->id,
+            'batch_id' => $batch->id,
+        ]);
+
+        $this->assertSame('existing', $same->json('rows.0.status'));
+        $this->assertSame(1, $same->json('existing_count'));
+    }
+
+    /**
+     * An account holding the ID and email but in another ROLE is not "this
+     * student, already imported" — it is a clash.
+     */
+    public function test_a_matching_non_student_account_is_a_clash_not_an_existing_student(): void
+    {
+        $bsit = $this->programFor('BSIT');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+
+        User::factory()->create(['role' => 'supervisor', 'username' => '2026-050', 'email' => 'sup50@students.test']);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->post('/api/coordinator/accounts/bulk-import/preview', [
+            'file' => $this->csvUpload([
+                ['First Name' => 'Ana', 'Middle Name' => '', 'Family Name' => 'Cruz', 'Sex' => 'Female', 'Student ID Number' => '2026-050', 'Email' => 'sup50@students.test'],
+            ]),
+            'program_id' => $bsit->id,
+            'batch_id' => $batch->id,
+        ]);
+
+        $this->assertSame('invalid', $response->json('rows.0.status'));
+        $this->assertContains('This Student ID Number is already in use.', $response->json('rows.0.errors'));
+        $this->assertContains('This Email is already in use.', $response->json('rows.0.errors'));
+    }
+
+    /**
+     * The fix-up download hands the coordinator back what they typed, so a
+     * rejected "Other" in the Sex column must survive alongside the normalised
+     * value the server uses.
+     */
+    public function test_preview_rows_carry_the_sex_value_as_typed(): void
+    {
+        $bsit = $this->programFor('BSIT');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->post('/api/coordinator/accounts/bulk-import/preview', [
+            'file' => $this->csvUpload([
+                ['First Name' => 'Ana', 'Middle Name' => '', 'Family Name' => 'Cruz', 'Sex' => 'Other', 'Student ID Number' => '2026-040', 'Email' => 'ana40@students.test'],
+                ['First Name' => 'Ben', 'Middle Name' => '', 'Family Name' => 'Reyes', 'Sex' => 'm', 'Student ID Number' => '2026-041', 'Email' => 'ben41@students.test'],
+            ]),
+            'program_id' => $bsit->id,
+            'batch_id' => $batch->id,
+        ]);
+
+        $this->assertSame('Other', $response->json('rows.0.sex_input'));
+        $this->assertNull($response->json('rows.0.sex'));
+        $this->assertSame('m', $response->json('rows.1.sex_input'));
+        $this->assertSame('male', $response->json('rows.1.sex'));
+        $this->assertSame('ready', $response->json('rows.1.status'));
     }
 
     public function test_coordinator_cannot_bulk_import_into_another_departments_batch(): void
