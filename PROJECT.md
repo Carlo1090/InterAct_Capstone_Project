@@ -4700,6 +4700,46 @@ they were, tilt included. Nothing from that attempt remains in the tree.
 below, which the project owner asked for against their own reference; its
 motion was kept.)*
 
+#### Hero video and design pass, 2026-10-09 — DRAFTED, AWAITING PROJECT OWNER APPROVAL
+
+Project owner: "enhance the design … add a video also in my landing and dont
+change the context just the design only". **No copy, section, order, link or
+control changed** — every edit is CSS on existing markup, plus three
+decorative `aria-hidden` layers in the hero. All of it is one appended block
+at the foot of `LandingPage.vue`'s stylesheet ("Design pass, 2026-10-09").
+
+- **The hero plays the campus video** — the SAME `login-campus.webm`/`.mp4`
+  the login page uses (see Login page → campus video), so a visitor who goes on
+  to sign in has already cached it. Same gate as the login page
+  (`canPlayHeroVideo()`): never under reduced motion or with Data Saver —
+  phones included since the same day; below 900px it is framed at
+  `object-position: 58% 50%` so the portrait slice holds the main building. The photo stays
+  underneath and the video fades in on `playing`; once it is up,
+  `.hero:has(.hero-video.is-ready) .hero-photo` stops the photo's 24s zoom and
+  hides it, since animating an invisible layer is pure cost. **An
+  IntersectionObserver PAUSES the video whenever the hero is off screen** and
+  resumes it on return (and on `visibilitychange`), so the rest of the page
+  never pays to decode it. Verified in Chrome: playing at the top, paused after
+  scrolling down, playing again back at the top.
+- Hero: a soft blue `hero-glow` (screen-blended radial light), the eyebrow as a
+  frosted pill with a gold dot, a shadow under the headline and the CTA, and a
+  decorative mouse-shaped scroll cue (hidden below 640px).
+- Light bands carry a faint 22px dot grid; the dark bands (`band-ink`,
+  `statement`) carry radial indigo/blue light; `band-navy` (Records) is a
+  blue-700 → indigo-700 → indigo-900 gradient instead of a flat slab, and its
+  guarantees are frosted cards with a gold marker.
+- Mocks lift on hover (on `.mock`, the inner element) and each card title has
+  a blue accent bar; role cards get a gold top rule that widens on hover;
+  step numerals are white discs on a blue gradient line that fill blue on
+  hover; "And the rest of the paperwork" items are white cards whose top
+  accent sweeps across on hover; "signature" is a gold gradient.
+- **Hover never sets `transform` on a `.reveal` element** —
+  `.has-js .reveal.is-in` owns that property and outranks `:hover`, so a lift
+  there would silently do nothing. Lifts go on an inner element or are done
+  with shadow and border only.
+- Verified at 1440x900 and 375x812: no horizontal scroll, no page errors,
+  `npm run build` clean.
+
 #### Login page rebuilt to the project owner's reference, 2026-10-08
 
 The project owner supplied two screenshots (desktop and phone) and the page
@@ -4765,6 +4805,52 @@ badge top 141 (144), username / password / Log in / Google at 377 / 463 /
 sideways, the subtitle wraps to two lines as in the phone mock, and the badge
 clears the back link by 18px and 8px. A wrong password shows the server's own
 message in the card; a real sign-in lands on `/student/dashboard`.
+
+- **The background is the CAMPUS on video** (2026-10-09, project owner),
+  replacing the drifting blue gradient and its two blobs (`bg-drift`,
+  `blob-a`/`blob-b` and their keyframes are deleted). The clip is the drone
+  pull-back over the campus from the college's promo video ("Mater Dei College
+  where excellence is a way of life", 5:29.9–5:34.2), slowed to 1.5x and played
+  forward with its last 1.2s CROSSFADED into its first, so it loops without
+  ever visibly stopping: 5.25s, 960x540, 20fps, no audio. It ships as
+  `web/src/assets/videos/login-campus.webm` (VP9, ~0.69 MB) and `.mp4` (H.264,
+  faststart, ~0.64 MB), and the browser fetches only one, plus a 67 KB
+  `login-campus-poster.jpg`. The source was 59 MB; do not commit it.
+  - **NEVER LOOPED STRAIGHT, AND NEVER AS A BOOMERANG.** The first cut
+    (5:29.3–5:34.6, forward then reversed) visibly stopped: its tail ran past
+    the drone shot into the promo's end card, which froze ~20 frames with a
+    flash either side, and the shot's first second is nearly still, so the
+    seam read as a halt too. Measured with ffmpeg
+    `tblend=all_mode=difference,signalstats` — the shipped loop has no
+    zero-motion frame, and the last-to-first difference (11.7) is in the range
+    of an ordinary frame step (5–21). Re-measure that way after any re-cut.
+  - **The poster always paints; the `<video>` is MOUNTED everywhere except
+    under `prefers-reduced-motion` or with Data Saver on** (`shouldPlayVideo()`).
+    It was first held back below 768px as well; the project owner asked for it
+    on phones too (2026-10-09), and at ~0.65 MB that is affordable. It fades in
+    on `playing`, so a blocked autoplay (iOS Low Power Mode) leaves the poster.
+  - **iOS Safari autoplays only a video muted AS AN ATTRIBUTE.** Vue binds
+    `muted` as a DOM property, which can leave the attribute off, so
+    `startVideo()` sets `muted`, `defaultMuted` and the attribute and calls
+    `play()` on `nextTick`. The landing hero does the same (`startHeroVideo()`).
+    Verified on an emulated iPhone 13 in both Chrome and WebKit: playing,
+    `muted` attribute present, time advancing.
+  - `keepPlaying()` restarts it on `ended`, on an unrequested `pause`, and when
+    the tab becomes visible again, since `loop` alone does not survive a
+    browser pausing a hidden tab's video. The listener is removed on unmount.
+  - A `from-blue-900/70 via-blue-800/55 to-indigo-950/75` scrim sits over both,
+    keeping the white back link and footer readable and the page in the app's
+    blue. The `from-blue-600 to-indigo-700` gradient on `<main>` stays as the
+    paint before the poster decodes.
+  - Re-cut with ffmpeg (`brew install ffmpeg`):
+    `trim=start=329.9:end=334.2,setpts=1.5*(PTS-STARTPTS),fps=20,scale=960:540`,
+    then `split`, `trim` the first 1.2s off one branch and keep only the first
+    1.2s of the other, and `xfade=transition=fade:duration=1.2:offset=4.05`;
+    x264 `-preset veryslow -crf 30 -movflags +faststart`, VP9 `-b:v 0 -crf 44`.
+    It is 540p because it sits behind a 55–75% scrim, where 720p (2.7–3.1 MB)
+    does not show.
+  - Verified in Chrome at 1440x900 (WebM chosen, playing, no horizontal scroll)
+    and on an iPhone 13 profile (playing). `npm run build` clean.
 
 **NOT changed: `AuthCardShell.vue`** (the forgot- and reset-password pages)
 still draws the old frosted card, so those two pages no longer match the login

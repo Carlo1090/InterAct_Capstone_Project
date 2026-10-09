@@ -6,6 +6,9 @@ import { ensureCsrfCookie, useAuthStore } from '@/stores/auth'
 import { roleRedirect } from '@/router/index.ts'
 import { consumeQueryParam, googleErrorMessage, googleLoginUrl } from '@/lib/googleAuth'
 import { categorizeError } from '@/lib/apiError'
+import campusPoster from '@/assets/videos/login-campus-poster.jpg'
+import campusVideoWebm from '@/assets/videos/login-campus.webm'
+import campusVideoMp4 from '@/assets/videos/login-campus.mp4'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -184,9 +187,57 @@ const entered = ref(false)
 
 const delay = (ms: number): CSSProperties => ({ '--d': `${ms}ms` })
 
+/*
+ * The campus background. A ~0.9 MB, 10.6s silent loop (a drone pull-back over
+ * the campus, played forward then reversed so the seam never jumps), cut from
+ * the college's own promo video. The 70 KB poster frame paints first and is
+ * what paints first; the video is MOUNTED everywhere except under
+ * prefers-reduced-motion or with Data Saver on — phones included, at the
+ * project owner's request (2026-10-09). It fades in on `playing`, so a slow or
+ * blocked autoplay (iOS Low Power Mode, for one) simply leaves the poster.
+ */
+const showVideo = ref(false)
+const videoReady = ref(false)
+const campusVideo = ref<HTMLVideoElement | null>(null)
+
+/*
+ * The background must never sit still. `loop` covers the normal case; this
+ * covers the rest: a browser that fires `ended` anyway, and one that paused the
+ * video while the tab was hidden and does not resume it on return. play() can
+ * reject (autoplay policy), in which case the poster simply stays.
+ */
+/*
+ * iOS Safari autoplays only a video that is muted AS AN ATTRIBUTE in the DOM.
+ * Vue binds `muted` as a property, which can leave the attribute off, so set
+ * both explicitly and kick playback once the element exists.
+ */
+const startVideo = () => {
+  const video = campusVideo.value
+  if (!video) return
+  video.muted = true
+  video.defaultMuted = true
+  video.setAttribute('muted', '')
+  void video.play().catch(() => {})
+}
+
+const keepPlaying = () => {
+  const video = campusVideo.value
+  if (!video || document.hidden) return
+  if (video.ended) video.currentTime = 0
+  if (video.paused) void video.play().catch(() => {})
+}
+
+const shouldPlayVideo = (): boolean => {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false
+  const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection
+  return connection?.saveData !== true
+}
+
 // Never leave a stray listener behind if the page unmounts mid-press.
 onUnmounted(() => {
   hidePassword()
+  document.removeEventListener('visibilitychange', keepPlaying)
 })
 
 // A full page navigation, not XHR — Google needs the browser itself.
@@ -202,6 +253,12 @@ onMounted(() => {
   // must never break the form, matching the try/catch posture used for
   // sessionStorage above.
   void ensureCsrfCookie().catch(() => {})
+
+  showVideo.value = shouldPlayVideo()
+  if (showVideo.value) {
+    document.addEventListener('visibilitychange', keepPlaying)
+    void nextTick(startVideo)
+  }
 
   // The OAuth callback bounces failures back here as ?google_error=<code>.
   errorMessage.value = googleErrorMessage(consumeQueryParam('google_error'))
@@ -317,13 +374,36 @@ const login = async () => {
     siblings push the page into scrolling where absolute ones would overlap it.
   -->
   <main
-    class="login-root bg-drift relative flex min-h-dvh w-full flex-col overflow-hidden bg-linear-to-br from-blue-600 to-indigo-700"
+    class="login-root relative flex min-h-dvh w-full flex-col overflow-hidden bg-linear-to-br from-blue-600 to-indigo-700"
     :class="entered && 'entered'"
   >
-    <!-- Ambient drift. Decorative only, and fully stilled under prefers-reduced-motion. -->
+    <!--
+      Campus background: poster image always, video only where cheap (see
+      shouldPlayVideo). Decorative, so aria-hidden. The blue scrim on top keeps
+      the white link and footer readable and the page in the app's own blue.
+    -->
     <div aria-hidden="true" class="pointer-events-none absolute inset-0 overflow-hidden">
-      <span class="blob blob-a absolute -left-24 top-[-10%] h-[28rem] w-[28rem] rounded-full bg-linear-to-br from-blue-300 to-indigo-300 opacity-25 blur-3xl" />
-      <span class="blob blob-b absolute -right-32 bottom-[-15%] h-[32rem] w-[32rem] rounded-full bg-linear-to-tr from-blue-200 to-indigo-200 opacity-25 blur-3xl" />
+      <img :src="campusPoster" alt="" class="absolute inset-0 h-full w-full object-cover" decoding="async" fetchpriority="low" />
+      <video
+        v-if="showVideo"
+        ref="campusVideo"
+        class="absolute inset-0 h-full w-full object-cover transition-opacity duration-700"
+        :class="videoReady ? 'opacity-100' : 'opacity-0'"
+        :poster="campusPoster"
+        autoplay
+        muted
+        loop
+        playsinline
+        disablepictureinpicture
+        preload="auto"
+        @playing="videoReady = true"
+        @ended="keepPlaying"
+        @pause="keepPlaying"
+      >
+        <source :src="campusVideoWebm" type="video/webm" />
+        <source :src="campusVideoMp4" type="video/mp4" />
+      </video>
+      <div class="absolute inset-0 bg-linear-to-br from-blue-900/70 via-blue-800/55 to-indigo-950/75" />
     </div>
 
     <!--
@@ -640,48 +720,6 @@ const login = async () => {
   transform: translateY(0);
 }
 
-/* ---- Living background ------------------------------------------------- */
-
-@keyframes bg-drift {
-  from {
-    background-position: 0% 50%;
-  }
-  to {
-    background-position: 100% 50%;
-  }
-}
-
-.bg-drift {
-  background-size: 200% 200%;
-  animation: bg-drift 18s ease-in-out infinite alternate;
-}
-
-@keyframes blob-drift-a {
-  from {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  to {
-    transform: translate3d(3rem, 2.5rem, 0) scale(1.08);
-  }
-}
-
-@keyframes blob-drift-b {
-  from {
-    transform: translate3d(0, 0, 0) scale(1.05);
-  }
-  to {
-    transform: translate3d(-2.5rem, -3rem, 0) scale(1);
-  }
-}
-
-.blob-a {
-  animation: blob-drift-a 22s ease-in-out infinite alternate;
-}
-
-.blob-b {
-  animation: blob-drift-b 28s ease-in-out infinite alternate;
-}
-
 /* ---- Autofill ---------------------------------------------------------- */
 
 /*
@@ -739,9 +777,6 @@ input:-webkit-autofill:active {
 /* ---- One shared reduced-motion switch ---------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
-  .bg-drift,
-  .blob-a,
-  .blob-b,
   .shake {
     animation: none;
   }

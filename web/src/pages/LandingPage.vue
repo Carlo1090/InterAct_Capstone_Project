@@ -13,6 +13,14 @@ import { categorizeError } from '@/lib/apiError'
 import campus from '@/assets/images/mdc-campus.jpg'
 
 /*
+ * The hero's moving campus. The SAME files the login page plays, on purpose:
+ * a visitor who goes on to sign in has already cached them, so the second page
+ * costs nothing. ~0.65 MB, a 5.25s seamless loop; see PROJECT.md.
+ */
+import campusVideoWebm from '@/assets/videos/login-campus.webm'
+import campusVideoMp4 from '@/assets/videos/login-campus.mp4'
+
+/*
  * The college seal. It is referenced by its PUBLIC path rather than imported as
  * a module because that is where the file actually lives — `public/images/` —
  * and it is already read from there by `LoginPage.vue` AND by the PDF blades,
@@ -89,6 +97,51 @@ const prefersReducedMotion = (): boolean =>
   window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 /*
+ * The hero video is MOUNTED everywhere except under reduced motion or with
+ * Data Saver on — phones included, at the project owner's request
+ * (2026-10-09). Those two keep the
+ * still photograph underneath, which is also what shows until the video's
+ * first frame is actually playing (it fades in on `playing`).
+ *
+ * It PAUSES while the hero is off screen, so scrolling the rest of the page
+ * never pays for decoding a video nobody can see, and it restarts itself if a
+ * browser pauses it while the tab was hidden.
+ */
+const showHeroVideo = ref(false)
+const heroVideoReady = ref(false)
+const heroVideo = ref<HTMLVideoElement | null>(null)
+const heroInView = ref(true)
+let heroObserver: IntersectionObserver | null = null
+
+const canPlayHeroVideo = (): boolean => {
+  if (prefersReducedMotion()) return false
+  const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection
+  return connection?.saveData !== true
+}
+
+/* iOS Safari autoplays only a video muted AS AN ATTRIBUTE; Vue binds `muted`
+ * as a property, so set both and kick playback once the element exists. */
+const startHeroVideo = (): void => {
+  const video = heroVideo.value
+  if (!video) return
+  video.muted = true
+  video.defaultMuted = true
+  video.setAttribute('muted', '')
+  syncHeroVideo()
+}
+
+const syncHeroVideo = (): void => {
+  const video = heroVideo.value
+  if (!video) return
+  if (heroInView.value && !document.hidden) {
+    if (video.ended) video.currentTime = 0
+    if (video.paused) void video.play().catch(() => {})
+  } else if (!video.paused) {
+    video.pause()
+  }
+}
+
+/*
  * E. The href stays on every anchor, so the links still work with no JS and the
  * address bar still updates — this only replaces the jump with a scroll, and
  * honours a reduced-motion preference by falling back to the jump.
@@ -117,6 +170,20 @@ const handleEscape = (event: KeyboardEvent): void => {
 
 onMounted(() => {
   window.addEventListener('keydown', handleEscape)
+
+  showHeroVideo.value = canPlayHeroVideo()
+  if (showHeroVideo.value) {
+    const hero = document.querySelector('.hero')
+    if (hero) {
+      heroObserver = new IntersectionObserver(([entry]) => {
+        heroInView.value = entry?.isIntersecting ?? true
+        syncHeroVideo()
+      })
+      heroObserver.observe(hero)
+    }
+    document.addEventListener('visibilitychange', syncHeroVideo)
+    void nextTick(startHeroVideo)
+  }
 
   /*
    * Which band is under the floating header. Every top-level band carries a
@@ -204,6 +271,9 @@ onUnmounted(() => {
   bandObserver = null
   revealObserver?.disconnect()
   revealObserver = null
+  heroObserver?.disconnect()
+  heroObserver = null
+  document.removeEventListener('visibilitychange', syncHeroVideo)
 })
 
 /* ---------- B1. The journal mock: submitting locks the entry ---------- */
@@ -660,7 +730,27 @@ const extras = [
           aria-label="The Mater Dei College campus in Tubigon, Bohol"
           :style="{ backgroundImage: `url(${campus})` }"
         />
+        <video
+          v-if="showHeroVideo"
+          ref="heroVideo"
+          class="hero-video"
+          :class="{ 'is-ready': heroVideoReady }"
+          aria-hidden="true"
+          autoplay
+          muted
+          loop
+          playsinline
+          disablepictureinpicture
+          preload="auto"
+          @playing="heroVideoReady = true"
+          @ended="syncHeroVideo"
+          @pause="syncHeroVideo"
+        >
+          <source :src="campusVideoWebm" type="video/webm" />
+          <source :src="campusVideoMp4" type="video/mp4" />
+        </video>
         <div class="hero-scrim" aria-hidden="true" />
+        <div class="hero-glow" aria-hidden="true" />
         <div class="shell hero-inner">
           <div class="hero-copy">
             <p class="eyebrow">Internship journal and progress monitoring</p>
@@ -682,7 +772,9 @@ const extras = [
             </div>
           </div>
         </div>
-
+        <!-- Decorative scroll cue. Hidden from assistive tech; the CTA and the
+             nav already say where the page goes. -->
+        <span class="hero-cue" aria-hidden="true"><span class="hero-cue-dot" /></span>
       </section>
 
       <!-- 3 — The argument -->
@@ -2845,6 +2937,349 @@ const extras = [
 
   .row {
     flex-wrap: wrap;
+  }
+}
+
+
+/* =========================================================================
+ * Design pass, 2026-10-09 — VISUAL ONLY. No copy, section, order or control
+ * changed; every rule below restyles markup that already existed, plus three
+ * decorative, aria-hidden layers in the hero (video, glow, scroll cue).
+ *
+ * Hover effects deliberately avoid `transform` on anything carrying `.reveal`:
+ * the entrance animation owns that property there (`.has-js .reveal.is-in`
+ * outranks a plain `:hover`), so lifts are applied to an INNER element
+ * (`.mock`) or done with shadow and border alone.
+ * ========================================================================= */
+
+/* ---- Hero: the campus, moving ---- */
+
+.hero-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 62% 50%;
+  filter: saturate(1.08) contrast(1.06);
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+
+.hero-video.is-ready {
+  opacity: 1;
+}
+
+/* Once the video is up, the still photo underneath and its 24s zoom are
+ * invisible work — stop both rather than animate a layer nobody can see. */
+.hero:has(.hero-video.is-ready) .hero-photo {
+  animation: none;
+  visibility: hidden;
+}
+
+/* A soft blue light off the top right, so the clear half of the hero reads as
+ * lit rather than as a raw photograph pasted beside a dark panel. */
+.hero-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 55% at 85% 10%, rgba(59, 130, 246, 0.28), transparent 70%),
+    radial-gradient(40% 40% at 10% 95%, rgba(67, 56, 202, 0.25), transparent 70%);
+  mix-blend-mode: screen;
+}
+
+.hero-copy .eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.8rem 0.35rem 0.65rem;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(6px);
+}
+
+.hero-copy .eyebrow::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.2);
+}
+
+.hero-title {
+  text-shadow: 0 2px 24px rgba(15, 23, 42, 0.35);
+}
+
+.hero-actions .btn-primary {
+  box-shadow:
+    0 10px 30px -10px rgba(37, 99, 235, 0.75),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.hero-cue {
+  position: absolute;
+  left: 50%;
+  bottom: 1.75rem;
+  z-index: 2;
+  width: 22px;
+  height: 36px;
+  margin-left: -11px;
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  border-radius: 12px;
+}
+
+.hero-cue-dot {
+  position: absolute;
+  left: 50%;
+  top: 7px;
+  width: 4px;
+  height: 7px;
+  margin-left: -2px;
+  border-radius: 2px;
+  background: #fff;
+  animation: hero-cue 2s ease-in-out infinite;
+}
+
+@keyframes hero-cue {
+  0% { opacity: 0; transform: translateY(0); }
+  30% { opacity: 1; }
+  80% { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 0; transform: translateY(12px); }
+}
+
+/* ---- Light bands: a faint grid so they read as paper, not as empty grey ---- */
+
+.band-paper {
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(15, 23, 42, 0.07) 1px, transparent 0);
+  background-size: 22px 22px;
+}
+
+/* ---- The three mocks ---- */
+
+.mock {
+  border-color: rgba(226, 232, 240, 0.9);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 18px 40px -24px rgba(30, 64, 175, 0.45);
+  transition:
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.35s ease;
+}
+
+.card:hover .mock {
+  transform: translateY(-4px);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 28px 50px -24px rgba(30, 64, 175, 0.55);
+}
+
+.card-title {
+  position: relative;
+  padding-left: 0.85rem;
+}
+
+.card-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.2em;
+  bottom: 0.2em;
+  width: 3px;
+  border-radius: 2px;
+  background: linear-gradient(var(--blue), var(--navy));
+}
+
+/* ---- Roles ---- */
+
+.band-ink {
+  background:
+    radial-gradient(70% 60% at 100% 0%, rgba(67, 56, 202, 0.35), transparent 70%),
+    radial-gradient(50% 50% at 0% 100%, rgba(37, 99, 235, 0.2), transparent 70%),
+    var(--ink);
+}
+
+.role-card {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  transition:
+    border-color 0.3s ease,
+    box-shadow 0.3s ease,
+    background 0.3s ease;
+}
+
+.role-card::before {
+  content: '';
+  position: absolute;
+  left: 1.5rem;
+  right: 1.5rem;
+  top: 0;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: linear-gradient(90deg, var(--gold), rgba(251, 191, 36, 0));
+  opacity: 0.7;
+  transition: opacity 0.3s ease, left 0.3s ease, right 0.3s ease;
+}
+
+.role-card:hover {
+  border-color: rgba(147, 197, 253, 0.4);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03));
+  box-shadow: 0 24px 50px -28px rgba(59, 130, 246, 0.6);
+}
+
+.role-card:hover::before {
+  opacity: 1;
+  left: 0;
+  right: 0;
+}
+
+/* ---- Statement ---- */
+
+.statement {
+  background:
+    radial-gradient(50% 120% at 50% 0%, rgba(67, 56, 202, 0.3), transparent 70%),
+    var(--ink);
+}
+
+.statement-accent {
+  background: linear-gradient(90deg, var(--gold), #fde68a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ---- Steps: the numerals become real stops on the line ---- */
+
+.steps::before {
+  background: linear-gradient(var(--blue), rgba(67, 56, 202, 0.25));
+  width: 2px;
+  margin-left: -0.5px;
+}
+
+.step-num {
+  background: #fff;
+  border: 1.5px solid rgba(37, 99, 235, 0.35);
+  box-shadow:
+    0 0 0 5px var(--paper),
+    0 8px 18px -8px rgba(37, 99, 235, 0.55);
+  transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+.step:hover .step-num {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+/* ---- Records: depth instead of a flat indigo slab ---- */
+
+.band-navy {
+  background:
+    radial-gradient(60% 80% at 0% 0%, rgba(96, 165, 250, 0.35), transparent 70%),
+    radial-gradient(50% 70% at 100% 100%, rgba(30, 27, 75, 0.6), transparent 70%),
+    linear-gradient(135deg, var(--color-blue-700, #1d4ed8), var(--navy) 55%, var(--color-indigo-900, #312e81));
+}
+
+.guarantees {
+  border-top: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.guarantee {
+  position: relative;
+  padding: 1.1rem 1.25rem 1.1rem 2.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(4px);
+  transition: background 0.3s ease, border-color 0.3s ease;
+}
+
+.guarantee::before {
+  content: '';
+  position: absolute;
+  left: 1.25rem;
+  top: 1.55rem;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.18);
+}
+
+.guarantee:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+/* ---- The rest of the paperwork: cards, not ruled lines ---- */
+
+.extras {
+  row-gap: 1.25rem;
+  column-gap: 1.25rem;
+}
+
+.extra {
+  position: relative;
+  padding: 1.25rem 1.35rem 1.35rem;
+  border: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 10px 24px -20px rgba(15, 23, 42, 0.4);
+  overflow: hidden;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.extra::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--blue), var(--navy));
+  transform: scaleX(0.25);
+  transform-origin: left;
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.extra:hover {
+  border-color: rgba(37, 99, 235, 0.35);
+  box-shadow: 0 18px 36px -22px rgba(30, 64, 175, 0.45);
+}
+
+.extra:hover::before {
+  transform: scaleX(1);
+}
+
+/* ---- Closing ---- */
+
+.closing-inner .h2 {
+  text-shadow: 0 2px 30px rgba(15, 23, 42, 0.6);
+}
+
+/* On a portrait screen `cover` keeps only a slice of the 16:9 frame; centre
+ * it on the main building rather than the wide-screen 62%. */
+@media (max-width: 900px) {
+  .hero-video {
+    object-position: 58% 50%;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero-cue {
+    display: none;
+  }
+
+  .guarantee {
+    padding-left: 2.5rem;
   }
 }
 
