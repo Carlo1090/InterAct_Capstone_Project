@@ -24,7 +24,7 @@ import { confirmAction } from '../src/services/confirm';
  * question carries a printed Yes/No pair whose answer is stored under
  * `choice`; a `scale` question is a row of options and no free text at all.
  */
-type Question = ExitInterviewResponse['form']['sections'][number]['questions'][number];
+type Question = NonNullable<ExitInterviewResponse['form']>['sections'][number]['questions'][number];
 
 const CHOICE_OPTIONS: Record<string, string> = { yes: 'Yes', no: 'No' };
 
@@ -174,7 +174,18 @@ export default function ExitInterview() {
         />
       </Card>
 
-      {data.form.sections.map((section) => (
+      {!data.form ? (
+        // The questions live on the server now — one hardcoded form per
+        // department, resolved from the student's own. An API older than that
+        // change sends no `form`, and this screen deliberately no longer
+        // carries a transcription of the questions, so there is nothing to
+        // fall back to. Say so plainly rather than crash on `.sections`.
+        <Banner variant="warn">
+          This exit interview form is not available in the app yet. Please try again after the next system
+          update, or ask your coordinator for the printed form.
+        </Banner>
+      ) : (
+        data.form.sections.map((section) => (
         <Card key={section.heading} title={section.heading}>
           {section.questions.map((q: Question) => {
             // Where the choice lives and which options it offers: a Yes/No
@@ -235,9 +246,10 @@ export default function ExitInterview() {
             );
           })}
         </Card>
-      ))}
+        ))
+      )}
 
-      {!submitted ? (
+      {!submitted && data.form ? (
         <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 20, marginTop: 16 }}>
           <Button
             label="Save Draft"

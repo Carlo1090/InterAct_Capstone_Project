@@ -2378,6 +2378,20 @@ in that — and the admin **picks which hardcoded form a department uses**.
   transcription of the questions** — the five copies that existed (layout,
   model, two web pages, mobile) are one. `answer_char_limits` is per form; a
   rating question has no entry.
+  **`form` IS OPTIONAL ON THE MOBILE TYPE, AND THE SCREEN GUARDS IT**
+  (2026-10-09). `mobile/app/exit-interview.tsx` did an unguarded
+  `data.form.sections.map(...)`, so against an API older than the
+  per-department forms — which is **every deployed API until `deploy` catches
+  up with `main`** — the screen threw `Cannot read properties of undefined`
+  and white-screened. This is the OTA coupling in its sharpest form: a
+  JS-only bundle ships in minutes while the backend ships on a deliberate
+  `deploy` merge, so the two halves of one feature are routinely live at
+  different versions. The type now declares `form?`, which makes TypeScript
+  force the check rather than leaving it to whoever remembers, and a missing
+  `form` renders a `warn` Banner naming the cause and pointing at the printed
+  form, with Save Draft and Submit hidden (there is nothing to answer). The
+  screen heals itself the moment the backend deploys — no second OTA needed.
+  `Question` is derived through `NonNullable<…[form]>` for the same reason.
 - **The Summary Report is ONE FORM PER REPORT**: the coordinator's
   department's assigned form supplies the questions, only interviews
   snapshotted under that `form_key` are gathered (CAST q1 ≠ CABM q1), and the
