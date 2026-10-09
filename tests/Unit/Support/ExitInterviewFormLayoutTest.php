@@ -554,4 +554,60 @@ class ExitInterviewFormLayoutTest extends TestCase
         // A rating question has no rules to overrun.
         $this->assertTrue($this->cast()->fits('q33', 'excellent'));
     }
+
+    /**
+     * The type is measured against REAL Helvetica metrics.
+     *
+     * The bug this exists for: `widths()` read a `.afm.json` out of
+     * `vendor/dompdf/dompdf/lib/fonts/`, where dompdf never writes one — those
+     * files are a cache it generates into its configured `font_dir`, which
+     * laravel-dompdf defaults to `storage_path('fonts')`, itself gitignored
+     * wholesale. So in any clean checkout the metrics were an EMPTY array and
+     * every character fell through `textWidth()`'s `?? 556` fallback.
+     *
+     * Nothing errored, which is exactly why it survived: 556 is a plausible
+     * width. But a flat 556 makes bold and regular identical — removing the
+     * whole basis of fits(), which exists because prose sets ~0.45em per
+     * character and ALL-CAPS ~0.60em — and over-measures ordinary text, so
+     * questions wrapped three lines early and the CABM form silently became
+     * three pages.
+     *
+     * These are Adobe's own published widths, so they are the same whichever
+     * source the metrics are parsed from. A regression to the fallback shows
+     * up here as 556 everywhere rather than as a mysterious page count.
+     */
+    public function test_the_type_is_measured_against_real_font_metrics(): void
+    {
+        // At 1000pt a width in 1/1000 em reads back as the raw AFM number.
+        $this->assertSame(278.0, Layout::textWidth(' ', 1000), 'Helvetica space');
+        $this->assertSame(667.0, Layout::textWidth('A', 1000), 'Helvetica A');
+        $this->assertSame(556.0, Layout::textWidth('a', 1000), 'Helvetica a');
+
+        $this->assertSame(278.0, Layout::textWidth(' ', 1000, true), 'Helvetica-Bold space');
+        $this->assertSame(722.0, Layout::textWidth('A', 1000, true), 'Helvetica-Bold A');
+
+        // Not every glyph is 556 — the shape of the fallback failure.
+        $this->assertNotSame(
+            Layout::textWidth('i', 1000),
+            Layout::textWidth('m', 1000),
+            'A proportional face cannot measure i and m alike.'
+        );
+    }
+
+    /**
+     * Bold must measure WIDER than regular, which is what makes the signatory
+     * and label geometry honest: every bold label is placed by its measured
+     * width, and with one shared width table a bold heading printed straight
+     * into the text after it.
+     */
+    public function test_bold_measures_wider_than_regular(): void
+    {
+        $label = 'Compliance Verification:';
+
+        $this->assertGreaterThan(
+            Layout::textWidth($label, Layout::HEADING_SIZE),
+            Layout::textWidth($label, Layout::HEADING_SIZE, true),
+            'Helvetica-Bold sets about 5% wider than Helvetica.'
+        );
+    }
 }

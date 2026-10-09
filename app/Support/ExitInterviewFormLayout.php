@@ -1228,6 +1228,34 @@ final class ExitInterviewFormLayout
     }
 
     /**
+     * Glyph widths for the face, in 1/1000 em.
+     *
+     * READ FROM dompdf's OWN SHIPPED `.afm`, NOT from a generated cache, and
+     * that is a fix for a total-but-silent measurement failure rather than a
+     * tidy-up. This used to read
+     * `vendor/dompdf/dompdf/lib/fonts/{face}.afm.json` — a file **dompdf never
+     * writes there**. The `.afm.json` files are a CACHE dompdf generates into
+     * its configured `font_dir`, and `laravel-dompdf`'s own packaged default
+     * points that at `storage_path('fonts')`, whose `.gitignore` is `*` so
+     * nothing in it is committed either. The vendor path therefore does not
+     * exist in a clean checkout, `widths()` returned `[]`, and every
+     * `textWidth()` fell through to its `?? 556` per-character fallback.
+     *
+     * What that cost, and why nothing caught it: 556 is a plausible-looking
+     * number, so nothing errored — every measurement was simply wrong by the
+     * ratio of 556 to the real glyph. Regular and bold measured IDENTICALLY,
+     * which quietly removes the entire premise of `fits()` (prose sets ~0.45em
+     * per character against ALL-CAPS at ~0.60em — indistinguishable at a flat
+     * 556); question text over-measured and wrapped early, three lines of it;
+     * and the CABM form grew from its measured two pages to three, carrying the
+     * coordinator's signature block onto a sheet of its own.
+     *
+     * The `.afm` is the canonical source that cache is generated FROM, so
+     * parsing it keeps the promise that actually matters — the wrap and the
+     * render measure the same metrics — while depending only on a file
+     * `composer install` guarantees. Verified against dompdf's own generated
+     * JSON for both faces: 218 glyphs each, zero mismatches.
+     *
      * @return array<int, int>
      */
     private static function widths(bool $bold = false): array
@@ -1238,15 +1266,96 @@ final class ExitInterviewFormLayout
             return self::$widths[$face];
         }
 
-        $path = base_path("vendor/dompdf/dompdf/lib/fonts/{$face}.afm.json");
+        $widths = self::parseAfm(base_path("vendor/dompdf/dompdf/lib/fonts/{$face}.afm"));
 
-        $decoded = is_file($path)
-            ? json_decode((string) file_get_contents($path), true)
-            : null;
+        // Only if the package's own metrics are somehow absent: dompdf's
+        // generated cache holds the parsed form of exactly that file.
+        if ($widths === []) {
+            $widths = self::cachedWidths($face);
+        }
 
-        return self::$widths[$face] = is_array($decoded['C'] ?? null)
-            ? array_map('intval', $decoded['C'])
-            : [];
+        return self::$widths[$face] = $widths;
+    }
+
+    /**
+     * Parse an Adobe Font Metrics file's character block — lines shaped
+     * `C 32 ; WX 278 ; N space ; B 0 0 0 0 ;` — into code => width.
+     *
+     * The FIRST entry for a code wins, matching dompdf's own reader: Helvetica
+     * lists 160 as a second `space`, and an unencoded glyph carries `C -1`,
+     * which is skipped rather than keyed as a negative code.
+     *
+     * @return array<int, int>
+     */
+    private static function parseAfm(string $path): array
+    {
+        if (! is_file($path)) {
+            return [];
+        }
+
+        $widths = [];
+
+        foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+            if (strncmp($line, 'C ', 2) !== 0) {
+                continue;
+            }
+
+            $code = null;
+            $width = null;
+
+            foreach (explode(';', $line) as $part) {
+                $part = trim($part);
+
+                if (strncmp($part, 'C ', 2) === 0) {
+                    $code = (int) trim(substr($part, 2));
+                } elseif (strncmp($part, 'WX ', 3) === 0) {
+                    $width = (int) trim(substr($part, 3));
+                }
+            }
+
+            if ($code !== null && $code >= 0 && $width !== null && ! isset($widths[$code])) {
+                $widths[$code] = $width;
+            }
+        }
+
+        return $widths;
+    }
+
+    /**
+     * dompdf's generated metrics cache, read from whatever `font_dir` the
+     * running app actually configured rather than a hardcoded guess.
+     *
+     * @return array<int, int>
+     */
+    private static function cachedWidths(string $face): array
+    {
+        $dir = config('dompdf.options.font_dir');
+
+        if (! is_string($dir) || $dir === '') {
+            return [];
+        }
+
+        $path = rtrim($dir, '/'.DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$face.'.afm.json';
+
+        if (! is_file($path)) {
+            return [];
+        }
+
+        $decoded = json_decode((string) file_get_contents($path), true);
+
+        if (! is_array($decoded['C'] ?? null)) {
+            return [];
+        }
+
+        $widths = [];
+
+        foreach ($decoded['C'] as $code => $width) {
+            if (is_numeric($code) && (int) $code >= 0) {
+                $widths[(int) $code] = (int) $width;
+            }
+        }
+
+        return $widths;
     }
 
     /**
