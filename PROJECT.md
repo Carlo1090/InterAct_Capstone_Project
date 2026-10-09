@@ -4705,22 +4705,40 @@ motion was kept.)*
 Project owner: "enhance the design … add a video also in my landing and dont
 change the context just the design only". **No copy, section, order, link or
 control changed** — every edit is CSS on existing markup, plus three
-decorative `aria-hidden` layers in the hero. All of it is one appended block
+decorative `aria-hidden` layers in the hero (the lab video, a glow and a
+scroll cue). All of it is one appended block
 at the foot of `LandingPage.vue`'s stylesheet ("Design pass, 2026-10-09").
 
-- **The hero plays the campus video** — the SAME `login-campus.webm`/`.mp4`
-  the login page uses (see Login page → campus video), so a visitor who goes on
-  to sign in has already cached it. Same gate as the login page
+- **The hero plays the college's COMPUTER LAB with NO PEOPLE in it**
+  (project owner, 2026-10-09, after three earlier picks the same day: the
+  campus drone, a clip of a student writing in the library, then an animated
+  notebook drawn in SVG). The owner's rule: **no people, for copyright — a
+  clip from the same promo video, or crop the person out — and it should
+  connect to the system.** The promo has no people-free footage of writing, so
+  the loop is computers: `web/src/assets/videos/landing-lab.webm` (VP9,
+  ~224 KB) / `.mp4` (~271 KB), 6.3s, 960x540.
+  - Shot A: 1:51.40–1:52.62, RGB-lit PC towers, **cropped to the top-left
+    896x504** (`crop=896:504:0:0`) — students' heads sit only in the bottom
+    third, right of x≈960. Shot B: 2:08.20–2:09.30, more towers, cropped to
+    `960:540:0:0`. Shot C: 2:10.12–2:10.65, code on a monitor, uncropped (no
+    person in any frame; the shots either side have people, so the cut points
+    are tight). **Every frame of every crop was checked by eye for people.**
+  - Slowed 2.5x / 2.5x / 3.5x with **`minterpolate` (mci, aobmc, bidir)** to
+    24fps. Without it the slow motion duplicated frames — 37 of 150 frames
+    were zero-motion, i.e. visibly choppy; with it, none. 0.4s crossfades
+    between shots and a 0.6s end-into-start crossfade make the loop seamless.
+  - The SVG notebook and its CSS were removed when this replaced it.
+  - Same gate as the login page
   (`canPlayHeroVideo()`): never under reduced motion or with Data Saver —
-  phones included since the same day; below 900px it is framed at
-  `object-position: 58% 50%` so the portrait slice holds the main building. The photo stays
+  phones included. The photo stays
   underneath and the video fades in on `playing`; once it is up,
   `.hero:has(.hero-video.is-ready) .hero-photo` stops the photo's 24s zoom and
   hides it, since animating an invisible layer is pure cost. **An
   IntersectionObserver PAUSES the video whenever the hero is off screen** and
-  resumes it on return (and on `visibilitychange`), so the rest of the page
-  never pays to decode it. Verified in Chrome: playing at the top, paused after
-  scrolling down, playing again back at the top.
+  resumes it on return (and on `visibilitychange`), and `startHeroVideo()`
+  sets the `muted` attribute iOS Safari needs to autoplay. Verified in Chrome
+  (desktop and 375px) and WebKit on an iPhone 13 profile: playing, paused
+  after scrolling down, playing again back at the top.
 - Hero: a soft blue `hero-glow` (screen-blended radial light), the eyebrow as a
   frosted pill with a gold dot, a shadow under the headline and the CTA, and a
   decorative mouse-shaped scroll cue (hidden below 640px).

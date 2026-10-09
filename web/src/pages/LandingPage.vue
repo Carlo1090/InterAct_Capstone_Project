@@ -13,12 +13,14 @@ import { categorizeError } from '@/lib/apiError'
 import campus from '@/assets/images/mdc-campus.jpg'
 
 /*
- * The hero's moving campus. The SAME files the login page plays, on purpose:
- * a visitor who goes on to sign in has already cached them, so the second page
- * costs nothing. ~0.65 MB, a 5.25s seamless loop; see PROJECT.md.
+ * The hero video: the college's own computer lab with NO PEOPLE in it (project
+ * owner, 2026-10-09 — "no people involved, copyright"). Two close-ups of the
+ * lab's RGB-lit PC towers, cropped above the students' heads, then code on a
+ * monitor — all cut from the college's promo video. 6.3s seamless loop,
+ * ~0.25 MB. See PROJECT.md.
  */
-import campusVideoWebm from '@/assets/videos/login-campus.webm'
-import campusVideoMp4 from '@/assets/videos/login-campus.mp4'
+import labVideoWebm from '@/assets/videos/landing-lab.webm'
+import labVideoMp4 from '@/assets/videos/landing-lab.mp4'
 
 /*
  * The college seal. It is referenced by its PUBLIC path rather than imported as
@@ -98,14 +100,11 @@ const prefersReducedMotion = (): boolean =>
 
 /*
  * The hero video is MOUNTED everywhere except under reduced motion or with
- * Data Saver on — phones included, at the project owner's request
- * (2026-10-09). Those two keep the
- * still photograph underneath, which is also what shows until the video's
- * first frame is actually playing (it fades in on `playing`).
- *
+ * Data Saver on. Those keep the still photograph underneath, which is also what
+ * shows until the video's first frame is playing (it fades in on `playing`).
  * It PAUSES while the hero is off screen, so scrolling the rest of the page
- * never pays for decoding a video nobody can see, and it restarts itself if a
- * browser pauses it while the tab was hidden.
+ * never pays to decode it, and restarts itself if a browser paused it while
+ * the tab was hidden.
  */
 const showHeroVideo = ref(false)
 const heroVideoReady = ref(false)
@@ -119,17 +118,6 @@ const canPlayHeroVideo = (): boolean => {
   return connection?.saveData !== true
 }
 
-/* iOS Safari autoplays only a video muted AS AN ATTRIBUTE; Vue binds `muted`
- * as a property, so set both and kick playback once the element exists. */
-const startHeroVideo = (): void => {
-  const video = heroVideo.value
-  if (!video) return
-  video.muted = true
-  video.defaultMuted = true
-  video.setAttribute('muted', '')
-  syncHeroVideo()
-}
-
 const syncHeroVideo = (): void => {
   const video = heroVideo.value
   if (!video) return
@@ -139,6 +127,17 @@ const syncHeroVideo = (): void => {
   } else if (!video.paused) {
     video.pause()
   }
+}
+
+/* iOS Safari autoplays only a video muted AS AN ATTRIBUTE; Vue binds `muted`
+ * as a property, so set both and kick playback once the element exists. */
+const startHeroVideo = (): void => {
+  const video = heroVideo.value
+  if (!video) return
+  video.muted = true
+  video.defaultMuted = true
+  video.setAttribute('muted', '')
+  syncHeroVideo()
 }
 
 /*
@@ -746,8 +745,8 @@ const extras = [
           @ended="syncHeroVideo"
           @pause="syncHeroVideo"
         >
-          <source :src="campusVideoWebm" type="video/webm" />
-          <source :src="campusVideoMp4" type="video/mp4" />
+          <source :src="labVideoWebm" type="video/webm" />
+          <source :src="labVideoMp4" type="video/mp4" />
         </video>
         <div class="hero-scrim" aria-hidden="true" />
         <div class="hero-glow" aria-hidden="true" />
@@ -2952,31 +2951,6 @@ const extras = [
  * (`.mock`) or done with shadow and border alone.
  * ========================================================================= */
 
-/* ---- Hero: the campus, moving ---- */
-
-.hero-video {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: 62% 50%;
-  filter: saturate(1.08) contrast(1.06);
-  opacity: 0;
-  transition: opacity 1.2s ease;
-}
-
-.hero-video.is-ready {
-  opacity: 1;
-}
-
-/* Once the video is up, the still photo underneath and its 24s zoom are
- * invisible work — stop both rather than animate a layer nobody can see. */
-.hero:has(.hero-video.is-ready) .hero-photo {
-  animation: none;
-  visibility: hidden;
-}
-
 /* A soft blue light off the top right, so the clear half of the hero reads as
  * lit rather than as a raw photograph pasted beside a dark panel. */
 .hero-glow {
@@ -3048,6 +3022,31 @@ const extras = [
   30% { opacity: 1; }
   80% { opacity: 0; transform: translateY(12px); }
   100% { opacity: 0; transform: translateY(12px); }
+}
+
+/* ---- Hero: the computer lab, moving ---- */
+
+.hero-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 65% 50%;
+  filter: saturate(1.1) contrast(1.05);
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+
+.hero-video.is-ready {
+  opacity: 1;
+}
+
+/* Once the video is up, the still photo underneath and its 24s zoom are
+ * invisible work — stop both rather than animate a layer nobody can see. */
+.hero:has(.hero-video.is-ready) .hero-photo {
+  animation: none;
+  visibility: hidden;
 }
 
 /* ---- Light bands: a faint grid so they read as paper, not as empty grey ---- */
@@ -3263,14 +3262,6 @@ const extras = [
 
 .closing-inner .h2 {
   text-shadow: 0 2px 30px rgba(15, 23, 42, 0.6);
-}
-
-/* On a portrait screen `cover` keeps only a slice of the 16:9 frame; centre
- * it on the main building rather than the wide-screen 62%. */
-@media (max-width: 900px) {
-  .hero-video {
-    object-position: 58% 50%;
-  }
 }
 
 @media (max-width: 640px) {
