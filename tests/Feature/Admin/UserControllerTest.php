@@ -5,8 +5,10 @@ namespace Tests\Feature\Admin;
 use App\Models\Department;
 use App\Models\Program;
 use App\Models\User;
+use App\Notifications\NewAccountCredentials;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -278,5 +280,34 @@ class UserControllerTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['role']);
+    }
+
+    public function test_resending_credentials_emails_them_when_mail_is_live(): void
+    {
+        Notification::fake();
+        Sanctum::actingAs($this->admin(), ['*']);
+        $student = User::factory()->create(['role' => 'student', 'email' => 'resend@students.test']);
+
+        $response = $this->postJson("/api/admin/users/{$student->id}/resend-credentials")->assertOk();
+
+        $this->assertTrue($response->json('emailed'));
+        $this->assertFalse($response->json('mail_off'));
+        Notification::assertSentTo($student, NewAccountCredentials::class);
+    }
+
+    /** MAIL_MAILER=log sends nothing, so the admin must not be told it was emailed. */
+    public function test_resending_credentials_under_a_log_mailer_reports_not_emailed(): void
+    {
+        Notification::fake();
+        config(['mail.default' => 'log']);
+        Sanctum::actingAs($this->admin(), ['*']);
+        $student = User::factory()->create(['role' => 'student', 'email' => 'resend@students.test']);
+
+        $response = $this->postJson("/api/admin/users/{$student->id}/resend-credentials")->assertOk();
+
+        $this->assertFalse($response->json('emailed'));
+        $this->assertTrue($response->json('mail_off'));
+        $this->assertNotEmpty($response->json('temporary_password'));
+        Notification::assertNothingSent();
     }
 }

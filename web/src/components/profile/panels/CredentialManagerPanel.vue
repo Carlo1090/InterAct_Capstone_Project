@@ -157,6 +157,9 @@ onBeforeUnmount(() => {
           <template v-if="issued.emailed === true">
             Emailed to {{ issued.email }}. If it never arrives, read the password above out instead.
           </template>
+          <template v-else-if="issued.emailed === false && issued.mail_off">
+            Email is switched off on this server, so nothing was sent — this password is the only copy, so hand it over now.
+          </template>
           <template v-else-if="issued.emailed === false">
             Email delivery failed — this password is the only copy, so hand it over now.
           </template>

@@ -133,7 +133,10 @@ services:
       # every redeploy. Switch to r2 and add the R2_* variables to persist them.
       - key: AVATAR_DISK
         value: public
-      # Sends nothing at all. Only the missing-journal reminder mails anyone, and
-      # only to Google-verified addresses — of which a fresh seed has none.
+      # Sends nothing at all — and the app says so: bulk import, the Credential
+      # Manager and the admin's resend report "email is switched off on this
+      # server" and show the password instead. To send for real, override this in
+      # the dashboard with the Brevo relay on port 2525 (docs/DEPLOYMENT.md §9).
+      # Gmail SMTP cannot work here: Render free blocks ports 25, 465 and 587.
       - key: MAIL_MAILER
         value: log

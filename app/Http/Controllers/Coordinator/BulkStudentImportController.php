@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Notifications\NewAccountCredentials;
 use App\Services\EnrollmentService;
 use App\Services\StudentBulkImportService;
+use App\Support\MailDelivery;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -181,6 +182,9 @@ class BulkStudentImportController extends Controller
             'total_rows' => $total,
             // null once this slice reached the end of the file.
             'next_offset' => $offset + $limit < $total ? $offset + $limit : null,
+            // Email is switched off on this server (MAIL_MAILER=log), so the
+            // created_email_failed rows were never attempted rather than failed.
+            'mail_off' => ! MailDelivery::isLive(),
         ]);
     }
 
@@ -251,7 +255,7 @@ class BulkStudentImportController extends Controller
         // one-time credentials table instead.
         $emailed = false;
 
-        if (! $this->mailUnreachable) {
+        if (! $this->mailUnreachable && MailDelivery::isLive()) {
             $startedAt = microtime(true);
 
             try {

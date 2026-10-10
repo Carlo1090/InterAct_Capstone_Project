@@ -179,6 +179,26 @@ class CredentialManagerTest extends TestCase
      * a manually-created student can have email = null, and the old Resend
      * action 422'd them with no way for a coordinator to help at all.
      */
+    /** Under MAIL_MAILER=log nothing can arrive, so it must not claim "emailed". */
+    public function test_a_log_mailer_reports_the_password_as_not_emailed(): void
+    {
+        Notification::fake();
+        config(['mail.default' => 'log']);
+
+        $bsit = $this->programFor('BSIT');
+        $coordinator = $this->coordinatorFor($bsit);
+        $supervisor = $this->supervisorAt('TechPH Inc.');
+
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->postJson("/api/coordinator/credentials/{$supervisor->id}/issue")->assertOk();
+
+        $this->assertFalse($response->json('emailed'));
+        $this->assertTrue($response->json('mail_off'));
+        $this->assertNotEmpty($response->json('temporary_password'));
+        Notification::assertNothingSent();
+    }
+
     public function test_an_account_with_no_email_still_gets_a_password_to_read_out(): void
     {
         Notification::fake();

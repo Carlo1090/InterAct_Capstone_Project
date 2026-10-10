@@ -237,6 +237,8 @@ export type BulkImportConfirmResponse = {
   total_rows: number
   /** Where the next slice starts, or null once the file is done. */
   next_offset: number | null
+  /** The server's mailer sends nothing (MAIL_MAILER=log); no email was attempted. */
+  mail_off?: boolean
 }
 
 export type CoordinatorSupervisorUser = {
@@ -298,6 +300,8 @@ export type CredentialIssueResult = {
   role: 'student' | 'supervisor'
   /** true = sent, false = delivery failed, null = no address on file. */
   emailed: boolean | null
+  /** The server's mailer sends nothing (MAIL_MAILER=log); no email was attempted. */
+  mail_off?: boolean
   temporary_password: string
 }
 

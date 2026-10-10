@@ -178,12 +178,16 @@ const resendCredentials = async (student: User) => {
   resendError.value = ''
 
   try {
-    const response = await api.post<{ emailed: boolean; temporary_password: string }>(`/api/admin/users/${student.id}/resend-credentials`)
+    const response = await api.post<{ emailed: boolean; mail_off?: boolean; temporary_password: string }>(
+      `/api/admin/users/${student.id}/resend-credentials`,
+    )
     issuedPassword.value = response.data.emailed
       ? { studentName: student.name, password: `Emailed to ${student.email}. Backup password: ${response.data.temporary_password}` }
       : { studentName: student.name, password: response.data.temporary_password }
     if (!response.data.emailed) {
-      resendError.value = `Email delivery failed for ${student.name}. Share the password below with them directly.`
+      resendError.value = response.data.mail_off
+        ? `Email is switched off on this server, so nothing was sent to ${student.name}. Share the password below with them directly.`
+        : `Email delivery failed for ${student.name}. Share the password below with them directly.`
     }
   } catch (error) {
     const data = axios.isAxiosError(error) ? error.response?.data : null

@@ -3540,10 +3540,38 @@ until a domain is verified via SPF and DKIM DNS records, and its shared
 `onboarding@resend.dev` sender only delivers to the account owner.
 
 Until a domain exists, the documented **Gmail app-password SMTP** recipe in
-`.env.example` is the working path. **Gmail rewrites the From address to the
-authenticated account**, so the System Settings `system_email` silently has no
-effect under that transport (it works again under Resend) — use a dedicated
-address, not a personal one.
+`.env.example` is the working path **for a local machine only**. **Gmail
+rewrites the From address to the authenticated account**, so the System Settings
+`system_email` silently has no effect under that transport (it works again under
+Resend) — use a dedicated address, not a personal one.
+
+**GMAIL SMTP CANNOT WORK FROM THE DEPLOYED API** (corrected 2026-10-08). Render's
+free tier blocks outbound ports 25, 465 and 587, and Gmail offers no other port,
+so every send from Render times out whatever the credentials. The deployed path
+that needs no domain is the **Brevo SMTP relay on port 2525** (free, 300/day; a
+pure env change, recipe in `.env.example` and `docs/DEPLOYMENT.md` §9). The
+sender address must be verified in Brevo first.
+
+**`App\Support\MailDelivery::isLive()` keeps the app honest under
+`MAIL_MAILER=log`** (2026-10-08). The `log` transport — what `render.yaml`
+ships — sends nothing and never throws, so bulk import reported every row
+`created_and_emailed`, and the Credential Manager and the admin's resend
+reported `emailed: true`, for mail nobody could receive. Reproduced, not
+theorised. All three now skip the send when the mailer's transport is `log`,
+report not emailed (`created_email_failed` / `emailed: false`), and return
+**`mail_off: true`**, which the bulk import results, the Credential Manager panel
+and System Settings turn into "Email is switched off on this server, so nothing
+was sent" beside the password. **`array` is deliberately treated as live** — it
+is phpunit's mailer and the tests exercise the delivered path. Pinned by
+`test_a_log_mailer_reports_rows_as_not_emailed`,
+`test_a_log_mailer_reports_the_password_as_not_emailed` and
+`test_resending_credentials_under_a_log_mailer_reports_not_emailed`.
+
+**A Gmail App Password that was working can stop with SMTP 535** — seen
+2026-10-08 on this project's local `.env`: a well-formed 16-letter password,
+rejected as BadCredentials. Google had revoked it (2-Step Verification toggled,
+account password changed, or revoked by hand). The fix is a new App Password,
+then `php artisan mail:test`; nothing in the app is wrong.
 
 **No queue worker is needed** — nothing implements `ShouldQueue`; the
 notification sends inline. Deployments set `QUEUE_CONNECTION=sync`.
@@ -5308,6 +5336,22 @@ Four load-bearing consequences:
 
 `SESSION_SAME_SITE=lax` is correct here (not `none`), because the requests are
 first-party. Lax still rides the top-level GET redirect back from Google.
+
+**RENAMING THE VERCEL PROJECT MOVES THE HOST, AND ALL THREE VARIABLES ABOVE GO
+STALE AT ONCE** (found 2026-10-08, by probe). The SPA now serves at
+`intern-track-mdc-project.vercel.app`, and the old
+`inter-act-capstone-project.vercel.app` only 307-redirects there — so every
+visitor ends up on the new host. The live API was still configured for the old
+one: its CORS answer named the old origin, and `GET /api/user` with a new-host
+`Referer` came back with **no session cookie at all** while an old-host
+`Referer` got one, i.e. Sanctum did not treat the new host as the frontend. On
+that configuration sign-in cannot hold on the deployed site — the documented
+"login succeeds, then every request 401s". Google accepted the old host's
+callback and answered `redirect_uri_mismatch` for the new one. The fix is
+configuration only: set `FRONTEND_URL`, `SANCTUM_STATEFUL_DOMAINS` and
+`GOOGLE_REDIRECT_URI` on Render to the current host, and register the new
+callback on the Google OAuth client. The mobile app is unaffected (bearer
+tokens never consult the stateful list).
 
 **`config('app.timezone')` DEFAULTS TO `Asia/Manila`** (changed 2026-10-08 —
 it was `env('APP_TIMEZONE', 'UTC')`), and the test suite keeps its UTC baseline

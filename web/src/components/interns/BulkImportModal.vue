@@ -80,6 +80,8 @@ const progress = ref<{ done: number; total: number } | null>(null)
 /** Where to pick up after a slice failed mid-file; null when nothing is pending. */
 const resumeOffset = ref<number | null>(null)
 const credentialsDownloaded = ref(false)
+/** The server's mailer sends nothing (MAIL_MAILER=log), so no email was even attempted. */
+const mailOff = ref(false)
 const resultFilter = ref<ResultFilter>('all')
 const copiedRow = ref<number | null>(null)
 let copiedTimer: ReturnType<typeof setTimeout> | null = null
@@ -315,6 +317,7 @@ const runSlices = async (startOffset: number) => {
       const { data: slice } = await api.post<BulkImportConfirmResponse>('/api/coordinator/accounts/bulk-import/confirm', data)
       results.value.push(...slice.results)
       createdCount.value += slice.created_count
+      mailOff.value = slice.mail_off === true
       progress.value = { done: slice.next_offset ?? slice.total_rows, total: slice.total_rows }
       offset = slice.next_offset
     }
@@ -761,6 +764,7 @@ const stepIndex = computed(() => STEPS.findIndex((item) => item.key === step.val
             <p class="font-semibold">
               {{ outcomeCounts.created_email_failed }} student{{ outcomeCounts.created_email_failed === 1 ? ' was' : 's were' }} not emailed.
             </p>
+            <p v-if="mailOff" class="mt-1">Email is switched off on this server, so nothing was sent.</p>
             <p class="mt-1">
               Their passwords below are the only copy. Copy each one or download the credentials now. You can also issue a new
               password later from the Credential Manager in your profile menu.

@@ -8,6 +8,7 @@ use App\Models\CompanySupervisor;
 use App\Models\SystemLog;
 use App\Models\User;
 use App\Notifications\NewAccountCredentials;
+use App\Support\MailDelivery;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -99,7 +100,9 @@ class CredentialManagerController extends Controller
 
         $emailed = null;
 
-        if ($user->email !== null) {
+        if ($user->email !== null && ! MailDelivery::isLive()) {
+            $emailed = false;
+        } elseif ($user->email !== null) {
             $emailed = true;
 
             try {
@@ -122,6 +125,7 @@ class CredentialManagerController extends Controller
             'email' => $user->email,
             'role' => $user->role,
             'emailed' => $emailed,
+            'mail_off' => ! MailDelivery::isLive(),
             'temporary_password' => $temporaryPassword,
         ]);
     }

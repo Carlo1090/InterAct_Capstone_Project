@@ -7,6 +7,7 @@ use App\Models\StudentProfile;
 use App\Models\SystemLog;
 use App\Models\User;
 use App\Notifications\NewAccountCredentials;
+use App\Support\MailDelivery;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -189,19 +190,22 @@ class UserController extends Controller
             'must_change_password' => true,
         ]);
 
-        $emailed = true;
+        $emailed = MailDelivery::isLive();
 
-        try {
-            $user->notify(new NewAccountCredentials($user->username, $temporaryPassword));
-        } catch (Throwable $e) {
-            report($e);
-            $emailed = false;
+        if ($emailed) {
+            try {
+                $user->notify(new NewAccountCredentials($user->username, $temporaryPassword));
+            } catch (Throwable $e) {
+                report($e);
+                $emailed = false;
+            }
         }
 
         SystemLog::record('Credentials Resent', "Resent login credentials to {$user->name}");
 
         return response()->json([
             'emailed' => $emailed,
+            'mail_off' => ! MailDelivery::isLive(),
             'temporary_password' => $temporaryPassword,
         ]);
     }

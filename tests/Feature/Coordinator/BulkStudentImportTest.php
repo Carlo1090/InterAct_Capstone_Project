@@ -475,6 +475,36 @@ class BulkStudentImportTest extends TestCase
     }
 
     /** Letters and digits only — the password is read out and typed on a phone. */
+    /**
+     * MAIL_MAILER=log (what render.yaml ships) sends nothing and never throws,
+     * so a clean notify() used to report every row "emailed". The account is
+     * still created; the row reports not emailed and keeps its password.
+     */
+    public function test_a_log_mailer_reports_rows_as_not_emailed(): void
+    {
+        Notification::fake();
+        config(['mail.default' => 'log']);
+
+        $bsit = $this->programFor('BSIT');
+        $coordinator = $this->coordinatorFor($bsit);
+        $batch = $this->batchFor($bsit, $coordinator);
+        Sanctum::actingAs($coordinator, ['*']);
+
+        $response = $this->post('/api/coordinator/accounts/bulk-import/confirm', [
+            'file' => $this->csvUpload([
+                ['First Name' => 'Lia', 'Middle Name' => '', 'Family Name' => 'Log', 'Sex' => 'F', 'Student ID Number' => '2026-701', 'Email' => 'lia@students.test'],
+            ]),
+            'program_id' => $bsit->id,
+            'batch_id' => $batch->id,
+        ], ['Accept' => 'application/json'])->assertOk();
+
+        $this->assertSame(1, $response->json('created_count'));
+        $this->assertTrue($response->json('mail_off'));
+        $this->assertSame('created_email_failed', $response->json('results.0.outcome'));
+        $this->assertNotEmpty($response->json('results.0.temporary_password'));
+        Notification::assertNothingSent();
+    }
+
     public function test_temporary_passwords_carry_no_symbols(): void
     {
         Notification::fake();
