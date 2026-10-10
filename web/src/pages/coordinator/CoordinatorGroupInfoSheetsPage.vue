@@ -8,12 +8,17 @@ import ToastHost from '@/components/ToastHost.vue'
 import LoadStatus from '@/components/LoadStatus.vue'
 import ReportEditorBar from '@/components/coordinator/ReportEditorBar.vue'
 import GroupInfoSheetPaperView from '@/components/coordinator/GroupInfoSheetPaperView.vue'
+import GroupSheetLocationPanel from '@/components/coordinator/GroupSheetLocationPanel.vue'
+import { effectiveLocation, previewUrl } from '@/lib/groupSheetLocation'
 import type {
   GroupInfoSheet,
   GroupInfoSheetCompany,
   GroupInfoSheetCompanyOption,
   GroupInfoSheetIndex,
   GroupInfoSheetRow,
+  GroupSheetInternPin,
+  GroupSheetLocation,
+  GroupSheetLocationChoice,
 } from '@/types/api'
 
 const academicYears = ref<string[]>([])
@@ -41,6 +46,13 @@ const emptyCompany = (): GroupInfoSheetCompany => ({
 })
 
 const company = ref<GroupInfoSheetCompany>(emptyCompany())
+
+// The sketch box. `locationChoice` null = follow the interns' majority pin.
+const majority = ref<GroupSheetLocation | null>(null)
+const locationChoice = ref<GroupSheetLocationChoice | null>(null)
+const internPins = ref<GroupSheetInternPin[]>([])
+const unpinnedCount = ref(0)
+const sketchUrl = computed(() => previewUrl(effectiveLocation(locationChoice.value, majority.value)))
 
 const isLoadingIndex = ref(true)
 const isLoadingSheet = ref(false)
@@ -81,6 +93,10 @@ const loadSheet = async () => {
   if (!academicYear.value || !companyId.value) {
     rows.value = []
     company.value = emptyCompany()
+    majority.value = null
+    locationChoice.value = null
+    internPins.value = []
+    unpinnedCount.value = 0
     return
   }
 
@@ -108,6 +124,20 @@ const applySheet = (data: GroupInfoSheet) => {
   departmentLine.value = data.department_line
   status.value = data.status
   deletedIds.value = []
+  majority.value = data.majority
+  internPins.value = data.intern_pins
+  unpinnedCount.value = data.unpinned_count
+  locationChoice.value =
+    data.location?.chosen && data.location.source !== 'majority'
+      ? {
+          lat: data.location.lat,
+          lng: data.location.lng,
+          zoom: data.location.zoom,
+          label: data.location.label,
+          source: data.location.source,
+          enrollment_id: data.location.enrollment_id,
+        }
+      : null
 }
 
 /**
@@ -129,6 +159,7 @@ const groupDraft = useFormDraft(
     company: company.value,
     departmentLine: departmentLine.value,
     deletedIds: deletedIds.value,
+    locationChoice: locationChoice.value,
   }),
   (draft) => {
     if (draft.companyId !== companyId.value || draft.year !== academicYear.value) return
@@ -136,6 +167,8 @@ const groupDraft = useFormDraft(
     if (draft.company) company.value = draft.company
     if (typeof draft.departmentLine === 'string') departmentLine.value = draft.departmentLine
     if (Array.isArray(draft.deletedIds)) deletedIds.value = draft.deletedIds
+    // `in`, not truthiness: a draft that reset to the majority holds null.
+    if ('locationChoice' in draft) locationChoice.value = draft.locationChoice ?? null
   },
   { autoRestore: false },
 )
@@ -215,6 +248,7 @@ const save = async (nextStatus: 'draft' | 'finalized') => {
           .filter((row) => row.is_manual)
           .map((row) => ({ ...payloadRow(row), id: String(row.id) })),
         deleted_ids: deletedIds.value,
+        location: locationChoice.value,
       },
     )
     applySheet(data)
@@ -323,7 +357,12 @@ onMounted(loadIndex)
       <template v-else-if="mode === 'preview'">
         <p class="mb-2 text-xs text-slate-400 sm:hidden">↔ The roster table is wide — scroll sideways to see every column.</p>
         <div class="overflow-x-auto rounded-lg bg-slate-100 p-4 sm:p-6">
-          <GroupInfoSheetPaperView :department-line="departmentLine" :company="company" :rows="rows" />
+          <GroupInfoSheetPaperView
+            :department-line="departmentLine"
+            :company="company"
+            :rows="rows"
+            :sketch-url="sketchUrl"
+          />
         </div>
       </template>
 
@@ -480,6 +519,14 @@ onMounted(loadIndex)
             </label>
           </div>
         </section>
+
+        <!-- Last, as on the printed sheet: the sketch box -->
+        <GroupSheetLocationPanel
+          v-model:choice="locationChoice"
+          :majority="majority"
+          :pins="internPins"
+          :unpinned-count="unpinnedCount"
+        />
       </template>
     </LoadStatus>
   </section>

@@ -121,6 +121,10 @@
             border: 1pt solid #1F3864; width: 518.4pt; height: 189.65pt;
             margin: 9.5pt 0 0 24.1pt;
         }
+        /* The interns' agreed company pin, rasterised by StaticMapService to
+           exactly this box (BuildsGroupInfoSheetPdf::GROUP_SKETCH_*) — so it
+           fills the box without changing its height or the page. */
+        .sketch-box img { display: block; width: 518.4pt; height: 189.65pt; }
 
         {{-- The "Page N of M" footer is stamped by the canvas API in
              BuildsGroupInfoSheetPdf, not styled here: dompdf's counter(pages)
@@ -242,6 +246,6 @@
     </table>
 
     <p class="sketch-label">Sketch of Internship Company Location:</p>
-    <div class="sketch-box"></div>
+    <div class="sketch-box">@if (! empty($locationMap ?? null))<img src="{{ $locationMap }}" alt="">@endif</div>
 </body>
 </html>

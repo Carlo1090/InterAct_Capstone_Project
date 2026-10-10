@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Coordinator;
 
+use App\Services\StaticMapService;
 use Illuminate\Foundation\Http\FormRequest;
 
 class SaveGroupInfoSheetRequest extends FormRequest
@@ -64,6 +65,17 @@ class SaveGroupInfoSheetRequest extends FormRequest
 
             'deleted_ids' => ['sometimes', 'array'],
             'deleted_ids.*' => ['integer'],
+
+            // The sketch box. Absent or null = follow the interns' majority
+            // pin; a value = the coordinator's explicit choice, either one
+            // intern's pin or one they dropped themselves.
+            'location' => ['nullable', 'array'],
+            'location.lat' => ['required_with:location', 'numeric', 'between:-90,90'],
+            'location.lng' => ['required_with:location', 'numeric', 'between:-180,180'],
+            'location.zoom' => ['nullable', 'integer', 'between:'.StaticMapService::MIN_ZOOM.','.StaticMapService::MAX_ZOOM],
+            'location.label' => ['nullable', 'string', 'max:255'],
+            'location.source' => ['required_with:location', 'in:intern,coordinator'],
+            'location.enrollment_id' => ['nullable', 'integer'],
         ];
     }
 
@@ -81,6 +93,10 @@ class SaveGroupInfoSheetRequest extends FormRequest
             'company.area_assigned' => 'Area Assigned',
             'company.ojt_start_date' => 'Start of Internship Duty',
             'company.ojt_end_date' => 'Estimated Date to Finish Internship',
+            'location.lat' => 'Company Location latitude',
+            'location.lng' => 'Company Location longitude',
+            'location.zoom' => 'Company Location zoom',
+            'location.label' => 'Company Location label',
         ];
     }
 }

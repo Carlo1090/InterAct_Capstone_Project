@@ -1232,6 +1232,17 @@ in the component so a second open costs nothing.
 All three routes are in the **ungated** student group, for the same reason the
 sheet itself is: a student filling in the gateway has not cleared it yet.
 
+**The coordinator has the same three endpoints** (`coordinator/location-options`,
+`location-preview`, `location-search`; `CoordinatorLocationController`), for the
+GROUP sheet's sketch box — see GROUP Info Sheet → the sketch box below. Both
+controllers delegate to **`App\Http\Controllers\Concerns\ServesLocationMaps`**
+(extracted 2026-10-10 from `StudentInfoSheetController`), so the two pickers
+cannot drift on tile URL, geocoder caching or the fixed-canvas rule. The only
+difference is the preview's size, which each caller fixes in code:
+640x324 for the individual 90mm box, **640x234** for the group box.
+`CompanyLocationPicker.vue` takes `apiBase`, `printRatio`, `headless` and
+`allowEmpty` props for this; with none passed it behaves exactly as before.
+
 #### Server-side rendering cost
 
 - **Tiles are fetched `FETCH_CONCURRENCY = 6` at a time via `Http::pool()`.**
@@ -3931,7 +3942,9 @@ Both official report PDFs use a clean/white table header (no gray fill) and a
   genuinely hosted there, a dropped one was not.
 - **NO logo and no annex letter.** The reference PDF contains zero images, and
   that absence is exactly what lets a full 12-intern roster, the company block
-  and the sketch box share one page. The individual sheet keeps its logo.
+  and the sketch box share one page. The individual sheet keeps its logo. (The
+  map that now fills the sketch box lives INSIDE the box's fixed height, so it
+  costs no space — see below.)
 - The department header line is coordinator-editable, defaulting to the literal
   `College of Accountancy, Business and Management` (the reference's own
   wording). It is **not** derived from `departments.name`, which is seeded to the
@@ -3972,7 +3985,64 @@ reference. **The numbers below were extracted from it — do not "tidy" them.**
   until layout completes. The trait calls `render()` before stamping, and
   `download()` reuses that render.
 - **Capacity**: a full 12-row roster + company block + sketch box fits on **one
-  page**. Re-check after any spacing change.
+  page**, with the map in the box. Re-check after any spacing change;
+  `GroupInfoSheetLocationTest::test_the_pdf_prints_the_map_and_a_full_roster_still_fits_one_page`
+  pins it (verified to fail, at 2 pages, with the map 300pt tall).
+
+### GROUP Info Sheet — the sketch box follows the interns' pins (2026-10-10)
+
+The "Sketch of Internship Company Location" box used to print blank, always,
+although every intern can pin their company on their own information sheet.
+It now prints a map, and by default the point is **the place most interns
+agree on**. Decided with the project owner, each option chosen on purpose:
+
+- **"Majority" for a continuous coordinate means the pin with the most other
+  pins within 150 m** — the DTR's default geofence radius, a building, its gate
+  and its car park. `App\Support\PinConsensus::pick()` (pure; unit-tested in
+  `PinConsensusTest`): most neighbours, then the most central of them (smallest
+  summed distance), then the oldest information sheet. **The winner is a real
+  pin, never an average** — the centroid of a building pin and a stray one a
+  kilometre off lands in a field.
+- **No majority still gets a best guess, flagged.** When the winning group is
+  half the pins or fewer (`contested`), the box still prints the most central
+  pin, and the coordinator's page shows an amber "Interns disagree … check it
+  before printing". One pin out of one is not contested.
+- **Who votes:** rostered interns whose row is **included** (an excluded or
+  removed row does not), using their latest sheet's pin, and **only when that
+  sheet names this company** (`ojt_info.company_id`; a legacy sheet with none
+  still counts). Manual and orphaned rows have no pin.
+- **The coordinator can override**: "Use this" on any intern's pin, or **Set my
+  own location** (the student's picker, headless, against the coordinator
+  endpoints and the group box's ratio); **Reset to majority** returns to
+  automatic. The choice rides the existing Save Draft / Finalize.
+- **Stored in `group_info_sheets.sheet_data.location`** — no migration.
+  `null`/absent means "follow the majority", **recomputed on every request**, so
+  a pin added after the last save flows straight in — the same "only a
+  non-empty override counts" rule the roster follows. The payload carries
+  `location` (what prints), `majority` (sent even while overridden, so Reset
+  needs no round trip), `intern_pins` and `unpinned_count`.
+- **Company geofences are deliberately NOT used** — they anchor the DTR's QR
+  clock-in, and a fence can sit at a supervisor's house. Same rule as the
+  student picker. Nothing is written back to `companies` either; the location
+  is per sheet (company + academic year + coordinator).
+- **No caption line under the box**, unlike the individual sheet: the tile
+  credit is burned into the image, and a 12-intern roster leaves no room.
+- **THREE numbers move together**: the blade's `.sketch-box` (518.4 x
+  189.65pt), `BuildsGroupInfoSheetPdf::GROUP_SKETCH_*` (rendered at 2x, 1037 x
+  379px), and the on-screen shape — `CoordinatorLocationController`'s 640x234
+  preview and `GROUP_SKETCH_RATIO` in `web/src/lib/groupSheetLocation.ts`,
+  which also holds the client copy of the 150 m radius. Every failure path
+  (no pins, map service off, tiles down) prints the blank box, as before.
+- Demo: `CabmbSupervisorDemoSeeder` now gives the three `mdcbalintern*` interns
+  **different** pins — two about 30 m apart on CPG Avenue, Kenneth about 1.1 km
+  away — so Tagbilaran Cooperative Bank shows "2 of 3 agree" and an outlier.
+  Takes effect on the next re-seed.
+
+Coverage: `tests/Unit/Support/PinConsensusTest.php` and
+`tests/Feature/Coordinator/GroupInfoSheetLocationTest.php` (majority default,
+who votes, the contested flag, a saved choice surviving reload and resetting,
+validation, the one-page PDF with the map, a tile outage, the 640x234 preview,
+role isolation of the map routes).
 
 ### PDF blades are standalone — do not port them onto `pdf/layout.blade.php`
 

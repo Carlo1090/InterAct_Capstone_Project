@@ -22,6 +22,7 @@ use App\Http\Controllers\Coordinator\CoordinatorJournalActivityController;
 use App\Http\Controllers\Coordinator\CoordinatorExitInterviewController;
 use App\Http\Controllers\Coordinator\CoordinatorWeeklyActivityLogController;
 use App\Http\Controllers\Coordinator\CoordinatorJournalReviewController;
+use App\Http\Controllers\Coordinator\CoordinatorLocationController;
 use App\Http\Controllers\Coordinator\CoordinatorWeeklyJournalController;
 use App\Http\Controllers\Coordinator\CredentialManagerController;
 use App\Http\Controllers\Coordinator\DtrMonitorController;
@@ -224,6 +225,15 @@ Route::middleware(['auth:sanctum', 'role:coordinator'])
         Route::get('group-info-sheets/{company}/{academicYear}/pdf', [GroupInfoSheetController::class, 'pdf']);
         Route::get('group-info-sheets/{company}/{academicYear}', [GroupInfoSheetController::class, 'show']);
         Route::post('group-info-sheets/{company}/{academicYear}', [GroupInfoSheetController::class, 'save']);
+
+        // The company-location picker behind the group sheet's sketch box —
+        // the student picker's three endpoints (ServesLocationMaps), with a
+        // preview drawn at the group box's own shape. Search is throttled for
+        // the same third-party geocoder reason as the student route.
+        Route::get('location-options', [CoordinatorLocationController::class, 'options']);
+        Route::get('location-preview', [CoordinatorLocationController::class, 'preview']);
+        Route::get('location-search', [CoordinatorLocationController::class, 'search'])
+            ->middleware('throttle:20,1');
 
         Route::get('journal-templates', [JournalTemplateController::class, 'index']);
         Route::post('journal-templates', [JournalTemplateController::class, 'store']);

@@ -11,6 +11,9 @@ use App\Models\Company;
 use App\Models\GroupInfoSheet;
 use App\Models\StudentInformationSheet;
 use App\Models\User;
+use App\Services\StaticMapService;
+use App\Support\GeoDistance;
+use App\Support\PinConsensus;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -123,6 +126,9 @@ class GroupInfoSheetController extends Controller
             'rows' => $validated['rows'] ?? [],
             'manual_rows' => $validated['manual_rows'] ?? [],
             'deleted_ids' => $validated['deleted_ids'] ?? [],
+            // Null = follow the interns' majority pin, live. Only an explicit
+            // choice (one intern's pin, or the coordinator's own) is stored.
+            'location' => $this->normalizeLocation($validated['location'] ?? null),
         ];
 
         $sheet = GroupInfoSheet::updateOrCreate(
@@ -151,8 +157,10 @@ class GroupInfoSheetController extends Controller
         $enrollments = $this->assertCompanyInScope($coordinator, $company, $academicYear);
 
         $sheet = $this->findSheet($coordinator, $company, $academicYear);
+        $infoSheets = $this->infoSheetsFor($enrollments);
+        $allRows = $this->buildRows($enrollments, $sheet, $infoSheets);
 
-        $rows = collect($this->buildRows($enrollments, $sheet))
+        $rows = collect($allRows)
             ->filter(fn (array $row) => $row['included'])
             ->values()
             ->all();
@@ -163,6 +171,7 @@ class GroupInfoSheetController extends Controller
             $this->departmentLine($sheet),
             $rows,
             $this->companyBlock($company, $enrollments, $sheet),
+            $this->locationBlock($company, $enrollments, $sheet, $infoSheets, $allRows)['location'],
         );
     }
 
@@ -176,6 +185,9 @@ class GroupInfoSheetController extends Controller
         EloquentCollection $enrollments,
         ?GroupInfoSheet $sheet,
     ): array {
+        $infoSheets = $this->infoSheetsFor($enrollments);
+        $rows = $this->buildRows($enrollments, $sheet, $infoSheets);
+
         return [
             'academic_year' => $academicYear,
             'company_id' => (int) $company->id,
@@ -183,7 +195,8 @@ class GroupInfoSheetController extends Controller
             'status' => $sheet?->status ?? 'draft',
             'department_line' => $this->departmentLine($sheet),
             'company' => $this->companyBlock($company, $enrollments, $sheet),
-            'rows' => $this->buildRows($enrollments, $sheet),
+            'rows' => $rows,
+            ...$this->locationBlock($company, $enrollments, $sheet, $infoSheets, $rows),
         ];
     }
 
@@ -243,15 +256,14 @@ class GroupInfoSheetController extends Controller
      * orphaned saved rows preserved, and manual rows appended.
      *
      * @param  EloquentCollection<int, BatchStudent>  $enrollments
+     * @param  Collection<int, StudentInformationSheet>  $infoSheets
      * @return array<int, array<string, mixed>>
      */
-    private function buildRows(EloquentCollection $enrollments, ?GroupInfoSheet $sheet): array
+    private function buildRows(EloquentCollection $enrollments, ?GroupInfoSheet $sheet, Collection $infoSheets): array
     {
         $data = $sheet?->sheet_data ?? [];
         $deletedIds = collect($data['deleted_ids'] ?? [])->map(fn ($id) => (int) $id)->all();
         $savedRows = collect($data['rows'] ?? [])->keyBy('id');
-
-        $infoSheets = $this->infoSheetsFor($enrollments);
 
         $candidateRows = $enrollments
             ->reject(fn (BatchStudent $enrollment) => in_array((int) $enrollment->id, $deletedIds, true))
@@ -492,6 +504,165 @@ class GroupInfoSheetController extends Controller
         }
 
         return $block;
+    }
+
+    /**
+     * The "Sketch of Internship Company Location" — which point the sheet
+     * prints, and every intern's own pin so the coordinator can see why.
+     *
+     * The coordinator's explicit choice (one intern's pin, or their own) wins
+     * whenever one is saved. Otherwise it is the interns' MAJORITY pin,
+     * recomputed live — a pin added after the last save flows straight in, the
+     * same "only a non-empty override counts" rule the roster follows.
+     * Deliberately never seeded from company_geofences: those anchor the DTR's
+     * QR clock-in, and a fence can sit at a supervisor's house.
+     *
+     * @param  EloquentCollection<int, BatchStudent>  $enrollments
+     * @param  Collection<int, StudentInformationSheet>  $infoSheets
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array{location: array<string, mixed>|null, majority: array<string, mixed>|null, intern_pins: list<array<string, mixed>>, unpinned_count: int}
+     */
+    private function locationBlock(
+        Company $company,
+        EloquentCollection $enrollments,
+        ?GroupInfoSheet $sheet,
+        Collection $infoSheets,
+        array $rows,
+    ): array {
+        // Only interns actually ON the printed roster vote: an excluded or
+        // removed row is someone the coordinator has decided is not part of
+        // this sheet.
+        $includedIds = collect($rows)
+            ->filter(fn (array $row) => $row['included'] && ! $row['is_manual'])
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $voters = $enrollments->filter(fn (BatchStudent $enrollment) => in_array((int) $enrollment->id, $includedIds, true));
+        $pins = $this->internPins($company, $voters, $infoSheets);
+        $majority = PinConsensus::pick($pins);
+        $saved = $this->normalizeLocation($sheet?->sheet_data['location'] ?? null);
+
+        $auto = $majority === null ? null : [
+            'lat' => $majority['pin']['lat'],
+            'lng' => $majority['pin']['lng'],
+            'zoom' => $majority['pin']['zoom'],
+            'label' => $majority['pin']['label'],
+            'source' => 'majority',
+            'enrollment_id' => $majority['pin']['key'],
+            'chosen' => false,
+            'contested' => $majority['contested'],
+            'agree_count' => $majority['agree_count'],
+            'pinned_count' => $majority['pinned_count'],
+        ];
+
+        $location = $saved !== null
+            ? [...$saved, 'chosen' => true, 'contested' => false]
+            : $auto;
+
+        $internPins = array_map(function (array $pin) use ($location) {
+            $distance = $location === null
+                ? null
+                : GeoDistance::metresBetween($location['lat'], $location['lng'], $pin['lat'], $pin['lng']);
+
+            return [
+                'enrollment_id' => $pin['key'],
+                'name' => $pin['name'],
+                'lat' => $pin['lat'],
+                'lng' => $pin['lng'],
+                'zoom' => $pin['zoom'],
+                'label' => $pin['label'],
+                'agrees' => $distance !== null && $distance <= PinConsensus::RADIUS_METRES,
+                'distance_m' => $distance === null ? null : (int) round($distance),
+            ];
+        }, $pins);
+
+        if ($location !== null) {
+            $location['agree_count'] = count(array_filter($internPins, fn (array $pin) => $pin['agrees']));
+            $location['pinned_count'] = count($internPins);
+        }
+
+        return [
+            'location' => $location,
+            // The automatic pick, sent even while a choice overrides it, so the
+            // page can offer "Reset to majority" without a round trip.
+            'majority' => $auto,
+            'intern_pins' => $internPins,
+            'unpinned_count' => $voters->count() - count($pins),
+        ];
+    }
+
+    /**
+     * Each rostered intern's own pin, oldest information sheet first (the
+     * consensus tie-break). A sheet whose company is a DIFFERENT company — a
+     * student who moved — does not vote; a legacy sheet with no company_id
+     * does, since it can only be about this placement.
+     *
+     * @param  Collection<int, BatchStudent>  $enrollments
+     * @param  Collection<int, StudentInformationSheet>  $infoSheets
+     * @return list<array{key: int, name: string, lat: float, lng: float, zoom: int, label: string|null}>
+     */
+    private function internPins(Company $company, Collection $enrollments, Collection $infoSheets): array
+    {
+        $maps = app(StaticMapService::class);
+        $pins = [];
+
+        foreach ($enrollments as $enrollment) {
+            $infoSheet = $infoSheets->get($enrollment->student_id);
+            $ojt = $infoSheet?->ojt_info ?? [];
+            $sheetCompany = $ojt['company_id'] ?? null;
+
+            if (! $maps->isPinnable($ojt['location_lat'] ?? null, $ojt['location_lng'] ?? null)
+                || ($sheetCompany !== null && (int) $sheetCompany !== (int) $company->id)) {
+                continue;
+            }
+
+            $label = trim((string) ($ojt['location_label'] ?? ''));
+
+            $pins[] = [
+                'key' => (int) $enrollment->id,
+                'sheet_id' => (int) $infoSheet->id,
+                'name' => (string) ($enrollment->student?->name ?? ''),
+                'lat' => (float) $ojt['location_lat'],
+                'lng' => (float) $ojt['location_lng'],
+                'zoom' => $maps->clampZoom($ojt['location_zoom'] ?? null),
+                'label' => $label !== '' ? $label : null,
+            ];
+        }
+
+        usort($pins, fn (array $a, array $b) => $a['sheet_id'] <=> $b['sheet_id']);
+
+        return array_map(function (array $pin) {
+            unset($pin['sheet_id']);
+
+            return $pin;
+        }, $pins);
+    }
+
+    /**
+     * A stored location choice in one shape, or null for "follow the majority".
+     *
+     * @return array{lat: float, lng: float, zoom: int, label: string|null, source: string, enrollment_id: int|null}|null
+     */
+    private function normalizeLocation(mixed $location): ?array
+    {
+        $maps = app(StaticMapService::class);
+
+        if (! is_array($location) || ! $maps->isPinnable($location['lat'] ?? null, $location['lng'] ?? null)) {
+            return null;
+        }
+
+        $label = trim((string) ($location['label'] ?? ''));
+        $enrollmentId = $location['enrollment_id'] ?? null;
+
+        return [
+            'lat' => (float) $location['lat'],
+            'lng' => (float) $location['lng'],
+            'zoom' => $maps->clampZoom($location['zoom'] ?? null),
+            'label' => $label !== '' ? $label : null,
+            'source' => ($location['source'] ?? null) === 'intern' ? 'intern' : 'coordinator',
+            'enrollment_id' => is_numeric($enrollmentId) ? (int) $enrollmentId : null,
+        ];
     }
 
     /**

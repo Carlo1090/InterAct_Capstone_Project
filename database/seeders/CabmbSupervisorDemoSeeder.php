@@ -125,7 +125,20 @@ class CabmbSupervisorDemoSeeder extends Seeder
                 'first' => 'Kenneth', 'middle' => 'Ranoco', 'last' => 'Auza', 'contact' => '09171230103', 'parent' => 'Marites Auza', 'parent_contact' => '09181230103'],
         ];
 
+        // Each intern's own pin, deliberately NOT identical: the group sheet's
+        // sketch box follows the place most interns agree on, and three equal
+        // pins would never show that working. Two pin the bank on CPG Avenue
+        // about 30 m apart; Kenneth pinned about a kilometre away (from home,
+        // by mistake), so the coordinator sees "2 of 3 agree" and an outlier.
+        $pins = [
+            'mdcbalintern1' => ['lat' => 9.6475, 'lng' => 123.8556, 'label' => $company->address],
+            'mdcbalintern2' => ['lat' => 9.6477, 'lng' => 123.8558, 'label' => 'Bank entrance, CPG Avenue'],
+            'mdcbalintern3' => ['lat' => 9.6560, 'lng' => 123.8610, 'label' => null],
+        ];
+
         foreach ($interns as $intern) {
+            $pin = $pins[$intern['username']];
+
             $student = User::updateOrCreate(
                 ['username' => $intern['username']],
                 [
@@ -169,7 +182,7 @@ class CabmbSupervisorDemoSeeder extends Seeder
             // Without it these three — the interns every demo is built around —
             // opened Student Info Sheet to a blank form telling them to submit
             // it "and, once accepted, you'll be enrolled", while enrolled.
-            // The pin sits on CPG Avenue so the printed sketch box shows a map.
+            // Each pin comes from $pins above, so the printed sketch box shows a map.
             StudentInformationSheet::updateOrCreate(
                 ['student_id' => $student->id, 'batch_id' => $batch->id],
                 [
@@ -204,10 +217,10 @@ class CabmbSupervisorDemoSeeder extends Seeder
                         'area_assigned' => 'Branch Operations',
                         'ojt_start_date' => $batch->start_date?->toDateString(),
                         'ojt_end_date' => $batch->end_date?->toDateString(),
-                        'location_lat' => 9.6475,
-                        'location_lng' => 123.8556,
+                        'location_lat' => $pin['lat'],
+                        'location_lng' => $pin['lng'],
                         'location_zoom' => 17,
-                        'location_label' => $company->address,
+                        'location_label' => $pin['label'],
                     ],
                 ]
             );

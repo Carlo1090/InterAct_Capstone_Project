@@ -14,6 +14,10 @@
  * map the student pins on and the map that prints can never be two different
  * maps.
  *
+ * Also used HEADLESS by the coordinator's group sheet (GroupSheetLocationPanel):
+ * only the dialog, against `/api/coordinator`'s copy of the same endpoints, at
+ * the group sheet's own box ratio.
+ *
  * THE MAP LIVES BEHIND A BUTTON, AND THAT IS THE OPTIMISATION.
  * Rendered inline it cost every student who opened the info sheet a ~43kB
  * gzip map library plus a dozen live tile requests, whether or not they ever
@@ -53,8 +57,20 @@ const props = withDefaults(
     zoom: number | null
     label: string | null
     readonly?: boolean
+    /**
+     * Whose copy of the three map endpoints to call. The coordinator's group
+     * sheet passes `/api/coordinator`, whose preview is drawn at that sheet's
+     * own box shape.
+     */
+    apiBase?: string
+    /** Width / height of the printed box this pin fills. */
+    printRatio?: number
+    /** Render only the dialog; the parent draws its own collapsed state and calls open(). */
+    headless?: boolean
+    /** Whether "Save without a pin" is offered — off where a pin is the whole point. */
+    allowEmpty?: boolean
   }>(),
-  { readonly: false },
+  { readonly: false, apiBase: '/api/student', printRatio: 504.57 / 255.12, headless: false, allowEmpty: true },
 )
 
 const emit = defineEmits<{
@@ -62,12 +78,13 @@ const emit = defineEmits<{
 }>()
 
 /**
- * The printed box is 504.57pt x 255.12pt (the full content column by 90mm).
+ * The printed box: by default the individual sheet's 504.57pt x 255.12pt (the
+ * full content column by 90mm); the group sheet passes its own 518.4 x 189.65.
  * The collapsed preview and the modal's guide rectangle are both drawn at
- * exactly that ratio, so what the student sees is what survives the crop.
+ * exactly that ratio, so what the user sees is what survives the crop.
  */
-const PRINT_ASPECT = '504.57 / 255.12'
-const PRINT_RATIO = 504.57 / 255.12
+const PRINT_RATIO = computed(() => props.printRatio)
+const PRINT_ASPECT = computed(() => String(props.printRatio))
 
 const isOpen = ref(false)
 
@@ -123,7 +140,7 @@ const previewUrl = computed(() => {
     zoom: String(props.zoom ?? 16),
   })
 
-  return `/api/student/location-preview?${query.toString()}`
+  return `${props.apiBase}/location-preview?${query.toString()}`
 })
 
 /**
@@ -197,7 +214,7 @@ const search = async () => {
 
   try {
     const { data } = await api.get<{ results: SearchResult[]; unavailable?: boolean }>(
-      '/api/student/location-search',
+      `${props.apiBase}/location-search`,
       { params: { q: term } },
     )
 
@@ -232,14 +249,14 @@ let resizeObserver: ResizeObserver | null = null
  * silently stops matching the print. That never bit while the box was a 3.56:1
  * strip — at the 90mm box's 1.98:1 it clamps on any short viewport.
  */
-const guideStyle = ref<Record<string, string>>({ aspectRatio: PRINT_ASPECT })
+const guideStyle = ref<Record<string, string>>({ aspectRatio: PRINT_ASPECT.value })
 
 const sizeGuide = () => {
   const el = container.value
   if (! el) return
 
-  const width = Math.min(el.clientWidth * 0.92, el.clientHeight * 0.8 * PRINT_RATIO)
-  guideStyle.value = { aspectRatio: PRINT_ASPECT, width: `${Math.round(width)}px` }
+  const width = Math.min(el.clientWidth * 0.92, el.clientHeight * 0.8 * PRINT_RATIO.value)
+  guideStyle.value = { aspectRatio: PRINT_ASPECT.value, width: `${Math.round(width)}px` }
 }
 
 const destroyMap = () => {
@@ -312,7 +329,7 @@ const open = async () => {
   if (!options.value) {
     booting.value = true
     try {
-      const { data } = await api.get<LocationOptions>('/api/student/location-options')
+      const { data } = await api.get<LocationOptions>(`${props.apiBase}/location-options`)
       options.value = data
     } catch {
       bootError.value = 'The map could not be loaded. Your sheet still saves normally without a pinned location.'
@@ -378,60 +395,64 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
   destroyMap()
 })
+
+defineExpose({ open })
 </script>
 
 <template>
   <div class="space-y-3">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <p class="text-xs font-bold text-slate-600">Company Location</p>
-        <p class="mt-1 text-xs text-slate-500">
-          Optional. Pin the company location on the map to print it in the
-          &lsquo;Sketch of Internship Company Location&rsquo; box on the Information Sheet.
-        </p>
+    <template v-if="!headless">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p class="text-xs font-bold text-slate-600">Company Location</p>
+          <p class="mt-1 text-xs text-slate-500">
+            Optional. Pin the company location on the map to print it in the
+            &lsquo;Sketch of Internship Company Location&rsquo; box on the Information Sheet.
+          </p>
+        </div>
+        <div v-if="!readonly" class="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            @click="open"
+          >
+            {{ hasPin ? 'Change location' : 'Set location' }}
+          </button>
+          <button
+            v-if="hasPin"
+            type="button"
+            class="rounded-md px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+            @click="clearPin"
+          >
+            Clear pin
+          </button>
+        </div>
       </div>
-      <div v-if="!readonly" class="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          @click="open"
-        >
-          {{ hasPin ? 'Change location' : 'Set location' }}
-        </button>
-        <button
-          v-if="hasPin"
-          type="button"
-          class="rounded-md px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
-          @click="clearPin"
-        >
-          Clear pin
-        </button>
+
+      <!-- Collapsed state: one cached image of exactly what will print. -->
+      <div v-if="hasPin && !previewFailed" class="overflow-hidden rounded-lg ring-1 ring-slate-200">
+        <img
+          :src="previewUrl"
+          alt="Map of the pinned company location"
+          class="block w-full"
+          :style="{ aspectRatio: PRINT_ASPECT }"
+          loading="lazy"
+          decoding="async"
+          @error="previewFailed = true"
+        />
       </div>
-    </div>
+      <div
+        v-else-if="!hasPin"
+        class="flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-xs text-slate-500"
+      >
+        No location pinned — the sketch box will print blank.
+      </div>
 
-    <!-- Collapsed state: one cached image of exactly what will print. -->
-    <div v-if="hasPin && !previewFailed" class="overflow-hidden rounded-lg ring-1 ring-slate-200">
-      <img
-        :src="previewUrl"
-        alt="Map of the pinned company location"
-        class="block w-full"
-        :style="{ aspectRatio: PRINT_ASPECT }"
-        loading="lazy"
-        decoding="async"
-        @error="previewFailed = true"
-      />
-    </div>
-    <div
-      v-else-if="!hasPin"
-      class="flex items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-xs text-slate-500"
-    >
-      No location pinned — the sketch box will print blank.
-    </div>
-
-    <p v-if="hasPin" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
-      <span class="font-medium text-slate-700">{{ coordinates }}</span>
-      <span v-if="label" class="truncate">· {{ label }}</span>
-    </p>
+      <p v-if="hasPin" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+        <span class="font-medium text-slate-700">{{ coordinates }}</span>
+        <span v-if="label" class="truncate">· {{ label }}</span>
+      </p>
+    </template>
 
     <!-- ------------------------------------------------------ map dialog -->
     <div
@@ -572,10 +593,10 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-            :disabled="!!bootError"
+            :disabled="!!bootError || (!allowEmpty && !draftHasPin)"
             @click="commit"
           >
-            {{ draftHasPin ? 'Use this location' : 'Save without a pin' }}
+            {{ draftHasPin || !allowEmpty ? 'Use this location' : 'Save without a pin' }}
           </button>
         </div>
       </div>

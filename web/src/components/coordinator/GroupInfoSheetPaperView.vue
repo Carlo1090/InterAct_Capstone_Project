@@ -1,12 +1,20 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { GROUP_SKETCH_RATIO } from '@/lib/groupSheetLocation'
 import type { GroupInfoSheetCompany, GroupInfoSheetRow } from '@/types/api'
 
 const props = defineProps<{
   departmentLine: string
   company: GroupInfoSheetCompany
   rows: GroupInfoSheetRow[]
+  /** The map that will print in the sketch box, or '' for a blank box. */
+  sketchUrl?: string
 }>()
+
+const sketchFailed = ref(false)
+watch(() => props.sketchUrl, () => {
+  sketchFailed.value = false
+})
 
 const includedRows = computed(() => props.rows.filter((row) => row.included))
 
@@ -99,7 +107,18 @@ const formatDate = (raw: string) => {
 
     <!-- Sketch box -->
     <p class="mt-6 text-sm font-bold">Sketch of Internship Company Location:</p>
-    <div class="mt-1 h-40 rounded border border-[#1F3864]"></div>
+    <div
+      class="mt-1 overflow-hidden rounded border border-[#1F3864]"
+      :style="{ aspectRatio: String(GROUP_SKETCH_RATIO) }"
+    >
+      <img
+        v-if="sketchUrl && !sketchFailed"
+        :src="sketchUrl"
+        alt="Map of the company location"
+        class="block h-full w-full"
+        @error="sketchFailed = true"
+      />
+    </div>
   </article>
 </template>
 

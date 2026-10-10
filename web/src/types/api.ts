@@ -773,6 +773,47 @@ export type GroupInfoSheetIndex = {
   companies: GroupInfoSheetCompanyOption[]
 }
 
+/**
+ * The point the group sheet's sketch box prints. `majority` is the interns'
+ * most-agreed pin, recomputed live; `intern` / `coordinator` is a saved choice.
+ */
+export type GroupSheetLocation = {
+  lat: number
+  lng: number
+  zoom: number
+  label: string | null
+  source: 'majority' | 'intern' | 'coordinator'
+  /** Whose pin it is (majority winner or chosen intern); null for the coordinator's own. */
+  enrollment_id: number | null
+  chosen: boolean
+  /** No group of pins holds a majority — the location is the most central guess. */
+  contested: boolean
+  /** Interns whose pin is within 150 m of this location. */
+  agree_count: number
+  pinned_count: number
+}
+
+/** What the coordinator sends: null follows the majority. */
+export type GroupSheetLocationChoice = {
+  lat: number
+  lng: number
+  zoom: number | null
+  label: string | null
+  source: 'intern' | 'coordinator'
+  enrollment_id: number | null
+}
+
+export type GroupSheetInternPin = {
+  enrollment_id: number
+  name: string
+  lat: number
+  lng: number
+  zoom: number
+  label: string | null
+  agrees: boolean
+  distance_m: number | null
+}
+
 export type GroupInfoSheet = {
   academic_year: string
   company_id: number
@@ -781,6 +822,12 @@ export type GroupInfoSheet = {
   department_line: string
   company: GroupInfoSheetCompany
   rows: GroupInfoSheetRow[]
+  /** The location in use — the saved choice, else the majority. */
+  location: GroupSheetLocation | null
+  /** The automatic pick, present even while a choice overrides it. */
+  majority: GroupSheetLocation | null
+  intern_pins: GroupSheetInternPin[]
+  unpinned_count: number
 }
 
 export type CoordinatorDashboardStats = {
