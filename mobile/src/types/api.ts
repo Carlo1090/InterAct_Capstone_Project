@@ -382,8 +382,11 @@ export type ExitInterviewRecord = {
 
 export type ExitInterviewResponse = {
   interview: ExitInterviewRecord | null;
-  /** The question set to render — the student's department's form. */
-  form: ExitInterviewForm;
+  /** The question set to render — the student's department's form.
+   *  OPTIONAL on purpose: an API older than the per-department forms sends
+   *  no `form`, and this screen no longer carries its own copy of the
+   *  questions, so every read of it must be guarded. */
+  form?: ExitInterviewForm;
   header: Record<string, string | null>;
   suggested_total_hours: string | number | null;
   /** Per-question, from the printed line count of each — the form's own

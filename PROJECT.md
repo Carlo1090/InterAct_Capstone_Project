@@ -2236,9 +2236,16 @@ Intern" sets 108.11pt wide in Carlito against Calibri's 107.98pt.
   path. Registration is **best-effort** — the blade's stack falls back to
   Helvetica, so a missing font file degrades the type rather than 500-ing the
   download.
-- dompdf caches the parsed metrics into **`storage/fonts/`** on first render.
-  That directory is committed (via its own `.gitignore`) and the Dockerfile
-  already `chown`s `storage`, so nothing extra is needed to deploy.
+- dompdf caches the parsed metrics into **`storage/fonts/`** on first render —
+  the directory `laravel-dompdf`'s own packaged default sets as `font_dir`
+  (`config/dompdf.php` is NOT published here). The Dockerfile already `chown`s
+  `storage`, so nothing extra is needed to deploy.
+  **CORRECTED 2026-10-09: that directory is NOT committed.** This used to claim
+  it was "committed (via its own `.gitignore`)"; that file is `*` plus
+  `!.gitignore`, so **only the `.gitignore` is tracked** and every generated
+  metric file is excluded. Nothing may depend on one being present — see the
+  Gotchas entry on the exit interview's font metrics for what did, and what it
+  silently cost.
 - **Font subsetting is switched ON for this document only.**
   `laravel-dompdf`'s shipped config sets `enable_font_subsetting => false`,
   which is harmless while every PDF uses a base-14 font but embeds the whole
@@ -2391,6 +2398,20 @@ in that — and the admin **picks which hardcoded form a department uses**.
   transcription of the questions** — the five copies that existed (layout,
   model, two web pages, mobile) are one. `answer_char_limits` is per form; a
   rating question has no entry.
+  **`form` IS OPTIONAL ON THE MOBILE TYPE, AND THE SCREEN GUARDS IT**
+  (2026-10-09). `mobile/app/exit-interview.tsx` did an unguarded
+  `data.form.sections.map(...)`, so against an API older than the
+  per-department forms — which is **every deployed API until `deploy` catches
+  up with `main`** — the screen threw `Cannot read properties of undefined`
+  and white-screened. This is the OTA coupling in its sharpest form: a
+  JS-only bundle ships in minutes while the backend ships on a deliberate
+  `deploy` merge, so the two halves of one feature are routinely live at
+  different versions. The type now declares `form?`, which makes TypeScript
+  force the check rather than leaving it to whoever remembers, and a missing
+  `form` renders a `warn` Banner naming the cause and pointing at the printed
+  form, with Save Draft and Submit hidden (there is nothing to answer). The
+  screen heals itself the moment the backend deploys — no second OTA needed.
+  `Question` is derived through `NonNullable<…[form]>` for the same reason.
 - **The Summary Report is ONE FORM PER REPORT**: the coordinator's
   department's assigned form supplies the questions, only interviews
   snapshotted under that `form_key` are gathered (CAST q1 ≠ CABM q1), and the
@@ -2601,7 +2622,7 @@ coordinator's and the dean's names.
   with the REGULAR Helvetica widths (bold sets ~5% wider), so "Compliance
   Verification:" and both signatory labels printed straight into the text
   after them, and the coordinator's name ran into "Date:". `textWidth()` now
-  takes `$bold` and reads `Helvetica-Bold.afm.json`.
+  takes `$bold` and reads `Helvetica-Bold`'s own metrics.
   `test_no_bold_label_runs_into_the_text_after_it` was verified to fail with
   the regular widths restored.
 - The CABM page 2 now ends at **880.67** (was 871.37). It is still two pages,
@@ -2717,8 +2738,10 @@ The rebuilt form fixes each of those. Load-bearing details:
    already had, and (since 2026-10-08) "Remarks:" too. One mechanism for all
    six labelled fields.
 7. **Answers are wrapped in PHP, not by dompdf**, against the very
-   `Helvetica.afm.json` dompdf will use, so the wrap and the render cannot
-   disagree. It also sidesteps dompdf's line-height quirk entirely (its line
+   `Helvetica.afm` dompdf itself parses, so the wrap and the render cannot
+   disagree. (**Corrected 2026-10-09** — this read `Helvetica.afm.json`, and
+   the code looked for one inside `vendor/`, where dompdf never writes one.
+   See the Gotchas entry.) It also sidesteps dompdf's line-height quirk entirely (its line
    box is `(line_height / font_size) * fontHeight`, not `line_height`), since
    no block holds more than one line.
 8. **dompdf positions a block by its TOP, so each computed BASELINE is
@@ -5603,6 +5626,60 @@ API calls to a clean `200` with real data, confirmed by tracing the exact
 `sessions` row: before the fix its payload went from a correct
 `{"login_web_...":9,...}` to a blank `{"_flash":{...}}` within milliseconds of
 the second login; after the fix it stays correct indefinitely.
+
+### The exit interview measured every glyph as 556pt/1000 — silently, on every clean checkout
+
+Found 2026-10-09 chasing six failing exit-interview tests. `ExitInterviewFormLayout`
+wraps its own text in PHP so the wrap and dompdf's render cannot disagree, and
+`widths()` loaded the metrics from
+**`vendor/dompdf/dompdf/lib/fonts/{face}.afm.json`** — a file **dompdf never
+writes there**. dompdf ships only the plain `.afm`; the `.afm.json` files are a
+CACHE it generates into whatever `font_dir` is configured, and
+`laravel-dompdf`'s own packaged default points that at `storage_path('fonts')`,
+whose `.gitignore` is `*`. So the metrics file was absent in vendor, absent from
+git, and `widths()` returned an **empty array** — sending every character
+through `textWidth()`'s `?? 556` fallback.
+
+**556 is the worst possible wrong answer, because it is plausible.** Nothing
+threw, no font failed to load, and the PDF still rendered. What actually broke:
+
+- **Bold and regular measured IDENTICALLY** (both 343.33pt for a sample
+  question), which removes the entire premise of `fits()` — it exists precisely
+  because prose sets ~0.45em per character and ALL-CAPS ~0.60em, and at a flat
+  556 those are the same number. The width check that is supposed to refuse an
+  over-long answer was measuring nothing.
+- Ordinary question text **over-measured and wrapped three lines early**, which
+  grew page 1 by exactly one `LINE` (868.85 → 882.05) and page 2 by two.
+- That pushed the trailer **24.57pt** past `CONTENT_BOTTOM`, so the
+  coordinator's compliance block and both signatories moved to a **third page** —
+  on a form documented, measured and asserted to be exactly two.
+
+**The fix is to parse the `.afm` dompdf itself parses** (`parseAfm()`), not a
+generated cache: it is the canonical source that cache is built FROM, and it is
+the one file `composer install` guarantees. Verified faithful — the parse
+reproduces dompdf's own generated JSON for Helvetica and Helvetica-Bold at
+**218 glyphs each with zero mismatches**. `cachedWidths()` remains as a
+fallback, reading `config('dompdf.options.font_dir')` rather than a hardcoded
+guess. With it, CABM is back to **2 pages, bottoms 868.85 | 880.67** — the
+hand-measured figures — and CAST to its 4.
+
+**Why it went unnoticed for so long: the numbers in this file were measured on a
+machine where that vendor path happened to hold the generated files.** dompdf's
+own default `font_dir` IS its `lib/fonts/` directory, so a render under default
+config writes them there; laravel-dompdf's default sends them to `storage/fonts`
+instead, and a `composer install` wipes `vendor/` regardless. The committed
+geometry was therefore correct and simply unreproducible.
+
+**The guard is now a test that names the cause**, because the failure mode was
+silence: `test_the_type_is_measured_against_real_font_metrics` pins Adobe's own
+published widths (space 278, A 667, a 556; bold A 722) and that `i` and `m`
+differ, and `test_bold_measures_wider_than_regular` pins the bold table being a
+different table. **Verified to genuinely fail** with the metrics forced empty —
+where previously the only symptom was a page count nobody could explain.
+
+**RULE: never let a measurement depend on a generated cache, and never let a
+missing metric degrade silently.** A per-character fallback is fine for an
+unmappable codepoint; it must not stand in for the whole table.
 
 ### `date`-cast columns and plain equality under SQLite
 
