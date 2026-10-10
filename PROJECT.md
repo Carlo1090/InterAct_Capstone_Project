@@ -10,6 +10,11 @@ conventions, and domain rules**, and is kept up to date as the project changes.
   disagrees with this one, **this one wins**.
 - Deployment runbook: `docs/DEPLOYMENT.md`. Cron/email operator setup:
   `docs/CRON-AND-EMAIL-SETUP.txt`.
+- **The final defense is presented LOCALLY** (decided 2026-10-10), not on
+  Render/Vercel. Its run sheet and demo-reset helpers live on the presenting
+  laptop only and are **deliberately NOT committed** (project owner) — do not
+  add them to the repo. Worth knowing for any demo: seeded data is dated
+  relative to the day it is seeded, so re-seed in the week it is shown.
 - **The capstone manuscript is NOT in this repository.** It is authored and
   built outside the repo, and nothing in the Laravel app renders it. Do not add
   paper/thesis generation back here — `resources/views/pdf/` and
@@ -1071,6 +1076,14 @@ enrollment.
    (in-app, since 2026-10-08), and **Accept 422s a student already active in a
    different batch** — the one-active-enrollment rule now lives in
    `EnrollmentService`, so it binds every path.
+   **The review modal lists the sheet in the FORM's own labels and order**
+   (2026-10-10, `SECTION_FIELDS` in `CoordinatorInfoSheetsPage.vue`). It used
+   to iterate the three JSON columns raw, so the coordinator read "Company Id
+   10", "Location Lat/Lng/Zoom", "Ojt End Date" in write order. Internal keys
+   (`company_id`, `location_*`) are hidden and the pin is summarised as one
+   "Company Location" row; any key the list does not name is still shown
+   after the known ones, so nothing a student typed is dropped. The admin's
+   copy (`AdminInfoSheetsPage.vue`) already used explicit labels.
 5. **Individual Info Sheet PDF** (`pdf.info-sheet` via the shared
    `BuildsInfoSheetPdf` trait) — MDC logo as a base64 data URI from
    `public/images/mdc-logo.png`, the two labeled sections, plus the
@@ -5401,6 +5414,38 @@ with the variable genuinely absent (asserting `config('app.timezone')` would
 only re-read phpunit's own pin and prove nothing). **Verified to genuinely
 fail** when the default is put back to UTC.
 
+**THE MANILA DEFAULT SHIFTED EVERY DATE-ONLY COLUMN A DAY EARLY ON THE WIRE,
+fixed 2026-10-10** (found on screen while verifying for the defense: a journal
+written for Saturday 10 Oct sat under "2026-10-09" in the supervisor's review,
+directly beneath a compiled narrative headed SATURDAY). A plain `date` cast
+reads `2026-10-10` as **Manila midnight**, and Eloquent serialises every Carbon
+with `toJSON()` — i.e. in **UTC** — so it reached the client as
+`"2026-10-09T16:00:00.000000Z"`. The SPA and the mobile app both take a date
+as its first ten characters (see the frontend convention below), so the slice
+read the previous day. Under the old UTC default midnight serialised as
+midnight, which is why nothing broke until the default changed — and why the
+suite (pinned to UTC) still could not see it. Probed across every role's GET
+endpoints: **12 fields** were affected — `journal_entries.entry_date` in My
+Journals and in all three reviewers' daily entries, `batches.start_date`/
+`end_date` on the coordinator and admin batch lists, `weekly_activity_logs`'
+period. The batch one was **data-corrupting, not cosmetic**: the Edit Batch
+form fills its `<input type="date">` with `start_date.slice(0, 10)`, so every
+save of an unrelated field would have moved the batch a day earlier. On mobile,
+tapping a journal opened the previous day's editor.
+
+**Fix: every date-only cast is `'date:Y-m-d'`** (`Batch`, `DtrSession`,
+`JournalEntry`, `StudentProfile`, `WeeklyActivityEntry`, `WeeklyActivityLog`,
+`WeeklyLog` — 11 columns). PHP reads are unchanged (still a Carbon at that
+date); only the serialised form changed, to the plain date the column holds,
+which both slicing and `new Date('YYYY-MM-DD')` read correctly in UTC+8. No
+hand-built payload passes a raw Carbon for these columns (they all call
+`->toDateString()`), so the casts cover every path. **Any new `date` column must
+use the same cast.** Pinned by `tests/Unit/Models/DateOnlySerializationTest`,
+which switches to Manila itself; verified to fail 11/11 on the old casts. Not
+changed: `datetime` columns still serialise as UTC instants, which is correct
+for `new Date()`; a datetime that is *sliced* still shows the UTC date, wrong
+only between Manila midnight and 08:00 (pre-existing, unchanged).
+
 ### Scheduled work runs over HTTP, because the deployed app has no cron
 
 `App\Http\Controllers\CronController` (`GET|POST /api/cron/run`,
@@ -5899,6 +5944,16 @@ since both `v-for` the same `rows` array.
 Every item from the original "deliberately left as plain scrollable" list is
 now converted. Nothing remaining is known to need this treatment.
 
+**An `sr-only` label inside an `overflow-x-auto` table ESCAPES the clip**
+(found 2026-10-10 on `StudentWeeklyTimeLogPage.vue`, 7px of page-level
+sideways scroll at 1366px). `sr-only` is `position: absolute`, and an
+absolutely positioned element is clipped only by an overflow container that is
+its containing block or an ancestor of it — with no positioned ancestor inside
+the scroller, the "Delete row" header label was laid out at its static
+position past the table's scrolled-off edge and widened the document. Fix:
+`relative` on the scroll wrapper. Any wide table with an `sr-only` header needs
+the same. Verified at 1366, 1280, 1024 and 390px.
+
 **A CSS-only "scroll shadow" affordance for every `overflow-x-auto` region was
 attempted and reverted — do not retry it as a blanket rule.** Tailwind v4 wraps
 its own utilities in named cascade layers via `@import "tailwindcss"`; a plain
@@ -5989,8 +6044,10 @@ follow them rather than inventing a parallel style.
   screen to pin against, so the bar drifts up over the content.
 - **Render a date by slicing the string, never by parsing it.** Take the leading
   10 characters (`value.slice(0, 10)`). Almost every date the API returns is
-  either a `date`-cast column Laravel serialises at midnight UTC
-  (`"2026-05-29T00:00:00.000000Z"`) or a bare unmarked `"2026-07-29 21:37:00"` —
+  either a `date`-cast column, which since 2026-10-10 serialises as a plain
+  `"2026-05-29"` (the `'date:Y-m-d'` cast — see Deployment → the Manila
+  default; before that it came out as a UTC instant whose first ten characters
+  were the PREVIOUS day), or a bare unmarked `"2026-07-29 21:37:00"` —
   and `new Date()` on either can land a day earlier once `APP_TIMEZONE` is
   `Asia/Manila`, which is what deployments set. Slicing cannot drift. Where the
   time still matters, keep the untouched original in a `TooltipWrap` beside the
@@ -6344,6 +6401,14 @@ login-bearing supervisor (`guardSingleLogin`), so attaching `mdcbalsup` to a
 company that already has one would be rejected by the app's own rule. The
 company also carries a **named-only** contact (Mr. Elmer Bautista) so the
 login-bearing vs named-only split is visible with no setup.
+
+**The three interns carry an APPROVED info sheet** (added 2026-10-10). They
+are enrolled directly, which clears the gate on its own, so the seeder never
+wrote one — and Student Info Sheet then showed the demo's main intern a blank
+form telling him to submit it "and, once accepted, you'll be enrolled", while
+his info sheet PDF 404'd. The sheet mirrors what Accept would have left behind
+(company, schedule, OJT dates from the batch, the named supervisor) and pins
+CPG Avenue, so the printed sketch box shows a map.
 
 Both demo coordinators now have `dtr_enabled = true` so every role is testable
 end to end. The opt-out is demonstrated live by switching it off in the

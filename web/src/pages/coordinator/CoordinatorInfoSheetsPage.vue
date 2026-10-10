@@ -160,17 +160,95 @@ const reject = async () => {
   }
 }
 
+/**
+ * The info sheet's fields in the order and wording of the student's own form
+ * (and the printed sheet). The JSON columns come back in whatever order they
+ * were written, so iterating them raw put "Company Id 10" and "Location Zoom"
+ * in front of the coordinator. A key not listed here is still shown, after the
+ * known ones, under its humanised key — nothing a student typed is dropped.
+ */
+const SECTION_FIELDS: { title: string; source: 'personal_info' | 'academic_info' | 'ojt_info'; fields: [string, string][] }[] = [
+  {
+    title: 'Student Trainee Information',
+    source: 'personal_info',
+    fields: [
+      ['last_name', 'Family Name'],
+      ['first_name', 'First Name'],
+      ['middle_name', 'Middle Name'],
+      ['sex', 'Sex'],
+      ['date_of_birth', 'Date of Birth'],
+      ['student_id_number', 'Student ID Number'],
+      ['contact_number', 'Contact No.'],
+      ['email', 'Email'],
+      ['home_address', 'Home Address'],
+      ['parent_guardian_name', "Parent's / Guardian's Name"],
+      ['parent_guardian_contact', "Parent's / Guardian's Contact No."],
+    ],
+  },
+  {
+    title: 'Academic Information',
+    source: 'academic_info',
+    fields: [
+      ['program_course', 'Program'],
+      ['year_level', 'Year'],
+      ['department', 'Department'],
+      ['internship_coordinator', 'Internship Coordinator'],
+      ['coordinator_contact_no', 'Coordinator Contact No.'],
+    ],
+  },
+  {
+    title: 'Internship Company Information',
+    source: 'ojt_info',
+    fields: [
+      ['host_company', 'Name of Company'],
+      ['company_address', 'Company Address'],
+      ['company_signatory_moa', 'Company Signatory (MOA)'],
+      ['office_designation', 'Office Designation / Position'],
+      ['supervisor_name', 'Name of Supervisor / Office Head'],
+      ['supervisor_contact', 'Supervisor Contact No.'],
+      ['intern_duty_schedule', "Intern's Duty Schedule"],
+      ['area_assigned', 'Area Assigned'],
+      ['division_assigned', 'Division Assigned'],
+      ['ojt_start_date', 'Start of Internship Duty'],
+      ['ojt_end_date', 'Estimated Date to Finish Internship'],
+    ],
+  },
+]
+
+// Internal values with no meaning to a reader: the company is already named
+// by host_company, and the pin is summarised as one "Company Location" row.
+const HIDDEN_KEYS = new Set(['company_id', 'location_lat', 'location_lng', 'location_zoom', 'location_label'])
+
+const labelize = (key: string): string => key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+
+const displayValue = (key: string, value: unknown): string => {
+  if (value === null || value === undefined || value === '') return '—'
+  const text = String(value)
+  if (key === 'sex') return text.charAt(0).toUpperCase() + text.slice(1)
+  if (key === 'year_level') return text.replace('-year', ' Year')
+  return text
+}
+
 const sections = computed(() => {
   const sheet = detail.value?.sheet
   if (!sheet) return []
-  return [
-    { title: 'Student Trainee Information', data: sheet.personal_info },
-    { title: 'Academic Information', data: sheet.academic_info },
-    { title: 'Internship Company Information', data: sheet.ojt_info },
-  ].filter((section) => section.data && Object.keys(section.data).length > 0)
+  return SECTION_FIELDS.map(({ title, source, fields }) => {
+    const data = (sheet[source] ?? {}) as Record<string, unknown>
+    const known = new Set(fields.map(([key]) => key))
+    const rows = fields.map(([key, label]) => ({ key, label, value: displayValue(key, data[key]) }))
+    for (const [key, value] of Object.entries(data)) {
+      if (!known.has(key) && !HIDDEN_KEYS.has(key)) rows.push({ key, label: labelize(key), value: displayValue(key, value) })
+    }
+    if (source === 'ojt_info' && data.location_lat != null && data.location_lng != null) {
+      rows.push({
+        key: 'location',
+        label: 'Company Location',
+        value: data.location_label ? `Pinned: ${String(data.location_label)}` : `Pinned (${data.location_lat}, ${data.location_lng})`,
+      })
+    }
+    return { title, rows }
+  }).filter((section) => section.rows.some((row) => row.value !== '—'))
 })
-
-const labelize = (key: string): string => key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 
 onMounted(load)
 </script>
@@ -354,9 +432,9 @@ onMounted(load)
           <div v-for="section in sections" :key="section.title">
             <h4 class="text-xs font-bold uppercase tracking-wide text-slate-500">{{ section.title }}</h4>
             <dl class="mt-2 grid gap-x-6 gap-y-2 md:grid-cols-2">
-              <div v-for="(value, key) in section.data" :key="key" class="border-b border-slate-100 pb-1">
-                <dt class="text-xs text-slate-400">{{ labelize(String(key)) }}</dt>
-                <dd class="text-sm text-slate-800">{{ value || '—' }}</dd>
+              <div v-for="row in section.rows" :key="row.key" class="border-b border-slate-100 pb-1">
+                <dt class="text-xs text-slate-400">{{ row.label }}</dt>
+                <dd class="text-sm text-slate-800">{{ row.value }}</dd>
               </div>
             </dl>
           </div>

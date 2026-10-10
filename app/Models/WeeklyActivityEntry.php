@@ -17,8 +17,8 @@ class WeeklyActivityEntry extends Model
     protected function casts(): array
     {
         return [
-            'inclusive_date_start' => 'date',
-            'inclusive_date_end' => 'date',
+            'inclusive_date_start' => 'date:Y-m-d',
+            'inclusive_date_end' => 'date:Y-m-d',
         ];
     }
 

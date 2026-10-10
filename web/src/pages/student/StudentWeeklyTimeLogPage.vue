@@ -623,7 +623,7 @@ onBeforeUnmount(() => {
               <p class="px-6 pt-4 text-xs text-slate-400 sm:hidden">
                 ↔ This table is wide — scroll sideways to see every column.
               </p>
-              <div class="overflow-x-auto px-2 py-5 sm:px-6">
+              <div class="relative overflow-x-auto px-2 py-5 sm:px-6">
                 <table class="w-full min-w-248 table-fixed border-collapse text-sm">
                   <colgroup>
                     <col class="w-10" />

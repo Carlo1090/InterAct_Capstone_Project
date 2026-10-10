@@ -15,8 +15,8 @@ class WeeklyActivityLog extends Model
     protected function casts(): array
     {
         return [
-            'week_start' => 'date',
-            'week_end' => 'date',
+            'week_start' => 'date:Y-m-d',
+            'week_end' => 'date:Y-m-d',
             'no_of_hours' => 'decimal:1',
             'submitted_at' => 'datetime',
         ];

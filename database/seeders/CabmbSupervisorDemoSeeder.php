@@ -7,6 +7,7 @@ use App\Models\BatchStudent;
 use App\Models\Company;
 use App\Models\CompanySupervisor;
 use App\Models\Program;
+use App\Models\StudentInformationSheet;
 use App\Models\StudentProfile;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -116,9 +117,12 @@ class CabmbSupervisorDemoSeeder extends Seeder
             ->value('id');
 
         $interns = [
-            ['username' => 'mdcbalintern1', 'name' => 'Jomar Bactol', 'sid' => '2022-FM-101', 'sex' => 'male'],
-            ['username' => 'mdcbalintern2', 'name' => 'Rhea Lumapas', 'sid' => '2022-FM-102', 'sex' => 'female'],
-            ['username' => 'mdcbalintern3', 'name' => 'Kenneth Auza', 'sid' => '2022-FM-103', 'sex' => 'female'],
+            ['username' => 'mdcbalintern1', 'name' => 'Jomar Bactol', 'sid' => '2022-FM-101', 'sex' => 'male',
+                'first' => 'Jomar', 'middle' => 'Cajes', 'last' => 'Bactol', 'contact' => '09171230101', 'parent' => 'Lourdes Bactol', 'parent_contact' => '09181230101'],
+            ['username' => 'mdcbalintern2', 'name' => 'Rhea Lumapas', 'sid' => '2022-FM-102', 'sex' => 'female',
+                'first' => 'Rhea', 'middle' => 'Olaco', 'last' => 'Lumapas', 'contact' => '09171230102', 'parent' => 'Danilo Lumapas', 'parent_contact' => '09181230102'],
+            ['username' => 'mdcbalintern3', 'name' => 'Kenneth Auza', 'sid' => '2022-FM-103', 'sex' => 'female',
+                'first' => 'Kenneth', 'middle' => 'Ranoco', 'last' => 'Auza', 'contact' => '09171230103', 'parent' => 'Marites Auza', 'parent_contact' => '09181230103'],
         ];
 
         foreach ($interns as $intern) {
@@ -158,6 +162,53 @@ class CabmbSupervisorDemoSeeder extends Seeder
                     'company_supervisor_id' => $companySupervisorId,
                     'assigned_division' => 'Branch Operations',
                     'status' => 'active',
+                ]
+            );
+
+            // The approved sheet the real intake flow would have left behind.
+            // Without it these three — the interns every demo is built around —
+            // opened Student Info Sheet to a blank form telling them to submit
+            // it "and, once accepted, you'll be enrolled", while enrolled.
+            // The pin sits on CPG Avenue so the printed sketch box shows a map.
+            StudentInformationSheet::updateOrCreate(
+                ['student_id' => $student->id, 'batch_id' => $batch->id],
+                [
+                    'submission_status' => 'approved',
+                    'submitted_at' => $batch->start_date?->copy()->subDays(7) ?? now(),
+                    'rejection_reason' => null,
+                    'personal_info' => [
+                        'last_name' => $intern['last'],
+                        'first_name' => $intern['first'],
+                        'middle_name' => $intern['middle'],
+                        'contact_number' => $intern['contact'],
+                        'parent_guardian_name' => $intern['parent'],
+                        'parent_guardian_contact' => $intern['parent_contact'],
+                        'student_id_number' => $intern['sid'],
+                        'sex' => $intern['sex'],
+                    ],
+                    'academic_info' => [
+                        'program_course' => $program->name,
+                        'year_level' => '4th-year',
+                        'department' => $program->department?->name,
+                        'internship_coordinator' => $coordinator->name,
+                    ],
+                    'ojt_info' => [
+                        'company_id' => $company->id,
+                        'host_company' => $company->name,
+                        'company_address' => $company->address,
+                        'company_signatory_moa' => 'Mr. Alfonso Bernaldez',
+                        'office_designation' => 'Branch Operations Intern',
+                        'supervisor_name' => 'Ms. Rowena Salazar',
+                        'supervisor_contact' => '038-411-3122',
+                        'intern_duty_schedule' => 'Mon–Fri, 8:00 AM – 5:00 PM',
+                        'area_assigned' => 'Branch Operations',
+                        'ojt_start_date' => $batch->start_date?->toDateString(),
+                        'ojt_end_date' => $batch->end_date?->toDateString(),
+                        'location_lat' => 9.6475,
+                        'location_lng' => 123.8556,
+                        'location_zoom' => 17,
+                        'location_label' => $company->address,
+                    ],
                 ]
             );
         }

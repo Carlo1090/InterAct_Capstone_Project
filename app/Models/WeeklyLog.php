@@ -15,8 +15,8 @@ class WeeklyLog extends Model
     protected function casts(): array
     {
         return [
-            'week_start' => 'date',
-            'week_end' => 'date',
+            'week_start' => 'date:Y-m-d',
+            'week_end' => 'date:Y-m-d',
             'submitted_at' => 'datetime',
             'reviewed_at' => 'datetime',
         ];

@@ -35,7 +35,7 @@ class DtrSession extends Model
     protected function casts(): array
     {
         return [
-            'work_date' => 'date',
+            'work_date' => 'date:Y-m-d',
             'time_in' => 'datetime',
             'time_out' => 'datetime',
             'time_in_lat' => 'float',
