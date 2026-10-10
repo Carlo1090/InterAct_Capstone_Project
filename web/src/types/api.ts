@@ -794,6 +794,8 @@ export type CoordinatorDashboardStats = {
 export type StudentBehind = {
   student_id: number
   name: string
+  /** The batch's program code, e.g. "BSBA-FM". */
+  program: string
   company: string
   missing_count: number
 }

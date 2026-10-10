@@ -50,10 +50,19 @@ const hasFilters = computed(
   () => programId.value !== null || companyId.value !== null || range.value !== 'week',
 )
 
+/**
+ * "Oct 4" from a Y-m-d. Split, never `new Date('2026-10-04')` — that parses as
+ * UTC midnight and can land a day early. (PROJECT.md)
+ */
+const formatShortDate = (raw: string): string => {
+  const [y, m, d] = raw.slice(0, 10).split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
 const summaryLine = computed(() => {
   const count = rows.value.length
   const noun = count === 1 ? 'intern' : 'interns'
-  const span = from.value && to.value ? ` · ${from.value} – ${to.value}` : ''
+  const span = from.value && to.value ? ` · ${formatShortDate(from.value)} – ${formatShortDate(to.value)}` : ''
 
   return `${count} ${noun}${span}`
 })
@@ -81,7 +90,7 @@ const rangeParams = (): { from: string; to: string } => {
  * the one value that carries colour.
  */
 const submittedClass = (count: number): string =>
-  count === 0 ? 'text-amber-600 font-medium' : 'text-slate-700'
+  count === 0 ? 'text-amber-700 font-medium' : 'text-slate-700'
 
 const load = async () => {
   // Cancel any request still in flight so a slow earlier response cannot land
@@ -194,10 +203,10 @@ onBeforeUnmount(() => {
     </div>
 
     <LoadStatus :loading="isLoading" :error="errorMessage" :retry="load">
-      <p class="mb-5 text-xs text-slate-400">{{ summaryLine }}</p>
+      <p class="mb-5 text-xs text-slate-500">{{ summaryLine }}</p>
 
       <div v-if="rows.length === 0" class="mt-4">
-        <p class="text-sm text-slate-400">No activity for this selection.</p>
+        <p class="text-sm text-slate-500">No activity for this selection.</p>
         <button
           v-if="hasFilters"
           type="button"
@@ -228,7 +237,7 @@ onBeforeUnmount(() => {
             <col class="w-[260px]" />
           </colgroup>
           <thead>
-            <tr class="text-xs font-medium uppercase tracking-wide text-slate-400">
+            <tr class="text-xs font-medium uppercase tracking-wide text-slate-500">
               <th class="sticky top-0 whitespace-nowrap border-b border-slate-200 bg-white pb-3 pr-4 text-left font-medium">Student</th>
               <th class="sticky top-0 whitespace-nowrap border-b border-slate-200 bg-white px-4 pb-3 text-right font-medium">Submitted</th>
               <th class="sticky top-0 whitespace-nowrap border-b border-slate-200 bg-white px-4 pb-3 text-left font-medium">Program</th>
@@ -240,7 +249,7 @@ onBeforeUnmount(() => {
               <td class="truncate py-3.5 pr-4 text-sm font-medium text-slate-900">{{ row.student_name }}</td>
               <td class="whitespace-nowrap px-4 py-3.5 text-right text-sm tabular-nums" :class="submittedClass(row.submitted_count)">
                 <span>{{ row.submitted_count }}</span>
-                <span class="ml-1 text-xs text-slate-400">submitted</span>
+                <span class="ml-1 text-xs text-slate-500">submitted</span>
               </td>
               <td class="whitespace-nowrap px-4 py-3.5 text-left text-sm text-slate-500">{{ row.program }}</td>
               <td class="py-3.5 pl-4 text-right text-sm text-slate-500">
@@ -259,7 +268,7 @@ onBeforeUnmount(() => {
               <span class="min-w-0 truncate text-sm font-medium text-slate-900">{{ row.student_name }}</span>
               <span class="shrink-0 text-sm tabular-nums" :class="submittedClass(row.submitted_count)">
                 <span>{{ row.submitted_count }}</span>
-                <span class="ml-1 text-xs text-slate-400">submitted</span>
+                <span class="ml-1 text-xs text-slate-500">submitted</span>
               </span>
             </div>
             <p class="mt-1 truncate text-xs text-slate-500">

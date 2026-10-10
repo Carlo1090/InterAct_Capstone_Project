@@ -14,7 +14,10 @@ import type {
   StudentBehind,
 } from '@/types/api'
 
-type StatIcon = 'people' | 'check' | 'alert' | 'briefcase'
+type StatIcon = 'people' | 'check' | 'briefcase'
+
+/** Students Behind shows this many rows before "Show all N". */
+const BEHIND_PREVIEW = 5
 
 const auth = useAuthStore()
 
@@ -64,8 +67,26 @@ const greeting = computed(() => (firstName.value ? `Hello, ${firstName.value}` :
  */
 const heroSubline = computed(() => 'Coordinator')
 
+/**
+ * "Mon, Oct 5" from a Y-m-d. Split, never `new Date('2026-10-05')` — that
+ * parses as UTC midnight and can land a day early. (PROJECT.md)
+ */
+const formatWeekday = (raw: string): string => {
+  const iso = raw.slice(0, 10)
+  if (!iso) return ''
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
+const weekStartLabel = computed(() => formatWeekday(week.value.start))
+
+/**
+ * Three cards. The old fourth, Missing This Week, duplicated Students Behind
+ * below it. The last card spans both columns at sm so the 2-column step never
+ * leaves an orphan beside empty space.
+ */
 const statCards = computed<
-  { label: string; value: number; sub: string; card: string; tile: string; icon: StatIcon }[]
+  { label: string; value: number; sub: string; card: string; tile: string; icon: StatIcon; span?: string }[]
 >(() => [
   {
     label: 'My Interns',
@@ -78,18 +99,10 @@ const statCards = computed<
   {
     label: 'Submitted This Week',
     value: stats.value.journals_submitted_this_week,
-    sub: `Journals since ${week.value.start}`,
+    sub: `Since ${weekStartLabel.value}`,
     card: 'bg-emerald-50/40',
     tile: 'bg-white ring-1 ring-slate-200/70 text-emerald-600',
     icon: 'check',
-  },
-  {
-    label: 'Missing This Week',
-    value: stats.value.journals_missing_this_week,
-    sub: 'Unsubmitted daily journals',
-    card: 'bg-rose-50/40',
-    tile: 'bg-white ring-1 ring-slate-200/70 text-rose-600',
-    icon: 'alert',
   },
   {
     label: 'Active Batches',
@@ -98,8 +111,19 @@ const statCards = computed<
     card: 'bg-amber-50/40',
     tile: 'bg-white ring-1 ring-slate-200/70 text-amber-600',
     icon: 'briefcase',
+    span: 'sm:col-span-2 lg:col-span-1',
   },
 ])
+
+const showAllBehind = ref(false)
+const visibleBehind = computed(() =>
+  showAllBehind.value ? studentsBehind.value : studentsBehind.value.slice(0, BEHIND_PREVIEW),
+)
+
+const behindMeta = (student: StudentBehind): string =>
+  [student.program, student.company || 'No company on file'].filter(Boolean).join(' · ')
+
+const missingLabel = (count: number): string => `${count} ${count === 1 ? 'day' : 'days'} missing`
 
 /**
  * The endpoint returns one row per information sheet ON FILE — a student who has
@@ -227,12 +251,12 @@ onMounted(load)
     </section>
 
     <LoadStatus :loading="isLoading" :error="errorMessage" :retry="load">
-      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <article
           v-for="card in statCards"
           :key="card.label"
           class="flex h-full flex-col rounded-xl p-6 ring-1 ring-slate-200/60"
-          :class="card.card"
+          :class="[card.card, card.span]"
         >
           <div class="flex items-center gap-3">
             <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" :class="card.tile">
@@ -246,30 +270,26 @@ onMounted(load)
                   <circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.6" />
                   <path d="M8.5 12.3l2.4 2.4 4.6-4.9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
                 </g>
-                <g v-else-if="card.icon === 'alert'">
-                  <path d="M12 8v4.5M12 16h.01" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" />
-                  <path d="M10.3 4.4 3.1 17.1a2 2 0 0 0 1.7 3h14.4a2 2 0 0 0 1.7-3L13.7 4.4a2 2 0 0 0-3.4 0Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
-                </g>
                 <g v-else>
                   <rect x="3.5" y="7.5" width="17" height="12" rx="2" stroke="currentColor" stroke-width="1.6" />
                   <path d="M9 7.5V6a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 6v1.5M3.5 12.5h17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
                 </g>
               </svg>
             </span>
-            <p class="text-xs font-medium uppercase tracking-wide text-slate-400">{{ card.label }}</p>
+            <p class="text-xs font-medium uppercase tracking-wide text-slate-600">{{ card.label }}</p>
           </div>
 
           <p class="mt-4 text-3xl font-semibold tracking-tight text-slate-900">{{ card.value }}</p>
-          <p class="mt-1 text-xs text-slate-400">{{ card.sub }}</p>
+          <p class="mt-1 text-xs text-slate-600">{{ card.sub }}</p>
         </article>
       </div>
 
       <div>
-        <h3 class="mb-3 text-xs font-medium uppercase tracking-wide text-slate-400">This week</h3>
-        <div class="grid items-stretch gap-6 xl:grid-cols-2">
+        <h3 class="mb-3 text-xs font-medium uppercase tracking-wide text-slate-600">This week</h3>
+        <div class="grid grid-cols-1 items-stretch gap-6 xl:grid-cols-2">
         <section class="flex h-full flex-col rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200/70">
           <h2 class="text-sm font-semibold text-slate-900">Info Sheet Completion</h2>
-          <p class="mt-1 text-xs text-slate-400">Across information sheets on file in your programs.</p>
+          <p class="mt-1 text-xs text-slate-500">Across information sheets on file in your programs.</p>
 
           <p v-if="infoSheetError" class="mt-4 text-sm text-red-600">{{ infoSheetError }}</p>
 
@@ -289,7 +309,7 @@ onMounted(load)
               />
             </div>
 
-            <p v-if="infoSheetBreakdown.total === 0" class="mt-4 text-sm text-slate-400">No info sheets yet</p>
+            <p v-if="infoSheetBreakdown.total === 0" class="mt-4 text-sm text-slate-500">No info sheets yet</p>
 
             <div v-else class="mt-5 space-y-2">
               <div
@@ -309,7 +329,7 @@ onMounted(load)
           <div class="flex items-center justify-between gap-3">
             <div class="min-w-0">
               <h2 class="text-sm font-semibold text-slate-900">Students Behind This Week</h2>
-              <p class="mt-1 text-xs text-slate-400">In-scope interns with a missing daily entry this week.</p>
+              <p class="mt-1 text-xs text-slate-500">Working days with no submitted journal since {{ weekStartLabel }}.</p>
             </div>
             <span
               class="shrink-0 rounded-full px-3 py-1 text-xs font-semibold"
@@ -319,21 +339,55 @@ onMounted(load)
             </span>
           </div>
 
-          <p v-if="studentsBehind.length === 0" class="mt-4 text-sm text-slate-400">
-            No students have missing daily journals this week. 🎉
-          </p>
-
-          <div v-else class="mt-4 divide-y divide-slate-100">
-            <div v-for="student in studentsBehind" :key="student.student_id" class="flex items-center justify-between gap-4 py-3">
-              <div class="min-w-0">
-                <p class="truncate text-sm font-semibold text-slate-900">{{ student.name }}</p>
-                <p class="mt-1 truncate text-xs text-slate-500">{{ student.company || 'No company on file' }}</p>
-              </div>
-              <span class="shrink-0 whitespace-nowrap rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
-                {{ student.missing_count }} missing {{ student.missing_count === 1 ? 'entry' : 'entries' }}
-              </span>
-            </div>
+          <div
+            v-if="studentsBehind.length === 0"
+            class="flex flex-1 flex-col items-center justify-center py-10 text-center"
+          >
+            <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" class="h-5 w-5" aria-hidden="true">
+                <path d="M5.5 12.5l4 4 9-9.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </span>
+            <p class="mt-4 text-sm font-semibold text-slate-900">Everyone's on track</p>
+            <p class="mt-1 max-w-xs text-sm text-slate-500">
+              No in-scope intern has missed a working day since {{ weekStartLabel }}.
+            </p>
           </div>
+
+          <template v-else>
+            <ul id="students-behind-list" class="mt-4 divide-y divide-slate-100 border-t border-slate-100">
+              <li v-for="student in visibleBehind" :key="student.student_id" class="flex items-center justify-between gap-4 py-3">
+                <div class="min-w-0">
+                  <p class="truncate text-sm font-semibold text-slate-900">{{ student.name }}</p>
+                  <p class="mt-1 truncate text-xs text-slate-500">{{ behindMeta(student) }}</p>
+                </div>
+                <span class="shrink-0 whitespace-nowrap rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
+                  {{ missingLabel(student.missing_count) }}
+                </span>
+              </li>
+            </ul>
+
+            <button
+              v-if="studentsBehind.length > BEHIND_PREVIEW"
+              type="button"
+              class="mt-1 inline-flex min-h-11 items-center gap-1.5 self-start text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+              aria-controls="students-behind-list"
+              :aria-expanded="showAllBehind"
+              @click="showAllBehind = !showAllBehind"
+            >
+              {{ showAllBehind ? 'Show fewer' : `Show all ${studentsBehind.length}` }}
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                class="h-4 w-4 transition-transform motion-reduce:transition-none"
+                :class="showAllBehind ? 'rotate-180' : ''"
+                aria-hidden="true"
+              >
+                <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
+          </template>
         </section>
         </div>
       </div>

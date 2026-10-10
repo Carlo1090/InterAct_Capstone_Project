@@ -4925,8 +4925,42 @@ against the old seeder.
 All pages are department-scoped via `User::coordinatorProgramIds()`; out-of-scope
 403s.
 
-- **Dashboard** — active-intern count, journals submitted vs missing this week,
-  active batches, and a "students behind" list.
+- **Dashboard** — active-intern count, journals submitted this week, active
+  batches, and a "students behind" list.
+  **Reworked 2026-10-10** (project owner's mockups; the images were attached to
+  the request, not committed):
+  - **Students Behind is real now.** For each in-scope ACTIVE enrollment it
+    counts the working days (the batch's own `working_days_start`/`_end`) from
+    this week's Monday or the batch `start_date`, whichever is later, through
+    today, that have no `submitted` entry — the student dashboard's exact rule.
+    A draft does not count; a completed enrollment is not listed. The week's
+    submitted entries come from **one** query keyed by (student, batch), not one
+    per intern. Rows carry a new **`program`** (the batch's program code) and
+    sort by `missing_count` desc, then name; `journals_missing_this_week` is
+    the sum of the counts. `MISSING_STATUSES` is gone from this controller.
+    Pinned by `CoordinatorDashboardTest`, frozen to Thursday 2026-10-08 (one
+    case moves to that Sunday — a weekend can only fall in Monday-to-today when
+    today is one); verified to fail 6/8 against the old controller.
+  - **Three stat cards, not four.** Missing This Week duplicated Students Behind
+    and is gone. `sm:grid-cols-2 lg:grid-cols-3`, the last card
+    `sm:col-span-2 lg:col-span-1` so the two-column step has no orphan.
+  - Students Behind shows the first 5 rows, then a **"Show all N" / "Show
+    fewer"** text button (`min-h-11`, `aria-expanded`, `aria-controls`); rows
+    read `program · company` with an "N days missing" pill; nobody behind is a
+    centred "Everyone's on track" state (the 🎉 is gone).
+  - Dates read **"Mon, Oct 5"** / **"Oct 4 – Oct 10"**, formatted by splitting
+    the Y-m-d, never `new Date('2026-10-05')`.
+  - Contrast: stat labels, captions and the "This week" heading went
+    `slate-400` → `slate-600` (slate-400 on slate-100 fails AA); panel
+    subtitles and Intern Activity's summary, headers and "submitted" suffix to
+    `slate-500`; its zero count to `amber-700`.
+  - **The "This week" grid needs `grid-cols-1`.** With no column class the
+    implicit track is `auto`, which grows to the widest `truncate`d line — at
+    390px a long `program · company` pushed both panels 116px off-screen. v4's
+    `grid-cols-1` is `minmax(0, 1fr)`, which lets truncation work.
+  - **NOT fixed (pre-existing):** Intern Activity's table (`md:table`) pins
+    520px of columns, so between 768px and roughly 900px with the sidebar open
+    it overflows the page (measured 832 / 800 at 800px).
 - **Journal Activities** — read-only monitoring, default today, filterable by
   `from`/`to` date range + company + program + status. A `show` endpoint returns
   one student's full entry for a day (every section label + the text), keyed the
@@ -5035,12 +5069,14 @@ Two facts about the dashboard week data that are easy to get wrong:
   elapsed*, **not** the approved/pending split — do not fold it into a donut of
   those two counts; it would misreport.
 
-KNOWN ISSUE: `Coordinator/CoordinatorDashboardController`'s
-`journals_missing_this_week`/`students_behind` stats query
-`JournalEntry::whereIn('status', ['missing','overdue'])` directly against the DB
-column — which only ever holds `draft`/`submitted`, so **those two numbers are
-silently always zero**. Fix by deriving them the way
-`StudentDashboardController::countMissingWorkingDays()` does. Not yet done.
+**FIXED 2026-10-10** (was a KNOWN ISSUE): `CoordinatorDashboardController`'s
+`journals_missing_this_week`/`students_behind` queried
+`JournalEntry::whereIn('status', ['missing','overdue'])` against a column that
+only ever holds `draft`/`submitted`, so both were **silently always zero**. They
+are now derived the way `StudentDashboardController::countMissingWorkingDays()`
+does — see Coordinator → Dashboard. `CoordinatorJournalActivityController`
+still carries its own copy of `MISSING_STATUSES` with the same flaw (its
+per-row missing count is always zero); it was deliberately left alone.
 
 ### Profile — a popover, not a page
 
@@ -6329,6 +6365,13 @@ real data for it.
   `ring-slate-200/70`), and the actionable notice sits above the informational
   one. Amber as a stat-card accent or a data-series colour is unaffected.
 - Page rhythm is `space-y-6`.
+- **The coordinator dashboard departs from points 3 and 4** (2026-10-10): a
+  **3-card** stat row (`sm:grid-cols-2 lg:grid-cols-3`, last card
+  `sm:col-span-2 lg:col-span-1`), and its stat labels, captions and section
+  heading are **`text-slate-600`**, not `slate-400` — slate-400 on the
+  `slate-100` page fails contrast. **FOLLOW-UP:** the student, supervisor and
+  admin dashboards (and the Typography scale's label rule above) are still
+  slate-400; bring them onto slate-600 the same way.
 
 ## Conventions
 
